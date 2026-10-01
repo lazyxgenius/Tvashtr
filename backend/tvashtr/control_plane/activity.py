@@ -28,6 +28,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 from tvashtr.control_plane import live_state, run_views
 from tvashtr.control_plane.connector_proxy import EVENT_KINDS as CONNECTOR_EVENT_KINDS
+from tvashtr.control_plane.guardrails import mask_secrets
 from tvashtr.control_plane.run_failure import describe_run_failure, humanise, node_label
 from tvashtr.models import (
     AgentInvocation,
@@ -231,24 +232,26 @@ def _duration(seconds: int) -> str:
 
 def _parse(kind: str, tool: str, raw: str) -> dict:
     """What one engine event's text says: the costly part of a line (regex, shlex, difflib).
-    Pure, so :func:`_facts` memoises it. ``{}`` = nothing a line is made from."""
+    Pure, so :func:`_facts` memoises it. ``{}`` = nothing a line is made from. Commands, output
+    and errors are masked (``mask_secrets``) before anything is cut."""
     if kind == "observation":
         text, exit_code = _output(raw)
+        text = mask_secrets(text)
         return {"exit_code": exit_code, "tail": _tail(text), "summary": parse_test_summary(text)}
     if kind == "error":
-        return {"message": _cap(_first_line(raw))}
+        return {"message": _cap(_first_line(mask_secrets(raw)))}
     args = _args(raw)
     file = _path(str(args.get("path") or args.get("file_path") or args.get("target_file") or ""))
     if tool in _READ_TOOLS or (tool in _EDITOR_TOOLS and args.get("command") == "view"):
         return {"kind": "read", "file": file} if file else {}
     if tool in live_state.TERMINAL_TOOLS:
-        command = _cap(_first_line(str(args.get("command") or "")))
+        command = _cap(_first_line(mask_secrets(str(args.get("command") or ""))))
         return {"kind": "command", "command": command, "query": _search_query(command)}
     if tool in _EDIT_TOOLS or tool in _EDITOR_TOOLS:
         added, removed = _edit_counts(args)
         return {"kind": "edited", "file": file, "added": added, "removed": removed}
     if tool in _SEARCH_TOOLS:
-        query = str(args.get("pattern") or args.get("query") or "").strip()
+        query = mask_secrets(str(args.get("pattern") or args.get("query") or "")).strip()
         return {"kind": "searched", "query": query}
     return {}
 
@@ -541,7 +544,7 @@ def build(
         _event_lines(out, inv, nid, events_by_inv.get(inv.id, []), open_step)
         end_at = inv.ended_at or inv.started_at
         if inv.status == "failed" and inv.outcome != "stalled":  # a stall has its own line
-            message = _lower_first(humanise(None, inv.outcome_detail)["message"])
+            message = mask_secrets(_lower_first(humanise(None, inv.outcome_detail)["message"]))
             out.add(
                 f"inv:{inv.id}:end",
                 end_at,
@@ -806,7 +809,7 @@ def build(
             "node_id": nid,
             "label": label or "Run",
             "title": f"{label} failed" if label else "The run failed",
-            "body": failure["message"].rstrip(".")
+            "body": mask_secrets(failure["message"]).rstrip(".")
             + "."
             + ("" if run.pr_url else " Nothing was shipped."),
             "task_id": None,

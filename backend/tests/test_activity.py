@@ -649,3 +649,45 @@ def test_a_second_build_does_not_parse_the_same_events_again(monkeypatch):
     third = _build(_run(), [pm, eng], invs, ev.rows)
     assert calls["args"] > parsed["args"]
     assert {ln["id"]: ln for ln in third["lines"]}["ev:2"]["refs"]["command"] == "make lint"
+
+
+# ---------------------------------------------------------------------------- secrets
+
+_KEY = "sk-proj-Ab3dEf6hIj9kLm2nOp5qRs8tUv1wXy4z"
+
+
+def test_secrets_never_reach_a_line_an_agent_or_the_pinned_callout():
+    pm, eng, _ = _engineer_world()
+    invs = [
+        _inv(1, pm, end=30),
+        _inv(2, eng, status="failed", start=40, end=200, detail=f"bad key {_KEY}"),
+    ]
+    ev = _Events()
+    ev.add(2, 41, "action", _terminal('curl -H "Authorization: Bearer abc123token" https://x.io'))
+    ev.add(2, 42, "observation", _terminal_out("{}"))
+    ev.add(2, 50, "action", _terminal("env"))
+    dump = f"PATH=/usr/bin\nOPENAI_API_KEY={_KEY}\nGITHUB_TOKEN=shorty\nDB_PASSWORD=hunter2\n"
+    ev.add(2, 51, "observation", _terminal_out(dump + "HOME=/root"))
+    ev.add(2, 60, "action", _terminal(f"export OPENAI_API_KEY={_KEY} && make deploy"))
+    ev.add(2, 61, "error", {"error": f"AuthenticationError: Incorrect API key: {_KEY}"})
+    ev.add(2, 70, "error", {"error": f"AuthenticationError: Incorrect API key: {_KEY}"})
+    run = _run("failed", failed_node_id=eng.id, failure_message=f"Engineer: bad key {_KEY}")
+    reply = _build(run, [pm, eng], invs, ev.rows)
+    text = json.dumps(reply, ensure_ascii=False)
+    for secret in (_KEY, "abc123token", "shorty", "hunter2"):
+        assert secret not in text
+    by_id = {ln["id"]: ln for ln in reply["lines"]}
+    assert by_id["ev:1"]["text"] == 'Ran curl -H "Authorization: Bearer ••••" https://x.io'
+    assert by_id["ev:3"]["refs"]["output_tail"] == [
+        "PATH=/usr/bin",
+        "OPENAI_API_KEY=••••",
+        "GITHUB_TOKEN=••••",
+        "DB_PASSWORD=••••",
+        "HOME=/root",
+    ]
+    assert by_id["ev:5"]["refs"]["command"] == "export OPENAI_API_KEY=•••• && make deploy"
+    assert by_id["ev:7"]["text"] == "Hit an error: AuthenticationError: Incorrect API key: ••••"
+    assert by_id["inv:2:end"]["text"] == "Failed: bad key ••••"
+    engineer = {a["label"]: a for a in reply["agents"]}["Engineer"]
+    assert engineer["activity"] == "Failed: bad key ••••"
+    assert reply["pinned"]["body"] == "Engineer: bad key ••••. Nothing was shipped."

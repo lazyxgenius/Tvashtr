@@ -117,6 +117,37 @@ _PLACEHOLDER_MARKERS: tuple[str, ...] = (
 )
 
 
+_MASK = "••••"
+# What the run view masks besides ``_SECRET_PATTERNS``: a whole private-key block, an
+# ``Authorization:`` header's credential, and an env dump's ``*_KEY`` / ``*_TOKEN`` / ``*_SECRET`` /
+# ``*PASSWORD`` value. A pattern with a group masks only that group (the name stays).
+_MASK_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(
+        r"-----BEGIN (?:[A-Z0-9 ]+ )?PRIVATE KEY-----.*?"
+        r"(?:-----END (?:[A-Z0-9 ]+ )?PRIVATE KEY-----|\Z)",
+        re.S,
+    ),
+    *(pattern for _name, pattern in _SECRET_PATTERNS),
+    re.compile(r"(?i)\bauthorization\s*:\s*(?:bearer|basic|token)?\s*([^\s'\"]+)"),
+    re.compile(r"(?i)\b\w*(?:_key|_token|_secret|password)=(\"[^\"]*\"|'[^']*'|[^\s'\"]+)"),
+)
+
+
+def _mask_match(match: re.Match) -> str:
+    if not match.re.groups:
+        return _MASK
+    whole, start = match[0], match.start()
+    return whole[: match.start(1) - start] + _MASK + whole[match.end(1) - start :]
+
+
+def mask_secrets(text: str) -> str:
+    """``text`` with every secret shape replaced by "••••" — for words a person sees (the run
+    view's commands, output and errors). Over-masks rather than under: placeholders too."""
+    for pattern in _MASK_PATTERNS:
+        text = pattern.sub(_mask_match, text)
+    return text
+
+
 def _is_placeholder(value: str) -> bool:
     """True when a generic-assignment captured ``value`` is an obvious non-secret placeholder."""
     low = value.lower()
