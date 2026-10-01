@@ -241,7 +241,9 @@ export function ActivityPanel({
   const list = useRef<HTMLOListElement>(null);
 
   const agents = activity.agents.filter(
-    (a) => a.kind !== "terminal" && activity.lines.some((l) => l.node_id === a.node_id),
+    (a) =>
+      !["terminal", "ship", "stop"].includes(a.kind) &&
+      activity.lines.some((l) => l.node_id === a.node_id),
   );
   const lines = filter ? activity.lines.filter((l) => l.node_id === filter) : activity.lines;
   const hiddenCount = earlier ? 0 : Math.max(0, lines.length - SHOWN);

@@ -50,8 +50,9 @@ const AGENTS: ActivityAgent[] = [
     last_event_at: at(4),
   }),
   agent({ node_id: "n-rev", label: "Reviewer", live_state: "waiting" }),
-  agent({ node_id: "n-stop", label: "Stop", kind: "terminal", live_state: "waiting" }),
-  agent({ node_id: "n-ship", label: "Ship", kind: "terminal", live_state: "waiting" }),
+  // The server names an ending by its kind: "stop" / "ship".
+  agent({ node_id: "n-stop", label: "Stop", kind: "stop", live_state: "waiting" }),
+  agent({ node_id: "n-ship", label: "Ship", kind: "ship", live_state: "waiting" }),
 ];
 
 const GRAPH = {
