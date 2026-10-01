@@ -26,7 +26,9 @@
 #   the sheet shows the "Read only / Only with read & write" box that says what each access allows (CnF-Connect-2), in
 #     place of the entry's description — the 'Read only' 11.5→12.5px pairing is gone. The boards draw the list for
 #     Supabase only, so only Supabase has one; any other connector keeps its description until its list is designed
-#     (recorded for the operator: new per-connector content, not built).
+#     (recorded for the operator: new per-connector content, not built). The box shows only where Read & write is
+#     offered, and the tile only on "Connect <name>" (the boards don't draw Sign in again / Replace key / Change
+#     project headers).
 # waiver W1 (ruling 4: the app governs) [ctl] the leading-icon gap, +8px on every button with a leading icon: 'Custom
 #   connector' 173→181, 'Give an agent access' 173→181, 'Continue to Supabase' 177→185, 'Continue to auth.acme.dev'
 #   208→216, 'Open the window again' 186→194, 'Open the browser again' 189→197, 'Back' 71→79, 'Try again' 98→106, 'Add it
@@ -39,8 +41,10 @@
 #   label is the shared Field label, 14px.
 # waiver W4 (ruling 4: the app governs) copy, counted in "not found": "Signed in to Supabase." without the organization
 #   name (CnF-Connect-4: 'Signed in to Supabase as organization .', 'lazyx') — the app doesn't know the organization, so
-#   the honest copy stays; the same holds for the connector page's "Signed in as · Organization lazyx" row (Cn-Screens-5,
-#   CnF-Agents-8, -9).
+#   the honest copy stays.
+# note (real, not built: needs a ruling; from the last session's copy note, kept apart from W4) the connector page has no
+#   "Signed in as · Organization lazyx" row (Cn-Screens-5, CnF-Agents-8, -9: 'Signed in as', 'Organization lazyx' not
+#   found) — the app doesn't know the provider account or organization; ruling 4 waived only the sheet's copy.
 # note N-link (artifact, from the last session) [ctl] 'Give an agent access' height 15→20 — the "Not used yet · Give an
 #   agent access" row link: the design draws an inline <a> (its box is the 15px text run at 12.5px/500, line-height 20px),
 #   the app a <button> (a 20px line box). Same font, weight and width.
@@ -102,8 +106,10 @@
 # note (toast/transient, not triggered by the scenario, which loads the saved state) [txt] 'Reviewer can use Supabase,
 #   Notion and Linear. All read only.' (CnF-Agents-4), 'Engineer can now use Supabase (read only).' (CnF-Agents-9),
 #   'Sentry is ready again.' (CnF-Changes-3), 'Neon is connected. It works for runs from the website and from Desktop.'
-#   (CnF-Changes-10), and the row badge 'New' (CnF-Connect-5, -9, CnF-Changes-10), which marks a row connected during
-#   this visit.
+#   (CnF-Changes-10), 'Supabase is connected. No agent can use it…' / 'Apify is connected…' (CnF-Connect-5, -9; see
+#   N-toast), and the row badge 'New' (CnF-Connect-5, -9, CnF-Changes-10), which marks a row connected during this visit.
+# note (only moved, from the review) the row ⋯ menu on CnF-Changes-4 opens below its trigger, right-aligned (rows at
+#   1113,368), where the frame draws it at the trigger's top, about 21px to its right (1134,336). Same 230px rows.
 # note (non-comparison render) Desktop only: the bottom row of Featured cards ('By Sentry', 'By Atlassian', 'Any server
 #   that signs in', their descriptions) falls below 900px (the Desktop render sits lower), and 'Tools' / 'Add tool'
 #   (Cn-Screens-8) are pushed past the fold by the Desktop-only plan note; CnF-Connect-3 / -10 on Desktop show the

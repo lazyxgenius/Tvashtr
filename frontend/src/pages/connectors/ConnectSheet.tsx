@@ -528,6 +528,7 @@ export function ConnectSheet({
     );
   } else {
     const signedIn = mode === "new" && conn?.status === "connected";
+    const description = entry?.description && <p className="cn-lead">{entry.description}</p>;
     // Same site as the connector (a sign-in that moved within it): said plainly, no warning.
     const whereNote =
       otherSite &&
@@ -546,11 +547,10 @@ export function ConnectSheet({
         {mode === "new" ? (
           <>
             {unreviewed}
-            {entry && (
-              <AccessAllows
-                connectorKey={entry.key}
-                fallback={entry.description && <p className="cn-lead">{entry.description}</p>}
-              />
+            {entry && canWrite ? (
+              <AccessAllows connectorKey={entry.key} fallback={description} />
+            ) : (
+              description
             )}
             {whereNote}
             {!reviewed && entry?.auth !== "none" && <OwnSignInNote name={name} />}
@@ -587,11 +587,14 @@ export function ConnectSheet({
       title={title}
       subtitle={subtitle}
       icon={
-        <ConnectorTile
-          connectorKey={entry?.key ?? existing?.connector_key ?? ""}
-          name={name}
-          size="md"
-        />
+        // The boards draw the tile on "Connect <name>" only (not Sign in again / Replace key).
+        mode === "new" && (
+          <ConnectorTile
+            connectorKey={entry?.key ?? existing?.connector_key ?? ""}
+            name={name}
+            size="md"
+          />
+        )
       }
       onClose={close}
       width={540}

@@ -211,6 +211,22 @@ describe("signing in to a catalog connector", () => {
     expect(sheet.querySelector("header .cn-tile--md")).toHaveTextContent("No");
   });
 
+  it("lists what each access allows only where Read & write is offered", () => {
+    serve();
+    show({ entry: entry({ access_modes: ["read"] }) });
+    const sheet = screen.getByRole("dialog", { name: "Connect Supabase" });
+    expect(within(sheet).queryByRole("group", { name: "What each access allows" })).toBeNull();
+    expect(sheet).toHaveTextContent(
+      "Read tables, run read-only SQL and check logs in one project.",
+    );
+  });
+
+  it("draws the tile only on Connect: no board draws it when signing in again", () => {
+    serve();
+    show({ connection: connection(), mode: "signin", prepared: null });
+    expect(screen.getByRole("dialog").querySelector("header .cn-tile")).toBeNull();
+  });
+
   it("opens the window, waits, asks for the project and finishes", async () => {
     const calls = serve();
     const { onDone } = show({ entry: entry() });
