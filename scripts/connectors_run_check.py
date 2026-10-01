@@ -20,6 +20,13 @@ polls to the DBOS workflow terminal and asserts:
 The run's own outcome is printed and not asserted: the path is proven once both calls are
 recorded, whatever the model does afterwards.
 
+``--domains`` (Security S1) runs the Domains leg instead: a domain holding one file, given to the
+one agent of a Blank team, and a run that searches it with ``domain_retrieve``. It asserts the
+search went through the agent's Domains run token (the tool answered with the file's fact, not
+"authentication required") and that the owner's login (``tv_session``, and the operator's cookie
+value) is nowhere in the run's ``run_events`` or in the round's saved ``context_manifest``. Needs a
+key that embeds (OpenAI by default).
+
 It never imports ``tvashtr.main`` (a second process that imports the app starts DBOS recovery on
 the same database). Run from ``backend/``: ``uv run python ../scripts/connectors_run_check.py``.
 """
@@ -38,7 +45,7 @@ from sqlalchemy import select
 from tvashtr import seed
 from tvashtr.control_plane.connectors import read_secret
 from tvashtr.db import session_scope
-from tvashtr.models import ConnectorConnection, RunEvent
+from tvashtr.models import AgentInvocation, ConnectorConnection, RunEvent
 
 TERMINAL_WF = {"SUCCESS", "ERROR", "CANCELLED", "MAX_RECOVERY_ATTEMPTS_EXCEEDED"}
 STATIC_TOKEN = "fake-static-token"
@@ -80,11 +87,96 @@ def _tokens(connection_id: str) -> set[str]:
     return {secret[k] for k in ("access_token", "refresh_token") if secret.get(k)}
 
 
+FACT = "The run-check refund window is 47 days."
+
+
+def _wait_for(c: httpx.Client, run_id: str, timeout: int) -> dict:
+    final, deadline = None, time.time() + timeout
+    while time.time() < deadline:
+        state = c.get(f"/api/runs/{run_id}").json()
+        if state["workflow_status"] in TERMINAL_WF:
+            final = state
+            break
+        time.sleep(3)
+    _check(final is not None, f"the run's workflow ended within {timeout}s")
+    run = final.get("run") or {}
+    print(f"workflow={final['workflow_status']} run={run.get('status')} {run.get('error')}")
+    return final
+
+
+def domains_check(c: httpx.Client, model: str, timeout: int) -> None:
+    """The Domains leg (Security S1): a real agent searches a domain through its run token."""
+    login = c.cookies.get("tv_session")
+    _check(bool(login), "the operator's login cookie is there to look for")
+    name = f"Run check docs {uuid.uuid4().hex[:6]}"
+    did = _ok(c.post("/api/domains", json={"name": name, "template": "support"}), "domain")[
+        "domain_id"
+    ]
+    try:
+        upload = {"file": ("refunds.txt", FACT.encode(), "text/plain")}
+        _ok(c.post(f"/api/domains/{did}/documents", files=upload), "upload a file")
+        counts, deadline = {}, time.time() + 300
+        while time.time() < deadline:
+            counts = c.get(f"/api/domains/{did}/documents").json().get("counts") or {}
+            if counts.get("ready") or counts.get("needs_attention"):
+                break
+            time.sleep(2)
+        _check(counts.get("ready") == 1, f"the file is read ({counts})")
+
+        team = _ok(
+            c.post("/api/teams", json={"template": "blank", "name": "domains run check"}), "team"
+        )
+        tid = team["team_graph_id"]
+        nodes = _ok(c.get(f"/api/teams/{tid}/graph"), "the team's graph")["nodes"]
+        agent = next(n for n in nodes if n["kind"] in ("agent", "completion"))
+        body = {"prompt": PROMPT, "model": model, "tool_config": {"tvashtr": {"domains": [did]}}}
+        _ok(c.patch(f"/api/teams/{tid}/nodes/{agent['id']}", json=body), "Domains on the agent")
+        idea = (
+            f'Call the tool domain_retrieve once, with domain "{name}" and query "refund window". '
+            "Then write a file REPORT.md with one line saying what it found, then finish."
+        )
+        run_id = _ok(c.post("/api/runs", json={"team_graph_id": tid, "idea": idea}), "run")[
+            "run_id"
+        ]
+        print(f"run {run_id} on {model}; polling")
+        _wait_for(c, run_id, timeout)
+
+        with session_scope() as s:
+            events = s.execute(
+                select(RunEvent.kind, RunEvent.payload).where(RunEvent.run_id == run_id)
+            ).all()
+            manifests = s.execute(
+                select(AgentInvocation.context_manifest).where(AgentInvocation.run_id == run_id)
+            ).scalars()
+            saved = "\n".join(json.dumps(m) for m in manifests)
+        searches = [
+            p
+            for k, p in events
+            if k == "observation" and "domain_retrieve" in str(p.get("tool_name"))
+        ]
+        print(
+            f"domain_retrieve observations: {[str(p.get('observation'))[:160] for p in searches]}"
+        )
+        _check(
+            any("47 days" in str(p.get("observation")) for p in searches),
+            "the agent searched the domain through its run token and got the file's fact",
+        )
+        text = "\n".join(json.dumps(p) for _, p in events) + "\n" + saved
+        _check(
+            "tv_session" not in text and login not in text,
+            f"no login cookie in run_events or context_manifest ({len(text)} characters read)",
+        )
+    finally:
+        c.delete(f"/api/domains/{did}")
+    print("domains-run-check: PASSED")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--backend", default="http://localhost:8043", help="the running backend")
     parser.add_argument("--fake", default="http://127.0.0.1:9911", help="the fake provider")
     parser.add_argument("--timeout", type=int, default=600, help="seconds to wait for the run")
+    parser.add_argument("--domains", action="store_true", help="run the Domains leg instead")
     args = parser.parse_args()
     backend, fake = args.backend.rstrip("/"), args.fake.rstrip("/")
     model = os.environ.get("TVASHTR_AGENT_MODEL") or "deepseek/deepseek-chat"
@@ -95,6 +187,9 @@ def main() -> None:
         "password": os.environ.get("TVASHTR_SEED_PASSWORD", seed.DEFAULT_SEED_PASSWORD),
     }
     _ok(c.post("/api/auth/login", json=login), "log in as the operator")
+    if args.domains:
+        domains_check(c, model, args.timeout)
+        return
 
     # Connect the fake and sign in: its Allow, then the callback in the owner's browser.
     cid = _ok(c.post("/api/connectors", json={"url": f"{fake}/mcp", "name": "Fake"}), "connect")[
