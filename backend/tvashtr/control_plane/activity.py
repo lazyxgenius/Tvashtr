@@ -239,7 +239,8 @@ def _parse(kind: str, tool: str, raw: str) -> dict:
         text = mask_secrets(text)
         return {"exit_code": exit_code, "tail": _tail(text), "summary": parse_test_summary(text)}
     if kind == "error":
-        return {"message": _cap(_first_line(mask_secrets(raw)))}
+        text = mask_secrets(raw)
+        return {"message": _cap(_first_line(text)), "tail": _tail(text)}
     args = _args(raw)
     file = _path(str(args.get("path") or args.get("file_path") or args.get("target_file") or ""))
     if tool in _READ_TOOLS or (tool in _EDITOR_TOOLS and args.get("command") == "view"):
@@ -348,6 +349,12 @@ def _event_lines(out: _Lines, inv, node_id: str, events: list, open_step: bool) 
                 line["tone"] = "warn" if facts["exit_code"] not in (None, 0) else "neutral"
             line["_final"] = True
             continue
+        if ev.kind == "error" and pending:
+            line = pending.pop(0)  # the call ended in an error instead of a result
+            if line["kind"] == "command":
+                line["refs"].update(running=False, output_tail=_facts(ev, tool)["tail"])
+                line.update(text=f"Ran {line['refs']['command']}", tone="danger", _final=True)
+                continue
         if ev.kind not in ("action", "message", "error", *live_state.HOST_EVENT_KINDS):
             continue
 

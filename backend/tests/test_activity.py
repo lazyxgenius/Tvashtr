@@ -691,3 +691,30 @@ def test_secrets_never_reach_a_line_an_agent_or_the_pinned_callout():
     engineer = {a["label"]: a for a in reply["agents"]}["Engineer"]
     assert engineer["activity"] == "Failed: bad key ••••"
     assert reply["pinned"]["body"] == "Engineer: bad key ••••. Nothing was shipped."
+
+
+def test_an_error_settles_the_command_it_answers_and_later_results_pair_right():
+    pm, eng, invs = _engineer_world()  # the step still runs
+    ev = _Events()
+    ev.add(2, 50, "action", _terminal("bad --flag"))
+    ev.add(2, 51, "error", {"error": "Tool 'terminal' failed: bad: unknown flag --flag\nusage"})
+    ev.add(2, 60, "action", _terminal("python -m pytest -q"))
+    ev.add(2, 62, "observation", _terminal_out("....\n4 passed in 0.2s"))
+    reply = _build(_run(), [pm, eng], invs, ev.rows)
+    by_id = {ln["id"]: ln for ln in reply["lines"]}
+    bad = by_id["ev:1"]
+    assert (bad["kind"], bad["text"], bad["tone"]) == ("command", "Ran bad --flag", "danger")
+    assert bad["refs"]["running"] is False and bad["refs"]["exit_code"] is None
+    assert bad["refs"]["output_tail"] == [
+        "Tool 'terminal' failed: bad: unknown flag --flag",
+        "usage",
+    ]
+    assert "ev:2" not in by_id  # the error is the command's result, not a line of its own
+    tests = by_id["ev:3"]
+    assert (tests["kind"], tests["text"], tests["tone"]) == (
+        "tests",
+        "Ran the tests: all 4 passed",
+        "ok",
+    )
+    assert tests["refs"]["running"] is False
+    assert reply["cursor"] == f"{tests['at']}|ev:3"  # nothing is left open
