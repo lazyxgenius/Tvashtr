@@ -347,8 +347,11 @@ def test_a_retrying_step_is_pinned_with_its_backup():
         "kind": "retrying",
         "node_id": str(eng.id),
         "label": "Engineer",
-        "title": "Engineer is retrying",
-        "body": "Model busy (too many requests). Trying again in 20 s · 2 of 3",
+        "title": "The Engineer’s model is busy",
+        "body": (
+            "Tvashtr tries again in 20 seconds. If it is still busy, the Engineer switches to its "
+            "backup model, openai/gpt-4.1-mini, and carries on. You don’t need to do anything."
+        ),
         "task_id": None,
         "backup_model": "openai/gpt-4.1-mini",
     }
@@ -412,7 +415,7 @@ def test_an_open_gate_is_a_line_the_pinned_callout_and_needs_you():
         "node_id": str(gate.id),
         "label": "Approval",
         "title": "The approval gate is waiting for you",
-        "body": "The PM wrote the PRD. Approve to let the Engineer build it.",
+        "body": "Read the spec, then approve or reject it. The run is paused until you decide.",
         "task_id": 7,
         "backup_model": None,
     }
@@ -551,7 +554,7 @@ def test_a_failed_run_pins_its_failure_and_ends_with_a_failed_line():
     assert reply["lines"][-2]["refs"] == {"message": "the model didn't answer after 3 tries"}
     assert reply["pinned"]["kind"] == "failed" and reply["pinned"]["node_id"] == str(eng.id)
     assert reply["pinned"]["title"] == "Engineer failed"
-    assert reply["pinned"]["body"] == "Engineer: it broke"
+    assert reply["pinned"]["body"] == "Engineer: it broke. Nothing was shipped."
     assert reply["summary"] is None and reply["live_state"] == "failed"
 
 
@@ -594,8 +597,8 @@ def test_a_stalled_step_is_pinned_and_outranks_a_retrying_one():
         "kind": "stalled",
         "node_id": str(eng.id),
         "label": "Engineer",
-        "title": "Engineer stopped responding",
-        "body": "No update for 6 minutes.",
+        "title": "The Engineer may be stuck",
+        "body": "No update for 6m 00s. Its last step: x. Nothing has shipped.",
         "task_id": None,
         "backup_model": None,
     }

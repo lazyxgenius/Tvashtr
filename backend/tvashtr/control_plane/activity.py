@@ -712,7 +712,12 @@ def build(
             "node_id": nid,
             "label": label,
             "title": f"The {label.lower()} gate is waiting for you",
-            "body": task.description,
+            # The board's words for the spec gate (Live-NeedsYou); any other gate says its own.
+            "body": (
+                "Read the spec, then approve or reject it. The run is paused until you decide."
+                if task.kind == "prd_approval"
+                else task.description
+            ),
             "task_id": task.id,
         }
     elif stalled is not None:
@@ -720,8 +725,12 @@ def build(
             "kind": "stalled",
             "node_id": stalled["node_id"],
             "label": stalled["label"],
-            "title": f"{stalled['label']} stopped responding",
-            "body": f"No update for {_quiet_minutes(stalled, now)} minutes.",
+            "title": f"The {stalled['label']} may be stuck",
+            "body": (
+                f"No update for {_span(live_state.stalled_for(stalled, now))}."
+                + (f" Its last step: {stalled['activity']}." if stalled.get("activity") else "")
+                + " Nothing has shipped."
+            ),
             "task_id": None,
         }
     elif retrying is not None:
@@ -737,8 +746,8 @@ def build(
             "kind": "retrying",
             "node_id": retrying["node_id"],
             "label": retrying["label"],
-            "title": f"{retrying['label']} is retrying",
-            "body": retry["text"] if retry else retrying["activity"],
+            "title": f"The {retrying['label']}’s model is busy",
+            "body": _retry_body(retrying["label"], retry),
             "task_id": None,
             "backup_model": retry["_backup"] if retry else None,
         }
@@ -761,7 +770,9 @@ def build(
             "node_id": nid,
             "label": label or "Run",
             "title": f"{label} failed" if label else "The run failed",
-            "body": failure["message"],
+            "body": failure["message"].rstrip(".")
+            + "."
+            + ("" if run.pr_url else " Nothing was shipped."),
             "task_id": None,
         }
     if pinned is not None:
@@ -801,8 +812,25 @@ def build(
     }
 
 
-def _quiet_minutes(agent: dict, now: datetime) -> int:
-    return round(live_state.stalled_for(agent, now) / 60)
+def _span(seconds: float) -> str:
+    """ "6m 00s" / "45s" — the boards' running-time words."""
+    s = max(0, round(seconds))
+    return f"{s}s" if s < 60 else f"{s // 60}m {s % 60:02d}s"
+
+
+def _retry_body(label: str, retry: dict | None) -> str:
+    """The Retrying callout (Live-Retrying): when the next try is, and the backup it switches to."""
+    if retry is None:
+        return f"Tvashtr is retrying the {label}’s model."
+    wait = round(float(retry.get("refs", {}).get("wait_s") or 0))
+    text = f"Tvashtr tries again in {wait} seconds."
+    backup = retry.get("_backup")
+    if backup:
+        text += (
+            f" If it is still busy, the {label} switches to its backup model, {backup}, and"
+            " carries on. You don’t need to do anything."
+        )
+    return text
 
 
 def _key(line: dict) -> str:
