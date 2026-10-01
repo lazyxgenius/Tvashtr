@@ -51,7 +51,11 @@ def test_the_domain_round_records_the_gateway_retry_events(client, monkeypatch):
 
     with session_scope() as s:
         kinds = (
-            s.execute(select(RunEvent.kind).where(RunEvent.invocation_id == inv_id)).scalars().all()
+            s.execute(
+                select(RunEvent.kind).where(RunEvent.invocation_id == inv_id).order_by(RunEvent.seq)
+            )
+            .scalars()
+            .all()
         )
     assert kinds == ["retry", "backup_model"]
     # R2: the round gets the account's backup for a thinker seat, and the switch is a RunWarning.
