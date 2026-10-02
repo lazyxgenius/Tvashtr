@@ -55,6 +55,7 @@ NAME_MAX = 120
 VALUE_MAX = 500
 CHECKS_MAX = 10
 LABELS_MAX = 20
+ANSWER_MAX = 200_000
 FILE_MAX_BYTES = 2 * 1024 * 1024
 FILE_MAX_ROWS = 200
 USES = ("gets", "must_say", "must_name_file", "skip")
@@ -835,6 +836,8 @@ def _run_view(session, run: AgentTestRun) -> dict:
         "ended_at": run.ended_at.isoformat() if run.ended_at else None,
         "elapsed_s": max(0, int((end - run.created_at).total_seconds())),
         "waiting_for_slot": bool(run.waiting_for_slot) and run.status == "running",
+        # Stop was asked while a replay was still ending (its slot is held until it has).
+        "stopping": bool(run.stop_requested) and run.status == "running",
         "error": run.error,
         "since": since,
         "results": [_result_view(r) for r in results],
@@ -1077,7 +1080,7 @@ def judge(owner_id: uuid.UUID, team_id: str, node_id: str, test_id: str, body: d
         you = item.get("you") if isinstance(item, dict) else None
         if not isinstance(answer, str) or not answer.strip() or not isinstance(you, bool):
             raise TestsError(422, "Each label needs an answer and Yes or No")
-        clean.append((answer.strip()[:12000], you))
+        clean.append((answer.strip()[:ANSWER_MAX], you))  # kept whole: the dialog matches on it
     with session_scope() as session:
         node = _require_node(session, owner_id, team_id, node_id)
         test = _owned_test(session, node, test_id)

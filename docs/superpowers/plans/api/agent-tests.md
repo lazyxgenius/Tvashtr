@@ -59,6 +59,7 @@ not say whose value is a verdict ("Approved", "Changes requested") checks the ve
     "total": 6, "done": 2, "passed": 2, "failed": 0,
     "cost_usd": 0.14, "started_at": "…", "ended_at": "…" | null, "elapsed_s": 100,
     "waiting_for_slot": false,                            // R12: the owner's runs use all 3 slots
+    "stopping": false,                                    // Stop asked; a replay is still ending
     "error": null | "Tvashtr restarted while the tests ran. Run them again.",
     "since": {"version": 6, "delta": 1} | null,           // "+1 since v6" (vs the newest finished run on an older version; delta may be ≤ 0)
     "results": [{

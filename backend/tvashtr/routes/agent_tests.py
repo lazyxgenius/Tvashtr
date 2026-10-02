@@ -29,24 +29,25 @@ def _call(fn, *args, **kwargs):
 
 class CheckIn(BaseModel):
     kind: Literal["must_say", "must_not_say", "must_name_file", "ai"]
-    value: str = Field(max_length=2000)
+    value: str = Field(max_length=20_000)  # past VALUE_MAX: refused in plain words
     from_round: bool | None = None
 
 
 class CreateTestRequest(BaseModel):
     invocation_id: int
-    name: str = Field(max_length=1000)
+    name: str = Field(max_length=20_000)  # past NAME_MAX: refused in plain words
     checks: list[CheckIn] = Field(max_length=50)
 
 
 class FileRequest(BaseModel):
     filename: str = Field(default="", max_length=300)
-    content: str = Field(max_length=3_000_000)
+    # Larger than 2 MB is refused in plain words by agent_tests._parse; this only bounds the body.
+    content: str = Field(max_length=50_000_000)
     mapping: dict[str, Use] | None = None
 
 
 class LabelIn(BaseModel):
-    answer: str = Field(max_length=20_000)
+    answer: str = Field(max_length=agent_tests.ANSWER_MAX)
     you: bool
 
 

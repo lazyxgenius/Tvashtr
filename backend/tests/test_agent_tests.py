@@ -1312,3 +1312,61 @@ def test_save_as_vn_never_fails_on_a_test_run_that_cant_start(tmp_path, monkeypa
     resp = c.post(f"/api/teams/{team}/versions", json={"run_tests": True})
     assert resp.status_code == 201
     assert resp.json()["number"] == 2 and resp.json()["tests_started"] == []
+
+
+# ------------------------------------------------- branch review fixes (backend, test-first)
+
+
+def test_stop_during_a_replay_says_it_is_stopping(tmp_path, monkeypatch):
+    c, owner, team = _account()
+    made = _run_with_rounds(c, owner, team, tmp_path)
+    rev = _node(c, team, "reviewer")
+    _create(c, team, rev["id"], made["ids"]["rev1"], SAY)
+    monkeypatch.setattr(agent_test_runner, "_spawn", lambda target, *a: None)
+    run = c.post(f"/api/teams/{team}/nodes/{rev['id']}/tests/run").json()["run"]
+    assert run["stopping"] is False
+    agent_test_runner._take_slot(uuid.UUID(run["id"]), uuid.UUID(run["results"][0]["id"]))
+    stopped = c.post(f"/api/teams/{team}/nodes/{rev['id']}/tests/stop").json()["run"]
+    assert (stopped["status"], stopped["stopping"]) == ("running", True)
+
+
+def test_check_the_ai_check_keeps_long_answers_whole(tmp_path, monkeypatch):
+    _ai(monkeypatch)
+    c, owner, team = _account()
+    made = _run_with_rounds(c, owner, team, tmp_path)
+    rev = _node(c, team, "reviewer")
+    test = _create(c, team, rev["id"], made["ids"]["rev1"], {"kind": "ai", "value": "file"})
+    long = "Changes requested: " + "x" * 30_000
+    out = c.post(
+        f"/api/teams/{team}/nodes/{rev['id']}/tests/{test['id']}/judge",
+        json={"check": 0, "labels": [{"answer": long, "you": True}]},
+    )
+    assert out.status_code == 200, out.text
+    assert out.json()["rows"][0]["answer"] == long
+
+
+def test_oversized_input_gets_plain_words():
+    c, owner, team = _account()
+    rev = _node(c, team, "reviewer")
+    big = "task,expected\n" + "a,b\n" * 1_000_000  # ~4 MB
+    resp = c.post(
+        f"/api/teams/{team}/nodes/{rev['id']}/tests/file/check",
+        json={"filename": "x.csv", "content": big},
+    )
+    assert resp.status_code == 422
+    assert resp.json()["detail"] == "This file can’t be read: it is larger than 2 MB."
+
+
+def test_a_too_long_name_or_check_gets_plain_words(tmp_path):
+    c, owner, team = _account()
+    made = _run_with_rounds(c, owner, team, tmp_path)
+    rev = _node(c, team, "reviewer")
+    url = f"/api/teams/{team}/nodes/{rev['id']}/tests"
+    inv = made["ids"]["rev1"]
+    long_name = c.post(url, json={"invocation_id": inv, "name": "n" * 5000, "checks": [SAY]})
+    assert long_name.json()["detail"] == "A test name can be up to 120 characters"
+    long_value = c.post(
+        url,
+        json={"invocation_id": inv, "name": "x", "checks": [{"kind": "ai", "value": "v" * 5000}]},
+    )
+    assert long_value.json()["detail"] == "A check can be up to 500 characters"
