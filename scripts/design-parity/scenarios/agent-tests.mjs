@@ -633,6 +633,30 @@ export default [
     },
   ),
 
+  // MA (R18): the Reviewer's drawer open on each of its six tabs, before and after the row stops
+  // scrolling sideways (kept-ma-drawer-*).
+  ...["setup", "skills", "memory", "runs", "tests", "docs"].flatMap((tab) =>
+    kept(
+      `kept-ma-drawer-${tab}`,
+      `/#/teams/${TEAM_ID}?node=n-rev&tab=${tab}`,
+      (d) =>
+        canvas(d, {
+          extra: {
+            [`GET /api/teams/${TEAM_ID}/nodes/n-rev/runs`]: KEPT_ROUNDS,
+            "GET /api/connectors": { connections: [] },
+            "GET /api/domains": { domains: [] },
+          },
+        }),
+      async (p) => {
+        await canvasReady(p);
+        await drawer(p).waitFor();
+        if (tab === "runs")
+          await drawer(p).getByRole("region", { name: "Last run" }).waitFor();
+        if (tab === "tests") await drawer(p).getByText("6 tests").waitFor();
+        await p.waitForTimeout(300);
+      },
+    ),
+  ),
   ...board("Test-Empty", {
     tests: EMPTY,
     chip: CHIP.none,
