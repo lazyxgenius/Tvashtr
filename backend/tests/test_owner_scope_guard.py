@@ -603,6 +603,50 @@ ROUTES: dict[str, tuple[str, object]] = {
             "test_owner_scope_teams::test_b_own_team_with_a_node_or_edge_is_404",
         ],
     ),
+    "GET /api/teams/{team_id}/nodes/{node_id}/tests": (
+        "id",
+        ["test_agent_tests::test_agent_tests_are_owner_scoped"],
+    ),
+    "POST /api/teams/{team_id}/nodes/{node_id}/tests": (
+        "id",
+        ["test_agent_tests::test_agent_tests_are_owner_scoped"],
+    ),
+    "GET /api/teams/{team_id}/nodes/{node_id}/tests/from-round": (
+        "id",
+        ["test_agent_tests::test_agent_tests_are_owner_scoped"],
+    ),
+    "DELETE /api/teams/{team_id}/nodes/{node_id}/tests/{test_id}": (
+        "id",
+        ["test_agent_tests::test_agent_tests_are_owner_scoped"],
+    ),
+    "POST /api/teams/{team_id}/nodes/{node_id}/tests/file/check": (
+        "id",
+        ["test_agent_tests::test_agent_tests_are_owner_scoped"],
+    ),
+    "POST /api/teams/{team_id}/nodes/{node_id}/tests/file": (
+        "id",
+        ["test_agent_tests::test_agent_tests_are_owner_scoped"],
+    ),
+    "POST /api/teams/{team_id}/nodes/{node_id}/tests/run": (
+        "id",
+        ["test_agent_tests::test_agent_tests_are_owner_scoped"],
+    ),
+    "POST /api/teams/{team_id}/nodes/{node_id}/tests/stop": (
+        "id",
+        ["test_agent_tests::test_agent_tests_are_owner_scoped"],
+    ),
+    "GET /api/teams/{team_id}/nodes/{node_id}/tests/results/{result_id}": (
+        "id",
+        ["test_agent_tests::test_agent_tests_are_owner_scoped"],
+    ),
+    "GET /api/teams/{team_id}/nodes/{node_id}/tests/{test_id}/answers": (
+        "id",
+        ["test_agent_tests::test_agent_tests_are_owner_scoped"],
+    ),
+    "POST /api/teams/{team_id}/nodes/{node_id}/tests/{test_id}/judge": (
+        "id",
+        ["test_agent_tests::test_agent_tests_are_owner_scoped"],
+    ),
     "GET /api/my-agents": ("list", ["test_my_agents::test_my_agents_are_owner_scoped"]),
     "POST /api/my-agents": ("id", ["test_my_agents::test_my_agents_are_owner_scoped"]),
     "PATCH /api/my-agents/{agent_id}": ("id", ["test_my_agents::test_my_agents_are_owner_scoped"]),
