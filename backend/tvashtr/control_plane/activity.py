@@ -292,7 +292,17 @@ class _Lines:
         self.rows: list[dict] = []
 
     def add(
-        self, line_id, at, node_id, iteration, kind, text, tone="neutral", refs=None, final=True
+        self,
+        line_id,
+        at,
+        node_id,
+        iteration,
+        kind,
+        text,
+        tone="neutral",
+        refs=None,
+        final=True,
+        from_run=None,
     ):
         row = {
             "id": line_id,
@@ -304,6 +314,8 @@ class _Lines:
             "text": text,
             "tone": tone,
             "refs": refs if refs is not None else {},
+            # M3: a carried step's line names the run it ran in ({run_id, number}); else None.
+            "from_run": from_run,
             "_final": final,
         }
         self.rows.append(row)
@@ -503,9 +515,17 @@ def build(
     spent_usd: float,
     after: str | None = None,
     now: datetime | None = None,
+    carried: list[dict] | None = None,
+    resumed_from: dict | None = None,
+    start_node: str | None = None,
+    number: int | None = None,
 ) -> dict:
     """The Activity reply for one run (see the contract). ``events`` in ``(created_at, id)`` order;
-    ``versions`` are ``(DocumentVersion, document name)`` pairs."""
+    ``versions`` are ``(DocumentVersion, document name)`` pairs. M3: a resumed run's ``carried``
+    step rows (``resume.carried``) come first, one line each, then the Resumed line."""
+    from tvashtr.control_plane import resume  # lazy: resume imports this module
+
+    carried = carried or []
     now = now or datetime.now(UTC)
     run_id = str(run.id)
     ended = run.status in run_views.TERMINAL_STATUSES
@@ -523,19 +543,49 @@ def build(
         events_by_inv.setdefault(ev.invocation_id, []).append(ev)
     out = _Lines(labels)
 
-    # The run starts.
+    # The run starts. A resumed run starts with the steps it carries, then "Resumed from …".
     target = run_views.run_target(run)
-    start = "Started" + (f" on {target['label']}" if target["label"] else "")
-    start += f", branch {run.base_ref}" if target["label"] and run.base_ref else ""
-    out.add(
-        "run:start",
-        run.created_at,
-        None,
-        None,
-        "started",
-        start,
-        refs={"repo": target["label"], "branch": run.base_ref},
-    )
+    if resumed_from is None:
+        start = "Started" + (f" on {target['label']}" if target["label"] else "")
+        start += f", branch {run.base_ref}" if target["label"] and run.base_ref else ""
+        out.add(
+            "run:start",
+            run.created_at,
+            None,
+            None,
+            "started",
+            start,
+            refs={"repo": target["label"], "branch": run.base_ref},
+        )
+    else:
+        for k, row in enumerate(carried):
+            text = row["text"]
+            if row["kind"] == "agent" and (
+                row["iteration"] > 1 or resume._loops(edges, row["node_id"])
+            ):
+                text = f"Round {row['iteration']} · {text[:1].lower()}{text[1:]}"
+            out.add(
+                f"c:{k}",
+                datetime.fromisoformat(row["at"]),
+                row["node_id"] if row["node_id"] in by_id else None,
+                row["iteration"],
+                "carried",
+                text,
+                from_run={
+                    "run_id": row["from_run"]["run_id"],
+                    "number": row["from_run"]["number"],
+                },
+            )
+        out.add(
+            "run:resumed",
+            run.created_at,
+            None,
+            None,
+            "resumed",
+            f"Resumed from {resume.run_ref(resumed_from.get('number'))}"
+            f" at {resumed_from.get('step_label')}",
+            refs={"run_id": resumed_from.get("run_id")},
+        )
 
     # Each step: its start, its events, its close.
     last_verdict = None
@@ -699,7 +749,9 @@ def build(
     for inv in invs:
         if str(inv.node_id) not in latest or inv.iteration >= latest[str(inv.node_id)].iteration:
             latest[str(inv.node_id)] = inv
-    last_line = {ln["node_id"]: ln for ln in lines if ln["node_id"]}
+    last_line = {ln["node_id"]: ln for ln in lines if ln["node_id"] and ln["kind"] != "carried"}
+    carried_nodes = resume.carried_by_node(carried)
+    will_run = _reachable(edges, start_node) if start_node else set()
     agents = []
     for nid, nd in by_id.items():
         inv = latest.get(nid)
@@ -732,6 +784,21 @@ def build(
             live.update(
                 activity=last_line[nid]["text"], last_event_at=last_line[nid]["at"].isoformat()
             )
+        if inv is None and nid in carried_nodes:
+            rows = carried_nodes[nid]
+            if nid in will_run:
+                last = rows[-1]
+                notes = "notes " if last.get("verdict") else ""
+                live.update(
+                    live_state="waiting",
+                    activity=f"Round {last['iteration']} {notes}carried over",
+                )
+            else:
+                live.update(
+                    live_state="carried_over",
+                    activity=resume.carried_activity(rows),
+                    last_event_at=rows[-1]["at"],
+                )
         cfg = nd.config if isinstance(nd.config, dict) else {}
         limit = next(
             (
@@ -835,6 +902,8 @@ def build(
     if pinned is not None:
         pinned.setdefault("backup_model", None)
         pinned.setdefault("gate_kind", None)
+        pinned.setdefault("resume", None)  # M3: filled by ``run_activity`` (failed / stalled)
+        pinned.setdefault("safe", None)
 
     summary = None
     if run.status == "completed":
@@ -870,7 +939,27 @@ def build(
         "lines": [_public(ln) for ln in lines[start_at:]],
         "pinned": pinned,
         "summary": summary,
+        "number": number,
+        "resumed_from": resumed_from,
     }
+
+
+def _reachable(edges: list[dict], start: str) -> set[str]:
+    """The nodes a resumed run will still run: its start node and what follows it (not across an
+    escalation edge)."""
+    seen = {start}
+    todo = [start]
+    while todo:
+        cur = todo.pop()
+        for e in edges:
+            if (
+                e["source"] == cur
+                and e.get("edge_type") != "escalation"
+                and e["target"] not in seen
+            ):
+                seen.add(e["target"])
+                todo.append(e["target"])
+    return seen
 
 
 def _span(seconds: float) -> str:
@@ -905,8 +994,12 @@ def _public(line: dict) -> dict:
 # ---------------------------------------------------------------------------------- the read
 
 
-def run_activity(session, run: Run, after: str | None = None) -> dict:
-    """Read one (already owner-checked) run's rows and :func:`build` its Activity."""
+def run_activity(session, run: Run, after: str | None = None, *, resume_info: bool = True) -> dict:
+    """Read one (already owner-checked) run's rows and :func:`build` its Activity. M3: a resumed
+    run's carried steps come from its seed; a Failed / Stalled callout gains its Resume point
+    (``resume_info`` False when :mod:`resume` itself reads the lines)."""
+    from tvashtr.control_plane import resume  # lazy: resume imports this module
+
     run_id = run.workflow_id
     nodes = (
         session.execute(select(AgentNode).where(AgentNode.team_graph_id == run.team_graph_id))
@@ -940,7 +1033,7 @@ def run_activity(session, run: Run, after: str | None = None) -> dict:
     versions = session.execute(
         select(DocumentVersion, Document.name)
         .join(Document, Document.id == DocumentVersion.document_id)
-        .where(doc_filter)
+        .where(doc_filter, DocumentVersion.idempotency_key.notlike(f"{run.id}:carried:%"))
         .order_by(DocumentVersion.created_at, DocumentVersion.version_no)
     ).all()
     kinds = {nd.id: nd.kind for nd in nodes}
@@ -952,7 +1045,8 @@ def run_activity(session, run: Run, after: str | None = None) -> dict:
         session, [i for nid, i in latest.items() if kinds.get(nid) in live_state.STEP_KINDS]
     )
     spent = run_views.spent_usd(run, run_views.live_costs(session, [run_id]))
-    return build(
+    carried, resumed_from, start_node = resume.carried(session, run)
+    reply = build(
         run,
         list(nodes),
         edges,
@@ -963,4 +1057,14 @@ def run_activity(session, run: Run, after: str | None = None) -> dict:
         live_by_inv=live_by_inv,
         spent_usd=spent,
         after=after,
+        carried=carried,
+        resumed_from=resumed_from,
+        start_node=start_node,
+        number=resume.number(session, run),
     )
+    pinned = reply["pinned"]
+    if resume_info and pinned is not None and pinned["kind"] in ("failed", "stalled"):
+        points = resume.points(session, run)
+        pinned["resume"] = resume.resume_hint_from(points)
+        pinned["safe"] = resume.safe_text(points) if pinned["resume"] else None
+    return reply

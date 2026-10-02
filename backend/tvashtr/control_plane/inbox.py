@@ -171,13 +171,23 @@ def _stalled_run_items(session, owner_id: uuid.UUID, now: datetime) -> list[dict
                     "iteration": inv.iteration,
                 },
                 "live": step,
+                # M3: "Resume" picks the stalled run up from its last finished step (R8).
+                "resume": _resume_hint(session, run),
             }
         )
     return items
 
 
+def _resume_hint(session, run: Run) -> dict | None:
+    from tvashtr.control_plane import resume  # lazy: resume reads Activity, which reads this area
+
+    return resume.resume_hint(session, run)
+
+
 def _failed_run_items(session, owner_id: uuid.UUID, now: datetime) -> list[dict]:
     retried = select(Run.retry_of_run_id).where(Run.retry_of_run_id.isnot(None))
+    # M3: a failed run that was resumed has been picked up, like one that was retried.
+    resumed = select(Run.resumed_from_run_id).where(Run.resumed_from_run_id.isnot(None))
     runs = (
         session.execute(
             select(Run).where(
@@ -185,6 +195,7 @@ def _failed_run_items(session, owner_id: uuid.UUID, now: datetime) -> list[dict]
                 Run.status == "failed",
                 Run.updated_at >= now - RUN_FAILED_WINDOW,
                 Run.id.notin_(retried),
+                Run.id.notin_(resumed),
             )
         )
         .scalars()
@@ -217,6 +228,8 @@ def _failed_run_items(session, owner_id: uuid.UUID, now: datetime) -> list[dict]
                 "library_team_id": str(run.library_team_id) if run.library_team_id else None,
             },
             "failure": extras[run.id]["failure"],
+            # M3: "Resume" picks the run up from the step that failed (R8).
+            "resume": _resume_hint(session, run),
         }
         for run in runs
     ]

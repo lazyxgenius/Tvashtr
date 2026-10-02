@@ -13,7 +13,7 @@ from sqlalchemy import select
 
 from tvashtr.control_plane import team_run
 from tvashtr.control_plane.shipping import init_workspace_repo
-from tvashtr.control_plane.teams import build_review_loop_team
+from tvashtr.control_plane.teams import build_review_loop_team, clone_team_graph
 from tvashtr.db import session_scope
 from tvashtr.models import (
     AgentInvocation,
@@ -231,3 +231,122 @@ def test_a_run_failing_at_engineer_round_2_resumes_from_there_and_ships(
         assert [tuple(v) for v in versions] == [(1, f"PRD: {IDEA}")]
     ws = tmp_path / new
     assert (ws / "core" / "rsi.py").read_text() == "round 2\n"
+
+
+def _library_run(client) -> str:
+    """A run of a library team (so it is "run #n"), owned by the ``client`` account."""
+    resp = client.post("/api/teams", json={"template": "review_loop", "name": "Indicator sprint"})
+    assert resp.status_code in (200, 201), resp.text
+    team = resp.json()["team_graph_id"]
+    run_id = str(uuid.uuid4())
+    with session_scope() as session:
+        session.add(
+            Run(
+                id=uuid.UUID(run_id),
+                team_graph_id=uuid.UUID(clone_team_graph(team)),
+                owner_id=auth_user_id(),
+                idea=IDEA,
+                workflow_id=run_id,
+                status="running",
+                library_team_id=uuid.UUID(team),
+            )
+        )
+    return run_id
+
+
+def _failed_inv(run_id: str) -> int:
+    with session_scope() as session:
+        return session.execute(
+            select(AgentInvocation.id).where(
+                AgentInvocation.run_id == run_id, AgentInvocation.status == "failed"
+            )
+        ).scalar_one()
+
+
+def _roles(run_id: str) -> dict[str, str]:
+    with session_scope() as session:
+        run = session.get(Run, uuid.UUID(run_id))
+        return {
+            n.role_name: str(n.id)
+            for n in session.execute(
+                select(AgentNode).where(AgentNode.team_graph_id == run.team_graph_id)
+            ).scalars()
+        }
+
+
+def test_the_failed_run_offers_resume_until_it_is_picked_up_and_the_new_run_reads_carried(
+    client, monkeypatch, tmp_path
+):
+    old = _library_run(client)
+    _harness(monkeypatch, tmp_path, fail_round_2_of={old})
+    assert _start(old)["status"] == "failed"
+    failed_inv = _failed_inv(old)
+
+    # Before: the Failed callout and Needs you offer "Resume from Engineer, round 2".
+    act = client.get(f"/api/runs/{old}/activity").json()
+    assert act["pinned"]["kind"] == "failed"
+    assert act["pinned"]["resume"] == {"invocation_id": failed_inv, "label": "Engineer, round 2"}
+    assert "spec (v1)" in act["pinned"]["safe"] and "round 1 changes" in act["pinned"]["safe"]
+    inbox = client.get("/api/inbox").json()["items"]
+    item = next(i for i in inbox if i["key"] == f"run_failed:{old}")
+    assert item["resume"] == {"invocation_id": failed_inv, "label": "Engineer, round 2"}
+    number = client.get(f"/api/runs/{old}").json()["run"]["number"]
+    assert isinstance(number, int)
+
+    resp = client.post(f"/api/runs/{old}/resume", json={"invocation_id": failed_inv})
+    assert resp.status_code == 201, resp.text
+    new = resp.json()["run_id"]
+    assert resp.json()["number"] == number + 1
+    assert DBOS.retrieve_workflow(new).get_result()["status"] == "completed"
+
+    # After: the old run is picked up — no second Resume, and it leaves Needs you.
+    assert client.get(f"/api/runs/{old}/activity").json()["pinned"]["resume"] is None
+    again = client.get(f"/api/runs/{old}/resume").json()
+    assert again["available"] is False and again["reason"] == f"Picked up again as run #{number + 1}"
+    assert client.post(f"/api/runs/{old}/resume", json={"invocation_id": failed_inv}).status_code == 409
+    keys = {i["key"] for i in client.get("/api/inbox").json()["items"]}
+    assert f"run_failed:{old}" not in keys
+
+    # The new run: number, link, carried lines, the Resumed line, Carried over agents.
+    run = client.get(f"/api/runs/{new}").json()["run"]
+    assert run["number"] == number + 1
+    resumed_from = {"run_id": old, "number": number, "step_label": "Engineer, round 2"}
+    assert run["resumed_from"] == resumed_from
+    act = client.get(f"/api/runs/{new}/activity").json()
+    assert act["number"] == number + 1 and act["resumed_from"] == resumed_from
+    roles = _roles(new)
+    carried = [ln for ln in act["lines"] if ln["kind"] == "carried"]
+    assert [(ln["id"], ln["node_id"], ln["text"]) for ln in carried] == [
+        ("c:0", roles["pm"], "Wrote the spec (v1)"),
+        ("c:1", roles["prd_gate"], "You approved the spec"),
+        ("c:2", roles["engineer"], "Round 1 · edited 1 file"),
+        ("c:3", roles["reviewer"], "Round 1 · asked for 1 fix"),
+    ]
+    assert all(ln["from_run"] == {"run_id": old, "number": number} for ln in carried)
+    kinds = [ln["kind"] for ln in act["lines"]]
+    assert kinds[:5] == ["carried"] * 4 + ["resumed"]
+    resumed_line = act["lines"][4]
+    assert resumed_line["text"] == f"Resumed from run #{number} at Engineer, round 2"
+    assert "run:start" not in {ln["id"] for ln in act["lines"]}
+    assert not [ln for ln in act["lines"] if ln["kind"] == "wrote_doc"]  # the copy isn't news
+    assert all(ln["from_run"] is None for ln in act["lines"][4:])
+    agents = {a["node_id"]: a for a in act["agents"]}
+    assert agents[roles["pm"]]["live_state"] == "carried_over"
+    assert agents[roles["pm"]]["activity"] == f"From run #{number} · spec v1"
+    assert agents[roles["prd_gate"]]["live_state"] == "carried_over"
+    assert agents[roles["prd_gate"]]["activity"] == f"Approved in run #{number}"
+    assert agents[roles["engineer"]]["live_state"] == "done"
+
+    # The canvas and Home read the carried nodes as reached.
+    graph = {n["id"]: n for n in client.get(f"/api/runs/{new}/graph").json()["nodes"]}
+    assert graph[roles["pm"]]["carried"] == {
+        "from_run_id": old,
+        "number": number,
+        "text": f"From run #{number}",
+    }
+    assert graph[roles["prd_gate"]]["carried"]["text"] == f"Approved in run #{number}"
+    assert graph[roles["engineer"]]["carried"] is None
+    rows = client.get("/api/runs", params={"include": "progress", "limit": 100}).json()["runs"]
+    chips = {c["node_id"]: c for c in next(r for r in rows if r["run_id"] == new)["progress"]}
+    assert chips[roles["pm"]]["state"] == "done" and chips[roles["pm"]]["carried"] is True
+    assert chips[roles["engineer"]]["carried"] is False

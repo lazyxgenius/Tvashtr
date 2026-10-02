@@ -20,7 +20,16 @@ from sqlalchemy import func, or_, select, tuple_
 from tvashtr.control_plane import live_state
 from tvashtr.control_plane.run_failure import describe_run_failure, node_label
 from tvashtr.db import session_scope
-from tvashtr.models import AgentInvocation, AgentNode, CostRecord, Edge, HumanTask, Run, TeamGraph
+from tvashtr.models import (
+    AgentInvocation,
+    AgentNode,
+    CostRecord,
+    Edge,
+    HumanTask,
+    Run,
+    RunCheckpoint,
+    TeamGraph,
+)
 
 TERMINAL_STATUSES = ("completed", "failed", "rejected", "cancelled", "over_budget")
 
@@ -330,6 +339,37 @@ def run_extras(session, runs: list[Run], *, include_progress: bool = False) -> d
                     **{k: step[k] for k in _STEP_FIELDS},
                 }
 
+    # M3: "run #12" for every run of a library team (one windowed count: the runs of its team and
+    # owner created up to it, as ``node_history._run_number`` counts), and a resumed run's link +
+    # carried nodes (its seed checkpoint).
+    numbers: dict = {}
+    if team_ids:
+        counted = (
+            select(
+                Run.id.label("id"),
+                func.count()
+                .over(partition_by=(Run.library_team_id, Run.owner_id), order_by=Run.created_at)
+                .label("n"),
+            )
+            .where(Run.library_team_id.in_(team_ids))
+            .subquery()
+        )
+        numbers = dict(
+            session.execute(
+                select(counted.c.id, counted.c.n).where(counted.c.id.in_([r.id for r in runs]))
+            ).all()
+        )
+    seeds: dict = {}
+    resumed_ids = [r.id for r in runs if r.resumed_from_run_id is not None]
+    if resumed_ids:
+        seeds = dict(
+            session.execute(
+                select(RunCheckpoint.run_id, RunCheckpoint.state).where(
+                    RunCheckpoint.run_id.in_(resumed_ids), RunCheckpoint.invocation_id.is_(None)
+                )
+            ).all()
+        )
+
     out: dict = {}
     for run in runs:
         rid = str(run.id)
@@ -380,16 +420,27 @@ def run_extras(session, runs: list[Run], *, include_progress: bool = False) -> d
             "failure": failure,
             "live_state": live_state.run_live_state(run.status, step_states.get(rid, [])),
             "live": worst_step.get(rid),
+            "number": numbers.get(run.id),
+            "resumed_from": (seeds.get(run.id) or {}).get("from_run"),
         }
         if include_progress:
-            extras["progress"] = _progress(run, nodes, edges, invs_by_run.get(rid, []), tasks)
+            carried_nodes = {row["node_id"] for row in (seeds.get(run.id) or {}).get("carried", [])}
+            extras["progress"] = _progress(
+                run, nodes, edges, invs_by_run.get(rid, []), tasks, carried_nodes
+            )
         out[run.id] = extras
     return out
 
 
 def _progress(
-    run: Run, nodes: dict, edges: list[dict], invocations: list, tasks: list[HumanTask]
+    run: Run,
+    nodes: dict,
+    edges: list[dict],
+    invocations: list,
+    tasks: list[HumanTask],
+    carried_nodes: set | None = None,
 ) -> list[dict]:
+    carried_nodes = carried_nodes or set()
     graph_nodes = [
         {"id": nid, "kind": n.kind, "config": n.config, "position": n.position}
         for nid, n in nodes.items()
@@ -408,8 +459,11 @@ def _progress(
     for nid in order:
         node = nodes[nid]
         inv = latest.get(nid)
+        carried = inv is None and nid in carried_nodes  # M3: done in the run it resumed from
         if nid in waiting:
             state = "waiting"
+        elif carried:
+            state = "done"
         elif inv is None:
             state = "idle"
         elif inv.status == "running":
@@ -434,6 +488,7 @@ def _progress(
                 "kind": node.kind,
                 "state": state,
                 "loops_with": loops.get(nid),
+                "carried": carried,
             }
         )
     return chips

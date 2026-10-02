@@ -128,6 +128,17 @@ def _summary(kind: str, lines: list[dict], inv: AgentInvocation) -> dict:
     return out
 
 
+_BRIEF = "Built the feature — changed "
+
+
+def _brief_files(detail: str | None) -> list[str]:
+    """The files a worker's close brief lists (``team_run._worker_brief``), without "+N more"."""
+    if not detail or not detail.startswith(_BRIEF) or ": " not in detail:
+        return []
+    listed = detail.split(": ", 1)[1].split(", ")
+    return [f for f in listed if f and not f.startswith("+")]
+
+
 def step_rows(session, run: Run) -> list[dict]:
     """The run's steps in the order they ran: its carried ones (a resumed run), then its own agent
     steps, Query domain rounds and gates — each with its words, cost, time and outcome."""
@@ -151,7 +162,7 @@ def step_rows(session, run: Run) -> list[dict]:
     invs = [i for i in invs if str(i.node_id) in nodes and nodes[str(i.node_id)].kind in _ROW_KINDS]
     if not invs:
         return rows
-    lines = activity.run_activity(session, run)["lines"]
+    lines = activity.run_activity(session, run, resume_info=False)["lines"]
     by_step: dict[tuple, list[dict]] = {}
     for ln in lines:
         if ln.get("from_run") is None:
@@ -161,6 +172,14 @@ def step_rows(session, run: Run) -> list[dict]:
         node = nodes[str(inv.node_id)]
         label = node_label(node.role_name, node.kind, node.config)
         summary = _summary(node.kind, by_step.get((str(inv.node_id), inv.iteration), []), inv)
+        if not summary["files"] and inv.status == "done":
+            # No edit events (a Desktop job's patch, an agent that wrote files with a command):
+            # the step's own brief names what it changed.
+            files = _brief_files(inv.outcome_detail)
+            if files:
+                summary["files"] = files
+                if summary["text"] == "Finished its step":
+                    summary["text"] = f"Edited {len(files)} file" + ("" if len(files) == 1 else "s")
         cost = costs.get(inv.id, ({"cost_usd": 0.0}, None))[0]["cost_usd"]
         ended = inv.ended_at or inv.started_at
         rows.append(
@@ -363,6 +382,16 @@ def points(session, run: Run) -> dict:
         "stops_run": False,
         "points": [],
     }
+    child = (
+        session.execute(
+            select(Run).where(Run.resumed_from_run_id == run.id).order_by(Run.created_at.desc())
+        )
+        .scalars()
+        .first()
+    )
+    if child is not None:
+        out["reason"] = f"Picked up again as {run_ref(number(session, child))}"
+        return out
     stalled = _stalled_step(session, run)
     if run.local_snapshot_id is not None:
         out["reason"] = "Resume isn't available for a run on a folder yet"
@@ -418,7 +447,10 @@ def points(session, run: Run) -> dict:
 def resume_hint(session, run: Run) -> dict | None:
     """``{"invocation_id", "label"}`` of the suggested point when Resume is offered (the pinned
     callout's and Needs you's button), else None."""
-    reply = points(session, run)
+    return resume_hint_from(points(session, run))
+
+
+def resume_hint_from(reply: dict) -> dict | None:
     if not reply["available"]:
         return None
     chosen = next(
@@ -513,6 +545,7 @@ def create(
         carried.append(
             {
                 **r,
+                "source_invocation_id": r.get("source_invocation_id") or r.get("invocation_id"),
                 "invocation_id": None,
                 "node_id": remap(r["node_id"]),
                 "from_run": r.get("from_run") or {"run_id": str(run.id), "number": num},
@@ -544,6 +577,69 @@ def create(
     )
     session.flush()
     return new
+
+
+# ---------------------------------------------------------------------------------- reading
+
+
+def carried(session, run: Run) -> tuple[list[dict], dict | None, str | None]:
+    """A resumed run's carried step rows (in its own node ids), the run it was resumed from
+    (``{run_id, number, step_label}``) and the node it started at; else ``([], None, None)``."""
+    seed = seed_of(session, run)
+    if seed is None:
+        return [], None, None
+    state = seed.state
+    return list(state.get("carried", [])), state.get("from_run"), state.get("start_node_id")
+
+
+def carried_text(rows: list[dict]) -> str:
+    """A carried node's words on its card ("From run #12" / "Approved in run #12")."""
+    last = rows[-1]
+    ref = run_ref((last.get("from_run") or {}).get("number"))
+    if last["kind"] == "gate" and last.get("verdict") == "approved":
+        return f"Approved in {ref}"
+    return f"From {ref}"
+
+
+def carried_by_node(rows: list[dict]) -> dict[str, list[dict]]:
+    out: dict[str, list[dict]] = {}
+    for row in rows:
+        out.setdefault(row["node_id"], []).append(row)
+    return out
+
+
+def carried_activity(rows: list[dict]) -> str:
+    """The Now bar's line for a node whose work is all carried: "From run #12 · spec v2"."""
+    text = carried_text(rows)
+    doc = next((r["doc"] for r in reversed(rows) if r.get("doc")), None)
+    return f"{text} · {doc['name'] or 'spec'} v{doc['version']}" if doc else text
+
+
+def safe_text(reply: dict) -> str | None:
+    """What the Failed / Stalled callout says is safe: "your approved spec (v2) and the Engineer’s
+    round 1 changes are saved" — from the suggested point's Kept list."""
+    point = next((p for p in reply["points"] if p["state"] == "suggested" and p["resumable"]), None)
+    if point is None:
+        return None
+    kept = [k["text"] for k in point["confirm"]["kept"]]
+    parts: list[str] = []
+    spec = next((t for t in kept if t.lower().startswith("spec v")), None)
+    approved = "Your approval" in kept
+    if spec:
+        version = spec.split(" v", 1)[1]
+        parts.append(f"your approved spec (v{version})" if approved else f"the spec (v{version})")
+    elif approved:
+        parts.append("your approval")
+    changes = [t for t in kept if ": changes to " in t]
+    if changes:
+        who, _ = changes[-1].split(": changes to ", 1)
+        label, round_ = who.rsplit(" round ", 1)
+        parts.append(f"the {label}’s round {round_} changes")
+    if not parts:
+        return None
+    return (
+        " and ".join(parts) if len(parts) <= 2 else ", ".join(parts[:-1]) + " and " + parts[-1]
+    ) + " are saved"
 
 
 # ---------------------------------------------------------------------------------- the walk

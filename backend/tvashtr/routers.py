@@ -1902,6 +1902,8 @@ def get_run_graph(run_id: str, current_user: Annotated[UserOut, Depends(get_curr
             for n in nodes
         }
 
+        carried_nodes = resume.carried_by_node(resume.carried(session, run)[0])
+
         # M-tools C7.A (SHARED CONTRACT S1): run-scoped resolution warnings — tools/skills that
         # FAILED to resolve at run time and were SKIPPED (the run continued). Oldest-first; [] none.
         resolution_warnings = (
@@ -1934,6 +1936,10 @@ def get_run_graph(run_id: str, current_user: Annotated[UserOut, Depends(get_curr
                     "iteration": (
                         latest_by_node[str(n.id)].iteration if str(n.id) in latest_by_node else 0
                     ),
+                    # M3 (R8): a resumed run's node whose work was carried (no step of its own
+                    # yet) — the card says "From run #12" / "Approved in run #12", never
+                    # "Not reached". ``None`` for every other node.
+                    "carried": _carried_card(carried_nodes, str(n.id), latest_by_node),
                     # P1.5c (§14.1): the node's per-round invocation history, ascending by
                     # iteration — additive read of the already-persisted rows ([] before the
                     # node is reached). The Reviewer panel renders each round's `outcome`
@@ -1970,6 +1976,18 @@ def get_run_graph(run_id: str, current_user: Annotated[UserOut, Depends(get_curr
                 for w in resolution_warnings
             ],
         }
+
+
+def _carried_card(carried_nodes: dict, node_id: str, latest_by_node: dict) -> dict | None:
+    rows = carried_nodes.get(node_id)
+    if not rows or node_id in latest_by_node:
+        return None
+    origin = rows[-1]["from_run"]
+    return {
+        "from_run_id": origin["run_id"],
+        "number": origin["number"],
+        "text": resume.carried_text(rows),
+    }
 
 
 @router.get("/api/runs/{run_id}/activity")
