@@ -724,6 +724,48 @@ def _reconcile(row: dict, live: dict) -> tuple[dict | None, list | None]:
     return cfg or None, skills
 
 
+def run_snapshot(session, team: TeamGraph, graph: dict) -> uuid.UUID:
+    """M8: a run's snapshot built from a version's stored ``graph`` — never the working copy.
+    Fresh node ids, each linked to the library node it was saved from (as a clone is), its tools
+    and skills as the library is now (:func:`_reconcile`, as Restore does). Returns its id."""
+    snap = TeamGraph(name=f"{team.name} (run snapshot)")
+    session.add(snap)
+    session.flush()
+    library = _live(session, team.owner_id)
+    ids: dict[str, uuid.UUID] = {}
+    for row in graph.get("nodes") or []:
+        tool_config, skills = _reconcile(row, library)
+        node = AgentNode(
+            team_graph_id=snap.id,
+            role_name=row["role_name"],
+            kind=row["kind"],
+            prompt=row["prompt"],
+            model=row["model"],
+            engine=row["engine"],
+            position=deepcopy(row["position"]),
+            config=deepcopy(row["config"]),
+            tool_config=tool_config,
+            skills=skills,
+            edits_allowed=row["edits_allowed"],
+            cloned_from_node_id=uuid.UUID(row["id"]),
+        )
+        session.add(node)
+        session.flush()
+        ids[row["id"]] = node.id
+    session.add_all(
+        Edge(
+            team_graph_id=snap.id,
+            source_node_id=ids[e["source"]],
+            target_node_id=ids[e["target"]],
+            edge_type=e["edge_type"],
+            conditions=deepcopy(e["conditions"]),
+        )
+        for e in graph.get("edges") or []
+    )
+    session.flush()
+    return snap.id
+
+
 def _version(session, team: TeamGraph, number: int) -> TeamVersion | None:
     return session.execute(
         select(TeamVersion).where(

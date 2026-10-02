@@ -24,7 +24,9 @@ Every route is owner-scoped (another account → 404, never 403), listed in `tes
     matching a `compares` row). A workflow recorded before M8 replays a dict without it.
   - At the ship terminal the walk (`run_graph`, a plain function) checks `graph.get("compare")`: a compare run
     calls no ship / push / bundle step; it finalizes `completed` with no PR. Its Ship invocation closes with
-    outcome `compare` and the Activity's end line reads "Finished · no pull request in a compare".
+    outcome `compare` and the Activity's end line reads "Finished · no pull request in a compare". It also
+    distils no memory (no `distill_run_memory_step` / `ingest_agent_remembers_step`): a compare run is a trial
+    of a version, not the team's work.
   - `gate_auto_resolution_step`'s BODY also answers "approved" for a `gate:` topic of a compare run with
     `auto_approve` (budget breaches still ask a person). Its recorded output replays as before for runs in flight.
 - R5 caps (R12: compare runs count fully, like any run): a compare starts BOTH runs together when the hosted
@@ -33,7 +35,13 @@ Every route is owner-scoped (another account → 404, never 403), listed in `tes
   free, polling every 5 s; waiters are re-armed on app startup for every `waiting` compare. Self-hosted (no
   ceilings) ⇒ always immediate.
 - Targets: the team's own repo (`team_graphs.repo`, M4), else the newest GitHub-repo run of the team, else none
-  (greenfield). A Desktop-folder target is not offered.
+  (greenfield). A Desktop-folder target is not offered. Hosted mode only (`POST /api/runs` takes `github_repo`
+  only there); self-hosted compares are greenfield. At launch the repo is checked against the owner's GitHub
+  installations exactly as `POST /api/runs` checks it (a team file can name any repo); a missing `base_ref`
+  is the repo's default branch.
+- One `waiting` or `running` compare per team: a partial unique index (`uq_compares_team_active`) backs the 409.
+- A running compare becomes `finished` when both runs have ended — set when it is read (the page, the 409
+  check, Stop); nothing watches it.
 
 ## Routes
 
@@ -62,13 +70,16 @@ The Compare tab. 404 for another account's team / a non-library team.
 ### `POST /api/teams/{team_id}/compare`
 
 Body `{"a": 6, "b": 7, "task": "Add an RSI indicator", "auto_approve": true}`. 422 when `a == b`, a version is
-unknown, the task is empty, or the launch pre-flight fails (`_launch_preflight` on each side: missing provider key /
-unservable model — the same 422 bodies as `POST /api/runs`). 409 while another compare of this team is `waiting` or
+unknown, the task is empty, or the launch pre-flight fails on either side's snapshot (the graph-validity check
+and `_launch_preflight`: not runnable / missing provider key / unservable model — the same 422 bodies as
+`POST /api/runs`), or the target repo is not in the owner's installations (same body as `POST /api/runs`). 409 while another compare of this team is `waiting` or
 `running`. → **201**
 
 ```json
-{"id": "…", "status": "running" | "waiting", "runs": [{"label": "A", "version": 6, "run_id": "…"}, …]}
+{"id": "…", "status": "running" | "waiting", "runs": [{"label": "A", "version": 6, "run_id": "…" | null}, …]}
 ```
+
+`run_id` is null while the compare waits.
 
 ### `GET /api/compares/{compare_id}`
 
@@ -118,13 +129,25 @@ per-version results of an agent that has tests ("<Agent>’s tests"; the row is 
 Retries and stalls = counts of the run's host `retry` and `stalled` events ("none", "2 retries", "1 stall",
 "2 retries, 1 stall"). Files changed = files in the run's newest M3 checkpoint diff. The headline is factual: both
 finished → "vB did better on this task" / "vA did better on this task" when one side has more better rows, else
-"vA and vB did about the same"; one failed → "vA finished; vB failed on this task"; stopped → "You stopped this
-compare". `restore` = the other version when the better one is not the current version, else null.
+"vA and vB did about the same"; one failed → "vA finished; vB failed on this task" (a side that ended stopped:
+"… stopped on this task"); neither finished → "Neither version finished this task"; stopped → "You stopped this
+compare". `restore` = the better version when it is not the current version, else null.
+
+Built details: the values always show; `better` and `difference` only when both finished (else null / "").
+`difference` is B against A: rounds "2 fewer rounds" / "1 more round"; cost "−$0.56" (within a cent: "same");
+time "−15m" (within a minute: "same", no mark); tests "+1" / "same". Retries and stalls: fewer is better, no
+difference text. Files changed: never marked ("—" with no checkpoint). The agent-tests row is the agent with the
+most tests, from its newest finished test run on each version ("—" when none). A compare stopped while waiting
+has `results` with `rows: []`. `sides[].strip` is exactly Home's progress chips (`run_views._progress`).
+`sides[].current`: a working step `{"label": "Engineer", "text": "round 3"}`, a gate waiting
+`{"label": "<gate>", "text": "waiting for you"}`, an ended run `{"label": "Approved" | "Finished" | "Failed" |
+"Stopped", "text": "in round N"}`.
 
 ### `POST /api/compares/{compare_id}/stop`
 
 Stops a waiting or running compare: both runs end Stopped (the existing Stop path, sandboxes released), the compare
-`stopped`. Idempotent. → `{"status": "stopped"}`.
+`stopped`. Idempotent. → `{"status": "stopped"}` (a compare that had already finished answers
+`{"status": "finished"}` and is left as it is).
 
 ### `GET /api/runs/{run_id}` and run lists
 

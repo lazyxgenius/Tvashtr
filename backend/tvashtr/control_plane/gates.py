@@ -38,7 +38,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 
 from tvashtr.db import session_scope
-from tvashtr.models import HumanTask, Run
+from tvashtr.models import Compare, HumanTask, Run
 
 # ``recv`` has no infinite timeout; use a large per-wait window and re-wait in a
 # loop so the gate is effectively indefinite. A ``send`` wakes the recv instantly
@@ -138,9 +138,22 @@ def gate_auto_resolution_step(run_id: str, topic: str) -> str | None:
 
     Returns ``"approved"`` when ``TVASHTR_AUTO_APPROVE_GATES`` is set, else
     ``None``. Being a step, the decision is checkpointed, so a crash-resume
-    replays it identically even if the restarted process lacks the env var."""
+    replays it identically even if the restarted process lacks the env var.
+
+    M8 (R5): also ``"approved"`` for a gate (a ``gate:`` topic — never a budget breach, which
+    still asks a person) of a compare run whose compare approves gates automatically. Read here,
+    in the body, so a run recorded before M8 replays its recorded answer."""
     if os.environ.get(AUTO_APPROVE_ENV, "").strip().lower() in _TRUTHY:
         return "approved"
+    if topic.startswith("gate:"):
+        with session_scope() as session:
+            auto = session.execute(
+                select(Compare.auto_approve)
+                .join(Run, Run.pair_id == Compare.id)
+                .where(Run.id == uuid.UUID(run_id))
+            ).scalar_one_or_none()
+        if auto:
+            return "approved"
     return None
 
 

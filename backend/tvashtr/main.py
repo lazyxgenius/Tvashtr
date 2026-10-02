@@ -25,7 +25,11 @@ import tvashtr.control_plane.domain_ingest  # noqa: F401  — register DBOS work
 from tvashtr import db
 from tvashtr.auth import UserOut, auth_router, get_current_user
 from tvashtr.config import get_settings
-from tvashtr.control_plane import github_app, stall_sweep  # noqa: F401 — registers the sweep
+from tvashtr.control_plane import (  # noqa: F401 — registers the sweep
+    compare,
+    github_app,
+    stall_sweep,
+)
 from tvashtr.control_plane.clone_reaper import sweep_orphaned_clones
 from tvashtr.control_plane.domain_embedding import public_embedding_presets
 from tvashtr.control_plane.fly_reaper import sweep_orphaned_fly_apps
@@ -45,6 +49,7 @@ from tvashtr.routers import owns_workflow, spike_workflow_id
 from tvashtr.routers import router as api_router
 from tvashtr.routes import account as revamp_account
 from tvashtr.routes import agent_tests as revamp_agent_tests
+from tvashtr.routes import compare as revamp_compare
 from tvashtr.routes import connectors as revamp_connectors
 from tvashtr.routes import connectors_oauth as revamp_connectors_oauth
 from tvashtr.routes import desktop_app as revamp_desktop_app
@@ -113,6 +118,9 @@ async def _lifespan(app: FastAPI):
         # something to reconcile. Before DBOS recovery for the usual reason — a workspace belonging
         # to a run about to be RECOVERED must be spared; the reaper reads liveness from ``runs``.
         sweep_orphaned_workspaces()
+        # M8: a compare waiting for two free run slots gets its waiter back (a plain thread whose
+        # first try is after DBOS has launched; hosted only — a self-hosted compare never waits).
+        compare.rearm()
         yield
 
 
@@ -174,6 +182,7 @@ for _revamp_router in (
     revamp_nodes.router,
     revamp_my_agents.router,
     revamp_agent_tests.router,
+    revamp_compare.router,
     revamp_documents.router,
     revamp_memory.router,
     revamp_local_repo.router,
