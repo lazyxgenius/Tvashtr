@@ -442,6 +442,42 @@ def test_a_pre_m8_recorded_graph_still_ships(client, monkeypatch, tmp_path):
     _end(_runs_of(resp.json()["id"]))
 
 
+def test_a_hosted_compare_runs_summary_names_no_branch(client):
+    """A hosted compare run has a ship branch from its setup, never pushed: its finished summary
+    names no branch (and no pull request)."""
+    owner = auth_user_id()
+    team = _two_versions(client)
+    cid = _seed_compare(team, owner, status="finished")
+    run_id, clone = make_run(
+        owner,
+        team,
+        status="completed",
+        pair_id=uuid.UUID(cid),
+        pair_label="A",
+        github_repo="lazyxgenius/trade_mcp",
+        base_ref="main",
+        ship_branch="tvashtr/compare-side",
+    )
+    now = datetime.now(UTC)
+    with session_scope() as session:
+        session.add(
+            AgentInvocation(
+                run_id=run_id,
+                node_id=uuid.UUID(clone_node(clone, "ship")),
+                iteration=1,
+                status="done",
+                outcome="compare",
+                started_at=now,
+                ended_at=now,
+            )
+        )
+    act = client.get(f"/api/runs/{run_id}/activity").json()
+    assert act["lines"][-1]["text"] == "Finished · no pull request in a compare"
+    summary = act["summary"]
+    assert (summary["branch"], summary["pr_url"], summary["pr_number"]) == (None, None, None)
+    assert summary["base_ref"] == "main"
+
+
 def test_only_a_compare_with_auto_approve_answers_its_gates(client, monkeypatch):
     monkeypatch.delenv("TVASHTR_AUTO_APPROVE_GATES", raising=False)
     owner = auth_user_id()

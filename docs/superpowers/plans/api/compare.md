@@ -24,7 +24,8 @@ Every route is owner-scoped (another account → 404, never 403), listed in `tes
     matching a `compares` row). A workflow recorded before M8 replays a dict without it.
   - At the ship terminal the walk (`run_graph`, a plain function) checks `graph.get("compare")`: a compare run
     calls no ship / push / bundle step; it finalizes `completed` with no PR. Its Ship invocation closes with
-    outcome `compare` and the Activity's end line reads "Finished · no pull request in a compare". It also
+    outcome `compare`, the Activity's end line reads "Finished · no pull request in a compare" and its `summary`
+    names no `branch` (a hosted run's setup branch is never pushed) and no PR. It also
     distils no memory (no `distill_run_memory_step` / `ingest_agent_remembers_step`): a compare run is a trial
     of a version, not the team's work.
   - `gate_auto_resolution_step`'s BODY also answers "approved" for a `gate:` topic of a compare run with
