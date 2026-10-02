@@ -19,7 +19,7 @@ import tempfile
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 
 from tvashtr.config import get_settings
@@ -193,6 +193,19 @@ def _take_one(owner_id: uuid.UUID) -> bool:
     return taken is not None
 
 
+def _give_back(owner_id: uuid.UUID) -> None:
+    with session_scope() as session:
+        session.execute(
+            update(AiCheckUsage)
+            .where(
+                AiCheckUsage.owner_id == owner_id,
+                AiCheckUsage.month == _month(),
+                AiCheckUsage.count > 0,
+            )
+            .values(count=AiCheckUsage.count - 1)
+        )
+
+
 _AI_PROMPT = (
     "You check one answer an AI agent gave against one requirement. Reply with YES or NO on the "
     "first line, then one short sentence saying why.\n\nRequirement: {value}\n\nAnswer:\n{answer}"
@@ -229,6 +242,7 @@ def ai_check(owner_id: uuid.UUID, value: str, answer: str) -> tuple[bool | None,
         )
     except GatewayError:
         logger.warning("AI check failed owner_id=%s", owner_id, exc_info=True)
+        _give_back(owner_id)  # a check that never answered doesn't count toward the 200
         return None, "The AI check couldn’t answer, so it was skipped"
     # On Tvashtr's key: never in the owner's spend (no run's workflow id).
     record_cost(result, workflow_id=None, idempotency_key=f"agent-check:{uuid.uuid4()}")
@@ -1123,7 +1137,7 @@ def graph_tests(session, node_ids: list[uuid.UUID]) -> dict[uuid.UUID, dict]:
         out[node_id] = {
             "total": int(total),
             "passed": tally.get(fin.id, (0, 0))[1] if fin else None,
-            "ran": tally.get(fin.id, (0, 0))[0] if fin else None,
+            "ran": fin.total if fin else None,  # "2 of 6 tests" after a stopped run too
             "running": running,
         }
     return out

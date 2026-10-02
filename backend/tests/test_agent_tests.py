@@ -961,3 +961,18 @@ def test_replays_cost_shows_in_the_owners_spend(tmp_path, inline):
     assert [(t["team_id"], t["total_usd"]) for t in after["by_team"]] == [
         (team, pytest.approx(0.02))
     ]
+
+
+def test_an_ai_check_that_never_answered_doesnt_count(monkeypatch):
+    _ai(monkeypatch)
+
+    def broken(request):
+        raise gateway.GatewayError("provider down")
+
+    monkeypatch.setattr(gateway, "complete", broken)
+    _c, owner = fresh_account("ai")
+    assert agent_tests.ai_check(owner, "names a file", "x") == (
+        None,
+        "The AI check couldn’t answer, so it was skipped",
+    )
+    assert agent_tests.ai_status(owner)["left"] == 200
