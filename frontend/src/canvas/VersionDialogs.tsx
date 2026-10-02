@@ -38,6 +38,7 @@ export function VersionDialog({
   icon,
   sub,
   wide,
+  size,
   onClose,
   children,
   footNote,
@@ -48,6 +49,8 @@ export function VersionDialog({
   sub: ReactNode;
   /** Ver-Changes / Ver-AgentCompare: 720px, 96px from the top; else Ver-Restore's 560px, centred. */
   wide?: boolean;
+  /** Another board's size class in place of those two (Agents-Save: `cv-vdlg--save`). */
+  size?: string;
   onClose: () => void;
   /** The body (none: the dialog is its header and footer). */
   children?: ReactNode;
@@ -63,7 +66,7 @@ export function VersionDialog({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className={`lv-confirm ${wide ? "cv-vdlg--wide" : "cv-vdlg"}`}
+        className={`lv-confirm ${size ?? (wide ? "cv-vdlg--wide" : "cv-vdlg")}`}
         tabIndex={-1}
       >
         <header className="lv-confirm__head">

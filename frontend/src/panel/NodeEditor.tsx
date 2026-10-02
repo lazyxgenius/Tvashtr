@@ -10,7 +10,16 @@ import {
   type TeamGraphNode,
 } from "../lib/api";
 import { deleteMemory, type Memory } from "../lib/api/memory";
+import {
+  applyAgentToNode,
+  basedOnOf,
+  detachAgent,
+  listMyAgents,
+  type SavedAgent,
+  undoAgent,
+} from "../lib/api/myAgents";
 import { getNodeRuns, type NodeTemplate } from "../lib/api/nodes";
+import { ApiDetailError } from "../lib/api/runs";
 import type { EnginesTab, NodeTab, Route } from "../lib/nav";
 import { nodeDescription, nodeTitle } from "../lib/nodeNames";
 import { QueryDomainPanel } from "../pages/domains/QueryDomainDrawerBody";
@@ -33,7 +42,7 @@ import { TemplatesDialog } from "./focus/TemplatesDialog";
 import { GateBody } from "./legacy/GateBody";
 import { legacySubtitle } from "./legacy/legacyCopy";
 import { TerminalBody } from "./legacy/TerminalBody";
-import { skillsAndToolsCount } from "./nodeCounts";
+import { skillsAndToolsCount, skillsAndToolsSplit } from "./nodeCounts";
 import { modelLabel, statusBadge } from "./nodeBadges";
 import { NodeBadges, NodeHeader } from "./NodeHeader";
 import { deleteAgentBody } from "./nodeActions";
@@ -44,6 +53,7 @@ import { useNodeMemories } from "./memory/useNodeMemories";
 import { NodeMoreMenu } from "./NodeMoreMenu";
 import { NodeTabs } from "./NodeTabs";
 import { RunsTab } from "./runs/RunsTab";
+import { SaveAgentDialog } from "./SaveAgentDialog";
 import { useLoaded } from "./runs/useLoaded";
 import { SaveBar } from "./SaveBar";
 import { useSaveShortcut } from "./saveShortcut";
@@ -252,6 +262,14 @@ function AgentEditor({
     | null
   >(null);
   const toast = useDrawerToast();
+  // M6: the account's saved agents, loaded when the Templates menu or Save as my agent first wants
+  // them, and again after each save or use (`agentsRev`).
+  const [agentsWanted, setAgentsWanted] = useState(false);
+  const [agentsRev, setAgentsRev] = useState(0);
+  const myAgents = useLoaded(agentsWanted ? `my-agents:${agentsRev}` : null, listMyAgents, {
+    keep: true,
+  });
+  const [savingAgent, setSavingAgent] = useState(false);
   // Focus mode's Setup body: the editor, "Preview as the agent sees it" or Review changes (OQ-4).
   const [setupView, setSetupView] = useState<"edit" | "preview" | "review">("edit");
   // The Templates dialog (focus mode; the drawer menu's "Compare templates in focus view" opens it
@@ -302,6 +320,8 @@ function AgentEditor({
   });
 
   const guard = useUnsavedGuard({ dirty: api.isDirty, agentName: name, guardRef });
+  const basedOn = basedOnOf(cfg);
+  const basedOnLabel = basedOn ? `${basedOn.name} v${basedOn.version}` : null;
   // The plan ("Claude") this agent runs on in Tvashtr Desktop: connectors don't reach those runs.
   const plan = desktopSubscriptionName(draft.model, cover, isDesktopApp());
   // A link to Connectors leaves through the page, which asks about an unsaved draft first.
@@ -334,7 +354,7 @@ function AgentEditor({
     ((skillSub !== null || toolSub !== null) && tab === "skills");
   // ⌘S / Ctrl+S saves; while a confirm is open the confirm's own buttons decide.
   useSaveShortcut(() => {
-    const busy = guard.asking || deleting || pending || forgetting || templatesOpen;
+    const busy = guard.asking || deleting || pending || forgetting || templatesOpen || savingAgent;
     if (canSave && !busy && !subCoversFooter) void save();
   });
 
@@ -357,6 +377,39 @@ function AgentEditor({
     if (templateNeedsConfirm(draft.prompt)) setPending({ kind: "template", template });
     else applyTemplate(template);
   };
+  // M6 / R4: a saved agent applies at once (a server write; a dirty draft is saved or discarded
+  // first through the guard), and the toast's Undo puts back what it replaced.
+  const failed = (err: unknown, fallback: string) =>
+    toast.show(err instanceof ApiDetailError ? err.message : fallback);
+  const pickSavedAgent = (agent: SavedAgent) =>
+    guard.request(() => {
+      void applyAgentToNode(teamId, node.id, agent.id).then(
+        async (res) => {
+          await onSaved();
+          setAgentsRev((r) => r + 1);
+          toast.show(res.text, {
+            label: "Undo",
+            onAction: () =>
+              void undoAgent(teamId, node.id, res.before).then(
+                () => onSaved(),
+                (err: unknown) => failed(err, "Couldn’t undo. Try again."),
+              ),
+          });
+        },
+        (err: unknown) => failed(err, `Couldn’t use ${agent.name}. Try again.`),
+      );
+    });
+  const detach = () =>
+    void detachAgent(teamId, node.id).then(
+      () => onSaved(),
+      (err: unknown) => failed(err, "Couldn’t detach. Try again."),
+    );
+  // More › Save as my agent: the SAVED agent goes, so a dirty draft is saved (or discarded) first.
+  const openSaveAgent = () =>
+    guard.request(() => {
+      setAgentsWanted(true);
+      setSavingAgent(true);
+    });
   // Templates: the drawer menu's "Compare templates in focus view" and focus mode's button.
   const openTemplates = () => {
     setTemplates(focus ? "open" : "wanted");
@@ -630,6 +683,32 @@ function AgentEditor({
         }}
       />
     );
+  } else if (savingAgent && myAgents.state !== "loading") {
+    const agents = myAgents.value ?? [];
+    const split = skillsAndToolsSplit(api.baseline.skills, api.baseline.toolConfig);
+    overlay = (
+      <SaveAgentDialog
+        teamId={teamId}
+        nodeId={node.id}
+        agentName={name}
+        defaultName={basedOn?.name ?? name}
+        defaultPurpose={agents.find((a) => a.id === basedOn?.id)?.purpose ?? description}
+        teamVersion={teamVersion}
+        model={api.baseline.model}
+        editsAllowed={api.baseline.editsAllowed}
+        skills={split.skills}
+        tools={split.tools}
+        memories={memories.active.length}
+        agents={agents}
+        onClose={() => setSavingAgent(false)}
+        onSaved={(res) => {
+          setSavingAgent(false);
+          setAgentsRev((r) => r + 1);
+          toast.show(`Saved as ${res.agent.name} v${res.version}`);
+          void onSaved();
+        }}
+      />
+    );
   } else if (pending?.kind === "routing") {
     const { update } = pending;
     overlay = (
@@ -785,6 +864,14 @@ function AgentEditor({
           onPreview={() => setSetupView("preview")}
           sub={focus ? schemaEditor : undefined}
           history={{ teamId, version: teamVersion, onUse: applyOlderText }}
+          myAgents={{
+            agents: myAgents.value ?? [],
+            onOpen: () => setAgentsWanted(true),
+            onPick: pickSavedAgent,
+            onManage: onOpenToolkit && (() => onOpenToolkit({ page: "agents" })),
+            role: node.role_name,
+          }}
+          basedOn={basedOnLabel ? { label: basedOnLabel, onDetach: detach } : undefined}
         />
       );
   }
@@ -802,6 +889,7 @@ function AgentEditor({
           onOpenFocus={focus ? undefined : () => onFocusChange(true)}
           onRename={() => setRenaming(true)}
           onOpenDocs={() => onTabChange("docs")}
+          onSaveAsAgent={openSaveAgent}
           onDelete={() => setDeleting(true)}
         />
       }
@@ -810,6 +898,7 @@ function AgentEditor({
       badges={
         <NodeBadges
           status={statusBadge(node.last_run)}
+          basedOn={basedOnLabel}
           editsAllowed={isNew ? null : draft.editsAllowed}
           model={needsModel(draft.model, cover) ? null : modelLabel(draft.model)}
           onOpenRuns={() => onTabChange("runs")}

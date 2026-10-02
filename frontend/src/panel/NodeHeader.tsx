@@ -6,7 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Lock, Maximize2, Minimize2, X, type LucideIcon } from "lucide-react";
+import { Lock, Maximize2, Minimize2, UserRound, X, type LucideIcon } from "lucide-react";
 
 import { Badge, IconButton } from "../design-system/components";
 import type { StatusBadge } from "./nodeBadges";
@@ -195,14 +195,18 @@ function RenameFields({
   );
 }
 
-/** Status · access · model (PANEL-13/14/15). The status badge jumps to the Runs tab. */
+/** Status · (M6) the saved agent it's based on · access · model (PANEL-13/14/15, Agents-Use). The
+ *  status badge jumps to the Runs tab. */
 export function NodeBadges({
   status,
+  basedOn,
   editsAllowed,
   model,
   onOpenRuns,
 }: {
   status: StatusBadge;
+  /** "Strict reviewer v2" (M6): made from a saved agent. */
+  basedOn?: string | null;
   /** Null hides the File access badge (a new agent's header shows status and model only). */
   editsAllowed: boolean | null;
   /** The friendly model name, or null when the agent needs a model. */
@@ -222,6 +226,12 @@ export function NodeBadges({
           {status.label}
         </Badge>
       </button>
+      {basedOn && (
+        <Badge variant="info">
+          <UserRound size={11} strokeWidth={2} aria-hidden />
+          {basedOn}
+        </Badge>
+      )}
       {editsAllowed === true && <Badge variant="accent">Can edit files</Badge>}
       {editsAllowed === false && (
         <Badge variant="neutral">

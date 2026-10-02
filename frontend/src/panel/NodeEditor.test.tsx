@@ -529,6 +529,8 @@ describe("NodeEditor — the ⋯ menu (PANEL-23..26)", () => {
       "Open in focus view",
       "Rename",
       "Open its documents",
+      // M6 (Agents-More): added before the separator; the others are unchanged.
+      "Save as my agent",
       "Delete agentIts arrows are removed too",
     ]);
     fireEvent.click(within(menu).getByRole("menuitem", { name: "Open in focus view" }));
@@ -637,7 +639,8 @@ describe("NodeEditor — templates, routing sync, new agent (G3)", () => {
       "Product manager",
       "Architect",
       "Engineer",
-      "Reviewer",
+      // M6 (Agents-Menu): the built-in matching this agent's role reads "in use".
+      "Reviewerin use",
       "Compare templates in focus view",
     ]);
     fireEvent.click(

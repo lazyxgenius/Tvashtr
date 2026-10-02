@@ -1,4 +1,4 @@
-import { FileText, Maximize2, MoreHorizontal, Pencil, Trash } from "lucide-react";
+import { FileText, Maximize2, MoreHorizontal, Pencil, Save, Trash } from "lucide-react";
 
 import { IconButton, Menu, type MenuEntry } from "../design-system/components";
 
@@ -6,19 +6,22 @@ const icon = { size: 15, strokeWidth: 1.6, "aria-hidden": true } as const;
 
 /**
  * The header's ⋯ menu (PANEL-23, Flow-More-1): Open in focus view, Rename, Open its documents and
- * Delete agent ("Its arrows are removed too"). The menu opens 240px wide under the header's
+ * Delete agent ("Its arrows are removed too"); M6 adds Save as my agent (Agents-More). The menu opens 240px wide under the header's
  * buttons, 20px in from the drawer's right edge (panel.css).
  */
 export function NodeMoreMenu({
   onOpenFocus,
   onRename,
   onOpenDocs,
+  onSaveAsAgent,
   onDelete,
 }: {
   /** Omitted in the focus view (it is already open). */
   onOpenFocus?: () => void;
   onRename: () => void;
   onOpenDocs: () => void;
+  /** M6: "Save as my agent" (omitted: no such item). */
+  onSaveAsAgent?: () => void;
   onDelete: () => void;
 }) {
   const items: MenuEntry[] = [
@@ -39,6 +42,16 @@ export function NodeMoreMenu({
       icon: <FileText {...icon} />,
       onSelect: onOpenDocs,
     },
+    ...(onSaveAsAgent
+      ? [
+          {
+            key: "save-agent",
+            label: "Save as my agent",
+            icon: <Save {...icon} />,
+            onSelect: onSaveAsAgent,
+          },
+        ]
+      : []),
     "separator",
     {
       key: "delete",
