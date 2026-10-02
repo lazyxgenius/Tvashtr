@@ -262,10 +262,14 @@ def _drop(snapshots) -> None:
         session.execute(delete(TeamGraph).where(TeamGraph.id.in_(list(snapshots))))
 
 
-def _launch(session, cmp: Compare, snapshots: dict | None = None) -> list[str] | None:
-    """Insert both runs (in ``session``) when the owner's caps have room for two, else None. Under
-    the owner's slot lock (M7's), so a compare and a replay never both take the last slot. The
-    caller starts their workflows after the commit."""
+def _launch(
+    session, cmp: Compare, snapshots: dict | None = None, *, waiter: bool = False
+) -> list[str] | None:
+    """Insert both runs (in ``session``) when the hosted caps have room for two, else None (wait).
+    Only the owner's own run slots make a new compare wait (Cmp-Queued); the daily and fleet caps
+    refuse it with ``POST /api/runs``'s 429. A ``waiter`` waits on any cap. Under the owner's slot
+    lock (M7's), so a compare and a replay never both take the last slot. The caller starts their
+    workflows after the commit."""
     from tvashtr.routers import _enforce_run_ceilings  # the router mounts after this module
 
     session.execute(
@@ -275,6 +279,8 @@ def _launch(session, cmp: Compare, snapshots: dict | None = None) -> list[str] |
         _enforce_run_ceilings(cmp.owner_id, launching=2)
     except HTTPException as exc:
         if exc.status_code != 429:
+            raise
+        if not waiter and exc.detail.get("code") != "owner_concurrency_limit":
             raise
         return None
     team = session.get(TeamGraph, cmp.team_graph_id)
@@ -383,14 +389,20 @@ def create(
 
 def try_start(compare_id: uuid.UUID) -> bool | None:
     """Start a waiting compare's two runs if there is room: True started, False still no room,
-    None no longer waiting (stopped, or started elsewhere)."""
+    None no longer waiting (stopped, started elsewhere, or its team deleted) — checked under the
+    compare's row lock, which a team delete's stop takes first."""
     with session_scope() as session:
         cmp = session.execute(
             select(Compare).where(Compare.id == compare_id).with_for_update()
         ).scalar_one_or_none()
-        if cmp is None or cmp.status != "waiting" or cmp.stop_requested:
+        if (
+            cmp is None
+            or cmp.status != "waiting"
+            or cmp.stop_requested
+            or session.get(TeamGraph, cmp.team_graph_id) is None
+        ):
             return None
-        started = _launch(session, cmp)
+        started = _launch(session, cmp, waiter=True)
         task = cmp.task
     if started is None:
         return False
@@ -531,6 +543,7 @@ def _lane(session, run: Run, extras: dict, live: dict) -> dict:
         "_facts": {
             "status": status,
             "result": result,
+            "approved": approved,
             "rounds": rounds,
             "cost": run_views.spent_usd(run, live),
             "elapsed": elapsed,
@@ -544,10 +557,31 @@ def _lane(session, run: Run, extras: dict, live: dict) -> dict:
     }
 
 
+def _queued_strip(graph: dict) -> list[dict]:
+    """A lane with no run yet (Cmp-Queued): its version's steps as Home's chips
+    (``run_views._progress``'s shape and order), none started. Ids are the library node ids."""
+    nodes = {n["id"]: n for n in graph.get("nodes") or []}
+    order, loops = run_views.walk_order(list(nodes.values()), graph.get("edges") or [])
+    return [
+        {
+            "node_id": nid,
+            "origin_node_id": nid,
+            "role_name": nodes[nid]["role_name"],
+            "label": node_label(nodes[nid]["role_name"], nodes[nid]["kind"], nodes[nid]["config"]),
+            "kind": nodes[nid]["kind"],
+            "state": "idle",
+            "loops_with": loops.get(nid),
+            "carried": False,
+        }
+        for nid in order
+    ]
+
+
 def view(owner_id: uuid.UUID, compare_id: str) -> dict:
     with session_scope() as session:
         cmp = _require(session, owner_id, compare_id)
         runs = _refresh(session, cmp)
+        team = session.get(TeamGraph, cmp.team_graph_id)
         extras = run_views.run_extras(session, list(runs.values()), include_progress=True)
         live = run_views.live_costs(session, [r.workflow_id for r in runs.values()])
         sides, facts = [], {}
@@ -560,7 +594,7 @@ def view(owner_id: uuid.UUID, compare_id: str) -> dict:
                     "status": "waiting",
                     "elapsed_s": 0,
                     "cost_usd": 0.0,
-                    "strip": [],
+                    "strip": _queued_strip(versions._version(session, team, number).graph),
                     "current": None,
                     "lines": [],
                     "gate_task_id": None,
@@ -686,8 +720,12 @@ def _rows(fa: dict, fb: dict, tested: tuple | None, cmp: Compare, both: bool) ->
             difference = "same" if abs(y - x) <= near else diff(y - x)
         return _row(key, label, a, b, better, difference)
 
-    rows = [
-        mark(
+    if both and fa["approved"] != fb["approved"]:
+        # Approval first: "Approved" beats "Finished" (never approved) whatever the rounds.
+        better = "a" if fa["approved"] else "b"
+        result = _row("result", "Result", fa["result"], fb["result"], better)
+    else:
+        result = mark(
             "result",
             "Result",
             fa["result"],
@@ -696,7 +734,9 @@ def _rows(fa: dict, fb: dict, tested: tuple | None, cmp: Compare, both: bool) ->
             fb["rounds"],
             lower=True,
             diff=lambda d: f"{_count(abs(d), 'fewer round' if d < 0 else 'more round')}",
-        ),
+        )
+    rows = [
+        result,
         mark(
             "cost",
             "Cost",
@@ -790,6 +830,8 @@ def _results(session, cmp: Compare, facts: dict) -> dict:
             name = vb if ok == va else va
             ended = "failed" if other["status"] == "failed" else "stopped"
             headline = f"{ok} finished; {name} {ended} on this task"
+            if ended == "failed":  # Cmp-SideFailed: Restore the version that finished
+                winner = cmp.version_a if ok == va else cmp.version_b
         else:
             headline = "Neither version finished this task"
     return {

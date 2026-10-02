@@ -35,6 +35,7 @@ from tvashtr.metering import running_cost
 from tvashtr.models import (
     AgentInvocation,
     AgentNode,
+    Compare,
     CostRecord,
     DesktopNodeJob,
     Edge,
@@ -2549,8 +2550,19 @@ def delete_library_team_and_runs(library_team_id: uuid.UUID) -> None:
     clone ``TeamGraph`` (nodes/edges cascade); finally the
     library team (nodes/edges cascade). The Run precedes its clone graph so ``runs.team_graph_id``
     (no ``ondelete``) is never left dangling. One transaction for the deletes ⇒ a failure can't
-    half-delete; the cancels run before it (each in its own txn), so nothing nests."""
+    half-delete; the cancels run before it (each in its own txn), so nothing nests.
+
+    M8: the team's waiting / running compares are stopped FIRST (as Stop does), so a compare's
+    waiter can't start two runs in the slots the cancels free (it re-checks under the row lock)."""
     with session_scope() as session:
+        session.execute(
+            update(Compare)
+            .where(
+                Compare.team_graph_id == library_team_id,
+                Compare.status.in_(("waiting", "running")),
+            )
+            .values(status="stopped", stop_requested=True, ended_at=func.now())
+        )
         targets = _team_run_teardown_targets(session, library_team_id)
 
     for run_id, _clone_graph_id in targets:

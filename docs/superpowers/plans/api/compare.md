@@ -24,22 +24,31 @@ Every route is owner-scoped (another account → 404, never 403), listed in `tes
     matching a `compares` row). A workflow recorded before M8 replays a dict without it.
   - At the ship terminal the walk (`run_graph`, a plain function) checks `graph.get("compare")`: a compare run
     calls no ship / push / bundle step; it finalizes `completed` with no PR. Its Ship invocation closes with
-    outcome `compare` and the Activity's end line reads "Finished · no pull request in a compare". It also
+    outcome `compare`, the Activity's end line reads "Finished · no pull request in a compare" and its `summary`
+    names no `branch` (a hosted run's setup branch is never pushed) and no PR. It also
     distils no memory (no `distill_run_memory_step` / `ingest_agent_remembers_step`): a compare run is a trial
     of a version, not the team's work.
   - `gate_auto_resolution_step`'s BODY also answers "approved" for a `gate:` topic of a compare run with
     `auto_approve` (budget breaches still ask a person). Its recorded output replays as before for runs in flight.
+  - A compare run is never resumed (a resumed run would be an ordinary run, and ship): `GET /api/runs/{id}/resume`
+    answers `available: false`, reason "A compare run can’t be picked up again. Start a new compare instead.",
+    `POST` 409s with it and the run view's failed / stopped callout offers no Resume.
 - R5 caps (R12: compare runs count fully, like any run): a compare starts BOTH runs together when the hosted
-  ceilings have room for two (`_enforce_run_ceilings(launching=2)` succeeds); otherwise the compare is `waiting`
-  (no run rows yet) and a plain daemon waiter (no DBOS; like M7's replays) starts both as soon as two slots are
-  free, polling every 5 s; waiters are re-armed on app startup for every `waiting` compare. Self-hosted (no
-  ceilings) ⇒ always immediate.
+  ceilings have room for two (`_enforce_run_ceilings(launching=2)` succeeds). When only the owner's own run slots
+  are full (code `owner_concurrency_limit`, what Cmp-Queued draws) the compare is `waiting` (no run rows yet) and a
+  plain daemon waiter (no DBOS; like M7's replays) starts both as soon as two slots are free, polling every 5 s;
+  waiters are re-armed on app startup for every `waiting` compare. The fleet (`global_concurrency_limit`) and daily
+  (`owner_daily_limit`) caps refuse the POST with the same 429 body `POST /api/runs` gives (no compare is made); a
+  waiter that later meets either keeps waiting. Self-hosted (no ceilings) ⇒ always immediate.
 - Targets: the team's own repo (`team_graphs.repo`, M4), else the newest GitHub-repo run of the team, else none
   (greenfield). A Desktop-folder target is not offered. Hosted mode only (`POST /api/runs` takes `github_repo`
   only there); self-hosted compares are greenfield. At launch the repo is checked against the owner's GitHub
   installations exactly as `POST /api/runs` checks it (a team file can name any repo); a missing `base_ref`
   is the repo's default branch.
 - One `waiting` or `running` compare per team: a partial unique index (`uq_compares_team_active`) backs the 409.
+- Deleting the team (`DELETE /api/teams/{id}`) stops its `waiting` / `running` compare FIRST (as Stop does), before
+  its runs are cancelled, so a waiter never starts two runs in the slots those cancels free; the waiter re-checks
+  under the compare's row lock that the compare is still `waiting` and the team still exists.
 - A running compare becomes `finished` when both runs have ended — set when it is read (the page, the 409
   check, Stop); nothing watches it.
 
@@ -73,7 +82,8 @@ Body `{"a": 6, "b": 7, "task": "Add an RSI indicator", "auto_approve": true}`. 4
 unknown, the task is empty, or the launch pre-flight fails on either side's snapshot (the graph-validity check
 and `_launch_preflight`: not runnable / missing provider key / unservable model — the same 422 bodies as
 `POST /api/runs`), or the target repo is not in the owner's installations (same body as `POST /api/runs`). 409 while another compare of this team is `waiting` or
-`running`. → **201**
+`running`. 429 (the body of `POST /api/runs`) when the fleet or the daily cap is full; only full run slots of
+your own make it wait. → **201**
 
 ```json
 {"id": "…", "status": "running" | "waiting", "runs": [{"label": "A", "version": 6, "run_id": "…" | null}, …]}
@@ -131,14 +141,19 @@ Retries and stalls = counts of the run's host `retry` and `stalled` events ("non
 finished → "vB did better on this task" / "vA did better on this task" when one side has more better rows, else
 "vA and vB did about the same"; one failed → "vA finished; vB failed on this task" (a side that ended stopped:
 "… stopped on this task"); neither finished → "Neither version finished this task"; stopped → "You stopped this
-compare". `restore` = the better version when it is not the current version, else null.
+compare". `restore` = the better version when it is not the current version, else null; when one side finished and
+the other failed (Cmp-SideFailed), the version that finished when it is not the current version.
 
 Built details: the values always show; `better` and `difference` only when both finished (else null / "").
+Result: approval first — an "Approved" side beats a "Finished" one (`better` set, no `difference`); the rounds
+decide only between two sides in the same state.
 `difference` is B against A: rounds "2 fewer rounds" / "1 more round"; cost "−$0.56" (within a cent: "same");
 time "−15m" (within a minute: "same", no mark); tests "+1" / "same". Retries and stalls: fewer is better, no
 difference text. Files changed: never marked ("—" with no checkpoint). The agent-tests row is the agent with the
 most tests, from its newest finished test run on each version ("—" when none). A compare stopped while waiting
-has `results` with `rows: []`. `sides[].strip` is exactly Home's progress chips (`run_views._progress`).
+has `results` with `rows: []`. `sides[].strip` is exactly Home's progress chips (`run_views._progress`); a lane with
+no run yet (waiting, Cmp-Queued) gets its version's stored graph in that shape and order, ids the library node
+ids, every `state` `"idle"` (not started).
 `sides[].current`: a working step `{"label": "Engineer", "text": "round 3"}`, a gate waiting
 `{"label": "<gate>", "text": "waiting for you"}`, an ended run `{"label": "Approved" | "Finished" | "Failed" |
 "Stopped", "text": "in round N"}`.

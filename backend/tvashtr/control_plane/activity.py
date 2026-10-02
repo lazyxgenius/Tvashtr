@@ -724,9 +724,10 @@ def build(
             "ok",
             {"pr_url": run.pr_url, "pr_number": pr_number, "branch": run.ship_branch},
         )
+    # M8 (R5): a compare run's Ship step closed without shipping (its setup's branch never pushed).
+    compared = run.status == "completed" and any(i.outcome == "compare" for i in invs)
     if ended:
-        if run.status == "completed" and any(i.outcome == "compare" for i in invs):
-            # M8 (R5): a compare run's Ship step closed without shipping.
+        if compared:
             text, tone = "Finished · no pull request in a compare", "ok"
         elif run.status == "completed":
             text, tone = f"Done in {_duration(elapsed_s)} · ${cost:.2f}", "ok"
@@ -926,7 +927,7 @@ def build(
             "rounds": max((i.iteration for i in invs), default=0),
             "elapsed_s": elapsed_s,
             "cost_usd": cost,
-            "branch": run.ship_branch,
+            "branch": None if compared else run.ship_branch,
             "base_ref": run.base_ref,
             # Only a green last test run counts ("41 tests passing").
             "tests_passed": tests_line["refs"]["passed"]

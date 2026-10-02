@@ -14,11 +14,18 @@ from pathlib import Path
 import pytest
 from conftest import _seed_dummy_credentials, auth_user_id, maybe_write_entry_report
 from dbos import DBOS, SetWorkflowID
-from home_fixtures import add_cost, clone_node, fresh_account, library_team, make_run
+from home_fixtures import (
+    add_cost,
+    add_invocation,
+    clone_node,
+    fresh_account,
+    library_team,
+    make_run,
+)
 from sqlalchemy import select, text, update
 
 from tvashtr.config import get_settings
-from tvashtr.control_plane import compare, gates, live_state, team_run, versions
+from tvashtr.control_plane import compare, gates, live_state, run_views, team_run, versions
 from tvashtr.control_plane.shipping import init_workspace_repo
 from tvashtr.db import session_scope
 from tvashtr.engines.base import AgentRunResult
@@ -435,6 +442,42 @@ def test_a_pre_m8_recorded_graph_still_ships(client, monkeypatch, tmp_path):
     _end(_runs_of(resp.json()["id"]))
 
 
+def test_a_hosted_compare_runs_summary_names_no_branch(client):
+    """A hosted compare run has a ship branch from its setup, never pushed: its finished summary
+    names no branch (and no pull request)."""
+    owner = auth_user_id()
+    team = _two_versions(client)
+    cid = _seed_compare(team, owner, status="finished")
+    run_id, clone = make_run(
+        owner,
+        team,
+        status="completed",
+        pair_id=uuid.UUID(cid),
+        pair_label="A",
+        github_repo="lazyxgenius/trade_mcp",
+        base_ref="main",
+        ship_branch="tvashtr/compare-side",
+    )
+    now = datetime.now(UTC)
+    with session_scope() as session:
+        session.add(
+            AgentInvocation(
+                run_id=run_id,
+                node_id=uuid.UUID(clone_node(clone, "ship")),
+                iteration=1,
+                status="done",
+                outcome="compare",
+                started_at=now,
+                ended_at=now,
+            )
+        )
+    act = client.get(f"/api/runs/{run_id}/activity").json()
+    assert act["lines"][-1]["text"] == "Finished · no pull request in a compare"
+    summary = act["summary"]
+    assert (summary["branch"], summary["pr_url"], summary["pr_number"]) == (None, None, None)
+    assert summary["base_ref"] == "main"
+
+
 def test_only_a_compare_with_auto_approve_answers_its_gates(client, monkeypatch):
     monkeypatch.delenv("TVASHTR_AUTO_APPROVE_GATES", raising=False)
     owner = auth_user_id()
@@ -456,6 +499,33 @@ def test_only_a_compare_with_auto_approve_answers_its_gates(client, monkeypatch)
     assert team_run.load_graph_step(plain)["compare"] is None
     assert team_run.load_graph_step(ab)["compare"] is None
     _end([run_on, run_off, plain, ab])
+
+
+def test_a_compare_run_cannot_be_resumed(client):
+    """A resumed compare run would be an ordinary run (it would ship, wait on gates and distil
+    memory): Resume is refused for a failed side and a stopped one; their callouts offer none."""
+    owner = auth_user_id()
+    team = _two_versions(client)
+    cid = _seed_compare(team, owner, status="finished")
+    reason = "A compare run can’t be picked up again. Start a new compare instead."
+    for label, status, step, pinned_kind in (
+        ("A", "failed", "failed", "failed"),
+        ("B", "cancelled", "running", "stopped"),
+    ):
+        run_id, clone = make_run(
+            owner, team, status=status, pair_id=uuid.UUID(cid), pair_label=label
+        )
+        add_invocation(run_id, clone_node(clone, "pm"), step)  # the first step: a fresh start
+        with session_scope() as session:
+            inv = session.execute(
+                select(AgentInvocation.id).where(AgentInvocation.run_id == run_id)
+            ).scalar_one()
+        reply = client.get(f"/api/runs/{run_id}/resume").json()
+        assert (reply["available"], reply["reason"]) == (False, reason), reply
+        resp = client.post(f"/api/runs/{run_id}/resume", json={"invocation_id": inv})
+        assert (resp.status_code, resp.json()["detail"]) == (409, reason)
+        pinned = client.get(f"/api/runs/{run_id}/activity").json()["pinned"]
+        assert (pinned["kind"], pinned["resume"]) == (pinned_kind, None)
 
 
 # ------------------------------------------------------------------------------------ the queue
@@ -502,6 +572,66 @@ def test_a_compare_waits_for_two_free_slots(client, monkeypatch):
         c.post(f"/api/compares/{cid}/stop")
 
 
+_FULL = {  # a cap of ``_enforce_run_ceilings`` set so that two more runs breach it
+    "owner_concurrency_limit": ("hosted_max_concurrent_runs_per_owner", 1),
+    "global_concurrency_limit": ("hosted_max_concurrent_runs_global", 0),
+    "owner_daily_limit": ("hosted_max_runs_per_owner_per_day", 1),
+}
+
+
+@pytest.mark.parametrize("code", list(_FULL))
+def test_only_the_owners_run_slots_make_a_compare_wait(client, monkeypatch, code):
+    """Cmp-Queued waits on YOUR run slots. The daily and fleet caps refuse the compare with
+    ``POST /api/runs``'s 429 (no compare is made); a waiter that later meets them keeps waiting."""
+    from tvashtr.routers import _enforce_run_ceilings
+
+    settings = get_settings()
+    c, owner = fresh_account("cmp-caps")
+    _seed_dummy_credentials(str(owner))
+    team = _two_versions(c, f"Caps {uuid.uuid4().hex[:8]}")
+    roomy = {
+        "hosted_max_concurrent_runs_per_owner": 10,
+        "hosted_max_concurrent_runs_global": 10**6,
+        "hosted_max_runs_per_owner_per_day": 100,
+    }
+    monkeypatch.setattr(settings, "hosted_mode", True)
+    for name, value in roomy.items():
+        monkeypatch.setattr(settings, name, value)
+    cap, full = _FULL[code]
+    monkeypatch.setattr(settings, cap, full)
+
+    resp, started, waiters = _post(c, team, monkeypatch)
+    if code != "owner_concurrency_limit":
+        with pytest.raises(Exception) as runs_429:
+            _enforce_run_ceilings(owner, launching=2)
+        assert resp.status_code == 429, resp.text
+        assert resp.json() == {"detail": runs_429.value.detail}
+        assert resp.json()["detail"]["code"] == code
+        assert started == [] and waiters == []
+        with session_scope() as session:
+            assert (
+                session.execute(
+                    select(Compare.id).where(Compare.team_graph_id == uuid.UUID(team))
+                ).all()
+                == []
+            )
+        # Queued on your slots, the waiter then meets this cap: it keeps waiting.
+        monkeypatch.setattr(settings, cap, roomy[cap])
+        monkeypatch.setattr(settings, "hosted_max_concurrent_runs_per_owner", 1)
+        resp, _, waiters = _post(c, team, monkeypatch)
+        monkeypatch.setattr(settings, "hosted_max_concurrent_runs_per_owner", 10)
+        monkeypatch.setattr(settings, cap, full)
+    cid = resp.json()["id"]
+    try:
+        assert resp.status_code == 201 and resp.json()["status"] == "waiting", resp.text
+        assert waiters == [cid] and _runs_of(cid) == []
+        if code != "owner_concurrency_limit":
+            assert compare.try_start(uuid.UUID(cid)) is False
+            assert c.get(f"/api/compares/{cid}").json()["status"] == "waiting"
+    finally:
+        c.post(f"/api/compares/{cid}/stop")
+
+
 def test_stop_while_waiting_and_waiters_re_arm_at_startup(client, monkeypatch):
     settings = get_settings()
     c, owner = fresh_account("cmp-stop")
@@ -527,6 +657,38 @@ def test_stop_while_waiting_and_waiters_re_arm_at_startup(client, monkeypatch):
     armed.clear()
     compare.rearm()
     assert uuid.UUID(cid) not in [uuid.UUID(str(x)) for x in armed]
+
+
+def test_deleting_the_team_stops_its_waiting_compare_first(client, monkeypatch):
+    """The delete cancels the team's runs (freeing slots) before it deletes the team: a waiter
+    waking in between must start nothing — the compare is stopped before any run is cancelled."""
+    from tvashtr.control_plane import teams
+
+    settings = get_settings()
+    c, owner = fresh_account("cmp-del")
+    _seed_dummy_credentials(str(owner))
+    team = _two_versions(c, f"Delete {uuid.uuid4().hex[:8]}")
+    monkeypatch.setattr(settings, "hosted_mode", True)
+    monkeypatch.setattr(settings, "hosted_max_concurrent_runs_per_owner", 2)
+    make_run(owner, team, status="running")  # the team's own run holds a slot
+    resp, _, _ = _post(c, team, monkeypatch)
+    cid = resp.json()["id"]
+    assert resp.json()["status"] == "waiting"
+
+    real_cancel, woke = teams.cancel_run_core, []
+
+    def _cancel(run_id):
+        real_cancel(run_id)
+        woke.append(compare.try_start(uuid.UUID(cid)))  # the waiter wakes to a free slot
+
+    monkeypatch.setattr(teams, "cancel_run_core", _cancel)
+    monkeypatch.setattr(teams.DBOS, "cancel_workflow", lambda wid: None)
+    monkeypatch.setattr(DBOS, "start_workflow", lambda *a, **k: None)
+    try:
+        assert c.delete(f"/api/teams/{team}").status_code == 200
+        assert woke == [None] and _runs_of(cid) == []
+    finally:
+        _end(_runs_of(cid))
 
 
 def test_stop_while_running_stops_both_runs(client, monkeypatch):
@@ -760,6 +922,23 @@ def test_the_older_version_doing_better_offers_restore_and_ties_say_so(client):
     assert {r["key"]: r["difference"] for r in tied["rows"]}["cost"] == "same"
 
 
+@pytest.mark.parametrize("approved_side", ["A", "B"])
+def test_an_approved_side_beats_an_unapproved_one_whatever_the_rounds(client, approved_side):
+    """Approval first: "Approved in round 4" beats "Finished in round 2" (a reviewer that never
+    approved); rounds count only between two sides in the same state."""
+    owner = auth_user_id()
+    team = _two_versions(client)
+    cid = _seed_compare(team, owner)
+    for label, version in (("A", 1), ("B", 2)):
+        ok = label == approved_side
+        _side(owner, team, cid, label, version, rounds=4 if ok else 2, approved=ok)
+    row = {r["key"]: r for r in _results(client, cid)["results"]["rows"]}["result"]
+    words = {"A": row["a"], "B": row["b"]}
+    other = "B" if approved_side == "A" else "A"
+    assert (words[approved_side], words[other]) == ("Approved in round 4", "Finished in round 2")
+    assert (row["better"], row["difference"]) == (approved_side.lower(), "")
+
+
 def test_one_side_failed(client):
     owner = auth_user_id()
     team = _two_versions(client)
@@ -786,7 +965,56 @@ def test_one_side_failed(client):
     assert rows["result"]["b"] == (
         "Failed: The Engineer stopped responding: no update for 20 minutes"
     )
-    assert all(r["better"] is None for r in res["rows"]) and res["restore"] is None
+    assert all(r["better"] is None for r in res["rows"])
+    assert res["restore"] == 1  # Cmp-SideFailed: Restore the version that finished (not current)
+
+    # The current version finished and the older one failed: nothing to restore.
+    team2 = _two_versions(client)
+    cid2 = _seed_compare(team2, owner)
+    _side(owner, team2, cid2, "A", 1, status="failed", approved=False, failure="boom")
+    _side(owner, team2, cid2, "B", 2)
+    res2 = _results(client, cid2)["results"]
+    assert res2["headline"] == "v2 finished; v1 failed on this task"
+    assert res2["restore"] is None
+
+
+def test_a_queued_lane_draws_its_versions_strip_with_nothing_started(client):
+    """Cmp-Queued draws each lane's pipeline strip before any run exists: Home's chips
+    (``run_views._progress``) of a run on that version, every step not started."""
+    owner = auth_user_id()
+    team = _two_versions(client)
+    cid = _seed_compare(team, owner, status="waiting")
+    try:
+        sides = _results(client, cid)["sides"]
+        for side, number in zip(sides, (1, 2), strict=True):
+            assert side["run_id"] is None and side["status"] == "waiting"
+            with session_scope() as session:
+                lib = session.get(TeamGraph, uuid.UUID(team))
+                graph = versions._version(session, lib, number).graph
+                run = Run(
+                    id=uuid.uuid4(),
+                    team_graph_id=versions.run_snapshot(session, lib, graph),
+                    owner_id=owner,
+                    idea=TASK,
+                    workflow_id=str(uuid.uuid4()),
+                    status="cancelled",
+                )
+                session.add(run)
+                session.flush()
+                chips = run_views.run_extras(session, [run], include_progress=True)[run.id][
+                    "progress"
+                ]
+            origin = {c["node_id"]: c["origin_node_id"] for c in chips}
+            expected = [
+                {**c, "node_id": c["origin_node_id"], "loops_with": origin.get(c["loops_with"])}
+                for c in chips
+            ]
+            assert side["strip"] == expected
+            assert {c["state"] for c in side["strip"]} == {"idle"}
+            assert {"engineer", "reviewer"} <= {c["role_name"] for c in side["strip"]}
+            assert any(c["loops_with"] for c in side["strip"])  # Engineer ⇄ Reviewer
+    finally:
+        client.post(f"/api/compares/{cid}/stop")
 
 
 def test_a_running_compare_shows_each_lane(client):
