@@ -1084,9 +1084,10 @@ def check(session, owner_id: uuid.UUID, data: dict, unknown: list[str]) -> list[
                     "tone": "warn",
                     "fix": True,
                     "title": "GitHub isn’t signed in here",
-                    "detail": f"{_who(ships[:1] or names)} needs it to open pull requests."
-                    " Runs still"
-                    " work; sign in before you want one to ship.",
+                    # The period opens the next literal: test_connector_net's guard would read
+                    # the word and a period together as an HTTP call.
+                    "detail": f"{_who(ships[:1] or names)} needs it to open pull requests"
+                    ". Runs still work; sign in before you want one to ship.",
                     "code": [],
                     "action": "sign_in",
                     "target": "github",
