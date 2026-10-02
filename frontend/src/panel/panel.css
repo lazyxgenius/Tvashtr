@@ -123,6 +123,11 @@
 .nd-tabs .ds-tab {
   font-size: 13.5px;
 }
+/* MA (Test-TabsTight): two-digit counts tighten the six-tab row so Docs stays inside the drawer. */
+.nd-tabs--tight .ds-tabs {
+  padding: 0 14px;
+  gap: 8px;
+}
 
 /* ---- Body + footer ---- */
 .nd-body {

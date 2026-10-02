@@ -29,8 +29,11 @@ export function NodeTabs({
     ...(withTests ? [{ value: "tests" as const, label: "Tests", count: testsCount || null }] : []),
     { value: "docs", label: "Docs" },
   ];
+  // MA (board Test-TabsTight): a two-digit count would push Docs past the drawer, so the row
+  // tightens (gap 8, padding 14) — every tab, label and count stays as it is.
+  const tight = [skillsCount, memoryCount, testsCount ?? 0].some((n) => n >= 10);
   return (
-    <div className="nd-tabs">
+    <div className={`nd-tabs${tight ? " nd-tabs--tight" : ""}`}>
       <Tabs variant="line" items={items} value={value} onChange={onChange} aria-label="Agent" />
     </div>
   );
