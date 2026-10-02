@@ -41,7 +41,7 @@
 #   12px note, Compare's dialog (title 22px, sub 13px, the section, the diff, the 12.5px note, Use this text secondary md,
 #   Close), the run bar's v7 tag and Recent runs' "Indicator sprint team [v7] · 26m ago" (12px, the 11px tag). Every drift
 #   item below is an existing element, or a board word with no counterpart in the app, paired by the matcher with the same
-#   words in a new M5 element (W1–W3 as m2.txt, W7–W9 below); each new element's own pairing is 0-drift in `--all`.
+#   words in a new M5 element (W1–W3 as m2.txt, W7–W11 below); each new element's own pairing is 0-drift in `--all`.
 # built in this sweep (frontend/, vitest + tsc + eslint --max-warnings 0 + prettier + build green):
 #   6255f8f api-client: lib/api/versions.ts (the summary, Save as vN, What changed, the restore preview and restore, an
 #     agent's instruction history); `team_version_number` on RunRow / RunListRow and the team runs rows' M5 fields.
@@ -54,6 +54,12 @@
 #   4db206e runs: the blue version tag after the run in the run bar (RunBanner) and in Recent runs' meta line.
 #   e9d4008 fixes from this sweep: the dialogs' "saved 2 minutes ago" / "saved yesterday" (they read "1 day ago"), and the
 #     Recent runs meta line's spans around the tag (the board's structure; a row without a version is unchanged).
+#   (review fixes, after de4cc1c) Restore that would change nothing (409) shows the server's words with Cancel only;
+#     a failed versions refetch keeps the last summary; Save as vN reloads on every outcome, stays busy until the summary
+#     is in (a 409 is a plain toast) and gives focus back to the chip; What changed in v1 shows its own line; the row
+#     buttons are named with their version, the chip describes its number and text; the times age on a 60 s tick;
+#     Recent runs' meta line keeps its own wrapping; Restore's titles say " gate" only when the name doesn't, and
+#     "Type / Gate goes back".
 # waivers W1–W3: as m2.txt (Ver-RunBar is Live-Done's run view: W1 'Open pull request #42' 178→186 / 'Jump to live'
 #   115→123, the design-system Button's 8px icon gap; W2 '22m 38s' 12.5→14px, the board's run-bar time → the Done
 #   summary's stat, the run bar is the app's toolbar + RunBanner; W3 'Product manager' 600→500 / 'Ship' 10.5→12.5px, the
@@ -72,6 +78,16 @@
 #   196px where the board draws 118px), so it pairs with the dialog's Use this text (secondary md, as drawn).
 # waiver W10 (app governs, the Desktop Home, Ver-HomeRuns desktop) [ctl] 'Fix' 12.5→13px, 600→500, 20→32 high: the web
 #   board's 'Fix' link pairs with the Desktop Home's own Fix button (the comparison render, web, has no drift).
+# waiver W11 (accessibility, the review's item 5) each History row's buttons are named with their version ("What changed
+#   in v7", "Restore v6") and the drawer's ("Use the v6 text", "Compare v6"); the words on them stay as drawn. The measure
+#   names a control by its accessible name, so the board's [ctl] 'Restore' pairs with the label inside the button: 'Restore'
+#   32→13 high, 73→47 wide (×4 per History board) and 'Use this text' 32→13 high, 103→77 wide (Ver-AgentHistory-list).
+#   The controls themselves measure as drawn: 'Restore v6' 73x32 at (1347,426), the board's exact box; the board's
+#   'What changed' / 'Compare' controls are "not found" by name for the same reason (their label text matches, 0 drift).
+# note (Ver-HomeRuns, the review's item 7) Recent runs' existing meta line keeps its own wrapping (brief §2.2: the app
+#   governs it), so a row whose team name plus the version tag is wider than the column wraps "· 26m ago" to a second
+#   line where the board draws one line with an ellipsis: the rows below sit ~19px lower ("only moved"); every item is
+#   at the board's size.
 # note (Ver-AgentHistory) the app's collapsed editor (196px, existing) and its routing line put the instruction history
 #   below the fold, so Ver-AgentHistory measures the History toggle and the drawer, and Ver-AgentHistory-list (the drawer
 #   scrolled to the section) the entries — both against the same board; the cards' 'Changes requested · 2h ago' (the
@@ -94,30 +110,33 @@
 # note (layout) History docks on the canvas's right at 420px (≤1280px it floats, as Team file) and never beside Team file
 #   or the agent drawer; What changed / Compare are 720px, 96px from the top; Restore 560px, centred (the Resume confirm's
 #   shell). The toolbar keeps its Documents toggle and spend (the boards leave them out; the app governs).
-Ver-History web: matched 64/78 design items · 0 with size/type drift · 10 only moved · 14 not found in app
-Ver-History desktop: matched 66/78 design items · 0 with size/type drift · 10 only moved · 12 not found in app
-Ver-Draft web: matched 66/80 design items · 0 with size/type drift · 10 only moved · 14 not found in app
-Ver-Draft desktop: matched 68/80 design items · 0 with size/type drift · 10 only moved · 12 not found in app
-Ver-Changes web: matched 83/98 design items · 0 with size/type drift · 10 only moved · 15 not found in app
-Ver-Changes desktop: matched 85/98 design items · 0 with size/type drift · 10 only moved · 13 not found in app
-Ver-ChangesFields web: matched 93/106 design items · 3 with size/type drift · 8 only moved · 13 not found in app — covered: W7×3
-Ver-ChangesFields desktop: matched 95/106 design items · 3 with size/type drift · 8 only moved · 11 not found in app — covered: W7×3
-Ver-Restore web: matched 76/90 design items · 0 with size/type drift · 10 only moved · 14 not found in app
-Ver-Restore desktop: matched 78/90 design items · 0 with size/type drift · 10 only moved · 12 not found in app
-Ver-RestoreDraft web: matched 82/96 design items · 0 with size/type drift · 10 only moved · 14 not found in app
-Ver-RestoreDraft desktop: matched 84/96 design items · 0 with size/type drift · 10 only moved · 12 not found in app
+# Re-shot after the review fixes (below): every board whose rendering changed — the History rows' buttons are named with
+#   their version (W11), Recent runs' meta line wraps as before M5 (note (Ver-HomeRuns)); Ver-RunTag, Ver-AgentHistory,
+#   Ver-AgentCompare and Ver-RunBar render as before (same numbers).
+Ver-History web: matched 59/78 design items · 4 with size/type drift · 10 only moved · 19 not found in app — covered: W11×4
+Ver-History desktop: matched 61/78 design items · 4 with size/type drift · 10 only moved · 17 not found in app — covered: W11×4
+Ver-Draft web: matched 61/80 design items · 4 with size/type drift · 10 only moved · 19 not found in app — covered: W11×4
+Ver-Draft desktop: matched 63/80 design items · 4 with size/type drift · 10 only moved · 17 not found in app — covered: W11×4
+Ver-Changes web: matched 78/98 design items · 4 with size/type drift · 10 only moved · 20 not found in app — covered: W11×4
+Ver-Changes desktop: matched 80/98 design items · 4 with size/type drift · 10 only moved · 18 not found in app — covered: W11×4
+Ver-ChangesFields web: matched 88/106 design items · 7 with size/type drift · 8 only moved · 18 not found in app — covered: W7×3, W11×4
+Ver-ChangesFields desktop: matched 90/106 design items · 7 with size/type drift · 8 only moved · 16 not found in app — covered: W7×3, W11×4
+Ver-Restore web: matched 71/90 design items · 4 with size/type drift · 10 only moved · 19 not found in app — covered: W11×4
+Ver-Restore desktop: matched 73/90 design items · 4 with size/type drift · 10 only moved · 17 not found in app — covered: W11×4
+Ver-RestoreDraft web: matched 77/96 design items · 4 with size/type drift · 10 only moved · 19 not found in app — covered: W11×4
+Ver-RestoreDraft desktop: matched 79/96 design items · 4 with size/type drift · 10 only moved · 17 not found in app — covered: W11×4
 Ver-RunTag web: matched 57/72 design items · 0 with size/type drift · 21 only moved · 15 not found in app
 Ver-RunTag desktop: matched 59/72 design items · 0 with size/type drift · 21 only moved · 13 not found in app
 Ver-AgentHistory web: matched 60/82 design items · 1 with size/type drift · 19 only moved · 22 not found in app — covered: W7×1
 Ver-AgentHistory desktop: matched 62/82 design items · 1 with size/type drift · 19 only moved · 20 not found in app — covered: W7×1
-Ver-AgentHistory-list web: matched 62/82 design items · 3 with size/type drift · 27 only moved · 20 not found in app — covered: W7×1, W8×2
-Ver-AgentHistory-list desktop: matched 64/82 design items · 3 with size/type drift · 27 only moved · 18 not found in app — covered: W7×1, W8×2
+Ver-AgentHistory-list web: matched 59/82 design items · 2 with size/type drift · 25 only moved · 23 not found in app — covered: W7×1, W11×1
+Ver-AgentHistory-list desktop: matched 61/82 design items · 2 with size/type drift · 25 only moved · 21 not found in app — covered: W7×1, W11×1
 Ver-AgentCompare web: matched 77/97 design items · 3 with size/type drift · 19 only moved · 20 not found in app — covered: W7×1, W9×2
 Ver-AgentCompare desktop: matched 79/97 design items · 3 with size/type drift · 19 only moved · 18 not found in app — covered: W7×1, W9×2
 Ver-RunBar web: matched 54/78 design items · 5 with size/type drift · 26 only moved · 24 not found in app — covered: W1×2, W2×1, W3×2
 Ver-RunBar desktop: matched 56/78 design items · 5 with size/type drift · 26 only moved · 22 not found in app — covered: W1×2, W2×1, W3×2
-Ver-HomeRuns web: matched 99/104 design items · 0 with size/type drift · 0 only moved · 5 not found in app
-Ver-HomeRuns desktop: matched 98/104 design items · 1 with size/type drift · 0 only moved · 6 not found in app — covered: W10×1
+Ver-HomeRuns web: matched 97/104 design items · 0 with size/type drift · 24 only moved · 7 not found in app
+Ver-HomeRuns desktop: matched 96/104 design items · 1 with size/type drift · 24 only moved · 8 not found in app — covered: W10×1
 
 # Kept elements (brief §2.2): kept-teamcanvas.txt (versions.mjs's kept-teamcanvas-*, with the chip on screen), kept-runview.txt
 #   (runs-live.mjs's kept-runview-*) and kept-home.txt (home-kept.mjs); INVENTORY=1 shoot-app.mjs after the change — every

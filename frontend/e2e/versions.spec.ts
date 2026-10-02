@@ -85,7 +85,7 @@ test("versions: 2 changes since v7 → Save as v8 → What changed → Restore v
   const v8 = history.getByRole("listitem").filter({ hasText: "v8" }).first();
   await expect(v8).toContainText("Engineer: instructions and model changed");
   await shot(page, "2-history-v8");
-  await v8.getByRole("button", { name: "What changed" }).click();
+  await v8.getByRole("button", { name: "What changed in v8" }).click();
   const changes = page.getByRole("dialog", { name: "What changed in v8" });
   await expect(changes).toBeVisible();
   await expect(changes).toContainText("Instructions");
@@ -96,7 +96,7 @@ test("versions: 2 changes since v7 → Save as v8 → What changed → Restore v
 
   // Restore v7 → v9 = v7.
   const v7 = history.getByRole("listitem").filter({ hasText: "v7" }).first();
-  await v7.getByRole("button", { name: "Restore" }).click();
+  await v7.getByRole("button", { name: "Restore v7" }).click();
   const restore = page.getByRole("dialog", { name: "Restore v7?" });
   await expect(restore).toContainText("Restoring makes a new version, v9, that matches v7.");
   await shot(page, "4-restore-v7");
