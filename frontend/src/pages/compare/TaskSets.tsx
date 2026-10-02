@@ -1,4 +1,4 @@
-import { Circle, GitCompare, ListChecks, Pencil, Plus, Trash2 } from "lucide-react";
+import { GitCompare, ListChecks, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 
 import { Button, ConfirmDialog, Menu } from "../../design-system/components";
@@ -7,6 +7,23 @@ import { versionAge } from "../../lib/versionFormat";
 import { TaskSetDialog } from "./TaskSetDialog";
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+/** A task's bullet (the boards' 10px ring). */
+export function TaskDot() {
+  return (
+    <svg
+      width="10"
+      height="10"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      aria-hidden
+    >
+      <circle cx="12" cy="12" r="4" />
+    </svg>
+  );
+}
 
 /**
  * M9 — the Task sets tab (Quality › Set-List, Set-Empty, Set-RowMenu, Set-DeleteConfirm): a card per
@@ -107,14 +124,14 @@ export function TaskSets({
                       {
                         key: "edit",
                         label: "Edit",
-                        icon: <Pencil size={14} strokeWidth={1.6} aria-hidden />,
+                        icon: <Pencil size={15} strokeWidth={1.6} aria-hidden />,
                         onSelect: () => setEditing(x),
                       },
                       {
                         key: "delete",
                         label: "Delete",
                         danger: true,
-                        icon: <Trash2 size={14} strokeWidth={1.6} aria-hidden />,
+                        icon: <Trash2 size={15} strokeWidth={1.6} aria-hidden />,
                         onSelect: () => {
                           setError(null);
                           setDeleting(x);
@@ -128,7 +145,7 @@ export function TaskSets({
                 {x.items.map((it, i) => (
                   <li key={i}>
                     <span className="cmp-set__dot">
-                      <Circle size={6} strokeWidth={2} aria-hidden />
+                      <TaskDot />
                     </span>
                     {it.task}
                   </li>

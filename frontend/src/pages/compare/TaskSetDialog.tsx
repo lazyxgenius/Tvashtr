@@ -169,7 +169,7 @@ export function TaskSetDialog({
         )}
       </div>
       <div className="cmp-setdlg__what">
-        <Eye size={16} strokeWidth={1.6} aria-hidden />
+        <Eye size={18} strokeWidth={1.6} aria-hidden />
         <div>
           <div className="cmp-setdlg__what-title">What a hidden check is</div>
           <div className="cmp-setdlg__what-text">
@@ -270,7 +270,7 @@ function Recent({
             setOpen(false);
           }}
         >
-          <Plus size={13} strokeWidth={1.8} aria-hidden />
+          <Plus size={14} strokeWidth={1.8} aria-hidden />
           <span>Add {picked.length}</span>
         </Button>
       </div>

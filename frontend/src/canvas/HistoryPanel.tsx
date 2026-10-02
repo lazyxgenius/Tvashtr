@@ -311,7 +311,7 @@ function CheckCallout({
           : null;
     return (
       <div className="cv-check cv-check--worse">
-        <TriangleAlert size={16} strokeWidth={1.6} aria-hidden />
+        <TriangleAlert size={18} strokeWidth={1.6} aria-hidden />
         <div className="cv-check__text">
           <div className="cv-check__title">
             v{row.number} did worse on {c.set}
@@ -341,7 +341,7 @@ function CheckCallout({
   const cost = costWords(c);
   return (
     <div className="cv-check">
-      <CircleCheck size={16} strokeWidth={1.6} aria-hidden />
+      <CircleCheck size={18} strokeWidth={1.6} aria-hidden />
       <div className="cv-check__text">
         <div className="cv-check__title">
           {allTests

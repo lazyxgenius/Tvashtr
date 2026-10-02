@@ -472,6 +472,9 @@
   font-size: 12.5px;
   color: var(--ink-600);
 }
+.cmp-start__seg .tv-seg__btn {
+  font-size: 12.5px;
+}
 .cmp-start__tasks li {
   display: inline-flex;
   align-items: center;
@@ -539,6 +542,18 @@
 }
 .cmp-set__more {
   margin-left: auto;
+}
+/* Set-RowMenu: the ⋯ shows it is open; the menu's 32px rows, Delete in the boards' red. */
+.cmp-set__more .ds-iconbtn[aria-expanded="true"] {
+  background: var(--coral-100);
+  color: var(--coral-700);
+}
+.cmp-set__more .ds-menu__item {
+  line-height: normal;
+}
+.cmp-set__more .ds-menu__item--danger,
+.cmp-set__more .ds-menu__item--danger .ds-menu__icon {
+  color: #8f3b2f;
 }
 .cmp-set__tasks {
   list-style: none;
@@ -716,6 +731,7 @@
   color: var(--ink-700);
 }
 .ds-popover.cmp-recent {
+  margin-top: 4px; /* 8px under its link, as drawn (the popover's own gap is 4px) */
   padding: 0;
   gap: 0;
   text-align: left;
@@ -778,12 +794,12 @@
   font-weight: 400;
 }
 .cmp-set__table tr > :first-child {
-  width: 240px;
+  width: 274px; /* the board's 240px column + 18px padding + the 16px gap */
   padding-left: 18px;
   color: var(--ink-900);
 }
 .cmp-set__table tr > :last-child {
-  width: 110px;
+  width: 128px; /* 110px + 18px padding */
   padding-right: 18px;
 }
 .cmp-set__table tbody tr:last-child > * {
@@ -796,6 +812,10 @@
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--ink-500);
+}
+.cmp-set__cell,
+.cmp-set__open {
+  vertical-align: top; /* no baseline gap under the line: the boards' 44px rows */
 }
 .cmp-set__cell {
   display: inline-flex;
@@ -850,11 +870,10 @@
   border-radius: 6px;
   box-shadow: var(--shadow-focus);
 }
-.cmp-set__badgecell {
-  text-align: right;
-}
 .cmp-set__badge {
+  display: block; /* the column's 110px, as drawn */
   font-size: 10px;
+  line-height: 1.6;
   padding: 1px 7px;
   border-radius: 999px;
   background: var(--panel-300);
@@ -916,6 +935,12 @@
 /* ---- "One task is a small sample" (Cmp-Results) ---- */
 .cmp-sample {
   gap: 12px;
+}
+.cmp-sample > svg {
+  margin-top: 1px;
+}
+.cmp-sample__acts svg {
+  margin-top: 0;
 }
 .cmp-sample__text {
   flex: 1;

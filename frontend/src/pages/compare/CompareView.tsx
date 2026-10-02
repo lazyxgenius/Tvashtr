@@ -387,7 +387,7 @@ function Results({
       {/* M9 (Cmp-Results): the team's task set, when it has one. */}
       {r.sample && (
         <div className="cmp-callout cmp-sample">
-          <Info size={16} strokeWidth={1.6} aria-hidden />
+          <Info size={18} strokeWidth={1.6} aria-hidden />
           <div className="cmp-sample__text">
             <div className="cmp-sample__title">One task is a small sample</div>
             <div>
@@ -498,9 +498,9 @@ function SetCellView({ cell }: { cell: SetCell }) {
       {(cell.check || cell.status === "failed") && (
         <span title={mark} className={`cmp-set__mark${failed ? " cmp-set__mark--failed" : ""}`}>
           {failed ? (
-            <CircleX size={14} strokeWidth={1.6} aria-label={mark} />
+            <CircleX size={15} strokeWidth={1.6} aria-label={mark} />
           ) : (
-            <CircleCheck size={14} strokeWidth={1.6} aria-label={mark} />
+            <CircleCheck size={15} strokeWidth={1.6} aria-label={mark} />
           )}
         </span>
       )}
@@ -543,7 +543,7 @@ function SetTable({ c, teamId, label }: { c: Compare; teamId: string; label: str
                   )}
                 </td>
               ))}
-              <td className="cmp-set__badgecell">
+              <td>
                 {it.badge && (
                   <span
                     className={`cmp-set__badge${/better/.test(it.badge) ? " cmp-set__badge--good" : /more/.test(it.badge) ? " cmp-set__badge--warn" : ""}`}

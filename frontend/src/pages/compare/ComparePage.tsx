@@ -3,7 +3,7 @@ import "../../panel/run/live/live.css";
 import "../home/home-runs.css";
 import "./compare.css";
 
-import { ArrowLeft, Circle, Info, Play } from "lucide-react";
+import { ArrowLeft, Info, Play } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { CanvasHeader } from "../../canvas/CanvasHeader";
@@ -27,7 +27,7 @@ import { money } from "../home/homeFormat";
 import { GithubIcon } from "../home/homeIcons";
 import type { ShellUser } from "../shell/Shell";
 import { CompareView } from "./CompareView";
-import { TaskSets } from "./TaskSets";
+import { TaskDot, TaskSets } from "./TaskSets";
 
 type Tab = "compare" | "sets" | "versions";
 
@@ -316,7 +316,7 @@ function Start({
         {sets.length > 0 ? (
           <div className="cmp-start__onhead">
             <span className="cmp-eyebrow">Run them on</span>
-            <div className="tv-seg" role="radiogroup" aria-label="Run them on">
+            <div className="tv-seg cmp-start__seg" role="radiogroup" aria-label="Run them on">
               {(
                 [
                   [null, "One task"],
@@ -356,7 +356,7 @@ function Start({
             <ul className="cmp-start__tasks" aria-label={`Tasks in ${set.name}`}>
               {set.items.map((it, i) => (
                 <li key={i}>
-                  <Circle size={6} strokeWidth={2} aria-hidden />
+                  <TaskDot />
                   {it.task}
                 </li>
               ))}
