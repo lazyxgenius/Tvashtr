@@ -103,7 +103,9 @@ def _summary(kind: str, lines: list[dict], inv: AgentInvocation) -> dict:
         by_kind.setdefault(ln["kind"], []).append(ln)
     files = list(
         dict.fromkeys(
-            ln["refs"]["file"] for ln in by_kind.get("edited", []) if ln["refs"].get("file")
+            ln["refs"]["file"]
+            for ln in by_kind.get("edited", [])
+            if ln["refs"].get("file") and not _own_file(ln["refs"]["file"])
         )
     )
     out = {"files": files, "fixes": None, "verdict": None, "doc": None}
@@ -140,6 +142,12 @@ def _summary(kind: str, lines: list[dict], inv: AgentInvocation) -> dict:
 
 
 _BRIEF = "Built the feature — changed "
+# Tvashtr's own working files (a step's REPORT.md is carried as its document, not as "changes").
+_OWN = ("REPORT.md", "REVIEW_VERDICT.json", "SPEC.md", "TVASHTR_REMEMBER.jsonl")
+
+
+def _own_file(path: str) -> bool:
+    return path.rsplit("/", 1)[-1] in _OWN
 
 
 def _brief_files(detail: str | None) -> list[str]:
@@ -147,7 +155,7 @@ def _brief_files(detail: str | None) -> list[str]:
     if not detail or not detail.startswith(_BRIEF) or ": " not in detail:
         return []
     listed = detail.split(": ", 1)[1].split(", ")
-    return [f for f in listed if f and not f.startswith("+")]
+    return [f for f in listed if f and not f.startswith("+") and not _own_file(f)]
 
 
 def step_rows(session, run: Run, lines: list[dict] | None = None) -> list[dict]:
@@ -674,9 +682,8 @@ def safe_text(reply: dict) -> str | None:
         parts.append(f"the {label}’s round {round_} changes")
     if not parts:
         return None
-    return (
-        " and ".join(parts) if len(parts) <= 2 else ", ".join(parts[:-1]) + " and " + parts[-1]
-    ) + " are saved"
+    joined = " and ".join(parts) if len(parts) <= 2 else ", ".join(parts[:-1]) + " and " + parts[-1]
+    return joined + (" is saved" if len(parts) == 1 else " are saved")
 
 
 # ---------------------------------------------------------------------------------- the walk

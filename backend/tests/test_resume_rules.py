@@ -442,3 +442,25 @@ def test_a_carried_node_that_runs_again_reads_as_waiting_with_its_notes_on_the_c
 
 def test_the_seed_diff_is_not_read_on_a_poll(client):
     assert RunCheckpoint.__mapper__.attrs["diff"].deferred is True
+
+
+def test_tvashtr_own_files_are_never_a_steps_changes_and_one_saved_thing_is_saved():
+    """The PM's REPORT.md (carried as the spec) is not "changes"; a lone part reads "is saved"."""
+    lines = [
+        {"kind": "edited", "refs": {"file": "REPORT.md"}, "text": "Edited REPORT.md"},
+        {"kind": "edited", "refs": {"file": "TVASHTR_REMEMBER.jsonl"}, "text": "x"},
+        {"kind": "edited", "refs": {"file": "core/rsi.py"}, "text": "Edited core/rsi.py"},
+    ]
+    inv = AgentInvocation(status="done", iteration=1)
+    assert resume._summary("agent", lines, inv)["files"] == ["core/rsi.py"]
+    assert resume._brief_files("Built the feature — changed 2 file(s): REPORT.md, a.py") == ["a.py"]
+    reply = {
+        "points": [
+            {
+                "state": "suggested",
+                "resumable": True,
+                "confirm": {"kept": [{"text": "Spec v1"}, {"text": "Your approval"}]},
+            }
+        ]
+    }
+    assert resume.safe_text(reply) == "your approved spec (v1) is saved"
