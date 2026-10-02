@@ -61,6 +61,7 @@ from tvashtr.routes import local_repo as revamp_local_repo
 from tvashtr.routes import memory_extra as revamp_memory
 from tvashtr.routes import my_agents as revamp_my_agents
 from tvashtr.routes import nodes as revamp_nodes
+from tvashtr.routes import task_sets as revamp_task_sets
 from tvashtr.routes import toolkit as revamp_toolkit
 from tvashtr.routes import website as revamp_website
 
@@ -183,6 +184,7 @@ for _revamp_router in (
     revamp_my_agents.router,
     revamp_agent_tests.router,
     revamp_compare.router,
+    revamp_task_sets.router,
     revamp_documents.router,
     revamp_memory.router,
     revamp_local_repo.router,

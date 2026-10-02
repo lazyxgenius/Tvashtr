@@ -108,6 +108,9 @@ _LOCK = threading.Lock()
 # rides the existing run-end teardown with no change to the Control Plane.
 _TEARDOWN_NODE = "__fly_machine__"
 
+# M9: where a set compare run's hidden check runs on its machine — a fresh dir, never a node's.
+_CHECK_DIR = f"{_WORKSPACE_ROOT}/__check__"
+
 
 class _FlyNodeHandle:
     """One node's live state on the shared machine: its own ``RemoteWorkspace`` (pinned to
@@ -425,6 +428,47 @@ def suspend_run_machine(run_id: str) -> bool:
             fly.close()
 
 
+def _register_teardown(run_id: str, sandbox: "_FlyRunSandbox") -> None:
+    """Ride the Control Plane's run-end ``close_run_sandboxes(run_id)``: the machine (and its app)
+    is destroyed with the run. ``container_id=None`` keeps it invisible to the docker reaper."""
+    sandbox_cache.put(
+        f"{run_id}::{_TEARDOWN_NODE}",
+        sandbox_cache.CachedSandbox(
+            handle=sandbox,
+            close=lambda rid=run_id: close_run_machine(rid),
+            container_id=None,
+        ),
+    )
+
+
+def run_check(
+    run_id: str, host_dir: str, command: str, mode: str, timeout_s: float
+) -> tuple[int | None, str, bool]:
+    """M9 (R11): a set compare run's hidden check, on the run's OWN microVM — never the control
+    plane. A fresh ``/workspace/__check__`` is pushed from the host workspace (the run's final
+    state) and the command runs there; nothing comes back but ``(exit code, output, timed out)``.
+    The machine is resumed or reattached as an agent step's would be, and torn down with the run.
+    Raises on a sandbox failure (the caller records a failed check)."""
+    sandbox, created_now = _ensure_run_sandbox(run_id)
+    if created_now:
+        _register_teardown(run_id, sandbox)
+    workspace = RemoteWorkspace(
+        host=sandbox.machine.flycast_host,
+        working_dir=_CHECK_DIR,
+        api_key=sandbox.session_api_key,
+    )
+    workspace.execute_command(
+        f"rm -rf {_CHECK_DIR} && mkdir -p {_CHECK_DIR}", cwd="/tmp", timeout=60.0
+    )
+    _push_workspace(workspace, host_dir, mode)
+    result = workspace.execute_command(command, cwd=_CHECK_DIR, timeout=timeout_s)
+    return (
+        result.exit_code,
+        (result.stdout or "") + (result.stderr or ""),
+        bool(result.timeout_occurred),
+    )
+
+
 def close_run_machine(run_id: str) -> None:
     """Destroy ``run_id``'s microVM and forget it. Idempotent + best-effort — a failing teardown is
     logged, never raised, so it can't break a workflow's terminal (mirrors
@@ -506,16 +550,8 @@ class OpenHandsFlyAdapter:
             if created_now and not ephemeral:
                 # Register the run-end teardown on the engine-neutral cache the Control Plane
                 # already calls (``close_run_sandboxes(run_id)``), so the app is destroyed with NO
-                # change to team_run.py or sandbox_cache.py. ``container_id=None`` keeps this entry
-                # invisible to the docker reaper's keep-set.
-                sandbox_cache.put(
-                    f"{run_id}::{_TEARDOWN_NODE}",
-                    sandbox_cache.CachedSandbox(
-                        handle=sandbox,
-                        close=lambda rid=run_id: close_run_machine(rid),
-                        container_id=None,
-                    ),
-                )
+                # change to team_run.py or sandbox_cache.py.
+                _register_teardown(run_id, sandbox)
 
             handle = sandbox.nodes.get(node_id)
             if handle is None:

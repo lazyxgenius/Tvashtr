@@ -211,6 +211,38 @@ def _push_workspace(workspace, host_dir: str, mode: str = "greenfield") -> list[
     return pushed
 
 
+def run_check(
+    run_id: str, host_dir: str, command: str, mode: str, timeout_s: float
+) -> tuple[int | None, str, bool]:
+    """M9 (R11): a set compare run's hidden check in a FRESH agent-server container seeded from
+    the host workspace (the run's final state) — never a node's warm container, never the host.
+    Nothing comes back but ``(exit code, output, timed out)``; the container is removed (and
+    de-registered from the live registry) whatever happens."""
+    settings = get_settings()
+    workspace = DockerWorkspace(
+        server_image=settings.agent_server_image,
+        host_port=settings.agent_server_host_port,
+        platform=settings.agent_server_platform or _detect_platform(),
+        extra_ports=False,
+    )
+    container_id = getattr(workspace, "_container_id", None)
+    sandbox_cache.register_live_container(container_id, run_id=run_id, pid=os.getpid())
+    try:
+        _push_workspace(workspace, host_dir, mode)
+        result = workspace.execute_command(command, cwd=workspace.working_dir, timeout=timeout_s)
+        return (
+            result.exit_code,
+            (result.stdout or "") + (result.stderr or ""),
+            bool(result.timeout_occurred),
+        )
+    finally:
+        try:
+            workspace.cleanup()
+        except Exception:
+            logger.warning("check container teardown failed", exc_info=True)
+        sandbox_cache.deregister_live_container(container_id)
+
+
 class _DockerHandle:
     """The live docker sandbox stashed in ``sandbox_cache`` for cross-round reuse (M-unify U2): the
     running container's ``workspace`` + the live ``RemoteConversation`` bound to it, plus a

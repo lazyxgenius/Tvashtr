@@ -450,6 +450,11 @@ class Run(Base):
     # M5 (migration ``0046``, ruling R3): the version of its library team the run started on. NULL
     # for a run of an ephemeral team, and for runs from before M5.
     team_version_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # M9 (migration ``0050``): the task of a set compare this run is for. NULL for every other run,
+    # and once the set's tasks are edited or the set is deleted.
+    task_set_item_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("task_set_items.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -530,6 +535,78 @@ class Compare(Base):
     )
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # M9 (migration ``0050``): a compare on a task set (``task`` is then the set's name). The set
+    # may later be edited or deleted; ``item_count`` keeps how many tasks this compare runs, so it
+    # stays a set compare (and knows when all its runs are in) whatever happens to the set.
+    task_set_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("task_sets.id", ondelete="SET NULL"), nullable=True
+    )
+    item_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class TaskSet(Base):
+    """M9 (migration ``0050``): a library team's named list of tasks to compare versions on. The
+    name is unique per team ignoring case."""
+
+    __tablename__ = "task_sets"
+    __table_args__ = (
+        Index("uq_task_sets_team_name", "team_graph_id", text("lower(name)"), unique=True),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    owner_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    team_graph_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("team_graphs.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class TaskSetItem(Base):
+    """M9: one task of a set — the task text, the branch it starts from (NULL ⇒ the target's
+    default) and its hidden check command. R11: ``hidden_check`` is read only by the check runner
+    (``hidden_checks``), never by anything an agent sees."""
+
+    __tablename__ = "task_set_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    task_set_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("task_sets.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    task: Mapped[str] = mapped_column(Text, nullable=False)
+    starts_from: Mapped[str | None] = mapped_column(Text, nullable=True)
+    hidden_check: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class HiddenCheckResult(Base):
+    """M9: a set compare run's hidden check — passed (exit code 0 within the 10-minute limit), the
+    last 12 lines of its output (secrets masked). One per run: a recovered walk never runs it
+    twice."""
+
+    __tablename__ = "hidden_check_results"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    run_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("runs.id", ondelete="CASCADE"), nullable=False, unique=True
+    )
+    passed: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    exit_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    timed_out: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=false(), default=False
+    )
+    output_tail: Mapped[str] = mapped_column(Text, nullable=False, server_default="", default="")
+    duration_s: Mapped[float] = mapped_column(Float, nullable=False, server_default="0", default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
 
 
 class SavedAgent(Base):

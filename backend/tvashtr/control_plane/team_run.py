@@ -53,6 +53,7 @@ from tvashtr.control_plane import (
     checkpoints,
     clone_reaper,
     github_app,
+    hidden_checks,
     live_state,
     local_repo,
     run_failure,
@@ -500,6 +501,8 @@ def load_graph_step(run_id: str) -> dict:
             if run.pair_id is not None
             else None
         )
+        # M9 (R11): a set compare run runs its task's hidden check at the compare terminal.
+        check = run.task_set_item_id is not None
         nodes = (
             session.execute(select(AgentNode).where(AgentNode.team_graph_id == run.team_graph_id))
             .scalars()
@@ -567,7 +570,13 @@ def load_graph_step(run_id: str) -> dict:
         # unless ``auto_approve`` is off (``gates.gate_auto_resolution_step`` reads the compare).
         # Recorded here like ``checkpoints``: a workflow recorded before M8 replays a dict without
         # it, so its walk still ships.
-        "compare": {"auto_approve": auto_approve} if auto_approve is not None else None,
+        # M9: ``check`` only when the run has a task's hidden check — absent otherwise, so a
+        # one-task compare run (and a workflow recorded before M9) reads exactly what it did.
+        "compare": (
+            {"auto_approve": auto_approve, **({"check": True} if check else {})}
+            if auto_approve is not None
+            else None
+        ),
     }
 
 
@@ -3157,6 +3166,14 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                 # M8 (R5): a compare run never ships — no commit, no push, no pull request, no
                 # bundle — and teaches no memory (it is a trial of a version, not the team's
                 # work). It ends completed; its Ship step closes with the outcome ``compare``.
+                if graph["compare"].get("check"):
+                    # M9 (R11): a set compare run's hidden check — after its last step, before it
+                    # is finalized and torn down, in its own sandbox. A PLAIN call (no new DBOS
+                    # step), gated on the recorded dict, idempotent on a recovery; the command
+                    # never passes through the walk.
+                    hidden_checks.run_for(
+                        run_id, workspace, "brownfield" if brownfield else "greenfield"
+                    )
                 final = finalize_run_step(run_id, status="completed")
                 close_invocation_step(run_id, current, 1, "done", "compare")
                 DBOS.logger.info(f"run_team compare run done (no ship) run_id={run_id}")

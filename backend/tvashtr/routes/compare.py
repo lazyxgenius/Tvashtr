@@ -19,7 +19,9 @@ Number = Annotated[int, Field(ge=1, le=2**31 - 1)]  # a version number (an INTEG
 class CompareRequest(BaseModel):
     a: Number
     b: Number
-    task: str = Field(max_length=20_000)
+    # Exactly one of the two (M9): one task, or a task set of this team.
+    task: str | None = Field(default=None, max_length=20_000)
+    task_set_id: str | None = Field(default=None, max_length=64)
     auto_approve: bool = True
 
 
@@ -51,13 +53,15 @@ def compare_changes(
 
 @router.post("/api/teams/{team_id}/compare", status_code=201)
 def start_compare(team_id: str, body: CompareRequest, current_user: CurrentUser) -> dict:
-    """Run vA and vB on one task at once (or wait for two free slots)."""
+    """Run vA and vB on one task at once (or wait for two free slots) — or on every task of a
+    set, task by task as two slots free (M9)."""
     return compare.create(
         _owner(current_user),
         team_id,
         a=body.a,
         b=body.b,
         task=body.task,
+        task_set_id=body.task_set_id,
         auto_approve=body.auto_approve,
     )
 
