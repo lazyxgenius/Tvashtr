@@ -130,6 +130,103 @@ export async function deleteLibraryTeam(teamId: string): Promise<void> {
   if (!res.ok) await fail(res, `DELETE /api/teams/${teamId} -> ${res.status}`);
 }
 
+// ---- M4: the team file (docs/superpowers/plans/api/team-file.md). The server renders the text and
+// makes every word; the app never parses YAML. ----
+
+export type TeamFileFormat = "yaml" | "json";
+
+export interface TeamFile {
+  filename: string;
+  format: TeamFileFormat;
+  content: string;
+  lines: number;
+  /** Connectors by provider key and secrets by NAME — never their values. */
+  needs: { connectors: string[]; secrets: string[] };
+}
+
+/** Why a file can't be imported: "Line 12: `agents` should be a list of agents." */
+export interface TeamFileError {
+  line: number | null;
+  message: string;
+}
+
+export interface ImportCheckRow {
+  key: string;
+  tone: "ok" | "warn";
+  title: string;
+  detail: string;
+  /** Substrings of the title / detail the app sets in code style. */
+  code?: string[];
+}
+
+export interface ImportCheck {
+  ok: boolean;
+  error: TeamFileError | null;
+  filename: string;
+  lines: number;
+  /** The suggested name, "<name> (copy)". */
+  name: string;
+  counts: { agents: number; gates: number; routes: number };
+  checks: ImportCheckRow[];
+  /** The warn checks that need you after importing. */
+  fixes: number;
+}
+
+export interface ImportFix {
+  key: string;
+  text: string;
+  action: "sign_in" | "open_toolkit" | "open_engines";
+  target: string;
+  /** The new team's nodes that need it. */
+  node_ids: string[];
+}
+
+export interface ImportedTeam {
+  team_graph_id: string;
+  name: string;
+  fixes: ImportFix[];
+  note: string;
+}
+
+/** The import was refused (422): the file can't be imported, with the line when there is one. */
+export class TeamFileRefused extends ApiError {
+  constructor(public readonly error: TeamFileError) {
+    super(422, error.message);
+    this.name = "TeamFileRefused";
+  }
+}
+
+/** The team as one file (YAML or JSON). 404 unless the team is yours. */
+export async function getTeamFile(teamId: string, format: TeamFileFormat): Promise<TeamFile> {
+  const res = await send(`/api/teams/${encodeURIComponent(teamId)}/file?format=${format}`);
+  if (!res.ok) await fail(res, `GET /api/teams/${teamId}/file -> ${res.status}`);
+  return (await res.json()) as TeamFile;
+}
+
+/** A dry run of an import: nothing changes. */
+export async function checkTeamImport(content: string, filename: string): Promise<ImportCheck> {
+  const res = await send("/api/teams/import-check", jsonInit("POST", { content, filename }));
+  if (!res.ok) await fail(res, `POST /api/teams/import-check -> ${res.status}`);
+  return (await res.json()) as ImportCheck;
+}
+
+/** Import the file as a NEW team. A 422 with the file's error throws `TeamFileRefused`. */
+export async function importTeam(content: string, name: string): Promise<ImportedTeam> {
+  const res = await send("/api/teams/import", jsonInit("POST", { content, name }));
+  if (res.status === 422) {
+    const body = (await res
+      .clone()
+      .json()
+      .catch(() => null)) as {
+      detail?: { error?: TeamFileError };
+    } | null;
+    const error = body?.detail?.error;
+    if (error && typeof error.message === "string") throw new TeamFileRefused(error);
+  }
+  if (!res.ok) await fail(res, `POST /api/teams/import -> ${res.status}`);
+  return (await res.json()) as ImportedTeam;
+}
+
 export async function getAccountPreferences(): Promise<AccountPreferences> {
   const res = await send("/api/account/preferences");
   if (!res.ok) await fail(res, `GET /api/account/preferences -> ${res.status}`);
