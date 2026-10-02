@@ -102,3 +102,15 @@ kept-home-web: 64/64 kept items present
 # and with the M3 states on screen: Prob-Resumed-web (run #13 running, "Resumed from #12" in the bar) has all 13
 #   kept-runview-web items; Prob-Pick-web ("Resume run #12" open on a failed run) has 11/13 — 'Cancel run' and 'Running…'
 #   show only while a run is in flight, as before M3 (an ended run shows "Edit this team").
+
+# Re-shoot after the review fixes (branch feat/m03-fe-fixes from feat/m03-resume 4e08ae8, 2026-10-02): the run view now
+#   keeps one tree with "Resume run #12" open or closed (`.lv-split--off` is `display: contents` while closed), and Activity
+#   keeps its live end in view when the panel narrows it. Same design export, 8 design shots fonts-ok; runs-resume.mjs's 16
+#   app shots on vite 5208. Every board's line is as recorded above, except Prob-Stalled web: 5 with size/type drift · 40
+#   only moved (recorded 6 · 39) — W3's 'Ship' pairing no longer occurs (the fit settles differently); the base 4e08ae8
+#   shoots the same 5 · 40, so it predates these fixes. Pixel check against 4e08ae8: Prob-Pick, -Confirm, -Failed and the
+#   Home boards are byte-identical; Prob-ConfirmStalled differs only in the canvas under the scrim — the panel opening no
+#   longer remounts React Flow, so the graph keeps the person's view instead of refitting to the narrower canvas (Activity
+#   identical); Prob-Stalled / -Resumed differ only by the working card's glow phase. Kept inventories unchanged:
+#   kept-runview-web 13/13, kept-runview-desktop 13/13, kept-runview-drawer-web 27/27, kept-home-web 64/64,
+#   kept-home-desktop 63/63; Prob-Resumed-web 13/13 and Prob-Pick-web 11/13 of kept-runview-web (as recorded).
