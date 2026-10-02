@@ -212,6 +212,8 @@ export interface RunRow {
   // M3 (resume.md): "run #12" (null without a library team) and the run this one resumed.
   number?: number | null;
   resumed_from?: { run_id: string; number: number | null; step_label: string } | null;
+  // M5 (versions.md): the team version the run used (null: an ephemeral team, or before M5).
+  team_version_number?: number | null;
 }
 
 export interface CostRow {
@@ -1019,6 +1021,15 @@ export interface TeamRunRow {
   idea: string;
   created_at: string;
   cost_total_usd: number;
+  // The revamp's fields (teams.md) and M5's (versions.md: History › Runs) — additive.
+  updated_at?: string | null;
+  spent_usd?: number;
+  pr_url?: string | null;
+  pr_number?: number | null;
+  number?: number | null;
+  team_version_number?: number | null;
+  /** The number of the run that resumed this one. */
+  resumed_as?: number | null;
 }
 
 // One starter preset in the New-team picker (the curated, code-resident template library).

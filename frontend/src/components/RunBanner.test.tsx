@@ -93,4 +93,29 @@ describe("RunBanner — greenfield ship vs brownfield branch", () => {
     expect(screen.queryByText("branch")).toBeNull();
     expect(screen.queryByText("ship")).toBeNull();
   });
+
+  // M5 (Ver-RunBar): the version the run used, right after the run, only when it has one.
+  it("shows the run's version tag after the run, and none without a version", () => {
+    const { rerender } = render(
+      <RunBanner
+        runId="run-abc12345"
+        run={run({ team_version_number: 7 })}
+        workflowStatus="SUCCESS"
+        costs={[]}
+      />,
+    );
+    const tag = screen.getByText("v7");
+    expect(tag).toHaveClass("tv-vtag");
+    expect(screen.getByText("run-abc1").parentElement?.nextElementSibling).toBe(tag);
+    rerender(
+      <RunBanner
+        runId="run-abc12345"
+        run={run({ team_version_number: null })}
+        workflowStatus="SUCCESS"
+        costs={[]}
+      />,
+    );
+    expect(screen.queryByText("v7")).toBeNull();
+    expect(screen.getByText("run-abc1")).toBeInTheDocument();
+  });
 });

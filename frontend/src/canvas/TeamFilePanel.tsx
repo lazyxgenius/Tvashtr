@@ -1,11 +1,11 @@
 import { Copy, Download, FileCode, Lock, X } from "lucide-react";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useState } from "react";
 
 import { Button, IconButton, useToast } from "../design-system/components";
 import { getTeamFile, type TeamFileFormat } from "../lib/api/teams";
-import { isTopOverlay, pushOverlay, removeOverlay } from "../lib/overlayStack";
 import { LoadState } from "../panel/runs/RunsTab";
 import { useLoaded } from "../panel/runs/useLoaded";
+import { useDockedPanel } from "./useDockedPanel";
 
 const FORMATS: [TeamFileFormat, string][] = [
   ["yaml", "YAML"],
@@ -79,28 +79,7 @@ export function TeamFilePanel({
     keep: true,
   });
   const toast = useToast();
-  const close = useRef<HTMLButtonElement>(null);
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
-  // Opening it takes focus (on Close), closing gives it back; Escape closes it unless something on
-  // top of it owns the keyboard.
-  useEffect(() => {
-    const before = document.activeElement as HTMLElement | null;
-    close.current?.focus();
-    const token = pushOverlay();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && isTopOverlay(token)) {
-        e.preventDefault();
-        onCloseRef.current();
-      }
-    };
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      removeOverlay(token);
-      if (before?.isConnected) before.focus();
-    };
-  }, []);
+  const close = useDockedPanel(onClose);
 
   const f = file.value;
   const copy = () => {

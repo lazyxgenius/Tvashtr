@@ -168,6 +168,8 @@ export interface RunListRow {
   live_state?: LiveState | null;
   /** M2: what that step is doing now — Running now's activity line, when the server sends it. */
   live?: RunLive | null;
+  /** M5: the team version the run used (null: an ephemeral team, or before M5). */
+  team_version_number?: number | null;
 }
 
 export type RunStatusFilter =

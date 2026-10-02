@@ -1599,3 +1599,93 @@
   line-height: 1.45;
   color: var(--ink-500);
 }
+
+/* ---- M5: Instructions › History (Ver-AgentHistory), under the Instructions card ---- */
+.nd-ihist {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.nd-ihist__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.nd-ihist__label {
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-500);
+}
+.nd-ihist__count {
+  font-size: 12px;
+  color: var(--ink-500);
+}
+.nd-ihist__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.nd-ihist__item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-hairline);
+  border-radius: 10px;
+  background: var(--surface-card);
+}
+.nd-ihist__item--now {
+  border-color: var(--coral-200);
+}
+.nd-ihist__l1 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.nd-ihist__num {
+  font-family: var(--font-code);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.nd-ihist__when {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--ink-500);
+}
+.nd-ihist__text {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-700);
+}
+.nd-ihist__line {
+  display: block;
+}
+.nd-ihist__line--added {
+  color: #52613e;
+}
+.nd-ihist__line--removed {
+  color: #8f3b2f;
+  text-decoration: line-through;
+}
+.nd-ihist__acts {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.nd-ihist__note {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-500);
+}
+/* Ver-AgentCompare's note under the diff. */
+.nd-ihist__compare-note {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-500);
+}

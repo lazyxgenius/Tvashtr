@@ -1,5 +1,6 @@
 import type { CostRow, RunRow } from "../lib/api";
 import { deriveOverall } from "../lib/status";
+import { VersionTag } from "./VersionTag";
 
 function Item({ label, value }: { label: string; value: string }) {
   return (
@@ -44,6 +45,7 @@ export function RunBanner({
         {label}
       </span>
       <Item label="run" value={runId ? runId.slice(0, 8) : "—"} />
+      {run?.team_version_number != null && <VersionTag number={run.team_version_number} />}
       {cost != null ? (
         <Item label="cost" value={`$${cost.toFixed(4)}`} />
       ) : (

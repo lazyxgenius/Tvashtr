@@ -10,6 +10,7 @@ import { AccessSection } from "./AccessSection";
 import { AdvancedSection } from "./AdvancedSection";
 import { isGettingReady, isReadyHidden, readyItems, rememberReadyHidden } from "./getReady";
 import { GetReadyChecklist } from "./GetReadyChecklist";
+import { InstructionHistory } from "./InstructionHistory";
 import { InstructionsCard } from "./InstructionsCard";
 import { sameModelSibling } from "./modelCatalog";
 import { type ModelPickerContext, ModelSection } from "./ModelSection";
@@ -50,6 +51,7 @@ export function SetupTab({
   onCompareTemplates,
   onPreview,
   sub,
+  history,
   readOnly = false,
 }: {
   layout?: "drawer" | "focus";
@@ -77,6 +79,9 @@ export function SetupTab({
   onPreview?: () => void;
   /** Focus mode: a sub-view (the Output format editor) in the settings column's place. */
   sub?: ReactNode;
+  /** M5: the drawer's Instructions › History (authoring): the team, its latest version, and
+   *  "Use this text". */
+  history?: { teamId: string; version?: number; onUse: (text: string, number: number) => void };
   readOnly?: boolean;
 }) {
   const { draft, set, update } = api;
@@ -84,6 +89,7 @@ export function SetupTab({
   const [readyHidden, setReadyHidden] = useState(() => isReadyHidden(node.id));
   // "Start from scratch" (or any text typed since) keeps the editor, even when it's emptied again.
   const [editorOpen, setEditorOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const routing = routingOf(node.id, draft.prompt, nodes, edges);
   // The Changed marks follow the draft; while a save is on its way they step back (Flow-Save-2).
   const marking = api.saveState !== "saving";
@@ -243,7 +249,23 @@ export function SetupTab({
         banner={banner}
         routing={routingStatus}
         onOpenFullEditor={onOpenFullEditor}
+        history={
+          history && !readOnly
+            ? { open: historyOpen, onToggle: () => setHistoryOpen((o) => !o) }
+            : undefined
+        }
       />
+      {history && !readOnly && historyOpen && (
+        <InstructionHistory
+          teamId={history.teamId}
+          nodeId={node.id}
+          version={history.version}
+          agent={agentName}
+          role={node.role_name}
+          draft={draft.prompt}
+          onUse={history.onUse}
+        />
+      )}
       {settings}
     </div>
   );

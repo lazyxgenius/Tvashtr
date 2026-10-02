@@ -1,0 +1,137 @@
+# M5 — Team versions: parity record, branch feat/m05-fe (from feat/m05-versions b0acf59), 2026-10-02.
+# Design: the Claude Design "Tvashtr Team Setup" canvas export (page "versions"), shot with shoot-design.mjs at 1440x900:
+#   Ver-History, Ver-Draft, Ver-Changes, Ver-ChangesFields, Ver-Restore, Ver-RestoreDraft, Ver-RunTag, Ver-AgentHistory,
+#   Ver-AgentCompare, Ver-RunBar, Ver-HomeRuns — 11 design shots, 11 fonts-ok.
+# App: scripts/design-parity/scenarios/versions.mjs (24 board shots + 2 kept shots, website + Desktop, runs-live.mjs's
+#   `pair` convention) answering the contract's shapes (docs/superpowers/plans/api/versions.md): the boards' canvas
+#   (Product manager → Spec approval → Engineer ⇄ Reviewer, up to 3 rounds → Ship); `GET /api/teams/t-ind/versions` is
+#   v7 … v1 as Ver-History lists them (v7 2m ago "Reviewer: stricter about the INDICATORS registry" 1 run, v6 yesterday
+#   "Added the Spec approval gate" 3 runs, v5 3 days ago 2 runs, v4 5 days ago 4 runs, v3 1 week ago "Imported from a team
+#   file" no runs, v2, v1; `changes` 0, or 2 for Ver-Draft); `/versions/7` the Reviewer's instructions diff with `same`
+#   models / routes / gates / budget and run #12 Done; `/versions/6` (Ver-ChangesFields) the Spec approval gate added,
+#   three route rows, the Engineer's Model (gpt-4.1-mini → claude-sonnet-4) and Skills, `same` budget, run #11 Failed;
+#   `/versions/6/restore` makes v8 from v7 (Ver-RestoreDraft, with the chip's 2 changes: `draft_saved_as` 8, makes v9, five
+#   rows — the Reviewer's instructions, the Engineer's Model back to gpt-4.1-mini, his Skills, the Spec approval gate
+#   added back, one route); `/runs` the six runs of Ver-RunTag (#12 … #7 with their versions, durations,
+#   spend, pull requests, "resumed as #13", a stopped run); the Reviewer's `/instruction-history` (v7 Now, v6, v4 the
+#   built-in first text) over the boards' Reviewer instructions; Ver-RunBar is Live-Done's run #12 (runs-fixtures) with
+#   `team_version_number` 7; Ver-HomeRuns is home-fixtures' Recent runs with versions 7, 3, 5, 2, 6.
+# States are reached through the UI: the header chip opens History (Ver-History, Ver-Draft); its Runs tab (Ver-RunTag);
+#   What changed on v7 / v6 (Ver-Changes, Ver-ChangesFields); Restore on v6 (Ver-Restore, and with the chip's changes
+#   Ver-RestoreDraft); the Reviewer's drawer
+#   (`?node=n-rev`) › Instructions › History (Ver-AgentHistory), then Compare on v6 (Ver-AgentCompare); the run view of
+#   run #12 (Ver-RunBar); Home (Ver-HomeRuns). The pointer is moved off the controls before each shot (no hover states
+#   are drawn).
+# Which render is the comparison: every Ver-* board but Ver-HomeRuns is drawn in Desktop (the 30px title strip): the
+#   Desktop render is the comparison and the web render is framed 30px down; Ver-HomeRuns is a website board (Home): the
+#   web render is the comparison and the Desktop render is framed 30px up. Both renders of every board are recorded below.
+# GATE: MET — every new M5 element is at 0 size/type drift: the version chip (28px pill, 12px, the v7 12/600 code, its
+#   coral open state and its amber "· 2 changes since v7" with the 7px dot), Save as v8 (secondary sm with the save icon),
+#   History (the Team file panel's 420px shell: title 19px, sub 12.5px, the Versions / Runs switch at 12.5px, "5 of 7
+#   versions" 12px, each row's v7 13/600 code, Now 10px, "2m ago · you" 11.5px, the summary 13px, the runs pill 10px, What
+#   changed 12/500, Restore ghost sm, Show 2 older versions 12.5/500, the 12px footer), History › Runs (the 146x44 version
+#   select, the intro 12.5px, each run's "run #12" 12px code, its badge, the blue v7 tag 11px, the task 13px, the meta line
+#   12px), What changed (title 22px, sub 13px, each section's 13.5/600 name › 13.5px field with its 10px pill, the 12px
+#   code diff, "Nothing else changed: …" 13px, RUNS ON V7 11.5/600 + 13px + the badge, the footer 12.5px, Restore v6
+#   secondary md, Close primary md), Restore / Restore with changes not saved yet (title 22px, sub 13px, WHAT CHANGES 11.5/600, each row
+#   13/500, the last row's count 12.5px, the
+#   callout 14/600 + 13px, Cancel ghost md, Restore as v8 primary md), the drawer's History tint sm between Templates and
+#   Open full editor, INSTRUCTION HISTORY 11.5/600 + "3 versions" 12px, each entry's v7 12.5/600 code, Now, the 11.5px
+#   time, the 12.5px +/− lines and "First text, from the built-in Reviewer", Use this text ghost sm, Compare 12/500, the
+#   12px note, Compare's dialog (title 22px, sub 13px, the section, the diff, the 12.5px note, Use this text secondary md,
+#   Close), the run bar's v7 tag and Recent runs' "Indicator sprint team [v7] · 26m ago" (12px, the 11px tag). Every drift
+#   item below is an existing element, or a board word with no counterpart in the app, paired by the matcher with the same
+#   words in a new M5 element (W1–W3 as m2.txt, W7–W9 below); each new element's own pairing is 0-drift in `--all`.
+# built in this sweep (frontend/, vitest + tsc + eslint --max-warnings 0 + prettier + build green):
+#   6255f8f api-client: lib/api/versions.ts (the summary, Save as vN, What changed, the restore preview and restore, an
+#     agent's instruction history); `team_version_number` on RunRow / RunListRow and the team runs rows' M5 fields.
+#   abb432f canvas: the chip right after the team name (rest / open / changes since vN + Save as v{next}, read again on
+#     every graph change and after a save or restore); History (Versions, Runs with the filter), What changed (every change
+#     row kind) and Restore; Save as vN and Restore go through the agent drawer's unsaved guard; History, Team file and the
+#     agent drawer show one at a time.
+#   70b36b1 panel: Instructions › History (authoring only), Use this text (a draft with Undo), Compare (the client-side line
+#     diff against the text now, 1 line of context).
+#   4db206e runs: the blue version tag after the run in the run bar (RunBanner) and in Recent runs' meta line.
+#   e9d4008 fixes from this sweep: the dialogs' "saved 2 minutes ago" / "saved yesterday" (they read "1 day ago"), and the
+#     Recent runs meta line's spans around the tag (the board's structure; a row without a version is unchanged).
+# waivers W1–W3: as m2.txt (Ver-RunBar is Live-Done's run view: W1 'Open pull request #42' 178→186 / 'Jump to live'
+#   115→123, the design-system Button's 8px icon gap; W2 '22m 38s' 12.5→14px, the board's run-bar time → the Done
+#   summary's stat, the run bar is the app's toolbar + RunBanner; W3 'Product manager' 600→500 / 'Ship' 10.5→12.5px, the
+#   canvas cards pair with the Activity filter / Ship line because the app fits the whole graph).
+# waiver W7 (app governs, brief 2.2/2.3 — the canvas cards' existing parts, Ver-ChangesFields / Ver-AgentHistory /
+#   Ver-AgentCompare) the boards' cards carry words the app's cards don't (the gate reads "PRD approval" where the board
+#   writes 'Spec approval', the Reviewer's chip is "Edits off" where the board writes 'Read-only'), and the app fits the
+#   cards elsewhere: the matcher pairs the card's words with the same words in a new element — 'Spec approval'
+#   11.5→13.5px and 'Engineer' 12.5→13.5px (→ What changed's section names, as drawn), 'anthropic/claude-sonnet-4'
+#   9.5→12px (→ the Model section's diff line, as drawn), 'Read-only' 10→12px 400→500 (→ the drawer header's existing
+#   Read-only badge).
+# waiver W8 (not built, brief §2.4 — Compare is M8) [ctl]/[txt] 'Compare' 13→12px, 32→19 high, 97→53 wide
+#   (Ver-AgentHistory-list): the board's toolbar Compare pairs with the drawer's Compare link (12/500, as drawn).
+# waiver W9 (pairing, out of view) 'Use this text' 13→14px, 32→40 high, 103→117 wide (Ver-AgentCompare): the board's
+#   history card button sits under the dialog where the app's drawer has it below the fold (the app's collapsed editor is
+#   196px where the board draws 118px), so it pairs with the dialog's Use this text (secondary md, as drawn).
+# waiver W10 (app governs, the Desktop Home, Ver-HomeRuns desktop) [ctl] 'Fix' 12.5→13px, 600→500, 20→32 high: the web
+#   board's 'Fix' link pairs with the Desktop Home's own Fix button (the comparison render, web, has no drift).
+# note (Ver-AgentHistory) the app's collapsed editor (196px, existing) and its routing line put the instruction history
+#   below the fold, so Ver-AgentHistory measures the History toggle and the drawer, and Ver-AgentHistory-list (the drawer
+#   scrolled to the section) the entries — both against the same board; the cards' 'Changes requested · 2h ago' (the
+#   app's "31m ago"), 'Instructions match your arrows' (the app's routing line: the boards' text has no verdict line) are
+#   existing elements ("not found").
+# note (Ver-RunTag) the select's measured name is its accessible name "Version" where the board's is its value 'all'
+#   (same 146x44 at 1274,235, 16px); the run rows are 96px where the board's are 99.6 (the board's badge sits in the canvas
+#   runtime's inline wrapper, a 25.6px line), so rows 4–6 are "only moved" 13–20px.
+# note (not found, by design) the toolbar's 'Compare' (M8) and 'More for this team' (no board draws its menu) — §2.4; What
+#   changed's 'Compare v6 and v7 on a task' (M8); the canvas cards' chips, the gate's 'Gate · asks you' and the loop label
+#   'Up to 3 rounds' (existing, the app governs, as m4.txt); the run bar's 'Done', 'run #12', '$1.12 of $5.00', 'More for
+#   this run', 'Start the next run from this' (M10), the cards' run chips (the app's run view, m2.txt W2/W3); Home's
+#   'Engines 2 to fix' / 'Toolkit 1 missing' nav badges and the team card's letter tile (the existing Home); the web renders
+#   of the Desktop boards have no title strip or 'Tvashtr Desktop' chip.
+# note (Ver-RestoreDraft, added for the two open points) with `draft_saved_as` the sub is the board's "Your changes are
+#   saved as v8 first. Restoring makes a new version, v9, that matches v6. v7 and v8 stay in History, …"; WHAT CHANGES
+#   lists every change row (the working copy → vN), every route row in one "Routes go back to how they were in v6", and
+#   the count line ("5 changes. Everything else is already the same.") is on the last item, as both Restore boards draw
+#   it; a line between the items and none under the last (Ver-RestoreDraft's list).
+# note (layout) History docks on the canvas's right at 420px (≤1280px it floats, as Team file) and never beside Team file
+#   or the agent drawer; What changed / Compare are 720px, 96px from the top; Restore 560px, centred (the Resume confirm's
+#   shell). The toolbar keeps its Documents toggle and spend (the boards leave them out; the app governs).
+Ver-History web: matched 64/78 design items · 0 with size/type drift · 10 only moved · 14 not found in app
+Ver-History desktop: matched 66/78 design items · 0 with size/type drift · 10 only moved · 12 not found in app
+Ver-Draft web: matched 66/80 design items · 0 with size/type drift · 10 only moved · 14 not found in app
+Ver-Draft desktop: matched 68/80 design items · 0 with size/type drift · 10 only moved · 12 not found in app
+Ver-Changes web: matched 83/98 design items · 0 with size/type drift · 10 only moved · 15 not found in app
+Ver-Changes desktop: matched 85/98 design items · 0 with size/type drift · 10 only moved · 13 not found in app
+Ver-ChangesFields web: matched 93/106 design items · 3 with size/type drift · 8 only moved · 13 not found in app — covered: W7×3
+Ver-ChangesFields desktop: matched 95/106 design items · 3 with size/type drift · 8 only moved · 11 not found in app — covered: W7×3
+Ver-Restore web: matched 76/90 design items · 0 with size/type drift · 10 only moved · 14 not found in app
+Ver-Restore desktop: matched 78/90 design items · 0 with size/type drift · 10 only moved · 12 not found in app
+Ver-RestoreDraft web: matched 82/96 design items · 0 with size/type drift · 10 only moved · 14 not found in app
+Ver-RestoreDraft desktop: matched 84/96 design items · 0 with size/type drift · 10 only moved · 12 not found in app
+Ver-RunTag web: matched 57/72 design items · 0 with size/type drift · 21 only moved · 15 not found in app
+Ver-RunTag desktop: matched 59/72 design items · 0 with size/type drift · 21 only moved · 13 not found in app
+Ver-AgentHistory web: matched 60/82 design items · 1 with size/type drift · 19 only moved · 22 not found in app — covered: W7×1
+Ver-AgentHistory desktop: matched 62/82 design items · 1 with size/type drift · 19 only moved · 20 not found in app — covered: W7×1
+Ver-AgentHistory-list web: matched 62/82 design items · 3 with size/type drift · 27 only moved · 20 not found in app — covered: W7×1, W8×2
+Ver-AgentHistory-list desktop: matched 64/82 design items · 3 with size/type drift · 27 only moved · 18 not found in app — covered: W7×1, W8×2
+Ver-AgentCompare web: matched 77/97 design items · 3 with size/type drift · 19 only moved · 20 not found in app — covered: W7×1, W9×2
+Ver-AgentCompare desktop: matched 79/97 design items · 3 with size/type drift · 19 only moved · 18 not found in app — covered: W7×1, W9×2
+Ver-RunBar web: matched 54/78 design items · 5 with size/type drift · 26 only moved · 24 not found in app — covered: W1×2, W2×1, W3×2
+Ver-RunBar desktop: matched 56/78 design items · 5 with size/type drift · 26 only moved · 22 not found in app — covered: W1×2, W2×1, W3×2
+Ver-HomeRuns web: matched 99/104 design items · 0 with size/type drift · 0 only moved · 5 not found in app
+Ver-HomeRuns desktop: matched 98/104 design items · 1 with size/type drift · 0 only moved · 6 not found in app — covered: W10×1
+
+# Kept elements (brief §2.2): kept-teamcanvas.txt (versions.mjs's kept-teamcanvas-*, with the chip on screen), kept-runview.txt
+#   (runs-live.mjs's kept-runview-*) and kept-home.txt (home-kept.mjs); INVENTORY=1 shoot-app.mjs after the change — every
+#   listed item is still present (the team canvas adds "button: Version history" beside Team file and Documents):
+kept-teamcanvas-desktop: 11/11 kept items present
+kept-teamcanvas-web: 11/11 kept items present
+kept-runview-desktop: 13/13 kept items present
+kept-runview-drawer-web: 27/27 kept items present
+kept-runview-web: 13/13 kept items present
+kept-home-desktop: 63/63 kept items present
+kept-home-web: 64/64 kept items present
+# and with the M5 states on screen: Ver-Draft-web / -desktop have every kept-teamcanvas item; Ver-HomeRuns-web has all 64
+#   kept-home-web items (Ver-HomeRuns-desktop lacks only '~/code/trade_mcp · main', the Desktop repo picker the scenario's
+#   website init doesn't set up); Ver-RunBar (a finished run) lacks only kept-runview's 'Cancel run' / 'Running…' (a
+#   running run's). App.versions.test.tsx asserts the kept toolbar (Back to teams, Run this team, Team file, the spend,
+#   Connected) beside the chip; NodeEditor.versions.test.tsx the drawer's Templates / Open full editor and "All changes
+#   saved" beside History; HomeRuns.test.tsx / RunBanner.test.tsx a row / run without a version unchanged.
