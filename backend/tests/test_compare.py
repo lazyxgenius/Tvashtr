@@ -401,8 +401,9 @@ def test_a_compare_run_skips_ship_and_approves_its_gate(client, monkeypatch, tmp
     assert [s["status"] for s in view["sides"]] == ["finished", "finished"]
     rows = {r["key"]: r for r in view["results"]["rows"]}
     assert rows["result"]["a"] == rows["result"]["b"] == "Approved in round 1"
-    # rsi.py and the greenfield workspace's own .gitignore (both in the checkpoint's diff).
-    assert rows["files"]["a"] == rows["files"]["b"] == "2"
+    # Only the agent's rsi.py: the greenfield workspace's own .gitignore (in the checkpoint's diff)
+    # is Tvashtr's setup, not the run's work.
+    assert rows["files"]["a"] == rows["files"]["b"] == "1"
     assert view["results"]["headline"] == "v1 and v2 did about the same"
 
 

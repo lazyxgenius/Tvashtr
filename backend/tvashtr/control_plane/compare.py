@@ -34,6 +34,7 @@ from tvashtr.control_plane import (
     agent_test_runner,
     checkpoints,
     github_app,
+    resume,
     run_views,
     versions,
 )
@@ -69,7 +70,7 @@ _SIDE_STATUS = {
     "completed": "finished",
     "failed": "failed",
 }
-_FILE = re.compile(rb"^diff --git ", re.MULTILINE)
+_FILE = re.compile(rb"^diff --git a/(.+?) b/", re.MULTILINE)
 _BUSY = "This team already has a compare running. Stop it first."
 
 
@@ -462,7 +463,16 @@ def _files(run: Run) -> int | None:
     """Files in the run's newest M3 checkpoint diff (None: no usable checkpoint)."""
     # ponytail: reads the diff (up to 20 MB) on each results poll; store the count if it shows up.
     cp = checkpoints.newest(run.workflow_id, with_diff=True)
-    return len(_FILE.findall(cp.diff)) if cp is not None and cp.diff is not None else None
+    if cp is None or cp.diff is None:
+        return None
+    greenfield = run.repo_path is None and run.github_repo is None
+    return sum(
+        1
+        for raw in _FILE.findall(cp.diff)
+        if not resume._own_file(path := raw.decode("utf-8", "replace"))
+        # The greenfield workspace's own .gitignore is the setup's, not the run's work.
+        and not (greenfield and path == ".gitignore")
+    )
 
 
 def _lane(session, run: Run, extras: dict, live: dict) -> dict:
