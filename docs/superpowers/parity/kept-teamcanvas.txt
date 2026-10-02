@@ -1,0 +1,28 @@
+# Kept-elements inventory — teamcanvas (the team canvas, authoring), captured on feat/m04-fe at 1d83fc5 (before M4's frontend) with scripts/design-parity/shoot-app.mjs INVENTORY=1
+# Scenarios: scripts/design-parity/scenarios/teamfile.mjs (kept-teamcanvas-*). After the change every line must still be present (superset).
+
+## kept-teamcanvas-desktop
+button: Account
+button: Add to canvas
+button: Back to teams
+button: Fit View
+button: Run this team
+button: Set this node’s model
+button: Zoom In
+button: Zoom Out
+header: 
+main: 
+toolbar: Team
+
+## kept-teamcanvas-web
+button: Account
+button: Add to canvas
+button: Back to teams
+button: Fit View
+button: Run this team
+button: Set this node’s model
+button: Zoom In
+button: Zoom Out
+header: 
+main: 
+toolbar: Team

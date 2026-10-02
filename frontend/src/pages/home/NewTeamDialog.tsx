@@ -1,6 +1,6 @@
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { CircleAlert, X } from "lucide-react";
+import { CircleAlert, Upload, X } from "lucide-react";
 
 import { Button, IconButton, Input, useToast } from "../../design-system/components";
 import { ApiError } from "../../lib/api";
@@ -11,6 +11,7 @@ import {
   type TeamTemplate,
 } from "../../lib/api/teams";
 import { navigate } from "../../lib/nav";
+import { TEAM_FILE_ACCEPT } from "../../lib/teamImport";
 import { useModalDialog } from "../../lib/useModalDialog";
 import { refreshBadges } from "../../lib/workspaceStatus";
 import { useHome } from "./homeContext";
@@ -26,9 +27,11 @@ const CREATE_FAILED = "Couldn’t create the team — is the backend running?";
 function NewTeamBody({
   initialTemplate,
   onClose,
+  onImportFile,
 }: {
   initialTemplate?: string;
   onClose: () => void;
+  onImportFile?: (file: File) => void;
 }) {
   const { reloadTeams } = useHome();
   const toast = useToast();
@@ -40,6 +43,7 @@ function NewTeamBody({
   const [busy, setBusy] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const nameRef = useRef<HTMLInputElement>(null);
+  const importPicker = useRef<HTMLInputElement>(null);
   const ref = useModalDialog<HTMLDivElement>(true, () => {
     if (!busy) onClose();
   });
@@ -152,6 +156,36 @@ function NewTeamBody({
               </button>
             ))}
           </div>
+          {/* M4 (File-NewMenu): a team from a file — the picker, then the check before anything
+              changes. Beside the starting points, not one of them. */}
+          {onImportFile && (
+            <>
+              <button
+                type="button"
+                className="hm-newteam__import"
+                disabled={busy}
+                onClick={() => importPicker.current?.click()}
+              >
+                <span className="hm-newteam__import-icon">
+                  <Upload size={15} strokeWidth={1.6} aria-hidden />
+                </span>
+                Import a team file
+                <span className="hm-newteam__import-hint">.yaml or .json</span>
+              </button>
+              <input
+                ref={importPicker}
+                type="file"
+                accept={TEAM_FILE_ACCEPT}
+                hidden
+                data-testid="import-team-input"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = "";
+                  if (file) onImportFile(file);
+                }}
+              />
+            </>
+          )}
           {createError && (
             <div className="hm-newteam__alert" role="alert">
               <CircleAlert size={14} strokeWidth={1.6} aria-hidden />
@@ -186,14 +220,17 @@ export function NewTeamDialog({
   open,
   initialTemplate,
   onClose,
+  onImportFile,
 }: {
   open: boolean;
   initialTemplate?: string;
   onClose: () => void;
+  /** M4: "Import a team file" picked a file (the dialog offers it only when this is set). */
+  onImportFile?: (file: File) => void;
 }) {
   if (!open) return null;
   return createPortal(
-    <NewTeamBody initialTemplate={initialTemplate} onClose={onClose} />,
+    <NewTeamBody initialTemplate={initialTemplate} onClose={onClose} onImportFile={onImportFile} />,
     document.body,
   );
 }

@@ -22,6 +22,9 @@ export interface CanvasAuthoring {
   // run), keyed by canvas node id, and what a chip's click opens. Both views; absent = no chips.
   docChips?: ReadonlyMap<string, readonly RunDoc[]>;
   onOpenDoc?: (doc: RunDoc) => void;
+  // M4: an imported team's fixes as chips on the cards that need them ("Needs GitHub", "1 tool
+  // missing"), keyed by canvas node id. Absent = none.
+  fixChips?: ReadonlyMap<string, readonly string[]>;
 }
 
 export const AuthoringContext = createContext<CanvasAuthoring>({ editable: false });

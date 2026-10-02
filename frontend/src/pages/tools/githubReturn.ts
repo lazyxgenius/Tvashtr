@@ -53,6 +53,16 @@ export function rememberGithubReturn(seen: GithubSeen): void {
   }
 }
 
+/** Desktop, right before GitHub replaces the page from elsewhere (an imported team's Sign in, M4):
+ *  come back to `hash` rather than Browse. */
+export function rememberReturnTo(hash: string): void {
+  try {
+    storage()?.setItem(RETURN_KEY, hash);
+  } catch {
+    // Storage full or blocked: the round trip lands on Home.
+  }
+}
+
 /** The address to come back to after GitHub (read once; null when there is none). */
 export function takeGithubReturn(): string | null {
   const hash = take(RETURN_KEY);

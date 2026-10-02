@@ -1035,3 +1035,20 @@
   border: 1px dashed var(--line-400);
   box-shadow: none;
 }
+
+/* ---- M4: an imported team's agent that needs a fix — an amber ring and its chips (File-Imported) ---- */
+.rf-node.rf-node--fix {
+  border: 1.5px solid var(--amber-500);
+}
+.rf-node.rf-node--fix.rf-node--entry {
+  border-left: 3px solid var(--coral-500);
+}
+.rf-node__fix {
+  font-size: 10px;
+  line-height: 1.6;
+  padding: 1px 7px;
+  border-radius: 999px;
+  white-space: nowrap;
+  background: var(--amber-100);
+  color: #7a5423;
+}

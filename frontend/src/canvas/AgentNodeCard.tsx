@@ -272,10 +272,12 @@ function AgentCard({ nodeId, data: d }: { nodeId: string; data: AgentNodeData })
   // "rare secondary" muted/blue tag the old thinker used; edits-on is the coral (writes-files) tag.
   // An Edits flip re-labels it here (the `--thinker` class is now the edits-off style token).
   const isReadOnly = !editsAllowedOf(d);
+  // M4: what an import left this agent to fix (File-Imported).
+  const fixes = useContext(AuthoringContext).fixChips?.get(nodeId);
 
   return (
     <div
-      className={`rf-node rf-node--${d.status}${d.isEntry ? " rf-node--entry" : ""}${flagClasses(d)}${d.live && LIVE_RING.has(d.live.state) ? ` rf-node--live-${d.live.state}` : ""}${d.carried ? " rf-node--carried" : ""}`}
+      className={`rf-node rf-node--${d.status}${d.isEntry ? " rf-node--entry" : ""}${flagClasses(d)}${d.live && LIVE_RING.has(d.live.state) ? ` rf-node--live-${d.live.state}` : ""}${d.carried ? " rf-node--carried" : ""}${fixes?.length ? " rf-node--fix" : ""}`}
       title={d.errorMessage}
     >
       <NodeHandles />
@@ -309,6 +311,11 @@ function AgentCard({ nodeId, data: d }: { nodeId: string; data: AgentNodeData })
             ● {liveChipText(d.live)}
           </span>
         )}
+        {fixes?.map((text) => (
+          <span key={text} className="rf-node__fix">
+            {text}
+          </span>
+        ))}
       </div>
       {d.live?.activity && (
         <div className="rf-node__live">

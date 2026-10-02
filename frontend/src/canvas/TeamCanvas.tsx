@@ -202,6 +202,7 @@ export function TeamCanvas({
   docChips,
   onOpenDoc,
   carriedOver = NONE_CARRIED,
+  fixChips,
 }: {
   graph: GraphData | null;
   run: RunRow | null;
@@ -234,6 +235,8 @@ export function TeamCanvas({
   onOpenDoc?: (doc: RunDoc) => void;
   /** M3: a resumed run's nodes whose every step was carried (the Activity's "Carried over"). */
   carriedOver?: ReadonlySet<string>;
+  /** M4: an imported team's fix chips by node id (File-Imported). */
+  fixChips?: ReadonlyMap<string, readonly string[]>;
 }) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<AgentNodeData>>([]);
   const [pending, setPending] = useState<PendingConnect | null>(null);
@@ -456,8 +459,9 @@ export function TeamCanvas({
       onOpenModel,
       docChips,
       onOpenDoc,
+      fixChips,
     }),
-    [editable, onDeleteNodes, onOpenModel, docChips, onOpenDoc],
+    [editable, onDeleteNodes, onOpenModel, docChips, onOpenDoc, fixChips],
   );
 
   return (

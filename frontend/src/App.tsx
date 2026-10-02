@@ -1,7 +1,14 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CanvasHeader } from "./canvas/CanvasHeader";
 import { CanvasToolbar } from "./canvas/CanvasToolbar";
+import { ImportFixCard } from "./canvas/ImportFixCard";
 import { RunBlockedBanner } from "./canvas/RunBlockedBanner";
+import { TeamFilePanel } from "./canvas/TeamFilePanel";
+import type { ImportFix } from "./lib/api/teams";
+import { isDesktopApp } from "./lib/desktopRepos";
+import { fixChips, fixRoute, readImportNotice, writeImportNotice } from "./lib/teamImport";
+import { rememberReturnTo } from "./pages/tools/githubReturn";
+import { InstallGithubAppDialog } from "./pages/tools/InstallGithubAppDialog";
 import { credentialBlock, validityBlock } from "./canvas/runBlocked";
 import { TeamCanvas } from "./canvas/TeamCanvas";
 import "./canvas/chrome.css";
@@ -235,6 +242,11 @@ export default function App({
   const [focusNodeId, setFocusNodeId] = useState<string | null>(null);
   // The toolbar's Documents drawer (DOCS-12): the run it shows. Never beside an agent drawer (OQ-20).
   const [docsDrawer, setDocsDrawer] = useState<{ runId: string } | null>(null);
+  // M4: the toolbar's Team file panel (authoring), what an import left to fix (File-Imported, kept
+  // in this tab's session under the team) and the GitHub App install its Sign in opens.
+  const [fileOpen, setFileOpen] = useState(false);
+  const [imported, setImported] = useState(() => (teamId ? readImportNotice(teamId) : null));
+  const [githubInstall, setGithubInstall] = useState(false);
   // Credential preflight for Run (UX): null until the first successful providers load so we
   // don't flash-disable the CTA; once loaded, missing BYOK (and no Desktop subscription cover)
   // blocks launch and points at Engines.
@@ -508,6 +520,7 @@ export default function App({
       if (id === selectedNodeId) return;
       guardLeave(() => {
         if (id) setDocsDrawer(null);
+        if (id) setFileOpen(false);
         setSelectedNodeId(id);
       });
     },
@@ -520,6 +533,7 @@ export default function App({
     (nodeId: string) => {
       const open = () => {
         setDocsDrawer(null);
+        setFileOpen(false);
         setPlace({ node: nodeId, tab: "setup", focus: false });
       };
       if (nodeId === selectedNodeId) open();
@@ -759,6 +773,42 @@ export default function App({
       }),
     [guardLeave, selectedNodeId, setPlace, defaultTab],
   );
+  // M4: like Documents, the Team file panel never shows beside the agent drawer; opening it closes
+  // the drawer (through its unsaved guard).
+  const teamFileOpen = authoring && fileOpen && !nodeDrawerOpen;
+  const openTeamFile = () =>
+    guardLeave(() => {
+      if (selectedNodeId !== null) setPlace({ node: null, tab: defaultTab, focus: false });
+      setFileOpen(true);
+    });
+  const openTeamFileRef = useRef(openTeamFile);
+  openTeamFileRef.current = openTeamFile;
+  // Right after an import: "Imported as a new team", once (its "Open the file" opens the panel).
+  const importToast = useRef(imported?.toast === true);
+  useEffect(() => {
+    if (!importToast.current || !teamId || !imported) return;
+    importToast.current = false;
+    writeImportNotice(teamId, { ...imported, toast: false });
+    toast({
+      message: "Imported as a new team",
+      action: { label: "Open the file", onClick: () => openTeamFileRef.current() },
+    });
+  }, [teamId, imported, toast]);
+  const hideFixes = () => {
+    if (!imported || !teamId) return;
+    const next = { ...imported, hidden: true };
+    setImported(next);
+    writeImportNotice(teamId, next);
+  };
+  const fixChipsByNode = useMemo(
+    () => (imported ? fixChips(imported.fixes) : undefined),
+    [imported],
+  );
+  const handleFix = (fix: ImportFix) => {
+    const route = fixRoute(fix);
+    if (route) guardLeave(() => navigate(route));
+    else setGithubInstall(true);
+  };
   // A canvas chip opens its document in the viewer.
   const openChipDoc = useCallback((doc: RunDoc) => openDoc(doc.id), [openDoc]);
   const openRunDoc = useCallback((docId: string) => openDoc(docId), [openDoc]);
@@ -911,6 +961,14 @@ export default function App({
         }
         teamName={teamGraph?.name ?? ""}
         spend={spendLabel}
+        file={
+          authoring && currentTeamId
+            ? {
+                open: teamFileOpen,
+                onToggle: () => (teamFileOpen ? setFileOpen(false) : openTeamFile()),
+              }
+            : undefined
+        }
         docs={
           toolbarRunId
             ? {
@@ -992,9 +1050,10 @@ export default function App({
               workflowStatus={workflowStatus}
               tasks={authoring ? EMPTY_TASKS : tasks}
               focusNodeId={focusNodeId}
-              panelOpen={docsOpen ? "docs" : nodeDrawerOpen}
+              panelOpen={docsOpen ? "docs" : nodeDrawerOpen || teamFileOpen}
               onSelectNode={(id) => {
                 if (id) setDocsDrawer(null);
+                if (id) setFileOpen(false);
                 setSelectedNodeId(id);
               }}
               editable={authoring}
@@ -1014,6 +1073,7 @@ export default function App({
               docChips={docChips}
               onOpenDoc={openChipDoc}
               carriedOver={carriedOver}
+              fixChips={authoring ? fixChipsByNode : undefined}
             />
             {runBlock && (
               <RunBlockedBanner
@@ -1022,7 +1082,18 @@ export default function App({
                 onMakeThinker={makeThinker}
               />
             )}
+            {authoring && imported && !imported.hidden && imported.fixes.length > 0 && (
+              <ImportFixCard
+                fixes={imported.fixes}
+                note={imported.note}
+                onFix={handleFix}
+                onHide={hideFixes}
+              />
+            )}
           </div>
+          {teamFileOpen && currentTeamId && (
+            <TeamFilePanel teamId={currentTeamId} onClose={() => setFileOpen(false)} />
+          )}
           {authoring
             ? selectedTeamNode &&
               currentTeamId && (
@@ -1122,6 +1193,14 @@ export default function App({
           point={confirmPoint}
           onResume={() => startResumed(resumeAt)}
           onCancel={resumeFlow.closeConfirm}
+        />
+      )}
+      {githubInstall && (
+        <InstallGithubAppDialog
+          url={config?.github_install_url ?? ""}
+          onClose={() => setGithubInstall(false)}
+          // Desktop loads GitHub in this window and reloads: come back to this team.
+          onLeave={() => isDesktopApp() && rememberReturnTo(window.location.hash)}
         />
       )}
     </>

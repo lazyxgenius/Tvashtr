@@ -222,3 +222,255 @@
   background: var(--coral-100);
   color: var(--coral-700);
 }
+
+/* ---- M4: the Team file panel (File-Panel): 420px on the canvas's right ---- */
+.cv-file {
+  position: relative;
+  width: 420px;
+  flex: none;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-card);
+  border-left: 1px solid var(--border-hairline);
+  box-shadow: var(--shadow-drawer);
+  font-family: var(--font-ui);
+  color: var(--text-primary);
+}
+/* ≤1280px it floats over the canvas, as the agent drawer does. */
+@media (max-width: 1280px) {
+  .cv-file {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 4;
+  }
+}
+.cv-file__head {
+  flex: none;
+  padding: 18px 20px 14px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border-bottom: 1px solid var(--line-200);
+}
+.cv-file__icon {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  box-sizing: border-box;
+  border-radius: 8px;
+  background: var(--panel-300);
+  border: 1px solid var(--border-hairline);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-700);
+}
+.cv-file__titles {
+  flex: 1;
+  min-width: 0;
+}
+.cv-file__title {
+  font-family: var(--font-display);
+  font-size: 19px;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+.cv-file__sub {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink-500);
+  margin-top: 3px;
+}
+.cv-file__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.cv-file__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.cv-file__name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-family: var(--font-code);
+  font-size: 12px;
+  color: var(--ink-700);
+}
+.cv-file__seg .tv-seg__btn {
+  font-size: 12.5px;
+}
+.cv-file__code {
+  position: relative;
+  height: 418px;
+  flex: none;
+  box-sizing: border-box;
+  overflow: hidden;
+  border: 1px solid var(--line-200);
+  border-radius: 10px;
+  background: var(--surface-sunk);
+  font-family: var(--font-code);
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--ink-800);
+}
+/* The bottom padding lets the last line scroll clear of the "48 lines" label. */
+.cv-file__scroll {
+  height: 100%;
+  box-sizing: border-box;
+  overflow: auto;
+  padding: 10px 12px 40px 4px;
+}
+.cv-file__scroll:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.cv-file__line {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
+  gap: 10px;
+}
+.cv-file__n {
+  text-align: right;
+  color: var(--ink-400);
+}
+.cv-file__text {
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cv-file__key {
+  color: #3f6690;
+}
+.cv-file__comment {
+  color: var(--ink-500);
+}
+.cv-file__fade {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 56px;
+  background: linear-gradient(rgba(243, 241, 234, 0), var(--surface-sunk));
+  pointer-events: none;
+}
+.cv-file__lines {
+  position: absolute;
+  right: 12px;
+  bottom: 10px;
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  color: var(--ink-500);
+}
+.cv-file__note {
+  box-sizing: border-box;
+  display: flex;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--surface-card);
+  border: 1px solid var(--line-300);
+}
+.cv-file__lock {
+  flex: none;
+  display: inline-flex;
+  color: var(--ink-700);
+  margin-top: 1px;
+}
+.cv-file__note-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.cv-file__note-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-900);
+}
+.cv-file__note-body {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--ink-700);
+}
+.cv-file__foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--border-hairline);
+  background: var(--surface-card);
+}
+.cv-file__foot-note {
+  font-size: 12px;
+  color: var(--ink-500);
+}
+.cv-file__actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* ---- M4: an imported team's "things to fix" card (File-Imported): 340px under the + button ---- */
+.cv-fixes {
+  position: absolute;
+  left: 20px;
+  top: 76px;
+  z-index: 6;
+  width: 340px;
+  box-sizing: border-box;
+  padding: 14px;
+  border-radius: 12px;
+  background: var(--surface-card);
+  border: 1px solid #e2c48f;
+  box-shadow: var(--shadow-raise);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-family: var(--font-ui);
+}
+.cv-fixes__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: 28px;
+}
+.cv-fixes__icon {
+  display: inline-flex;
+  color: #7a5423;
+}
+.cv-fixes__title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink-900);
+}
+.cv-fixes__hide {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+}
+.cv-fixes__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--ink-700);
+}
+.cv-fixes__note {
+  font-size: 12px;
+  color: var(--ink-500);
+}
