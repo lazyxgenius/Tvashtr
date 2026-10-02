@@ -125,6 +125,16 @@
   color: #3f6690;
   background: var(--blue-100);
 }
+/* M6 Agents-Use: the saved agent this card is made from ("Strict reviewer v2"). */
+.rf-node__based {
+  padding: 1px 7px;
+  font-size: 10px;
+  line-height: 1.6;
+  color: #3f6690;
+  background: var(--blue-100);
+  border-radius: 999px;
+  white-space: nowrap;
+}
 .rf-node__engine {
   padding: 1px 7px;
   font-size: 10px;
