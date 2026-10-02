@@ -5,6 +5,7 @@
  */
 import { listDomainSummaries } from "../lib/api/domains";
 import { getInbox } from "../lib/api/home";
+import { listMyAgents } from "../lib/api/myAgents";
 import { getToolkitSummary } from "../lib/api/tools";
 import { isDesktopApp } from "../lib/desktopRepos";
 import { registerBadgeLoader } from "../lib/workspaceStatus";
@@ -39,3 +40,6 @@ registerBadgeLoader("toolkit", async () => {
 });
 
 registerBadgeLoader("engines", loadEngineBadges);
+
+// Toolkit › My agents (M6): the saved agents' count.
+registerBadgeLoader("my-agents", async () => ({ myAgents: (await listMyAgents()).length }));

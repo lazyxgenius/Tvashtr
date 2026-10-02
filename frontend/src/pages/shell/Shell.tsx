@@ -162,6 +162,14 @@ function Nav({
       active: route.page === "skills" || route.page === "skill",
       badge: badges.skills ? <Badge>{badges.skills}</Badge> : null,
     },
+    // M6 (Agents-Page): the saved agents, after Skills.
+    {
+      key: "agents",
+      label: "My agents",
+      route: { page: "agents" },
+      active: route.page === "agents",
+      badge: badges.myAgents ? <Badge>{badges.myAgents}</Badge> : null,
+    },
     {
       key: "memory",
       label: "Memory",

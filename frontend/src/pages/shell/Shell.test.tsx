@@ -115,6 +115,35 @@ describe("Shell", () => {
     expect(onNavigate).toHaveBeenCalledWith({ page: "secrets" });
   });
 
+  it("adds My agents after Skills with its count; every other Toolkit page stays (M6)", async () => {
+    const { onNavigate } = renderShell(
+      { page: "agents" },
+      { connectors: 4, tools: 3, skills: 3, myAgents: 2, memoryInbox: 2, secretsMissing: 1 },
+    );
+    const nav = screen.getByRole("navigation", { name: "Dashboard" });
+    const items = within(nav)
+      .getAllByRole("button")
+      .map((b) => b.textContent);
+    const at = items.indexOf("Toolkit");
+    expect(items.slice(at, at + 7)).toEqual([
+      "Toolkit",
+      "Connectors4",
+      "Tools3",
+      "Skills3",
+      "My agents2",
+      "Memory2 new",
+      "Secrets1 missing",
+    ]);
+    expect(within(nav).getByRole("button", { name: /My agents 2/ })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    await userEvent.click(within(nav).getByRole("button", { name: /Skills/ }));
+    expect(onNavigate).toHaveBeenCalledWith({ page: "skills", view: "mine" });
+    await userEvent.click(within(nav).getByRole("button", { name: /My agents/ }));
+    expect(onNavigate).toHaveBeenCalledWith({ page: "agents" });
+  });
+
   it("puts Connectors first in Toolkit, with its count or what needs fixing", async () => {
     const { onNavigate } = renderShell(
       { page: "connector", connectorId: "c1" },
