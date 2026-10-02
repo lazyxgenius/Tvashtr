@@ -333,6 +333,59 @@ def test_b_cannot_switch_a_node_to_its_backup(w):
         live_state.clear_switch(w.run, inv_id)
 
 
+# ---------------------------------------------------------------------------- resume
+
+
+def _engineer_of(run_id: str) -> str:
+    with session_scope() as session:
+        graph = session.execute(
+            select(Run.team_graph_id).where(Run.workflow_id == run_id)
+        ).scalar_one()
+    return clone_node(str(graph), "engineer")
+
+
+def _failed_step(run_id: str) -> int:
+    add_invocation(run_id, _engineer_of(run_id), "failed")
+    with session_scope() as session:
+        return session.execute(
+            select(AgentInvocation.id).where(AgentInvocation.run_id == run_id)
+        ).scalar_one()
+
+
+def _resumed_from(run_id: str) -> int:
+    with session_scope() as session:
+        return session.execute(
+            select(func.count())
+            .select_from(Run)
+            .where(Run.resumed_from_run_id == uuid.UUID(run_id))
+        ).scalar_one()
+
+
+def test_b_cannot_read_or_resume_a_run(w, monkeypatch):
+    """M3: B can't read A's resume points or resume A's run (404), and B can't resume B's own
+    failed run from one of A's steps (409, nothing created). A's run is a failed run whose first
+    agent step is resumable; B's own step on B's own run is the positive control."""
+    monkeypatch.setattr(routers.DBOS, "start_workflow", lambda *a, **k: None)
+    a_step = _failed_step(w.failed)
+    _assert_refused(w.b.get(f"/api/runs/{w.failed}/resume"), w)
+    _assert_refused(w.b.post(f"/api/runs/{w.failed}/resume", json={"invocation_id": a_step}), w)
+    assert _resumed_from(w.failed) == 0
+
+    b_failed, _ = make_run(w.b_id, None, status="failed", idea="B's failed run")
+    b_step = _failed_step(b_failed)
+    mixed = w.b.post(f"/api/runs/{b_failed}/resume", json={"invocation_id": a_step})
+    assert mixed.status_code == 409, mixed.text
+    for leaked in _a_ids(w):
+        assert leaked not in mixed.text
+    assert _resumed_from(b_failed) == 0
+
+    mine = w.a.get(f"/api/runs/{w.failed}/resume")
+    assert mine.status_code == 200 and mine.json()["available"] is True, mine.text
+    own = w.b.post(f"/api/runs/{b_failed}/resume", json={"invocation_id": b_step})
+    assert own.status_code == 201, own.text
+    assert _resumed_from(b_failed) == 1
+
+
 # ---------------------------------------------------------------------------- tasks
 
 

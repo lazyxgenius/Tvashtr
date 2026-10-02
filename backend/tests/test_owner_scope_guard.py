@@ -451,6 +451,14 @@ ROUTES: dict[str, tuple[str, object]] = {
         "id",
         ["test_owner_scope_runs::test_b_cannot_ask_a_node_of_a_run"],
     ),
+    "GET /api/runs/{run_id}/resume": (
+        "id",
+        ["test_owner_scope_runs::test_b_cannot_read_or_resume_a_run"],
+    ),
+    "POST /api/runs/{run_id}/resume": (
+        "id",
+        ["test_owner_scope_runs::test_b_cannot_read_or_resume_a_run"],
+    ),
     "POST /api/runs/{run_id}/nodes/{node_id}/switch-backup": (
         "id",
         ["test_owner_scope_runs::test_b_cannot_switch_a_node_to_its_backup"],

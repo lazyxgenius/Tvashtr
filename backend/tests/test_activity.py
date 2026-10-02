@@ -355,6 +355,8 @@ def test_a_retrying_step_is_pinned_with_its_backup():
         "task_id": None,
         "backup_model": "openai/gpt-4.1-mini",
         "gate_kind": None,
+        "resume": None,
+        "safe": None,
     }
     agent = {a["label"]: a for a in reply["agents"]}["Engineer"]
     assert agent["live_state"] == "retrying" and agent["retry"]["attempt"] == 2
@@ -420,6 +422,8 @@ def test_an_open_gate_is_a_line_the_pinned_callout_and_needs_you():
         "task_id": 7,
         "backup_model": None,
         "gate_kind": "prd_approval",
+        "resume": None,
+        "safe": None,
     }
     agents = {a["label"]: a for a in reply["agents"]}
     assert agents["Approval"]["live_state"] == "needs_you"
@@ -605,6 +609,8 @@ def test_a_stalled_step_is_pinned_and_outranks_a_retrying_one():
         "task_id": None,
         "backup_model": None,
         "gate_kind": None,
+        "resume": None,
+        "safe": None,
     }
     assert reply["live_state"] == "stalled"
 
