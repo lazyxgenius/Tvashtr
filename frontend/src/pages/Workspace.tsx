@@ -133,6 +133,8 @@ export function Workspace({
         initialRunId={route.runId ?? null}
         resume={route.resume}
         onResumeOpened={() => navigate({ ...route, resume: undefined }, { replace: true })}
+        testFrom={route.testFrom}
+        onTestFromOpened={() => navigate({ ...route, testFrom: undefined }, { replace: true })}
         onBackToDashboard={(view) => navigate(dashViewRoute(view))}
         config={config}
         node={route.node}

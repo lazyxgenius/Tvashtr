@@ -35,7 +35,7 @@ export type EnginesTab = "overview" | "subscriptions" | "keys";
 /** A subscription a link asks Subscriptions to point out (it never starts Connect). */
 export type ConnectTarget = "claude" | "grok";
 export type MemoryTab = "inbox" | "active" | "archive";
-export type NodeTab = "setup" | "skills" | "memory" | "runs" | "docs";
+export type NodeTab = "setup" | "skills" | "memory" | "runs" | "tests" | "docs";
 /** A domain's tabs; `sources` is the bare `#/domains/<id>`. */
 export type DomainTab = "sources" | "ask" | "quality" | "teams" | "settings";
 /** The dashboard section the canvas's back / "Open Engines · Toolkit" controls return to. */
@@ -100,12 +100,14 @@ export type Route =
       compare?: number;
       /** M3: open the run view with its "Resume run #n" panel (Home's Resume). */
       resume?: boolean;
+      /** M7: open the New test dialog on this round (the run view's "Make this a test"). */
+      testFrom?: number;
     };
 
 const ENGINES_TABS: EnginesTab[] = ["overview", "subscriptions", "keys"];
 const CONNECT_TARGETS: ConnectTarget[] = ["claude", "grok"];
 const MEMORY_TABS: MemoryTab[] = ["inbox", "active", "archive"];
-const NODE_TABS: NodeTab[] = ["setup", "skills", "memory", "runs", "docs"];
+const NODE_TABS: NodeTab[] = ["setup", "skills", "memory", "runs", "tests", "docs"];
 const DOMAIN_TABS: DomainTab[] = ["sources", "ask", "quality", "teams", "settings"];
 const SETUP_STEPS: SetupStep[] = ["engines", "project", "team"];
 const SITE_SECTIONS: SiteSection[] = ["product", "how", "domains", "two-ways", "faq"];
@@ -251,6 +253,8 @@ export function parseRoute(hash: string): Route {
       const cmp = num(q.get("compare"));
       if (cmp !== undefined) route.compare = cmp;
       if (route.runId && q.get("resume") === "1") route.resume = true;
+      const testFrom = num(q.get("test_from"));
+      if (!route.runId && route.node && testFrom !== undefined) route.testFrom = testFrom;
       return route;
     }
     default:
@@ -323,6 +327,8 @@ export function routeToHash(route: Route): string {
       if (route.version !== undefined) q.set("v", String(route.version));
       if (route.compare !== undefined) q.set("compare", String(route.compare));
       if (route.runId && route.resume) q.set("resume", "1");
+      if (!route.runId && route.node && route.testFrom !== undefined)
+        q.set("test_from", String(route.testFrom));
       const qs = q.toString();
       return qs ? `${path}?${qs}` : path;
     }
