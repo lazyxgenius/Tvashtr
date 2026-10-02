@@ -83,12 +83,12 @@ test("resume-stopped: a stopped run picks up from the step it stopped at and shi
   expect(await engineerWorking(api, runId, 15), "the Engineer's step opened").toBe(true);
 
   // Stop it from Home › Running now: the dialog's last line is R19's.
-  await page.goto("/#/");
+  await page.goto("/");
   const running = page.getByRole("region", { name: "Running now" });
   const card = running.getByRole("article", { name: /^My team:/ }).first();
   await expect(card).toBeVisible({ timeout: 30_000 });
   await card.getByRole("button", { name: "Stop", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "Stop this run?" });
+  const dialog = page.getByRole("alertdialog", { name: "Stop this run?" });
   await expect(dialog).toBeVisible();
   await expect(dialog).toContainText("You can resume it later from the step it stopped at.");
   await expect(dialog).not.toContainText("You can’t resume a stopped run.");
@@ -115,9 +115,10 @@ test("resume-stopped: a stopped run picks up from the step it stopped at and shi
   const pick = page.getByRole("complementary", { name: /^Resume run #\d+$/ });
   await expect(pick).toBeVisible({ timeout: 30_000 });
   await pick.screenshot({ path: path.join(SHOTS_DIR, "pick.png") });
+  // The suggested step is where it stopped: the Engineer (after the PM, which is kept).
   await pick
     .getByRole("button", { name: /Resume from here/ })
-    .first()
+    .last()
     .click();
   const confirm = page.getByRole("dialog", { name: /^Resume from Engineer/ });
   await expect(confirm).toBeVisible({ timeout: 30_000 });
