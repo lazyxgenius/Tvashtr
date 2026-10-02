@@ -42,10 +42,13 @@ import { DoneSummary } from "./panel/run/live/DoneSummary";
 import { NotifyBell } from "./panel/run/live/NotifyBell";
 import { NowBar } from "./panel/run/live/NowBar";
 import { ResumeConfirm, ResumedFrom, ResumePick } from "./panel/run/live/Resume";
+import { RunMore } from "./panel/run/live/RunLog";
+import { StartedFrom, StartNextDialog } from "./panel/run/live/StartNext";
 import { useResume } from "./panel/run/live/useResume";
 import { useRunActivity } from "./panel/run/live/useRunActivity";
 import { switchToBackup } from "./lib/api/activity";
 import { resumeRun } from "./lib/api/resume";
+import { getNext, startNext } from "./lib/api/startFrom";
 import type { LeaveGuard } from "./panel/useUnsavedGuard";
 import {
   acknowledgeTask,
@@ -1080,6 +1083,17 @@ export default function App({
     const started = await resumeRun(runId, invocationId);
     if (teamOfRun) navigate({ page: "team", teamId: teamOfRun, runId: started.run_id });
   };
+  // M10: a Done run offers "Start the next run from this" only when the server says it can.
+  const next = useLoaded(run?.status === "completed" ? runId : null, () =>
+    getNext(runId as string),
+  );
+  const [nextOpen, setNextOpen] = useState(false);
+  const nextInfo = next.value?.available ? next.value : null;
+  const startFromThis = async (body: Parameters<typeof startNext>[1]) => {
+    if (!runId) return;
+    const started = await startNext(runId, body);
+    if (teamOfRun) navigate({ page: "team", teamId: teamOfRun, runId: started.run_id });
+  };
   const resumedFrom = run?.resumed_from ?? activity?.resumed_from ?? null;
   const confirmPoint = resumeFlow.confirm;
   // Only this run's own steps resume (a step carried from an earlier run has no invocation).
@@ -1171,6 +1185,13 @@ export default function App({
             {inFlight && <CancelRunButton onCancel={() => void handleCancel()} disabled={acting} />}
             <RunBanner runId={runId} run={run} workflowStatus={workflowStatus} costs={costs} />
             {resumedFrom && teamOfRun && <ResumedFrom from={resumedFrom} teamId={teamOfRun} />}
+            {run?.started_from && teamOfRun && (
+              <StartedFrom from={run.started_from} teamId={teamOfRun} />
+            )}
+            {/* M10 (Next-More): an ended run's ⋯, as the boards draw it. */}
+            {runId && !inFlight && (
+              <RunMore runId={runId} number={run?.number ?? null} steps={activity?.total ?? null} />
+            )}
           </>
         )}
         {error && <span className="cv-error">{error}</span>}
@@ -1187,7 +1208,18 @@ export default function App({
       {!authoring &&
         activity &&
         (run?.status === "completed" && activity.summary ? (
-          <DoneSummary idea={run.idea} summary={activity.summary} />
+          <DoneSummary
+            idea={run.idea}
+            summary={activity.summary}
+            startNext={
+              nextInfo
+                ? {
+                    prNumber: nextInfo.pr && !nextInfo.pr.merged ? nextInfo.pr.number : null,
+                    onStart: () => setNextOpen(true),
+                  }
+                : undefined
+            }
+          />
         ) : (
           <NowBar
             agents={activity.agents}
@@ -1412,6 +1444,13 @@ export default function App({
           point={confirmPoint}
           onResume={() => startResumed(resumeAt)}
           onCancel={resumeFlow.closeConfirm}
+        />
+      )}
+      {nextOpen && nextInfo && (
+        <StartNextDialog
+          info={nextInfo}
+          onStart={startFromThis}
+          onCancel={() => setNextOpen(false)}
         />
       )}
       {githubInstall && (
