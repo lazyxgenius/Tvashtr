@@ -19,12 +19,12 @@ function Match({ text, q }: { text: string; q: string }) {
 export function RecentTasksList({ recent, query }: { recent: RecentTasksApi; query: string }) {
   if (!recent.open) return null;
   return (
-    <div id={recent.listId} role="listbox" aria-label="Recent tasks" className="hm-recent">
-      <div className="hm-recent__head" role="presentation">
-        <span className="hm-recent__eyebrow">Recent tasks</span>
+    <div id={recent.listId} role="listbox" aria-label="Recent tasks" className="hm-rtask">
+      <div className="hm-rtask__head" role="presentation">
+        <span className="hm-rtask__eyebrow">Recent tasks</span>
         <span>Picking one fills in the task and its team</span>
       </div>
-      <ul className="hm-recent__list" role="presentation">
+      <ul className="hm-rtask__list" role="presentation">
         {recent.tasks.map((t, i) => {
           const look = runLook(t.status);
           return (
@@ -33,28 +33,28 @@ export function RecentTasksList({ recent, query }: { recent: RecentTasksApi; que
               id={recent.optionId(i)}
               role="option"
               aria-selected={i === recent.active}
-              className="hm-recent__row"
+              className="hm-rtask__row"
               // Keep the caret in the idea box.
               onMouseDown={(e) => e.preventDefault()}
               onMouseEnter={() => recent.setActive(i)}
               onClick={() => recent.pick(t)}
             >
-              <span className="hm-recent__task">
+              <span className="hm-rtask__task">
                 <Match text={t.task} q={query.trim()} />
               </span>
-              <span className="hm-recent__team">{t.team.name}</span>
-              <span className="hm-recent__status">
+              <span className="hm-rtask__team">{t.team.name}</span>
+              <span className="hm-rtask__status">
                 <Badge variant={look.variant} dot>
                   {look.label}
                 </Badge>
-                {t.number != null && <span className="hm-recent__num">#{t.number}</span>}
+                {t.number != null && <span className="hm-rtask__num">#{t.number}</span>}
               </span>
-              <span className="hm-recent__age">{versionAge(t.created_at)}</span>
+              <span className="hm-rtask__age">{versionAge(t.created_at)}</span>
             </li>
           );
         })}
       </ul>
-      <div className="hm-recent__foot" role="presentation">
+      <div className="hm-rtask__foot" role="presentation">
         <span>
           <Kbd>↑</Kbd> <Kbd>↓</Kbd> to choose
         </span>

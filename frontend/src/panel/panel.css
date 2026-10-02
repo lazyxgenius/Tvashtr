@@ -1287,6 +1287,15 @@
 .nd-templates .ds-menu__sep {
   background: var(--line-200);
 }
+/* M6 (Agents-Menu: the menu's right edge at the card's): since M5 History and Open full editor
+   sit right of Templates, so the menu hangs 5px past the card tools' right edge instead of the
+   button's, which keeps it inside the drawer. */
+.nd-card__tools {
+  position: relative;
+}
+.nd-card__tools .nd-templates .ds-anchor {
+  position: static;
+}
 
 /* ---- A new agent's template chooser (Web-NewAgent), in the editor's place ---- */
 .nd-chooser {

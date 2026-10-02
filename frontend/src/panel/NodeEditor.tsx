@@ -381,18 +381,21 @@ function AgentEditor({
   // first through the guard), and the toast's Undo puts back what it replaced.
   const failed = (err: unknown, fallback: string) =>
     toast.show(err instanceof ApiDetailError ? err.message : fallback);
+  // The node changed on the server: reload the team, and the saved agents' "Used in" with it.
+  const reloaded = async () => {
+    await onSaved();
+    setAgentsRev((r) => r + 1);
+  };
   const pickSavedAgent = (agent: SavedAgent) =>
     guard.request(() => {
       void applyAgentToNode(teamId, node.id, agent.id).then(
         async (res) => {
-          await onSaved();
-          setAgentsRev((r) => r + 1);
+          await reloaded();
           toast.show(res.text, {
             label: "Undo",
             onAction: () =>
-              void undoAgent(teamId, node.id, res.before).then(
-                () => onSaved(),
-                (err: unknown) => failed(err, "Couldn’t undo. Try again."),
+              void undoAgent(teamId, node.id, res.before).then(reloaded, (err: unknown) =>
+                failed(err, "Couldn’t undo. Try again."),
               ),
           });
         },
@@ -400,9 +403,8 @@ function AgentEditor({
       );
     });
   const detach = () =>
-    void detachAgent(teamId, node.id).then(
-      () => onSaved(),
-      (err: unknown) => failed(err, "Couldn’t detach. Try again."),
+    void detachAgent(teamId, node.id).then(reloaded, (err: unknown) =>
+      failed(err, "Couldn’t detach. Try again."),
     );
   // More › Save as my agent: the SAVED agent goes, so a dirty draft is saved (or discarded) first.
   const openSaveAgent = () =>
@@ -703,9 +705,8 @@ function AgentEditor({
         onClose={() => setSavingAgent(false)}
         onSaved={(res) => {
           setSavingAgent(false);
-          setAgentsRev((r) => r + 1);
           toast.show(`Saved as ${res.agent.name} v${res.version}`);
-          void onSaved();
+          void reloaded();
         }}
       />
     );
