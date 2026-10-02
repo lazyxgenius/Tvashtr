@@ -18,6 +18,7 @@ import yaml
 from sqlalchemy import select
 
 from tvashtr.config import get_settings
+from tvashtr.control_plane import teams
 from tvashtr.control_plane.credential_gate import missing_providers_for_launch
 from tvashtr.control_plane.credentials import held_provider_slugs, provider_for_model
 from tvashtr.control_plane.graph_validity import validate_graph
@@ -293,7 +294,9 @@ def export_team(session, team: TeamGraph) -> dict:
             agent["tools_off"] = off
         grants = []
         for grant in tv.get("connectors") if isinstance(tv.get("connectors"), list) else []:
-            key = connections.get(_as_uuid(grant.get("id") if isinstance(grant, dict) else None))
+            key = _shared_key(
+                connections.get(_as_uuid(grant.get("id") if isinstance(grant, dict) else None))
+            )
             if key:
                 entry = {"connector": key}
                 if isinstance(grant, dict) and grant.get("access") == "write":
@@ -367,6 +370,17 @@ def export_team(session, team: TeamGraph) -> dict:
     return _masked(data)
 
 
+_CUSTOM = "custom:"  # connector_catalog's custom-server key prefix
+
+
+def _shared_key(key: str | None) -> str | None:
+    """A connector as the file names it: a custom server by its host only (``custom:<host>``) —
+    its address's path can carry its sign-in (``/s/<secret>/mcp``)."""
+    if key and key.startswith(_CUSTOM):
+        return _CUSTOM + key.removeprefix(_CUSTOM).split("/", 1)[0]
+    return key
+
+
 def _masked(value):
     """Every string the file holds through ``mask_secrets`` — the last pass before it leaves."""
     if isinstance(value, str):
@@ -421,7 +435,21 @@ def _export_skills(entries: object, library: dict) -> list:
 # ---------------------------------------------------------------------------------- rendering
 
 
+_YAML_BREAKS = {"\x85": "\\u0085", "\u2028": "\\u2028", "\u2029": "\\u2029"}
+
+
+def _quoted(text: str) -> str:
+    """JSON's double quotes (valid YAML), with the line breaks only YAML has (NEL, U+2028, U+2029)
+    escaped: written raw, YAML would read them as a folded line break."""
+    out = json.dumps(text, ensure_ascii=False)
+    for raw, escaped in _YAML_BREAKS.items():
+        out = out.replace(raw, escaped)
+    return out
+
+
 def _scalar(value) -> str:
+    if isinstance(value, str) and any(c in value for c in _YAML_BREAKS):
+        return _quoted(value)
     text = yaml.safe_dump(value, default_flow_style=True, allow_unicode=True, width=10_000)
     text = text.strip()
     return text[: -len("...")].strip() if text.endswith("...") else text
@@ -441,13 +469,14 @@ def _flow(value) -> str:
         plain = (
             _PLAIN.fullmatch(value) and not value.endswith(" ") and yaml.safe_load(value) == value
         )
-        return value if plain else json.dumps(value, ensure_ascii=False)
+        return value if plain else _quoted(value)
     return _scalar(value)
 
 
 def _block(lead: str, key: str, text: str, indent: str) -> list[str]:
     """``key: |`` with the chomping that gives ``text`` back exactly; a quoted scalar when a literal
-    block can't (leading whitespace, carriage returns)."""
+    block can't (leading whitespace, carriage returns, the line breaks YAML adds — U+2028, U+2029,
+    NEL — or an indented first line): the block is read back to be sure."""
     text = str(text)
     if not text or text[0] in " \t" or "\r" in text:
         return [f"{lead}{key}: {_scalar(text)}"]
@@ -457,9 +486,14 @@ def _block(lead: str, key: str, text: str, indent: str) -> list[str]:
         style, body = "|+", text[:-1]
     else:
         style, body = "|", text[:-1]
-    return [f"{lead}{key}: {style}"] + [
-        f"{indent}{line}" if line else "" for line in body.split("\n")
-    ]
+    lines = [f"{indent}{line}" if line else "" for line in body.split("\n")]
+    try:
+        same = yaml.safe_load("\n".join([f"k: {style}", *lines])) == {"k": text}
+    except yaml.YAMLError:
+        same = False
+    if not same:
+        return [f"{lead}{key}: {_scalar(text)}"]
+    return [f"{lead}{key}: {style}", *lines]
 
 
 def to_yaml(data: dict, *, made: datetime | None = None) -> str:
@@ -513,7 +547,7 @@ def to_yaml(data: dict, *, made: datetime | None = None) -> str:
     if data.get("layout"):
         out.append("")
         out.append("layout:")
-        out.extend(f"  {k}: {_flow(v)}" for k, v in data["layout"].items())
+        out.extend(f"  {_flow(k)}: {_flow(v)}" for k, v in data["layout"].items())
     return "\n".join(out) + "\n"
 
 
@@ -578,16 +612,49 @@ def _plain(value, path, at) -> None:
         )
 
 
+_NOT_JSON = object()
+
+
+def _json(content: str):
+    """The file as JSON when it is JSON (it starts with ``{``), else ``_NOT_JSON``. A key given
+    twice is refused here too (JSON keeps the last one silently)."""
+    if not content.lstrip().startswith("{"):
+        return _NOT_JSON
+
+    def pairs(items: list) -> dict:
+        seen: dict = {}
+        for key, value in items:
+            if key in seen:
+                raise FileError(1, f"`{key}` appears twice.")
+            seen[key] = value
+        return seen
+
+    try:
+        return json.loads(content, object_pairs_hook=pairs)
+    except RecursionError as exc:
+        raise FileError(1, "the file is nested too deeply.") from exc
+    except ValueError:
+        return _NOT_JSON  # YAML flow style, or not valid at all: the YAML reader says which
+
+
 def parse(content: str) -> tuple[dict, list[str]]:
     """``(data, unknown)``: the checked file and the paths of the fields left out. Raises
     :class:`FileError` naming the line of the first problem."""
     if len(content.encode()) > MAX_BYTES:
         raise FileError(1, "the file is too big for a team file (over 512 KB).")
+    data = _json(content)
     try:
-        _events_and_keys(content)
-        root = yaml.compose(content, Loader=yaml.SafeLoader)
-        _check_keys(root)
-        data = yaml.safe_load(content)
+        if data is _NOT_JSON:
+            _events_and_keys(content)
+            root = yaml.compose(content, Loader=yaml.SafeLoader)
+            _check_keys(root)
+            data = yaml.safe_load(content)
+        else:
+            # JSON is read as JSON (tabs, 1e1); YAML only maps its lines, when it can.
+            try:
+                root = yaml.compose(content, Loader=yaml.SafeLoader)
+            except (yaml.YAMLError, ValueError):
+                root = None
     except yaml.MarkedYAMLError as exc:
         mark = exc.problem_mark or exc.context_mark
         line = mark.line + 1 if mark else 1
@@ -598,6 +665,9 @@ def parse(content: str) -> tuple[dict, list[str]]:
         raise FileError(1, "this isn’t valid YAML or JSON.") from exc
     except RecursionError as exc:
         raise FileError(1, "the file is nested too deeply.") from exc
+    except (ValueError, TypeError, AttributeError, KeyError, OverflowError) as exc:
+        # A value YAML can't build (a 13th month, `!!int abc`, a 5000-digit number).
+        raise FileError(1, "this isn’t valid YAML or JSON (a value can’t be read).") from exc
     lines = _line_map(root) if root is not None else {}
 
     def at(*path) -> int:
@@ -709,6 +779,9 @@ def parse(content: str) -> tuple[dict, list[str]]:
         for key in ("tools", "tools_off", "reads"):
             if key in agent:
                 words(agent[key], (*where, key), f"`{key}` should be a list of names.")
+        for key in ("skills", "connectors"):
+            if key in agent and not isinstance(agent[key], list):
+                raise FileError(at(*where, key), f"`{key}` should be a list.")
         for j, skill in enumerate(agent.get("skills") or []):
             if isinstance(skill, str):
                 continue
@@ -725,8 +798,6 @@ def parse(content: str) -> tuple[dict, list[str]]:
                 raise FileError(
                     at(*where, "skills", j), "a skill is a name, or {name, inline} / {repo, ref}."
                 )
-        if "skills" in agent and not isinstance(agent["skills"], list):
-            raise FileError(at(*where, "skills"), "`skills` should be a list.")
         for j, grant in enumerate(agent.get("connectors") or []):
             key = grant.get("connector") if isinstance(grant, dict) else grant
             access = grant.get("access", "read") if isinstance(grant, dict) else "read"
@@ -735,8 +806,6 @@ def parse(content: str) -> tuple[dict, list[str]]:
                     at(*where, "connectors", j),
                     "a connector is {connector: <name>, access?: write}.",
                 )
-        if "connectors" in agent and not isinstance(agent["connectors"], list):
-            raise FileError(at(*where, "connectors"), "`connectors` should be a list.")
         domains = agent.get("domains")
         if domains is not None and domains != "all":
             words(
@@ -793,9 +862,13 @@ def parse(content: str) -> tuple[dict, list[str]]:
             raise FileError(at(*where), "each item of `gates` is a set of fields.")
         take(gate.get("id"), where)
         unknown += [f"gates[{i}].{k}" for k in gate if k not in _GATE_KEYS]
-        if "checks" in gate and gate["checks"] not in GUARDRAIL_GATE_KINDS:
+        if "checks" in gate and (
+            not isinstance(gate["checks"], str) or gate["checks"] not in GUARDRAIL_GATE_KINDS
+        ):
             raise FileError(at(*where, "checks"), "`checks` isn’t a check Tvashtr knows.")
-        if "kind" in gate and gate["kind"] not in _GATE_KINDS:
+        if "kind" in gate and (
+            not isinstance(gate["kind"], str) or gate["kind"] not in _GATE_KINDS
+        ):
             raise FileError(at(*where, "kind"), "`kind` isn’t a gate Tvashtr knows.")
         for key in ("title", "description", "output_file"):
             text(
@@ -898,6 +971,19 @@ def _line_map(node, path=()) -> dict:
 # ---------------------------------------------------------------------------------- the check
 
 
+class _Named(str):
+    """An agent's name as the check words it, remembering the agent's file id: names needn't be
+    unique, so a fix finds its node by the id."""
+
+    file_id: str
+
+
+def _named(agent: dict) -> _Named:
+    name = _Named(agent.get("name") or agent["id"])
+    name.file_id = agent["id"]
+    return name
+
+
 def _who(names: list[str]) -> str:
     names = list(dict.fromkeys(names))
     if not names:
@@ -925,16 +1011,22 @@ def _gather(session, owner_id: uuid.UUID, data: dict) -> dict:
             )
         ).all()
     }
-    connections = {
-        key: (cid, status)
-        for cid, key, status in session.execute(
-            select(
-                ConnectorConnection.id,
-                ConnectorConnection.connector_key,
-                ConnectorConnection.status,
-            ).where(ConnectorConnection.owner_id == owner_id)
-        ).all()
-    }
+    rows = session.execute(
+        select(
+            ConnectorConnection.id,
+            ConnectorConnection.connector_key,
+            ConnectorConnection.status,
+        ).where(ConnectorConnection.owner_id == owner_id)
+    ).all()
+    connections = {key: (cid, status) for cid, key, status in rows}
+    # A file names a custom server by its host: the one connection you have on that host is it.
+    hosts: dict[str, list] = {}
+    for cid, key, status in rows:
+        if key.startswith(_CUSTOM):
+            hosts.setdefault(_shared_key(key), []).append((cid, status))
+    for host, found in hosts.items():
+        if len(found) == 1:
+            connections.setdefault(host, found[0])
     domains = {
         name: did
         for did, name in session.execute(
@@ -955,7 +1047,9 @@ def _gather(session, owner_id: uuid.UUID, data: dict) -> dict:
         "connections": connections,
         "domains": domains,
         "secrets": owner_secret_names(session, owner_id),
+        # A key, or a Claude / Grok plan your Desktop runs right now (a Desktop run uses it).
         "held": held_provider_slugs(owner_id),
+        "fresh": teams._readiness_inputs(session, owner_id)["fresh"],
         "github": installed,
     }
 
@@ -1010,11 +1104,11 @@ def check(session, owner_id: uuid.UUID, data: dict, unknown: list[str]) -> list[
     for agent in agents:
         for key in ("model", "backup_model"):
             if isinstance(agent.get(key), str) and agent[key]:
-                users.setdefault(agent[key], []).append(agent.get("name") or agent["id"])
+                users.setdefault(agent[key], []).append(_named(agent))
     models = list(users)
     missing = set(
         missing_providers_for_launch(
-            models, byok=have["held"], fresh_subscriptions=set(), desktop_target=False
+            models, byok=have["held"], fresh_subscriptions=have["fresh"], desktop_target=True
         )
     )
     bad = [m for m in models if provider_for_model(m) in missing]
@@ -1064,7 +1158,7 @@ def check(session, owner_id: uuid.UUID, data: dict, unknown: list[str]) -> list[
         for grant in agent.get("connectors") or []:
             key = grant.get("connector") if isinstance(grant, dict) else grant
             if key:
-                connector_users.setdefault(key, []).append(agent.get("name") or agent["id"])
+                connector_users.setdefault(key, []).append(_named(agent))
     for key in needs.get("connectors") or []:
         connector_users.setdefault(key, [])
     hosted = get_settings().hosted_mode
@@ -1073,7 +1167,7 @@ def check(session, owner_id: uuid.UUID, data: dict, unknown: list[str]) -> list[
             if not hosted or have["github"]:
                 continue
             ships = [
-                a.get("name") or a["id"]
+                _named(a)
                 for a in agents
                 if a.get("file_access", "can-edit") == "can-edit"
                 and _role(a) not in ("pm", "architect")
@@ -1091,6 +1185,7 @@ def check(session, owner_id: uuid.UUID, data: dict, unknown: list[str]) -> list[
                     "code": [],
                     "action": "sign_in",
                     "target": "github",
+                    "label": "GitHub",
                     "agents": ships[:1] or names,
                 }
             )
@@ -1109,6 +1204,7 @@ def check(session, owner_id: uuid.UUID, data: dict, unknown: list[str]) -> list[
                     "code": [],
                     "action": "sign_in",
                     "target": key,
+                    "label": label,
                     "agents": names,
                 }
             )
@@ -1119,7 +1215,7 @@ def check(session, owner_id: uuid.UUID, data: dict, unknown: list[str]) -> list[
             for entry in agent.get(field) or []:
                 name = entry if field == "tools" else _skill_name(entry)
                 if isinstance(name, str) and name not in have[library]:
-                    wanted.setdefault(name, []).append(agent.get("name") or agent["id"])
+                    wanted.setdefault(name, []).append(_named(agent))
         for name, names in wanted.items():
             rows.append(
                 {
@@ -1147,18 +1243,17 @@ def check(session, owner_id: uuid.UUID, data: dict, unknown: list[str]) -> list[
                         "tone": "warn",
                         "fix": True,
                         "title": f"The Domain {name} isn’t in your account",
-                        "detail": f"{_who([agent.get('name') or agent['id']])} can’t ask it until"
-                        " you pick a Domain.",
+                        "detail": f"{_who([_named(agent)])} can’t ask it until you pick a Domain.",
                         "code": [name],
                         "action": "open_domains",
                         "target": name,
-                        "agents": [agent.get("name") or agent["id"]],
+                        "agents": [_named(agent)],
                     }
                 )
     # What the import will use of yours: it binds by name, so say so.
     uses: dict[str, dict] = {}
     for agent in agents:
-        who = agent.get("name") or agent["id"]
+        who = _named(agent)
         for grant in agent.get("connectors") or []:
             key = grant.get("connector") if isinstance(grant, dict) else grant
             connection = have["connections"].get(key)
@@ -1491,7 +1586,12 @@ def create(
                 "text": _fix_text(row),
                 "action": row.get("action") or "open_team",
                 "target": row.get("target"),
-                "node_ids": [str(i) for n in row.get("agents") or [] for i in by_name.get(n, [])],
+                "label": row.get("label"),  # a sign-in's connector, as the card names it
+                "node_ids": [
+                    str(i)
+                    for n in row.get("agents") or []
+                    for i in ([new_ids[n.file_id]] if isinstance(n, _Named) else by_name.get(n, []))
+                ],
             }
         )
     return team.id, fixes

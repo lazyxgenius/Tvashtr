@@ -23,7 +23,7 @@ agents:
     file_access: can-edit       # can-edit | read-only (edits_allowed)
     skills: [spec-writing, repo-map]     # Toolkit skills by NAME; an inline skill is {name, mode?, inline: "…"}; a repo skill {repo, ref?, filter?, mode?}; project-rules
     tools: [chart-render]       # Toolkit tools by NAME, and inline servers by name (their ${SECRET} names go to needs.secrets; their values never leave)
-    connectors: [{connector: notion, access: read}]   # by provider key
+    connectors: [{connector: notion, access: read}]   # by provider key; a custom server by its host only (custom:<host>: its path can hold its sign-in)
     domains: all | [<domain name>, …]
     reads: [design]             # config.reads_from;  reads_spec: false  (config.reads_default)
     writes: design              # config.writes_to
@@ -53,7 +53,8 @@ layout:
   …
 ```
 
-Reading a file: YAML or JSON (both parse); unknown keys are ignored with a warning naming them; an
+Reading a file: YAML or JSON (both parse; a file starting with `{` is read as JSON — tabs and
+`1e1` included — and YAML only maps its lines); unknown keys are ignored with a warning naming them; an
 invalid file is an error naming its line ("Line 12: `agents` should be a list of agents."). Every id
 used by `routes` / `gates.after` / `layout` must exist.
 
@@ -95,15 +96,16 @@ Body `{"content": "…", "name": "Indicator sprint team (copy)"}`. Re-runs the c
 ```jsonc
 {"team_graph_id": "…", "name": "Indicator sprint team (copy)",
  "fixes": [                         // the canvas's "things to fix" card (File-Imported)
-   {"key": "connector:github", "text": "Sign in to GitHub", "action": "sign_in", "target": "github", "node_ids": ["…"]},
-   {"key": "tool:chart-render", "text": "Add chart-render or remove it", "action": "open_toolkit", "target": "chart-render", "node_ids": ["…"]}
+   {"key": "connector:github", "text": "Sign in to GitHub", "action": "sign_in", "target": "github", "label": "GitHub", "node_ids": ["…"]},
+   {"key": "tool:chart-render", "text": "Add chart-render or remove it", "action": "open_toolkit", "target": "chart-render", "label": null, "node_ids": ["…"]}
  ],
  "note": "You can run the team now. It can’t open a pull request until GitHub is signed in."}
 ```
 Actions: `sign_in` (GitHub: the GitHub App install; a connector: Toolkit › Connectors), `open_toolkit`
 (a tool, skill or secret), `open_engines` (a model's provider key), `open_domains` (a Query domain
 agent's Domain), `open_team` (the graph can't run yet: changed on the team's own canvas — no button).
-`node_ids` are the new team's nodes that need it (their cards show "Needs GitHub" / "1 tool missing").
+`label` is a sign-in's connector as the card names it (null otherwise). `node_ids` are the new team's
+nodes that need it (their cards show "Needs GitHub" / "1 tool missing").
 `note`, the first that applies: a graph that can't run → "The team can’t run until the canvas is
 changed: “Can’t run yet” above it says what."; a model without a key → "The team can’t run until each
 model has a key here, or you pick another model."; GitHub → the line above; any other fix → "You can

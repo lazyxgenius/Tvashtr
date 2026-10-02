@@ -11,6 +11,7 @@ from home_fixtures import fresh_account
 from sqlalchemy import select, update
 
 from tvashtr.config import get_settings
+from tvashtr.control_plane import team_file
 from tvashtr.control_plane.mcp_secrets import set_owner_mcp_secret
 from tvashtr.control_plane.node_library import create_owner_skill, create_owner_tool
 from tvashtr.db import session_scope
@@ -374,6 +375,17 @@ def test_a_repeated_key_is_refused_with_its_line(client):
         ("routes:\n  - {from: pm, to: pm, loop_limit: 1000000000}\n", 7),
         ("routes:\n  - {from: pm, to: pm, type: weird}\n", 7),
         ("gates:\n  - {id: g, asks: you, kind: totally-made-up}\n", 7),
+        # the independent review: a value YAML can't build, or the wrong type where a set is checked
+        ("x: 2026-13-45\n", 1),
+        ("x: " + "1" * 5000 + "\n", 1),
+        ("x: !!int abc\n", 1),
+        ("x: !!float abc\n", 1),
+        ("x: !!timestamp abc\n", 1),
+        ("x: !!bool abc\n", 1),
+        ("    skills: 5\n", 6),
+        ("    connectors: true\n", 6),
+        ("gates:\n  - {id: g, checks: [a]}\n", 7),
+        ("gates:\n  - {id: g, kind: {a: b}}\n", 7),
     ],
 )
 def test_a_malformed_file_is_a_line_not_a_crash(client, tail, line):
@@ -553,3 +565,142 @@ def test_a_model_without_a_key_means_the_team_cant_run_yet(client):
     assert imported["note"] == (
         "The team can’t run until each model has a key here, or you pick another model."
     )
+
+
+# ---------------------------------------------------------------------- the independent review
+
+
+def test_a_custom_connector_is_exported_by_its_host_never_its_path(client):
+    """A custom server's address can carry its sign-in in the path (Zapier's /s/<secret>/mcp): the
+    file names the host only, and an importer with one connection on that host uses it."""
+    secret = "Zk9QbW1zZWNyZXRwYXRodG9rZW4"
+    a, owner_a = fresh_account("tf-cust-a")
+    team = _team(a)
+    with session_scope() as session:
+        conn = ConnectorConnection(
+            owner_id=owner_a,
+            connector_key=f"custom:mcp.zapier.com/api/mcp/s/{secret}/mcp",
+            name="mcp.zapier.com",
+            slug="zapier",
+            url=f"https://mcp.zapier.com/api/mcp/s/{secret}/mcp",
+            auth_kind="oauth",
+            status="connected",
+        )
+        session.add(conn)
+        session.flush()
+        eng = session.execute(
+            select(AgentNode).where(
+                AgentNode.team_graph_id == uuid.UUID(team), AgentNode.role_name == "engineer"
+            )
+        ).scalar_one()
+        eng.tool_config = {"tvashtr": {"connectors": [{"id": str(conn.id)}]}}
+    content = _file(a, team)["content"]
+    assert secret not in content and "/api/mcp" not in content
+    data = yaml.safe_load(content)
+    assert data["needs"]["connectors"] == ["custom:mcp.zapier.com"]
+    b, owner_b = fresh_account("tf-cust-b")
+    with session_scope() as session:
+        mine = ConnectorConnection(
+            owner_id=owner_b,
+            connector_key="custom:mcp.zapier.com/api/mcp/s/other-secret/mcp",
+            name="mcp.zapier.com",
+            slug="zapier",
+            url="https://mcp.zapier.com/api/mcp/s/other-secret/mcp",
+            auth_kind="oauth",
+            status="connected",
+        )
+        session.add(mine)
+        session.flush()
+        mine_id = str(mine.id)
+    keys = {r["key"] for r in _check(b, content)["checks"]}
+    assert "connector:custom:mcp.zapier.com" not in keys
+    imported = _import(b, content)
+    engineer = _node(imported["team_graph_id"], "engineer")
+    assert engineer.tool_config["tvashtr"]["connectors"] == [{"id": mine_id}]
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["line one\u2028line two", "line one\u2029two", "a\x85b", "\n  code\nmore", "x\n\n  y\n"],
+)
+def test_text_a_literal_block_cant_hold_comes_back_exactly(text):
+    data = {
+        "tvashtr_team": 1,
+        "name": "T",
+        "agents": [{"id": "pm", "model": "m", "kind": "thinker", "instructions": text}],
+    }
+    back, _ = team_file.parse(team_file.to_yaml(data))
+    assert back["agents"][0]["instructions"] == text
+
+
+@pytest.mark.parametrize("agent_id", ["yes", "no", "on", "off", "null", "true", "123", "1"])
+def test_a_layout_key_yaml_would_read_as_another_type_stays_the_id(agent_id):
+    data = {
+        "tvashtr_team": 1,
+        "name": "T",
+        "agents": [{"id": agent_id, "model": "m", "kind": "thinker"}],
+        "layout": {agent_id: [0, 0]},
+    }
+    back, unknown = team_file.parse(team_file.to_yaml(data))
+    assert back["layout"] == {agent_id: [0, 0]} and unknown == []
+
+
+def test_json_with_tabs_and_exponents_reads_as_json():
+    data = {
+        "tvashtr_team": 1,
+        "name": "T",
+        "budget_usd": 1e1,
+        "agents": [{"id": "pm", "model": "m", "kind": "thinker"}],
+    }
+    back, _ = team_file.parse(json.dumps(data, indent="\t").replace("10.0", "1e1"))
+    assert back["budget_usd"] == 10.0 and back["agents"][0]["id"] == "pm"
+    with pytest.raises(team_file.FileError) as err:
+        team_file.parse('{\n\t"tvashtr_team": 1,\n\t"name": "T",\n\t"name": "U"\n}')
+    assert "`name` appears twice" in err.value.message
+
+
+def test_a_fix_lands_on_the_agent_that_needs_it_not_every_agent_with_its_name(client):
+    c, _ = fresh_account("tf-twins")
+    content = (
+        "tvashtr_team: 1\nname: T\nagents:\n"
+        "  - {id: engineer, name: Engineer, kind: thinker, model: m}\n"
+        "  - {id: engineer-2, name: Engineer, kind: thinker, model: m2, tools: [chart-render]}\n"
+        "ends:\n  - {id: ship, kind: ship}\n"
+        "routes:\n  - {from: engineer, to: engineer-2}\n  - {from: engineer-2, to: ship}\n"
+    )
+    imported = _import(c, content)
+    fix = next(f for f in imported["fixes"] if f["key"] == "tool:chart-render")
+    assert len(fix["node_ids"]) == 1
+    with session_scope() as session:
+        node = session.get(AgentNode, uuid.UUID(fix["node_ids"][0]))
+        assert node.model == "m2"
+
+
+def test_a_model_your_desktop_plan_covers_is_set_up_here(client, monkeypatch):
+    c, owner = fresh_account("tf-plan")
+    from tvashtr.control_plane import teams
+
+    monkeypatch.setattr(
+        teams,
+        "_readiness_inputs",
+        lambda session, owner_id: {"held": set(), "connected": {"claude"}, "fresh": {"claude"}},
+    )
+    content = (
+        "tvashtr_team: 1\nname: T\nagents:\n  - id: pm\n    kind: thinker\n"
+        "    model: anthropic/claude-sonnet-4\nends:\n  - {id: ship, kind: ship}\n"
+        "routes:\n  - {from: pm, to: ship}\n"
+    )
+    keys = {r["key"] for r in _check(c, content)["checks"]}
+    assert "models" in keys and "model:anthropic/claude-sonnet-4" not in keys
+
+
+def test_a_sign_in_fix_names_its_connector_as_the_catalog_does(client):
+    c, _ = fresh_account("tf-label")
+    content = (
+        "tvashtr_team: 1\nname: T\nagents:\n  - id: pm\n    kind: thinker\n    model: m\n"
+        "    connectors: [{connector: hubspot}]\nends:\n  - {id: ship, kind: ship}\n"
+        "routes:\n  - {from: pm, to: ship}\n"
+    )
+    fix = next(f for f in _import(c, content)["fixes"] if f["key"] == "connector:hubspot")
+    assert fix["text"] == "Sign in to HubSpot" and fix["label"] == "HubSpot"
+    assert all("label" in f for f in _import(c, content)["fixes"])
