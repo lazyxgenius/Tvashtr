@@ -383,12 +383,18 @@ def create(
 
 def try_start(compare_id: uuid.UUID) -> bool | None:
     """Start a waiting compare's two runs if there is room: True started, False still no room,
-    None no longer waiting (stopped, or started elsewhere)."""
+    None no longer waiting (stopped, started elsewhere, or its team deleted) — checked under the
+    compare's row lock, which a team delete's stop takes first."""
     with session_scope() as session:
         cmp = session.execute(
             select(Compare).where(Compare.id == compare_id).with_for_update()
         ).scalar_one_or_none()
-        if cmp is None or cmp.status != "waiting" or cmp.stop_requested:
+        if (
+            cmp is None
+            or cmp.status != "waiting"
+            or cmp.stop_requested
+            or session.get(TeamGraph, cmp.team_graph_id) is None
+        ):
             return None
         started = _launch(session, cmp)
         task = cmp.task

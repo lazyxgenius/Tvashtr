@@ -563,6 +563,38 @@ def test_stop_while_waiting_and_waiters_re_arm_at_startup(client, monkeypatch):
     assert uuid.UUID(cid) not in [uuid.UUID(str(x)) for x in armed]
 
 
+def test_deleting_the_team_stops_its_waiting_compare_first(client, monkeypatch):
+    """The delete cancels the team's runs (freeing slots) before it deletes the team: a waiter
+    waking in between must start nothing — the compare is stopped before any run is cancelled."""
+    from tvashtr.control_plane import teams
+
+    settings = get_settings()
+    c, owner = fresh_account("cmp-del")
+    _seed_dummy_credentials(str(owner))
+    team = _two_versions(c, f"Delete {uuid.uuid4().hex[:8]}")
+    monkeypatch.setattr(settings, "hosted_mode", True)
+    monkeypatch.setattr(settings, "hosted_max_concurrent_runs_per_owner", 2)
+    make_run(owner, team, status="running")  # the team's own run holds a slot
+    resp, _, _ = _post(c, team, monkeypatch)
+    cid = resp.json()["id"]
+    assert resp.json()["status"] == "waiting"
+
+    real_cancel, woke = teams.cancel_run_core, []
+
+    def _cancel(run_id):
+        real_cancel(run_id)
+        woke.append(compare.try_start(uuid.UUID(cid)))  # the waiter wakes to a free slot
+
+    monkeypatch.setattr(teams, "cancel_run_core", _cancel)
+    monkeypatch.setattr(teams.DBOS, "cancel_workflow", lambda wid: None)
+    monkeypatch.setattr(DBOS, "start_workflow", lambda *a, **k: None)
+    try:
+        assert c.delete(f"/api/teams/{team}").status_code == 200
+        assert woke == [None] and _runs_of(cid) == []
+    finally:
+        _end(_runs_of(cid))
+
+
 def test_stop_while_running_stops_both_runs(client, monkeypatch):
     owner = auth_user_id()
     team = _two_versions(client)

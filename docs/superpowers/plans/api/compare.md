@@ -43,6 +43,9 @@ Every route is owner-scoped (another account → 404, never 403), listed in `tes
   installations exactly as `POST /api/runs` checks it (a team file can name any repo); a missing `base_ref`
   is the repo's default branch.
 - One `waiting` or `running` compare per team: a partial unique index (`uq_compares_team_active`) backs the 409.
+- Deleting the team (`DELETE /api/teams/{id}`) stops its `waiting` / `running` compare FIRST (as Stop does), before
+  its runs are cancelled, so a waiter never starts two runs in the slots those cancels free; the waiter re-checks
+  under the compare's row lock that the compare is still `waiting` and the team still exists.
 - A running compare becomes `finished` when both runs have ended — set when it is read (the page, the 409
   check, Stop); nothing watches it.
 
