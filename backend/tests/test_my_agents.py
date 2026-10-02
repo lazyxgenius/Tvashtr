@@ -598,3 +598,25 @@ def test_recent_tasks_look_past_many_reruns(client):
         make_run(owner, team, idea="The same task", status="completed")
     tasks = [t["task"] for t in client.get("/api/recent-tasks").json()["tasks"]]
     assert tasks == ["The same task", "An older task"]
+
+
+def test_a_purpose_over_300_characters_is_refused_not_cut(client):
+    client, owner = fresh_account("ma")
+    team = library_team(client)
+    rev = _node(client, team, "reviewer")
+    long = "x" * 301
+    resp = client.post(
+        "/api/my-agents",
+        json={
+            "team_id": team,
+            "node_id": rev["id"],
+            "name": "Long",
+            "purpose": long,
+            "include": ALL,
+        },
+    )
+    assert resp.status_code == 422
+    agent = _save(client, team, rev["id"], name="Long")["agent"]
+    assert client.patch(f"/api/my-agents/{agent['id']}", json={"purpose": long}).status_code == 422
+    ok = client.patch(f"/api/my-agents/{agent['id']}", json={"purpose": "y" * 300})
+    assert ok.status_code == 200 and ok.json()["purpose"] == "y" * 300

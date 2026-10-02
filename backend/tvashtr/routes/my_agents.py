@@ -36,13 +36,13 @@ class SaveAgentRequest(BaseModel):
     team_id: str
     node_id: str
     name: str = Field(max_length=200)
-    purpose: str | None = Field(default=None, max_length=2000)  # absent: a re-save keeps it
+    purpose: str | None = Field(default=None, max_length=my_agents.PURPOSE_MAX)  # absent: kept
     include: list[Part]
 
 
 class RenameAgentRequest(BaseModel):
     name: str | None = Field(default=None, max_length=200)
-    purpose: str | None = Field(default=None, max_length=2000)
+    purpose: str | None = Field(default=None, max_length=my_agents.PURPOSE_MAX)
 
 
 class UseAgentRequest(BaseModel):

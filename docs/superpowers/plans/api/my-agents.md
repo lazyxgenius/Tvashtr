@@ -45,7 +45,8 @@ team using two versions appears with its lowest). The Templates menu's "v2 · 2 
 Body `{"team_id", "node_id", "name": "Strict reviewer", "purpose": "…", "include": ["instructions",
 "model", "skills_tools", "file_access"]}` (`memories` only when asked). The agent's SAVED state is used
 (the drawer saves its draft first). `name` (1–60 chars, trimmed) names the agent: a name the account
-already has makes the next version of it ("Saved as version 3"), a new name makes v1. The node then
+already has makes the next version of it ("Saved as version 3"), a new name makes v1. `purpose` ≤ 300
+characters (422 beyond — never cut). The node then
 carries `based_on` this version (`purpose` left out keeps the agent's). → `{"agent": <the agents[] item>, "version": 2, "created": false}`.
 422 for an empty name / nothing included; 404 for a node that isn't the caller's agent.
 

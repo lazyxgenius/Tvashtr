@@ -395,9 +395,7 @@ def save(
     if created:
         try:
             with session.begin_nested():
-                agent = SavedAgent(
-                    owner_id=owner_id, name=name, purpose=(purpose or "")[:PURPOSE_MAX]
-                )
+                agent = SavedAgent(owner_id=owner_id, name=name, purpose=purpose or "")
                 session.add(agent)
                 session.flush()
         except IntegrityError:
@@ -408,7 +406,7 @@ def save(
         number = 1
     else:
         if purpose is not None:
-            agent.purpose = purpose[:PURPOSE_MAX]
+            agent.purpose = purpose
         agent.updated_at = now
         number = (
             session.execute(
@@ -443,7 +441,7 @@ def rename(session, owner_id, agent_id, *, name: str | None, purpose: str | None
             raise MyAgentsError(409, f"You already have an agent called {name}.")
         agent.name = name
     if purpose is not None:
-        agent.purpose = purpose[:PURPOSE_MAX]
+        agent.purpose = purpose
     agent.updated_at = datetime.now(UTC)
     session.flush()
     return item(session, owner_id, agent)
