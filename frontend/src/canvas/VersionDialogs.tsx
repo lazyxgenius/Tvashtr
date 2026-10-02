@@ -22,6 +22,7 @@ import {
   restoreVersion,
   type VersionChange,
 } from "../lib/api/versions";
+import { getCompareChanges } from "../lib/api/compare";
 import { ApiDetailError } from "../lib/api/runs";
 import { useModalDialog } from "../lib/useModalDialog";
 import { diffPill, restoreTitles, runLook, versionAge } from "../lib/versionFormat";
@@ -304,6 +305,52 @@ export function VersionChanges({
             </div>
           )}
         </>
+      ) : (
+        <LoadState
+          state={loaded.state === "error" ? "error" : "loading"}
+          loading="Loading what changed"
+          error="Couldn’t load what changed."
+          onRetry={loaded.retry}
+        />
+      )}
+    </VersionDialog>
+  );
+}
+
+/**
+ * M8: Compare versions' "1 change" — M5's What changed, for the compare's A → B rows (the two need
+ * not be next to each other).
+ */
+export function CompareChanges({
+  teamId,
+  a,
+  b,
+  current,
+  onClose,
+}: {
+  teamId: string;
+  a: number;
+  b: number;
+  current: number;
+  onClose: () => void;
+}) {
+  const loaded = useLoaded(`${teamId}:${a}:${b}`, () => getCompareChanges(teamId, a, b));
+  return (
+    <VersionDialog
+      title={`What changed in v${b}`}
+      icon={<History size={17} strokeWidth={1.6} aria-hidden />}
+      sub={`Compared with v${a}`}
+      wide
+      onClose={onClose}
+      footNote={`v${current} is your current version`}
+      actions={
+        <Button variant="primary" onClick={onClose}>
+          Close
+        </Button>
+      }
+    >
+      {loaded.value ? (
+        <ChangeRows changes={loaded.value.rows} />
       ) : (
         <LoadState
           state={loaded.state === "error" ? "error" : "loading"}

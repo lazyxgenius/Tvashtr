@@ -20,6 +20,7 @@ import { SetupPage } from "./desktop/setup/SetupPage";
 import { DomainDetailPage } from "./domains/DomainDetailPage";
 import { DomainsListPage } from "./domains/DomainsListPage";
 import { EnginesPage } from "./engines/EnginesPage";
+import { ComparePage } from "./compare/ComparePage";
 import { CommandPalette } from "./home/CommandPalette";
 import { HomePage } from "./home/HomePage";
 import { MemoryPage } from "./memory/MemoryPage";
@@ -72,6 +73,8 @@ export function Workspace({
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const onCanvas = route.page === "team";
+  // M8: Compare versions is full-window like the canvas.
+  const fullWindow = onCanvas || route.page === "compare";
   const onSetup = route.page === "setup";
   // Tvashtr Desktop: this Mac's first-run setup for the account (DT-17). "none" on the website.
   const setup = useDesktopSetup(user.id);
@@ -112,7 +115,7 @@ export function Workspace({
       onNewTeam: () => requestHomeAction({ kind: "new-team" }),
       onShowShortcuts: () => setShortcutsOpen(true),
     },
-    !onCanvas && !onSetup,
+    !fullWindow && !onSetup,
   );
 
   // Desktop: the few ms the setup store takes to answer, and the redirect into setup.
@@ -167,6 +170,19 @@ export function Workspace({
           if (push && window.location.hash !== from)
             window.history.replaceState({ ...historyState(), [DOC_STEP]: true }, "");
         }}
+      />
+    );
+  }
+
+  if (route.page === "compare") {
+    return (
+      <ComparePage
+        key={route.teamId}
+        teamId={route.teamId}
+        compareId={route.compareId}
+        tab={route.tab}
+        user={user}
+        onLogout={onLogout}
       />
     );
   }

@@ -1,0 +1,442 @@
+/* M8 — Compare versions (Quality › Cmp-*). Every px value is copied from the boards' HTML. */
+.cmp-page {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-page);
+  font-family: var(--font-ui);
+  color: var(--ink-900);
+}
+
+/* ---- The "Compare versions" bar and its tabs ---- */
+.cmp-bar {
+  height: 64px;
+  flex: none;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 24px;
+  background: var(--surface-raised);
+  border-bottom: 1px solid var(--border-hairline);
+}
+.cmp-bar__titles {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.cmp-bar__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 21px;
+  font-weight: 400;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+}
+.cmp-bar__team {
+  font-size: 12.5px;
+  color: var(--ink-500);
+}
+.cmp-tabs {
+  flex: none;
+  background: var(--surface-raised);
+}
+.cmp-tabs .ds-tabs {
+  display: flex;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0 24px;
+  gap: 24px;
+}
+.cmp-tabs .ds-tab {
+  font-size: 14px;
+}
+.cmp-main {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  box-sizing: border-box;
+  padding: 24px 32px;
+}
+
+/* ---- Shared ---- */
+.cmp-narrow {
+  max-width: 900px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.cmp-h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  color: var(--ink-900);
+}
+.cmp-lede {
+  margin: 6px 0 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--ink-600);
+}
+.cmp-tile {
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border-radius: 8px;
+  background: var(--ink-900);
+  color: var(--cream-100);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+.cmp-tile--sm {
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  font-size: 11px;
+}
+.cmp-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--coral-700);
+  cursor: pointer;
+}
+.cmp-mono {
+  font-family: var(--font-code);
+  font-size: 12.5px;
+  color: var(--ink-600);
+}
+.cmp-callout {
+  box-sizing: border-box;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--surface-card);
+  border: 1px solid var(--line-300);
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--ink-700);
+}
+.cmp-callout svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+/* ---- Start (Cmp-Start, Cmp-OneVersion) ---- */
+.cmp-pick {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 70px minmax(0, 1fr);
+  gap: 12px;
+  align-items: stretch;
+}
+.cmp-pick__card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--border-hairline);
+  border-radius: 14px;
+  background: var(--surface-card);
+}
+.cmp-pick__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.cmp-pick__row > .ds-select-wrap {
+  flex: 1;
+}
+.cmp-pick__cap {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-600);
+}
+.cmp-pick__vs {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+.cmp-pick__vs > span {
+  font-family: var(--font-display);
+  font-size: 18px;
+  color: var(--ink-500);
+}
+.cmp-start__on {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.cmp-eyebrow {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-500);
+}
+.cmp-start__repo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--ink-600);
+}
+.cmp-start__repo code {
+  font-family: var(--font-code);
+  font-size: 12px;
+  color: var(--ink-800);
+}
+.cmp-start__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line-200);
+  font-size: 13px;
+  color: var(--ink-600);
+}
+.cmp-start__foot b {
+  font-weight: 600;
+  color: var(--ink-900);
+}
+.cmp-start__error {
+  margin-top: -8px;
+  text-align: right;
+  font-size: 12.5px;
+  color: var(--danger);
+}
+
+/* ---- Running (Cmp-Running, Cmp-Queued, Cmp-NeedsYou) ---- */
+.cmp-run__head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.cmp-run__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+.cmp-run__meta {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+.cmp-lanes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+.cmp-lane {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border-hairline);
+  border-radius: 16px;
+  background: var(--surface-card);
+  overflow: hidden;
+}
+.cmp-lane__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line-200);
+}
+.cmp-lane__v {
+  font-family: var(--font-code);
+  font-size: 14px;
+  font-weight: 600;
+}
+.cmp-lane__meta {
+  margin-left: auto;
+  font-family: var(--font-code);
+  font-size: 12px;
+  color: var(--ink-600);
+}
+.cmp-lane__strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line-200);
+}
+.cmp-lane__now {
+  font-size: 12.5px;
+  color: var(--ink-700);
+  text-align: right;
+}
+.cmp-lane__lines {
+  list-style: none;
+  margin: 0;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.cmp-line--warn {
+  background: #fbf3e6;
+  border-radius: 8px;
+}
+.cmp-line--now {
+  background: #fbf0ea;
+  border-radius: 8px;
+}
+.cmp-ago {
+  font-family: var(--font-code);
+  font-size: 11px;
+  color: var(--coral-700);
+}
+.cmp-lane__queued {
+  padding: 14px 16px;
+  font-size: 13px;
+  color: var(--ink-500);
+}
+.cmp-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 16px 0 0;
+  font-size: 12.5px;
+  color: var(--ink-600);
+}
+
+/* ---- Results (Cmp-Results, Cmp-SideFailed) ---- */
+.cmp-res {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.cmp-res__head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+}
+.cmp-res__sub {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--ink-600);
+}
+.cmp-res__wrap {
+  border: 1px solid var(--border-hairline);
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--surface-card);
+}
+.cmp-res__table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+.cmp-res__table col:first-child {
+  width: 236px;
+}
+.cmp-res__table col:last-child {
+  width: 218px;
+}
+.cmp-res__table th,
+.cmp-res__table td {
+  padding: 11px 8px;
+  border-bottom: 1px solid var(--line-200);
+  text-align: left;
+  vertical-align: middle;
+}
+.cmp-res__table tr > :first-child {
+  padding-left: 18px;
+}
+.cmp-res__table tr > :last-child {
+  padding-right: 18px;
+}
+.cmp-res__table thead th {
+  padding-top: 12px;
+  padding-bottom: 12px;
+  background: var(--surface-sunk);
+  font-weight: 400;
+}
+.cmp-res__side {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.cmp-res__side code {
+  font-family: var(--font-code);
+  font-size: 13px;
+  color: var(--ink-900);
+}
+.cmp-res__table thead th.cmp-res__diffhead {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-500);
+}
+.cmp-res__label {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--ink-600);
+}
+.cmp-res__cell {
+  font-size: 13.5px;
+  color: var(--ink-800);
+}
+.cmp-res__cell svg {
+  margin-right: 6px;
+  vertical-align: -2px;
+  color: #52613e;
+}
+.cmp-res__cell--better {
+  color: #3d4a2c;
+  font-weight: 600;
+}
+.cmp-res__cell--failed {
+  color: #8e3a2e;
+}
+.cmp-res__diff {
+  font-size: 12.5px;
+  color: var(--ink-500);
+}
+.cmp-res__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--ink-600);
+}
+.cmp-res__acts {
+  display: flex;
+  gap: 8px;
+}
+
+/* ---- Versions (Cmp-Versions): History's version rows ---- */
+.cmp-vers {
+  list-style: none;
+  margin: 0;
+  padding: 20px 24px 2px;
+  border: 1px solid var(--border-hairline);
+  border-radius: 14px;
+  background: var(--surface-card);
+}

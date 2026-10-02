@@ -39,6 +39,10 @@ export interface CompareStripChip {
   label: string;
   kind: string;
   state: string;
+  /** The chip's icon (Home's `RunProgressChip.role_name`); absent: picked from the label. */
+  role_name?: string;
+  /** "⇄" between this chip and its loop partner (Home's `RunProgressChip.loops_with`). */
+  loops_with?: string | null;
 }
 
 export interface CompareSide {

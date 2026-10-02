@@ -42,6 +42,21 @@ vi.mock("../App", () => ({
   ),
 }));
 vi.mock("./home/HomePage", () => ({ HomePage: () => <div>HOME BODY</div> }));
+vi.mock("./compare/ComparePage", () => ({
+  ComparePage: ({
+    teamId,
+    compareId,
+    tab,
+  }: {
+    teamId: string;
+    compareId?: string;
+    tab?: string;
+  }) => (
+    <div>
+      COMPARE {teamId} {compareId ?? "-"} {tab ?? "compare"}
+    </div>
+  ),
+}));
 vi.mock("./engines/EnginesPage", () => ({
   EnginesPage: ({
     tab,
@@ -163,6 +178,12 @@ describe("Workspace", () => {
   it("opens a team's canvas full-window, with the run from the address", () => {
     renderAt("#/teams/t1/runs/r9");
     expect(screen.getByText("CANVAS t1 r9")).toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "Dashboard" })).toBeNull();
+  });
+
+  it("opens a team's compare page full-window, with the compare and tab from the address (M8)", () => {
+    renderAt("#/teams/t1/compare/c9?tab=versions");
+    expect(screen.getByText("COMPARE t1 c9 versions")).toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "Dashboard" })).toBeNull();
   });
 
