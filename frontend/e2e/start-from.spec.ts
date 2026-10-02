@@ -107,6 +107,9 @@ test("start from a run: Done → Start the next run from this → carried contex
   await expect(page.getByRole("link", { name: `From run #${n1}` })).toBeVisible({
     timeout: 60_000,
   });
+  // The Activity shows the last six lines: the first one may already be among the earlier steps.
+  const earlier = page.getByRole("button", { name: /^Show \d+ earlier steps?$/ });
+  if (await earlier.isVisible().catch(() => false)) await earlier.click();
   const startLine = page.getByText(new RegExp(`^Started from run #${n1} · brought `));
   await expect(startLine).toBeVisible({ timeout: 60_000 });
   await page.getByRole("button", { name: "See what came along" }).click();
