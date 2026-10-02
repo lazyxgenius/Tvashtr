@@ -3,6 +3,7 @@ import { type ReactNode, useState } from "react";
 
 import { Button, IconButton, useToast } from "../design-system/components";
 import { getTeamFile, type TeamFileFormat } from "../lib/api/teams";
+import { downloadText } from "../lib/download";
 import { LoadState } from "../panel/runs/RunsTab";
 import { useLoaded } from "../panel/runs/useLoaded";
 import { useDockedPanel } from "./useDockedPanel";
@@ -45,19 +46,6 @@ function tint(line: string, format: TeamFileFormat): ReactNode {
       {comment && <span className="cv-file__comment">{comment}</span>}
     </>
   );
-}
-
-/** Save a file in the same window: never `window.open`, which Desktop hands to the browser. */
-function downloadText(text: string, filename: string): void {
-  const url = URL.createObjectURL(new Blob([text], { type: "text/plain;charset=utf-8" }));
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.rel = "noopener";
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
 }
 
 /**
