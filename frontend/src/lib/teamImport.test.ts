@@ -56,3 +56,10 @@ describe("a Domain the import couldn't find (M4)", () => {
     expect(fixChips([f]).get("ask")).toEqual(["Needs a Domain"]);
   });
 });
+
+describe("a sign-in's chip (M4)", () => {
+  it("names the connector as the card does (the server's label)", () => {
+    const f = { ...fix("connector:hubspot", "sign_in", "hubspot", ["eng"]), label: "HubSpot" };
+    expect(fixChips([f]).get("eng")).toEqual(["Needs HubSpot"]);
+  });
+});

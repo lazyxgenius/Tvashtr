@@ -271,6 +271,24 @@ describe("Import a team file — the check", () => {
     expect(within(dialog).getByRole("button", { name: "Import as a new team" })).toBeEnabled();
   });
 
+  it("a file that can't be read once picked says so instead of checking forever", async () => {
+    handler = () => json(CHECK);
+    vi.spyOn(HTMLInputElement.prototype, "click").mockImplementation(() => {});
+    renderCheck();
+    const dialog = screen.getByRole("dialog", { name: "Import a team file" });
+    await within(dialog).findByLabelText("Team name");
+    const gone = {
+      name: "moved.yaml",
+      text: () => Promise.reject(new DOMException("gone", "NotReadableError")),
+    } as File;
+    fireEvent.change(screen.getByTestId("import-another-input"), { target: { files: [gone] } });
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+      "Couldn’t check the file — is the backend running?",
+    );
+    expect(within(dialog).queryByText("Checking…")).toBeNull();
+    expect(within(dialog).getByRole("button", { name: "Import as a new team" })).toBeDisabled();
+  });
+
   it("Cancel and Escape close it", async () => {
     const { onClose } = renderCheck();
     const dialog = screen.getByRole("dialog", { name: "Import a team file" });

@@ -178,6 +178,8 @@ export interface ImportFix {
   /** `open_team`: the team's graph can't run yet; it's changed on its own canvas. */
   action: "sign_in" | "open_toolkit" | "open_engines" | "open_domains" | "open_team";
   target: string | null;
+  /** A sign-in's connector as the card names it ("HubSpot"); null otherwise. */
+  label?: string | null;
   /** The new team's nodes that need it. */
   node_ids: string[];
 }

@@ -49,10 +49,10 @@ function ImportBody({ file, onClose }: { file: File; onClose: () => void }) {
     setCheckFailed(false);
     setImportError(null);
     setNameError(null);
-    const content = await f.text();
-    if (mine !== seq.current) return;
-    setPicked({ name: f.name, content });
     try {
+      const content = await f.text();
+      if (mine !== seq.current) return;
+      setPicked({ name: f.name, content });
       const result = await checkTeamImport(content, f.name);
       if (mine !== seq.current) return;
       setCheck(result);

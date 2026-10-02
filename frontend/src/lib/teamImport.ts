@@ -80,8 +80,9 @@ export function fixChips(fixes: readonly ImportFix[]): Map<string, string[]> {
       else if (f.key.startsWith("skill:")) n.skills += 1;
       else if (f.action === "open_engines") n.needs.push("Needs a model key");
       else if (f.action === "open_domains") n.needs.push("Needs a Domain");
-      else
-        n.needs.push(`Needs ${f.action === "sign_in" ? providerWord(f.target ?? "") : f.target}`);
+      else if (f.action === "sign_in")
+        n.needs.push(`Needs ${f.label ?? providerWord(f.target ?? "")}`);
+      else n.needs.push(`Needs ${f.target}`);
       byNode.set(id, n);
     }
   }
@@ -94,4 +95,15 @@ export function fixChips(fixes: readonly ImportFix[]): Map<string, string[]> {
     ]);
   }
   return chips;
+}
+
+const revisions = new WeakMap<object, number>();
+let lastRevision = 0;
+/** A number that changes whenever the canvas's graph object does (each load or local edit makes a
+ *  new one): the Team file panel reads the file again on it. */
+export function graphRevision(graph: object | null): number {
+  if (!graph) return 0;
+  let n = revisions.get(graph);
+  if (n === undefined) revisions.set(graph, (n = ++lastRevision));
+  return n;
 }

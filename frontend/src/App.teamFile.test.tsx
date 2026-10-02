@@ -194,7 +194,11 @@ describe("App — M4 an imported team (File-Imported)", () => {
     fireEvent.click(within(card).getByRole("button", { name: "Hide" }));
     expect(screen.queryByRole("region", { name: "Things to fix" })).toBeNull();
     expect(screen.getByText("Needs GitHub")).toBeInTheDocument();
-    expect(JSON.parse(sessionStorage.getItem(KEY) ?? "{}")).toMatchObject({ hidden: true });
+    // Hidden, and the spent toast stays spent (a reload shows neither).
+    expect(JSON.parse(sessionStorage.getItem(KEY) ?? "{}")).toMatchObject({
+      hidden: true,
+      toast: false,
+    });
 
     // The toast's Open the file opens the Team file panel.
     fireEvent.click(screen.getByRole("button", { name: "Open the file" }));

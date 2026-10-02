@@ -6,7 +6,13 @@ import { RunBlockedBanner } from "./canvas/RunBlockedBanner";
 import { TeamFilePanel } from "./canvas/TeamFilePanel";
 import type { ImportFix } from "./lib/api/teams";
 import { isDesktopApp } from "./lib/desktopRepos";
-import { fixChips, fixRoute, readImportNotice, writeImportNotice } from "./lib/teamImport";
+import {
+  fixChips,
+  fixRoute,
+  graphRevision,
+  readImportNotice,
+  writeImportNotice,
+} from "./lib/teamImport";
 import { rememberReturnTo } from "./pages/tools/githubReturn";
 import { InstallGithubAppDialog } from "./pages/tools/InstallGithubAppDialog";
 import { credentialBlock, validityBlock } from "./canvas/runBlocked";
@@ -796,7 +802,7 @@ export default function App({
   }, [teamId, imported, toast]);
   const hideFixes = () => {
     if (!imported || !teamId) return;
-    const next = { ...imported, hidden: true };
+    const next = { ...imported, hidden: true, toast: false };
     setImported(next);
     writeImportNotice(teamId, next);
   };
@@ -1092,7 +1098,11 @@ export default function App({
             )}
           </div>
           {teamFileOpen && currentTeamId && (
-            <TeamFilePanel teamId={currentTeamId} onClose={() => setFileOpen(false)} />
+            <TeamFilePanel
+              teamId={currentTeamId}
+              revision={graphRevision(teamGraph)}
+              onClose={() => setFileOpen(false)}
+            />
           )}
           {authoring
             ? selectedTeamNode &&

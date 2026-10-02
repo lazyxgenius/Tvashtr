@@ -64,9 +64,20 @@ function downloadText(text: string, filename: string): void {
  * M4 — the canvas header's Team file panel (File-Panel): the whole team as one read-only file,
  * YAML or JSON as the server renders it, with Copy and Download. Never secret values or sign-ins.
  */
-export function TeamFilePanel({ teamId, onClose }: { teamId: string; onClose: () => void }) {
+export function TeamFilePanel({
+  teamId,
+  revision = 0,
+  onClose,
+}: {
+  teamId: string;
+  /** Bumped whenever the canvas's graph changes: the file is read again, so it matches. */
+  revision?: number;
+  onClose: () => void;
+}) {
   const [format, setFormat] = useState<TeamFileFormat>("yaml");
-  const file = useLoaded(`${teamId}:${format}`, () => getTeamFile(teamId, format), { keep: true });
+  const file = useLoaded(`${teamId}:${format}:${revision}`, () => getTeamFile(teamId, format), {
+    keep: true,
+  });
   const toast = useToast();
   const close = useRef<HTMLButtonElement>(null);
   const onCloseRef = useRef(onClose);
