@@ -39,6 +39,7 @@ from tvashtr.control_plane import (
     resume,
     run_views,
     stall_sweep,
+    team_file,
     toolkit,
 )
 from tvashtr.control_plane.connector_proxy import EVENT_KINDS as CONNECTOR_EVENT_KINDS
@@ -3394,6 +3395,122 @@ def _latest_invocation_by_origin(
             status,
             ended_at,
         ) in rows
+    }
+
+
+# ---- M4: the team file (export, a check before anything changes, import as a new team) ----------
+
+
+class TeamFileRequest(BaseModel):
+    content: str
+    filename: str | None = None
+
+
+class ImportTeamRequest(BaseModel):
+    content: str
+    name: str | None = None
+
+
+def _team_file_lines(content: str) -> int:
+    return content.count("\n") + (0 if content.endswith("\n") or not content else 1)
+
+
+@router.get("/api/teams/{team_id}/file")
+def get_team_file(
+    team_id: str,
+    current_user: Annotated[UserOut, Depends(get_current_user)],
+    format: Literal["yaml", "json"] = "yaml",
+) -> dict:
+    """M4: the library team as one readable file (``tvashtr_team: 1``, YAML or JSON): agents,
+    models, gates, routes and what it needs by name — never a secret value, key, sign-in, token or
+    memory. Owner-scoped (404)."""
+    with db.session_scope() as session:
+        team = _require_library_team(session, team_id, uuid.UUID(current_user.id))
+        data = team_file.export_team(session, team)
+        content = team_file.to_yaml(data) if format == "yaml" else team_file.to_json(data)
+        return {
+            "filename": team_file.file_name(team.name, format),
+            "format": format,
+            "content": content,
+            "lines": _team_file_lines(content),
+            "needs": data["needs"],
+        }
+
+
+def _public_check(row: dict) -> dict:
+    return {
+        "key": row["key"],
+        "tone": row["tone"],
+        "title": row["title"],
+        "detail": row["detail"],
+        "code": row.get("code") or [],
+        "fix": bool(row.get("fix")),
+    }
+
+
+@router.post("/api/teams/import-check")
+def check_team_file(
+    body: TeamFileRequest, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> dict:
+    """M4: a dry run of importing a team file — nothing changes. Says what the file holds and what
+    this account would have to fix (models, connectors, Toolkit tools / skills, Domains, secrets by
+    name), or the line of the first problem. Reads only the caller's own account."""
+    reply = {
+        "ok": False,
+        "error": None,
+        "filename": body.filename,
+        "lines": _team_file_lines(body.content),
+        "name": None,
+        "counts": None,
+        "checks": [],
+        "fixes": 0,
+    }
+    try:
+        data, unknown = team_file.parse(body.content)
+    except team_file.FileError as exc:
+        reply["error"] = {"line": exc.line, "message": exc.message}
+        return reply
+    with db.session_scope() as session:
+        rows = team_file.check(session, uuid.UUID(current_user.id), data, unknown)
+    reply.update(
+        ok=True,
+        name=team_file.suggested_name(data),
+        counts={
+            "agents": len(data["agents"]),
+            "gates": len(data.get("gates") or []),
+            "routes": len(data.get("routes") or []),
+        },
+        checks=[_public_check(r) for r in rows],
+        fixes=sum(1 for r in rows if r.get("fix")),
+    )
+    return reply
+
+
+@router.post("/api/teams/import", status_code=201)
+def import_team_file(
+    body: ImportTeamRequest, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> dict:
+    """M4: import a team file as a NEW library team of the caller's ("<name> (copy)" unless named).
+    Runs the same check first; 422 ``{"error": {line, message}}`` when the file can't be imported.
+    Never touches an existing team. Returns the things to fix (the canvas's card)."""
+    owner_id = uuid.UUID(current_user.id)
+    try:
+        data, unknown = team_file.parse(body.content)
+    except team_file.FileError as exc:
+        raise HTTPException(
+            status_code=422, detail={"error": {"line": exc.line, "message": exc.message}}
+        ) from exc
+    name = (body.name if body.name is not None else team_file.suggested_name(data)).strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="the team needs a name")
+    with db.session_scope() as session:
+        rows = team_file.check(session, owner_id, data, unknown)
+        team_id, fixes = team_file.create(session, owner_id, data, name[:200], rows)
+    return {
+        "team_graph_id": str(team_id),
+        "name": name[:200],
+        "fixes": fixes,
+        "note": team_file.import_note(fixes),
     }
 
 

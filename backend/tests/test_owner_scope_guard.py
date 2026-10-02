@@ -603,6 +603,20 @@ ROUTES: dict[str, tuple[str, object]] = {
             "test_owner_scope_teams::test_b_own_team_with_a_node_or_edge_is_404",
         ],
     ),
+    "GET /api/teams/{team_id}/file": (
+        "id",
+        ["test_team_file::test_another_account_cannot_read_a_team_file"],
+    ),
+    "POST /api/teams/import-check": (
+        "own",
+        "a dry run over the posted file text against the caller's own Toolkit, connectors, keys and"
+        " Domains; it takes no id and changes nothing",
+    ),
+    "POST /api/teams/import": (
+        "own",
+        "creates a NEW library team owned by the caller from the posted file text; it takes no id"
+        " and never touches an existing team",
+    ),
     "GET /api/teams/{team_id}/graph": (
         "id",
         ["test_owner_scope_teams::test_b_gets_404_for_a_path_ids"],
