@@ -317,6 +317,25 @@ const checkedVersions = (v8check) => {
   };
 };
 const PASSED = checkedVersions(check(5, 7, 5, -0.7));
+// Set-CheckNotStarted: Save and check, the save made v8 and the check was refused; then the
+// summary reads v8 saved just now (no changes).
+const NOT_STARTED = "This team already has a compare running. Stop it first.";
+const notStartedRoutes = (desktop) => {
+  const before = saveRoutes(desktop);
+  let saved = false;
+  return {
+    ...before,
+    [VERSIONS_KEY]: () => ({
+      json: saved
+        ? { ...before[VERSIONS_KEY], current: 8, next: 9, changes: 0, saved_at: new Date().toISOString(), tests: null }
+        : before[VERSIONS_KEY],
+    }),
+    [`POST /api/teams/${TEAM_ID}/versions`]: () => {
+      saved = true;
+      return { status: 201, json: { number: 8, tests_started: [], check_started: null, check_error: NOT_STARTED } };
+    },
+  };
+};
 const WORSE = checkedVersions(check(3, 7, 5, 0.4, true));
 const historyRoutes = (desktop, versions) => ({
   ...teamRoutes(desktop),
@@ -399,6 +418,20 @@ export default [
     `${page}/${SET_CMP}`,
   ),
   ...cmpBoard(
+    "Set-StopConfirm",
+    withSets(START_ROUTES, SETS, {
+      [START_KEY]: { ...START_ROUTES[START_KEY], task_sets: SETS.map(refOf), latest: { id: SET_CMP, status: "running" } },
+      [CMP_KEY(SET_CMP)]: SET_RUNNING,
+    }),
+    async (p) => {
+      await resultsReady("Tasks")(p);
+      await p.getByRole("button", { name: "Stop compare" }).click();
+      await p.getByRole("alertdialog", { name: "Stop this compare?" }).waitFor();
+      await still(p);
+    },
+    `${page}/${SET_CMP}`,
+  ),
+  ...cmpBoard(
     "Set-Results",
     withSets(START_ROUTES, SETS, { [CMP_KEY(SET_CMP)]: SET_RESULTS }),
     resultsReady("Results"),
@@ -414,6 +447,12 @@ export default [
     const dialog = await saveAs(p);
     await dialog.getByLabel("What changed (optional)").fill("Engineer on GPT-4.1; Reviewer names files");
     await p.evaluate(() => document.activeElement?.blur());
+  }),
+  ...canvasBoard("Set-CheckNotStarted", notStartedRoutes, async (p) => {
+    const dialog = await saveAs(p);
+    await dialog.getByRole("button", { name: "Save and run tests" }).click();
+    await p.getByText(/The check on Indicators didn’t start/).waitFor();
+    await p.getByText("saved just now").waitFor({ timeout: 5000 }).catch(() => {});
   }),
   // History as opened (the pills), then scrolled to the callout (`<board>-callout-web` / `-desktop`).
   ...canvasBoard("Set-Checked", (d) => historyRoutes(d, PASSED), history),

@@ -173,3 +173,20 @@ kept-m9-saveas: web 23/23, desktop 23/23 kept items present — none missing (re
 kept-m9-saveas-nocheck: web 23/23, desktop 23/23 kept items present — none missing
 # and the earlier records still hold on m09-parity: kept-m8-teamcanvas-web 14/14, -desktop 14/14; kept-m7-history-web 29/29, -desktop 29/29;
 #   kept-m7-teamcanvas-web 46/46, -desktop 46/46 (each adds only "button: Compare"; kept-m7-teamcanvas also MA's "tab: Tests 6").
+
+# ---- After the independent review (feat/m09-task-sets, 3b12af4): two boards added first (Quality v1790973133-8c3e) ----
+# Set-StopConfirm ("M9 · Stop a set compare?", built from Set-Running + Cmp-StopConfirm's dialog with a set's words) and
+#   Set-CheckNotStarted ("M9 · Saved, but the check didn’t start", built from Set-SaveCheck: the save done — v8 · saved just now — and
+#   the app's toast with the server's reason). Shot with shoot-design.mjs (fonts-ok ×2) and task-sets.mjs's two new scenarios (Vite :5332).
+Set-StopConfirm desktop: matched 48/48 design items · 0 with size/type drift · 12 only moved · 0 not found in app
+Set-StopConfirm web: matched 46/48 design items · 0 with size/type drift · 12 only moved · 2 not found in app
+Set-CheckNotStarted desktop: matched 26/35 design items · 0 with size/type drift · 11 only moved · 9 not found in app
+Set-CheckNotStarted web: matched 24/35 design items · 0 with size/type drift · 11 only moved · 11 not found in app
+# New elements at 0 drift: the confirm's words "Every run of this compare stops now and is marked Stopped, and the tasks not started yet
+#   won’t start. Nothing ships in a compare." (13.5px) under 'Stop this compare?' (22px Newsreader); the toast "Saved v8. The check on
+#   Indicators didn’t start: This team already has a compare running. Stop it first." (13px) and the chip "v8 · saved just now".
+# note (layout, only moved) the confirm is centred in the window (470,383) where the board draws (493,283) — the existing
+#   ConfirmDialog's placement (as m8.txt's Cmp-StopConfirm); the canvas cards behind Set-CheckNotStarted are versions.mjs's (app governs).
+# waiver: app governs (brief 2.2/2.3) — the canvas behind Set-CheckNotStarted (its cards' words 'Up to 3 rounds', 'Grok plan · this
+#   Mac', '2 skills', 'Spec approval', 'Gate · asks you', '4 skills', 'GitHub', 'Read-only' — as Set-SaveCheck above); 'More for this
+#   team' not built (as m5/m7/m8); each web render's 2 extra "not found" are by rule (the Desktop title strip and env chip).
