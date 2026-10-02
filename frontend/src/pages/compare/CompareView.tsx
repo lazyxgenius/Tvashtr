@@ -1,5 +1,15 @@
-import { Check, Info, RotateCcw, Square } from "lucide-react";
-import { useState } from "react";
+import {
+  ArrowRight,
+  Check,
+  CircleCheck,
+  CircleX,
+  Clock,
+  Info,
+  ListChecks,
+  RotateCcw,
+  Square,
+} from "lucide-react";
+import { type ReactNode, useState } from "react";
 
 import { VersionRestore } from "../../canvas/VersionDialogs";
 import { Badge, type BadgeVariant, Button, ConfirmDialog } from "../../design-system/components";
@@ -8,6 +18,7 @@ import {
   type CompareRow,
   type CompareSide,
   type CompareStatus,
+  type SetCell,
   type SideStatus,
   stopCompare,
 } from "../../lib/api/compare";
@@ -39,8 +50,20 @@ const SIDE_LOOK: Record<SideStatus, [string, BadgeVariant]> = {
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const openRun = (teamId: string, runId: string) => navigate({ page: "team", teamId, runId });
 
-/** A compare: its two lanes while it waits or runs, its results once it has them. */
-export function CompareView({ id, teamId }: { id: string; teamId: string }) {
+/**
+ * A compare: its two lanes while it waits or runs, its results once it has them. M9: a compare on a
+ * task set shows its per-task table instead of the lanes (Set-Running, Set-Results).
+ */
+export function CompareView({
+  id,
+  teamId,
+  onCompareOn,
+}: {
+  id: string;
+  teamId: string;
+  /** "Compare on <set>": the Compare tab with that set chosen. */
+  onCompareOn: (setId: string) => void;
+}) {
   const { compare, failed, refresh } = useCompare(id);
   if (!compare)
     return (
@@ -52,7 +75,11 @@ export function CompareView({ id, teamId }: { id: string; teamId: string }) {
       />
     );
   return compare.results ? (
-    <Results c={compare} teamId={teamId} onRestored={refresh} />
+    compare.set ? (
+      <SetResults c={compare} teamId={teamId} onRestored={refresh} />
+    ) : (
+      <Results c={compare} teamId={teamId} onRestored={refresh} onCompareOn={onCompareOn} />
+    )
   ) : (
     <Running c={compare} teamId={teamId} onStopped={refresh} />
   );
@@ -66,6 +93,8 @@ function Running({ c, teamId, onStopped }: { c: Compare; teamId: string; onStopp
   const [look, variant] = COMPARE_LOOK[c.status];
   const going = c.status === "waiting" || c.status === "running";
   const v = (label: "A" | "B") => c.sides.find((s) => s.label === label)?.version;
+  const set = c.set ?? null;
+  const waiting = typeof c.waiting === "number" ? c.waiting : 0;
   const stop = () => {
     setBusy(true);
     setError(null);
@@ -85,7 +114,9 @@ function Running({ c, teamId, onStopped }: { c: Compare; teamId: string; onStopp
     <div>
       <div className="cmp-run__head">
         <h2 className="cmp-run__title">
-          v{v("A")} and v{v("B")} on “{c.task}”
+          {set
+            ? `v${v("A")} and v${v("B")} on ${set.name}`
+            : `v${v("A")} and v${v("B")} on “${c.task}”`}
         </h2>
         <Badge variant={variant} dot>
           {look}
@@ -110,20 +141,32 @@ function Running({ c, teamId, onStopped }: { c: Compare; teamId: string; onStopp
           )}
         </span>
       </div>
-      <div className="cmp-lanes">
-        {c.sides.map((s) => (
-          <Lane key={s.label} side={s} c={c} teamId={teamId} />
-        ))}
-      </div>
+      {set ? (
+        <>
+          <p className="cmp-set__started">
+            {c.started ?? 0} of {set.count * 2} runs started
+            {waiting > 0 && ` · ${waiting} waiting for a free slot`}
+          </p>
+          <SetTable c={c} teamId={teamId} label="Tasks" />
+        </>
+      ) : (
+        <div className="cmp-lanes">
+          {c.sides.map((s) => (
+            <Lane key={s.label} side={s} c={c} teamId={teamId} />
+          ))}
+        </div>
+      )}
       <p className="cmp-foot">
         <Info size={14} strokeWidth={1.6} aria-hidden />
         {c.auto_approve
           ? "Gates are approved automatically in this compare."
           : "You approve each gate yourself in this compare."}{" "}
         {/* Cmp-Queued: Home lists runs, and a waiting compare has none yet. */}
-        {c.status === "waiting"
-          ? "You can leave; it starts on its own when two of your run slots are free."
-          : "You can leave; Home shows it under Running now."}
+        {set
+          ? "You can leave; it carries on by itself."
+          : c.status === "waiting"
+            ? "You can leave; it starts on its own when two of your run slots are free."
+            : "You can leave; Home shows it under Running now."}
       </p>
       <ConfirmDialog
         open={ask}
@@ -176,7 +219,7 @@ function Now({ current }: { current: NonNullable<CompareSide["current"]> }) {
 }
 
 function Lane({ side, c, teamId }: { side: CompareSide; c: Compare; teamId: string }) {
-  const queued = side.status === "waiting" ? c.waiting : null;
+  const queued = side.status === "waiting" && typeof c.waiting === "object" ? c.waiting : null;
   const [look, variant] = queued
     ? ["Waiting for a free slot", "warning" as const]
     : SIDE_LOOK[side.status];
@@ -267,13 +310,14 @@ function Results({
   c,
   teamId,
   onRestored,
+  onCompareOn,
 }: {
   c: Compare;
   teamId: string;
   onRestored: () => void;
+  onCompareOn: (setId: string) => void;
 }) {
   const r = c.results as NonNullable<Compare["results"]>;
-  const [restoring, setRestoring] = useState(false);
   const [look, variant] = COMPARE_LOOK[c.status];
   const sub = [
     "Same task, same repo, at the same time",
@@ -340,19 +384,63 @@ function Results({
           </tbody>
         </table>
       </div>
-      <div className="cmp-res__foot">
-        <span>v{r.current_version} is your current version.</span>
-        <div className="cmp-res__acts">
-          {r.restore != null && (
-            <Button variant="secondary" className="cv-btn-flush" onClick={() => setRestoring(true)}>
-              <RotateCcw size={14} strokeWidth={1.6} aria-hidden />
-              <span>Restore v{r.restore}</span>
-            </Button>
-          )}
-          <Button variant="primary" onClick={() => navigate({ page: "team", teamId })}>
-            Done
-          </Button>
+      {/* M9 (Cmp-Results): the team's task set, when it has one. */}
+      {r.sample && (
+        <div className="cmp-callout cmp-sample">
+          <Info size={16} strokeWidth={1.6} aria-hidden />
+          <div className="cmp-sample__text">
+            <div className="cmp-sample__title">One task is a small sample</div>
+            <div>
+              Run the {r.sample.name} task set ({r.sample.count}{" "}
+              {r.sample.count === 1 ? "task" : "tasks"}) before you rely on this.
+            </div>
+            <div className="cmp-sample__acts">
+              <Button
+                variant="secondary"
+                size="sm"
+                className="cv-btn-flush"
+                onClick={() => onCompareOn((r.sample as NonNullable<typeof r.sample>).set_id)}
+              >
+                <ListChecks size={14} strokeWidth={1.6} aria-hidden />
+                <span>Compare on {r.sample.name}</span>
+              </Button>
+            </div>
+          </div>
         </div>
+      )}
+      <Foot r={r} teamId={teamId} onRestored={onRestored}>
+        v{r.current_version} is your current version.
+      </Foot>
+    </div>
+  );
+}
+
+/** The results' last line: the words, Restore vN and Done. */
+function Foot({
+  r,
+  teamId,
+  onRestored,
+  children,
+}: {
+  r: NonNullable<Compare["results"]>;
+  teamId: string;
+  onRestored: () => void;
+  children: ReactNode;
+}) {
+  const [restoring, setRestoring] = useState(false);
+  return (
+    <div className="cmp-res__foot">
+      <span>{children}</span>
+      <div className="cmp-res__acts">
+        {r.restore != null && (
+          <Button variant="secondary" className="cv-btn-flush" onClick={() => setRestoring(true)}>
+            <RotateCcw size={14} strokeWidth={1.6} aria-hidden />
+            <span>Restore v{r.restore}</span>
+          </Button>
+        )}
+        <Button variant="primary" onClick={() => navigate({ page: "team", teamId })}>
+          Done
+        </Button>
       </div>
       {restoring && r.restore != null && (
         <VersionRestore
@@ -366,6 +454,169 @@ function Results({
           onClose={() => setRestoring(false)}
         />
       )}
+    </div>
+  );
+}
+
+const rounds = (n: number) => `${n} ${n === 1 ? "round" : "rounds"}`;
+
+/** One side of one task (Set-Running / Set-Results): its state, or ✓/✗ with rounds · cost · note. */
+function SetCellView({ cell }: { cell: SetCell }) {
+  if (cell.status === "waiting")
+    return (
+      <span className="cmp-set__cell cmp-set__cell--muted">
+        <Clock size={14} strokeWidth={1.6} aria-hidden />
+        Waiting for a free slot
+      </span>
+    );
+  if (cell.status === "running") {
+    // "Engineer · round 2" → "Working · **Engineer** · round 2"
+    const [who, ...rest] = (cell.now ?? "").split(" · ");
+    return (
+      <span className="cmp-set__cell">
+        <span className="cmp-set__live" aria-hidden />
+        <span>
+          Working
+          {who && (
+            <>
+              {" · "}
+              <b>{who}</b>
+              {rest.length > 0 && ` · ${rest.join(" · ")}`}
+            </>
+          )}
+        </span>
+      </span>
+    );
+  }
+  if (cell.status === "stopped")
+    return <span className="cmp-set__cell cmp-set__cell--muted">Stopped</span>;
+  const failed = cell.status === "failed" || cell.check === "failed";
+  const mark =
+    cell.status === "failed" ? "Failed" : failed ? "Hidden check failed" : "Hidden check passed";
+  return (
+    <span className="cmp-set__cell">
+      {(cell.check || cell.status === "failed") && (
+        <span title={mark} className={`cmp-set__mark${failed ? " cmp-set__mark--failed" : ""}`}>
+          {failed ? (
+            <CircleX size={14} strokeWidth={1.6} aria-label={mark} />
+          ) : (
+            <CircleCheck size={14} strokeWidth={1.6} aria-label={mark} />
+          )}
+        </span>
+      )}
+      {rounds(cell.rounds)} · <code className="cmp-set__cost">{money(cell.cost_usd)}</code>
+      {cell.note && <span className="cmp-set__note">{cell.note}</span>}
+    </span>
+  );
+}
+
+/** A set compare's per-task table; a cell with a run opens it. */
+function SetTable({ c, teamId, label }: { c: Compare; teamId: string; label: string }) {
+  const v = (side: "A" | "B") => c.sides.find((s) => s.label === side)?.version;
+  return (
+    <div className="cmp-res__wrap">
+      <table className="cmp-set__table" aria-label={label}>
+        <thead>
+          <tr>
+            <th scope="col">Task</th>
+            <th scope="col">A · v{v("A")}</th>
+            <th scope="col">B · v{v("B")}</th>
+            <th scope="col" />
+          </tr>
+        </thead>
+        <tbody>
+          {(c.items ?? []).map((it, i) => (
+            <tr key={i}>
+              <th scope="row">{it.task}</th>
+              {[it.a, it.b].map((cell, j) => (
+                <td key={j}>
+                  {cell.run_id ? (
+                    <button
+                      type="button"
+                      className="cmp-set__open"
+                      onClick={() => openRun(teamId, cell.run_id as string)}
+                    >
+                      <SetCellView cell={cell} />
+                    </button>
+                  ) : (
+                    <SetCellView cell={cell} />
+                  )}
+                </td>
+              ))}
+              <td className="cmp-set__badgecell">
+                {it.badge && (
+                  <span
+                    className={`cmp-set__badge${/better/.test(it.badge) ? " cmp-set__badge--good" : /more/.test(it.badge) ? " cmp-set__badge--warn" : ""}`}
+                  >
+                    {it.badge}
+                  </span>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** Set-Results: the four cards, the per-task table, Restore vN and Done. */
+function SetResults({
+  c,
+  teamId,
+  onRestored,
+}: {
+  c: Compare;
+  teamId: string;
+  onRestored: () => void;
+}) {
+  const r = c.results as NonNullable<Compare["results"]>;
+  const set = c.set as NonNullable<Compare["set"]>;
+  const [look, variant] = COMPARE_LOOK[c.status];
+  const v = (side: "A" | "B") => c.sides.find((s) => s.label === side)?.version;
+  const sub = [
+    `${set.count} ${set.count === 1 ? "task" : "tasks"} · run side by side`,
+    c.ended_at && `finished ${versionAge(c.ended_at, Date.now(), true)}`,
+    `${money(c.cost_usd)} in all`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return (
+    <div className="cmp-res">
+      <div className="cmp-res__head">
+        <div>
+          <h2 className="cmp-h2">
+            v{v("A")} and v{v("B")} on {set.name}
+          </h2>
+          <p className="cmp-res__sub">{sub}</p>
+        </div>
+        <Badge variant={variant} dot>
+          {look}
+        </Badge>
+      </div>
+      {(r.cards ?? []).length > 0 && (
+        <div className="cmp-cards">
+          {(r.cards ?? []).map((k) => (
+            <div key={k.key} className="cmp-card" role="group" aria-label={k.label}>
+              <span className="cmp-eyebrow">{k.label}</span>
+              <div className="cmp-card__vals">
+                <span className="cmp-card__a">
+                  v{v("A")} {k.a}
+                </span>
+                <ArrowRight size={14} strokeWidth={1.6} aria-hidden />
+                <span className="cmp-card__b">
+                  v{v("B")} {k.b}
+                </span>
+              </div>
+              <span className="cmp-card__note">{k.note}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      <SetTable c={c} teamId={teamId} label="Results" />
+      <Foot r={r} teamId={teamId} onRestored={onRestored}>
+        Click any result to open that run. v{r.current_version} is your current version.
+      </Foot>
     </div>
   );
 }

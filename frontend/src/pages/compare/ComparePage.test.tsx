@@ -203,13 +203,14 @@ const open = (hash = "#/teams/team-1/compare") => {
 const startButton = () => screen.getByRole("button", { name: "Start compare" });
 
 describe("Compare versions — the page", () => {
-  it("has the canvas header, Back to the canvas, the title with the team's name and two tabs", async () => {
+  it("has the canvas header, Back to the canvas, the title with the team's name and three tabs", async () => {
     open();
     expect(await screen.findByRole("heading", { name: "Compare versions" })).toBeInTheDocument();
     expect(await screen.findByText("Indicator sprint team")).toBeInTheDocument();
     expect(screen.getByText("the living canvas")).toBeInTheDocument();
     const tabs = screen.getAllByRole("tab").map((t) => t.textContent);
-    expect(tabs).toEqual(["Compare", "Versions"]); // Task sets arrives with M9
+    // M9 adds Task sets between them (no count: this team has no sets).
+    expect(tabs).toEqual(["Compare", "Task sets", "Versions"]);
     expect(screen.getByRole("main")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Back to the canvas" }));
     expect(window.location.hash).toBe("#/teams/team-1");
@@ -563,7 +564,8 @@ describe("Compare versions — results (Cmp-Results, Cmp-SideFailed)", () => {
     const openRuns = within(table).getAllByRole("button", { name: "Open run" });
     expect(openRuns).toHaveLength(2);
     expect(screen.getByText("v7 is your current version.")).toBeInTheDocument();
-    // Not built: the task-set callout (M9) and "Compare the code" (no board says where it goes).
+    // M9: the task-set callout only with `results.sample` (none here); not built: "Compare the
+    // code" (no board says where it goes).
     expect(screen.queryByText("One task is a small sample")).toBeNull();
     expect(screen.queryByText("Compare the code")).toBeNull();
 

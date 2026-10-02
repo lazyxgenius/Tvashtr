@@ -104,8 +104,8 @@ export type Route =
       testFrom?: number;
     }
   // M8: "Compare versions" — a team's compare page; `compareId` opens that compare (running or
-  // its results); `tab` "versions" is the Versions tab.
-  | { page: "compare"; teamId: string; compareId?: string; tab?: "versions" };
+  // its results); `tab` "versions" is the Versions tab, M9's "sets" the Task sets tab.
+  | { page: "compare"; teamId: string; compareId?: string; tab?: "versions" | "sets" };
 
 const ENGINES_TABS: EnginesTab[] = ["overview", "subscriptions", "keys"];
 const CONNECT_TARGETS: ConnectTarget[] = ["claude", "grok"];
@@ -245,7 +245,8 @@ export function parseRoute(hash: string): Route {
       if (c === "compare") {
         const cmp: Extract<Route, { page: "compare" }> = { page: "compare", teamId: b };
         if (parts[3]) cmp.compareId = parts[3];
-        if (q.get("tab") === "versions") cmp.tab = "versions";
+        const tab = q.get("tab");
+        if (tab === "versions" || tab === "sets") cmp.tab = tab;
         return cmp;
       }
       const route: Extract<Route, { page: "team" }> = { page: "team", teamId: b };
@@ -343,7 +344,7 @@ export function routeToHash(route: Route): string {
     }
     case "compare": {
       const path = `#/teams/${enc(route.teamId)}/compare${route.compareId ? `/${enc(route.compareId)}` : ""}`;
-      return route.tab === "versions" ? `${path}?tab=versions` : path;
+      return route.tab ? `${path}?tab=${route.tab}` : path;
     }
   }
 }

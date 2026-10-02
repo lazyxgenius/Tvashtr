@@ -18,6 +18,30 @@ export interface TeamVersion {
   restored_from: number | null;
   /** M7 (R6): the newest test run of each agent on this version, added up (History's pill). */
   tests?: { passed: number; total: number; running: boolean } | null;
+  /** M9 (R6): the newest set compare that checked this version against an earlier one. */
+  check?: VersionCheck | null;
+}
+
+/** M9 (R6, Set-Checked): "Indicators: 5 of 5, $0.70 less than v7". */
+export interface VersionCheck {
+  compare_id: string;
+  /** The task set's name. */
+  set: string;
+  passed: number;
+  total: number;
+  /** The version it ran against. */
+  against: number;
+  cost_delta_usd: number | null;
+  status: "running" | "finished";
+  worse: boolean;
+}
+
+/** M9: a task set the Save-as dialog can check the new version on. */
+export interface CheckSet {
+  id: string;
+  name: string;
+  count: number;
+  estimate: { cost_usd: number; minutes: number } | null;
 }
 
 /** M7 (R6): the changed agents that have tests (null: no nudge, Save as vN saves at once). */
@@ -44,6 +68,8 @@ export interface TeamVersions {
   versions: TeamVersion[];
   /** M7: set when the changed agents have tests (Save as vN offers to run them). */
   tests?: VersionTests | null;
+  /** M9: the team's task sets (Save as vN offers "Compare vN with vN-1 on <set>"). */
+  check_sets?: CheckSet[];
 }
 
 /** One changed thing: an agent's / gate's field, a whole agent / gate / end, a route, a team field. */
@@ -121,10 +147,11 @@ export function getVersions(teamId: string): Promise<TeamVersions> {
 /**
  * Save as vN. 409 "Nothing changed since v7." throws `ApiDetailError`. M7: `run_tests` starts the
  * changed agents' tests after the save commits (never blocking it); no body posts `{}` as before.
+ * M9: `check_set` starts a compare of the new version vs the previous one on that task set.
  */
 export function saveVersion(
   teamId: string,
-  body: { note?: string; run_tests?: boolean } = {},
+  body: { note?: string; run_tests?: boolean; check_set?: string } = {},
 ): Promise<TeamVersion & { tests_started?: { node_id: string; run_id: string }[] }> {
   return apiRequest("POST", `${team(teamId)}/versions`, body);
 }

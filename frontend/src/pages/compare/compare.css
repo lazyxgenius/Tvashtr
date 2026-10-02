@@ -447,3 +447,485 @@
   display: inline-flex;
   margin: -3px 0;
 }
+
+/* ======== M9 — task sets (Quality › Set-*). Every px value is copied from the boards' HTML. ======== */
+
+/* ---- Start: "One task | A task set" (Cmp-Start) and the set (Set-StartSet) ---- */
+.cmp-start__onhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.cmp-start__set {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.cmp-start__tasks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  font-size: 12.5px;
+  color: var(--ink-600);
+}
+.cmp-start__tasks li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.cmp-start__tasks svg {
+  color: var(--ink-400, #9c9a92);
+}
+
+/* ---- The Task sets tab (Set-List, Set-Empty, Set-RowMenu) ---- */
+.cmp-sets {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.cmp-sets__head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+}
+.cmp-sets__lede {
+  max-width: 640px;
+}
+.cmp-sets__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  align-items: start;
+}
+.cmp-set {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px;
+  border: 1px solid var(--border-hairline);
+  border-radius: 16px;
+  background: var(--surface-card);
+}
+.cmp-set__top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.cmp-set__icon {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 10px;
+  background: var(--sage-100);
+  color: #52613e;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.cmp-set__name {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink-900);
+}
+.cmp-set__count {
+  font-size: 12px;
+  color: var(--ink-500);
+}
+.cmp-set__more {
+  margin-left: auto;
+}
+.cmp-set__tasks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cmp-set__tasks li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ink-800);
+}
+.cmp-set__dot {
+  display: inline-flex;
+  color: var(--ink-500);
+}
+.cmp-set__used {
+  padding-top: 12px;
+  border-top: 1px solid var(--line-200);
+  font-size: 12.5px;
+  color: var(--ink-600);
+}
+.cmp-set__acts {
+  display: flex;
+  gap: 8px;
+}
+.cmp-sets__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 12px;
+  padding: 56px 24px 60px;
+  border: 1px solid var(--border-hairline);
+  border-radius: 16px;
+  background: var(--surface-card);
+}
+.cmp-sets__empty-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--panel-300);
+  color: var(--ink-500);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.cmp-sets__empty-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 400;
+  color: var(--ink-900);
+}
+.cmp-sets__empty-text {
+  margin: 0;
+  max-width: 480px;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--ink-600);
+}
+
+/* ---- New / Edit task set (Set-Edit: 820px, 80px from the top; Set-AddRecent) ---- */
+.lv-confirm.cmp-setdlg {
+  width: 820px;
+  top: 80px;
+  transform: translateX(-50%);
+  max-height: calc(100vh - 96px);
+}
+.cmp-setdlg__tasks {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.cmp-setdlg__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.cmp-setdlg__adds {
+  display: inline-flex;
+  gap: 14px;
+}
+.cmp-setdlg__add {
+  font-size: 12.5px;
+}
+.cmp-setdlg__grid {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) 90px 270px 24px;
+  gap: 12px;
+  align-items: center;
+}
+.cmp-setdlg__cols {
+  padding: 0 12px;
+}
+.cmp-setdlg__rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border-hairline);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.cmp-setdlg__row {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line-200);
+}
+.cmp-setdlg__row:last-child {
+  border-bottom: 0;
+}
+.cmp-setdlg__n {
+  font-family: var(--font-code);
+  font-size: 11.5px;
+  color: var(--ink-500);
+}
+.cmp-setdlg__in {
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 4px 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  color: var(--ink-900);
+}
+.cmp-setdlg__in:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.cmp-setdlg__in--mono {
+  font-family: var(--font-code);
+  font-size: 12px;
+  color: var(--ink-700);
+}
+.cmp-setdlg__check {
+  padding: 4px 8px;
+  background: var(--surface-sunk);
+  font-family: var(--font-code);
+  font-size: 11.5px;
+  color: var(--ink-800);
+  text-overflow: ellipsis;
+}
+.cmp-setdlg__what {
+  box-sizing: border-box;
+  display: flex;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: #f1f5fa;
+  border: 1px solid #c9d9ea;
+}
+.cmp-setdlg__what > svg {
+  flex: none;
+  margin-top: 1px;
+  color: #3f6690;
+}
+.cmp-setdlg__what > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.cmp-setdlg__what-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-900);
+}
+.cmp-setdlg__what-text {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--ink-700);
+}
+.ds-popover.cmp-recent {
+  padding: 0;
+  gap: 0;
+  text-align: left;
+}
+.cmp-recent__head {
+  padding: 12px 16px 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-500);
+}
+.cmp-recent__list {
+  list-style: none;
+  margin: 0;
+  padding: 0 6px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.cmp-recent__list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 10px;
+  border-radius: 8px;
+}
+.cmp-recent__when {
+  flex: none;
+  font-size: 12px;
+  color: var(--ink-500);
+}
+.cmp-recent__foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--line-200);
+}
+
+/* ---- A set compare: running (Set-Running) and results (Set-Results) ---- */
+.cmp-set__started {
+  margin: -8px 0 16px;
+  font-size: 13px;
+  color: var(--ink-600);
+}
+.cmp-set__table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+.cmp-set__table th,
+.cmp-set__table td {
+  padding: 11px 16px 11px 0; /* the board's 16px column gap */
+  border-bottom: 1px solid var(--line-200);
+  text-align: left;
+  vertical-align: middle;
+  font-size: 13px;
+  font-weight: 400;
+}
+.cmp-set__table tr > :first-child {
+  width: 240px;
+  padding-left: 18px;
+  color: var(--ink-900);
+}
+.cmp-set__table tr > :last-child {
+  width: 110px;
+  padding-right: 18px;
+}
+.cmp-set__table tbody tr:last-child > * {
+  border-bottom: 0;
+}
+.cmp-set__table thead th {
+  background: var(--surface-sunk);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-500);
+}
+.cmp-set__cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ink-800);
+}
+.cmp-set__cell--muted {
+  color: var(--ink-500);
+}
+.cmp-set__cell b {
+  font-weight: 600;
+}
+.cmp-set__live {
+  width: 8px;
+  height: 8px;
+  margin: 0 3px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--coral-500);
+}
+.cmp-set__mark {
+  display: inline-flex;
+  color: #52613e;
+}
+.cmp-set__mark--failed {
+  color: #8f3b2f;
+}
+.cmp-set__cost {
+  font-family: var(--font-code);
+  font-size: 12px;
+  color: var(--ink-700);
+}
+.cmp-set__note {
+  font-size: 12px;
+  color: var(--ink-500);
+}
+.cmp-set__open {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.cmp-set__open:hover .cmp-set__cell {
+  color: var(--coral-700);
+}
+.cmp-set__open:focus-visible {
+  outline: none;
+  border-radius: 6px;
+  box-shadow: var(--shadow-focus);
+}
+.cmp-set__badgecell {
+  text-align: right;
+}
+.cmp-set__badge {
+  font-size: 10px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--panel-300);
+  color: var(--ink-500);
+  white-space: nowrap;
+}
+.cmp-set__badge--good {
+  background: var(--sage-100);
+  color: #52613e;
+}
+.cmp-set__badge--warn {
+  background: var(--amber-100);
+  color: #7a5423;
+}
+.cmp-cards {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+.cmp-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--border-hairline);
+  border-radius: 14px;
+  background: var(--surface-card);
+}
+.cmp-card__vals {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.cmp-card__vals svg {
+  color: var(--ink-400, #9c9a92);
+}
+.cmp-card__a {
+  font-family: var(--font-code);
+  font-size: 13px;
+  color: var(--ink-500);
+}
+.cmp-card__b {
+  font-family: var(--font-code);
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--ink-900);
+}
+.cmp-card__note {
+  font-size: 12px;
+  color: #52613e;
+}
+
+/* ---- "One task is a small sample" (Cmp-Results) ---- */
+.cmp-sample {
+  gap: 12px;
+}
+.cmp-sample__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.cmp-sample__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-900);
+}
+.cmp-sample__acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
