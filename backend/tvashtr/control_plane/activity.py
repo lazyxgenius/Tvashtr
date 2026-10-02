@@ -522,12 +522,18 @@ def build(
     start_node: str | None = None,
     number: int | None = None,
     waiting_memories: tuple[int, datetime] | None = None,
+    mask=None,
 ) -> dict:
     """The Activity reply for one run (see the contract). ``events`` in ``(created_at, id)`` order;
     ``versions`` are ``(DocumentVersion, document name)`` pairs. M3: a resumed run's ``carried``
     step rows (``resume.carried``) come first, one line each, then the Resumed line. M10:
     ``waiting_memories`` is ``(count, newest created_at)`` of the memories the run saved that still
-    wait for review."""
+    wait for review. ``mask`` (the run log's) masks what isn't an event — a step's detail, the run's
+    failure, the carried memories — before any line is cut from it."""
+
+    def _m(text):
+        return mask(text) if mask is not None and isinstance(text, str) else text
+
     from tvashtr.control_plane import resume  # lazy: resume imports this module
 
     carried = carried or []
@@ -553,7 +559,10 @@ def build(
     came = run_views.started_from(run) if getattr(run, "started_from_run_id", None) else None
     entry_first = None
     if came is not None:
-        carry = run.carry
+        carry = dict(run.carry)
+        carry["memories"] = [
+            {**m, "content": _m(m.get("content"))} for m in carry.get("memories") or []
+        ]
         roots = sorted(nid for nid in by_id if nid not in {e["target"] for e in edges})
         entry_first = next((i.id for i in invs if roots and str(i.node_id) == roots[0]), None)
         row = out.add(
@@ -630,7 +639,7 @@ def build(
         _event_lines(out, inv, nid, events_by_inv.get(inv.id, []), open_step)
         end_at = inv.ended_at or inv.started_at
         if inv.status == "failed" and inv.outcome != "stalled":  # a stall has its own line
-            message = mask_secrets(_lower_first(humanise(None, inv.outcome_detail)["message"]))
+            message = mask_secrets(_lower_first(humanise(None, _m(inv.outcome_detail))["message"]))
             out.add(
                 f"inv:{inv.id}:end",
                 end_at,
@@ -642,7 +651,7 @@ def build(
                 {"message": message},
             )
         elif kind in _STEP_KINDS and inv.outcome in ("approved", "changes_requested"):
-            reasons = _reasons(inv.outcome_detail)
+            reasons = _reasons(_m(inv.outcome_detail))
             if inv.outcome == "approved":
                 text, tone = "Approved" + (f": {'; '.join(reasons)}" if reasons else ""), "ok"
             else:
@@ -919,10 +928,10 @@ def build(
         failure = describe_run_failure(
             status=run.status,
             failure_code=run.failure_code,
-            failure_message=run.failure_message,
+            failure_message=_m(run.failure_message),
             failed_node_id=str(run.failed_node_id) if run.failed_node_id else None,
             desktop_target=bool(run.desktop_target),
-            fallback_reason=failed[-1].outcome_detail if failed else None,
+            fallback_reason=_m(failed[-1].outcome_detail) if failed else None,
             fallback_node_id=str(failed[-1].node_id) if failed else None,
             node_info={nid: {"label": labels[nid], "origin_node_id": None} for nid in by_id},
         )
@@ -1174,6 +1183,7 @@ def run_activity(
         start_node=start_node,
         number=resume.number(session, run),
         waiting_memories=(waiting, newest) if waiting else None,
+        mask=mask,
     )
     all_lines = reply.pop("_all_lines")
     pinned = reply["pinned"]

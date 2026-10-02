@@ -35,6 +35,7 @@ from tvashtr.models import (
     Edge,
     GithubInstallation,
     HumanTask,
+    McpSecret,
     NodeMemory,
     ProviderCredential,
     Run,
@@ -87,21 +88,35 @@ def _brief(inv: AgentInvocation) -> str | None:
     return inv.outcome_detail
 
 
-def _summaries(session, run: Run) -> list[dict]:
-    """Each agent's newest work brief, in the order the agents first ran."""
+def _lineage(session, run: Run) -> list[str]:
+    """The run's workflow id after those of the runs it resumed (M3: a resumed run's carried steps
+    — its first agents and gates — ran in the run it resumed), oldest first."""
+    ids, seen, at = [run.workflow_id], {run.id}, run
+    while at.resumed_from_run_id is not None and len(ids) < 20:
+        at = session.get(Run, at.resumed_from_run_id)
+        if at is None or at.id in seen or at.owner_id != run.owner_id:
+            break
+        seen.add(at.id)
+        ids.insert(0, at.workflow_id)
+    return ids
+
+
+def _summaries(session, run: Run, lineage: list[str]) -> list[dict]:
+    """Each agent's newest work brief, in the order the agents first ran (across a resumed run's
+    lineage: a carried agent's brief is from the run it resumed)."""
     rows = session.execute(
         select(AgentInvocation, AgentNode)
         .join(AgentNode, AgentNode.id == AgentInvocation.node_id)
         .where(
-            AgentInvocation.run_id == run.workflow_id,
+            AgentInvocation.run_id.in_(lineage),
             AgentInvocation.status == "done",
             AgentNode.kind.in_(("agent", "completion")),
         )
         .order_by(AgentInvocation.started_at, AgentInvocation.id)
     ).all()
-    newest: dict = {}  # node id → (node, its newest step); keys keep first-run order
+    newest: dict = {}  # agent → (node, its newest step); keys keep first-run order
     for inv, node in rows:
-        newest[node.id] = (node, inv)
+        newest[node_label(node.role_name, node.kind, node.config)] = (node, inv)
     out = []
     for node, inv in newest.values():
         text = _brief(inv)
@@ -128,24 +143,29 @@ def gather(session, run: Run) -> dict:
         ).scalar_one_or_none()
         if newest is not None:
             spec = {"version": newest.version_no, "text": newest.content}
+    lineage = _lineage(session, run)
     tasks = session.execute(
         select(HumanTask)
         .where(
-            HumanTask.run_id == run.workflow_id,
+            HumanTask.run_id.in_(lineage),
             HumanTask.resolution.in_(("approved", "rejected")),
         )
         .order_by(HumanTask.resolved_at, HumanTask.id)
     ).scalars()
+    by_gate: dict = {}  # a gate decided again in a resumed run: its newest decision
+    for t in tasks:
+        if t.resolution_note != _AUTO:
+            by_gate.pop(t.topic or t.id, None)
+            by_gate[t.topic or t.id] = t
     decisions = [
         {"title": _decision_title(t), "text": (t.resolution_note or "").strip() or None}
-        for t in tasks
-        if t.resolution_note != _AUTO
+        for t in by_gate.values()
     ]
     learned = session.execute(
         select(NodeMemory.id, NodeMemory.content, NodeMemory.polarity, NodeMemory.status)
         .where(
             NodeMemory.owner_id == run.owner_id,
-            NodeMemory.source_run_id == run.workflow_id,
+            NodeMemory.source_run_id.in_(lineage),
             NodeMemory.status.in_(("active", "pending_review")),
         )
         .order_by(NodeMemory.created_at, NodeMemory.id)
@@ -159,7 +179,7 @@ def gather(session, run: Run) -> dict:
             if m.status == "active"
         ],
         "pending_memories": sum(m.status == "pending_review" for m in learned),
-        "summaries": _summaries(session, run),
+        "summaries": _summaries(session, run, lineage),
     }
 
 
@@ -227,8 +247,9 @@ def dialog(owner_id: uuid.UUID, run_id: str) -> dict:
         )
         if entry is not None:
             out["entry_agent"] = node_label(entry.role_name, entry.kind, entry.config)
-        github_repo, pr = run.github_repo, _pr(run)
+        github_repo, pr, base = run.github_repo, _pr(run), run.base_ref
     default, merged = github_facts(owner_id, github_repo, pr)
+    default = base or default  # "main": the branch the run started from, else the repo's default
     out.update(
         available=True,
         spec={"version": found["spec"]["version"]} if found["spec"] else None,
@@ -259,7 +280,9 @@ def start(owner_id: uuid.UUID, run_id: str, *, task: str, carry: dict, start_fro
         found = gather(session, run)
         source = {"run_id": str(run.id), "number": resume.number(session, run)}
         old_id, github_repo, team_id, pr = run.id, run.github_repo, run.library_team_id, _pr(run)
+        base, desktop = run.base_ref, bool(run.desktop_target)
     default, merged = github_facts(owner_id, github_repo, pr)
+    default = base or default  # "main": the branch the run started from, else the repo's default
     on_pr = start_from == "pr"
     if on_pr and pr is None:
         raise HTTPException(status_code=422, detail="This run has no pull request to start from")
@@ -281,7 +304,9 @@ def start(owner_id: uuid.UUID, run_id: str, *, task: str, carry: dict, start_fro
         idea=task,
         team_graph_id=str(team_id),
         github_repo=github_repo,
-        base_ref=pr["branch"] if on_pr else None,  # None: the repo's default branch
+        base_ref=pr["branch"] if on_pr else base,  # None: the repo's default branch
+        # Where the run it continues ran: a Desktop run's subscription agents run on Desktop again.
+        desktop_target=desktop,
     )
     launched = launch_run(body, owner_id, started_from_run_id=old_id, carry=snapshot)
     with session_scope() as session:
@@ -354,11 +379,20 @@ def spec_card(session, run: Run, nodes: list, edges: list) -> dict[str, str]:
 
 def _known_secrets(session, owner_id: uuid.UUID) -> list[str]:
     """Every secret value this server knows that a run of ``owner_id`` could have printed: the
-    owner's stored provider keys, the GitHub installation tokens held for them, the server's own
-    secret settings. Longest first, so a value containing another is masked whole."""
+    owner's stored provider keys and Toolkit secrets, the GitHub installation tokens held for them,
+    the server's own secret settings. Longest first, so a value containing another is masked
+    whole."""
     values: list[str] = []
     for encrypted in session.execute(
         select(ProviderCredential.secret_encrypted).where(ProviderCredential.owner_id == owner_id)
+    ).scalars():
+        try:
+            values.append(decrypt_secret(encrypted))
+        except InvalidToken:
+            continue
+    # The owner's Toolkit secrets, which the run's tool servers get.
+    for encrypted in session.execute(
+        select(McpSecret.secret_encrypted).where(McpSecret.owner_id == owner_id)
     ).scalars():
         try:
             values.append(decrypt_secret(encrypted))

@@ -37,6 +37,7 @@ from tvashtr.models import (
     AgentNode,
     GithubInstallation,
     HumanTask,
+    McpSecret,
     NodeMemory,
     ProviderCredential,
     Run,
@@ -342,7 +343,8 @@ def test_the_dialog_offers_what_can_come_along_and_where_to_start(client, monkey
 def test_a_merged_or_unknown_pull_request_offers_only_the_default_branch(client, monkeypatch):
     for merged in (True, None):  # merged, or GitHub can't say (unknown ⇒ not merged)
         _hosted(monkeypatch, merged=merged, default="trunk")
-        run_id, _team, _clone = _old_run(client)
+        # A run with no base branch of its own: "main" is the repo's default branch.
+        run_id, _team, _clone = _old_run(client, base_ref=None)
         body = client.get(f"/api/runs/{run_id}/next").json()
         assert body["pr"] == {"number": 42, "branch": "tvashtr/run-12", "merged": merged is True}
         if merged:
@@ -1034,3 +1036,133 @@ def test_the_came_along_words_name_the_spec_decisions_and_memories_only():
     assert came_along({"spec": None, "decisions": [], "memories": [], "summaries": []}) == (
         "brought nothing"
     )
+
+
+# ------------------------------------------------------------------ review fixes (M10 review)
+
+
+def test_a_resumed_run_brings_the_decisions_and_summaries_of_its_carried_steps(client, monkeypatch):
+    """Run #12 failed at the Engineer and was resumed there as #13 (R8: the PM and the spec gate
+    carried over). Starting from #13 brings #12's decision and the PM's summary too."""
+    _hosted(monkeypatch)
+    old_id, team, _clone = _old_run(client, status="failed", pr_url=None, ship_branch=None)
+    new_id, clone = make_run(
+        auth_user_id(),
+        team,
+        status="completed",
+        idea="Add RSI",
+        github_repo=REPO,
+        base_ref="main",
+        pr_url=f"https://github.com/{REPO}/pull/42",
+        ship_branch="tvashtr/run-12",
+        created_at=_at(30),
+        resumed_from_run_id=uuid.UUID(old_id),
+    )
+    with session_scope() as session:
+        session.add(
+            AgentInvocation(
+                run_id=new_id,
+                node_id=uuid.UUID(clone_node(clone, "engineer")),
+                iteration=2,
+                status="done",
+                outcome="built",
+                outcome_detail="Rebuilt the feature — changed 1 file(s): core/indicators.py",
+                started_at=_at(31),
+                ended_at=_at(32),
+            )
+        )
+    got = client.get(f"/api/runs/{new_id}/next").json()
+    assert got["available"] is True, got
+    assert NOTE in [d["text"] for d in got["decisions"]]
+    agents = {s["agent"]: s["text"] for s in got["summaries"]}
+    assert "Drafted the spec from the idea." in agents.values()  # the carried PM step
+    assert any(t.startswith("Rebuilt the feature") for t in agents.values())  # #13's own
+
+
+def test_the_next_run_keeps_the_runs_desktop_routing(client, monkeypatch):
+    _hosted(monkeypatch)
+    run_id, _team, _clone = _old_run(client, desktop_target=True)
+    resp, _started = _post(client, run_id, monkeypatch)
+    assert resp.status_code == 201, resp.text
+    assert _run(resp.json()["run_id"]).desktop_target is True
+
+
+def test_main_is_the_branch_the_old_run_started_from(client, monkeypatch):
+    """A run on develop whose pull request was merged into develop: the next run starts from
+    develop (where its work is), not the repo's default branch."""
+    _hosted(monkeypatch, merged=True, default="main")
+    branches = [{"name": n, "sha": "a1"} for n in ("main", "develop", "tvashtr/run-12")]
+    monkeypatch.setattr(github_app, "list_branches", lambda _i, _r: (branches, False))
+    run_id, _team, _clone = _old_run(client, base_ref="develop")
+    got = client.get(f"/api/runs/{run_id}/next").json()
+    assert got["start_from"] == [{"value": "main", "label": "develop"}]
+    resp, _started = _post(client, run_id, monkeypatch, start_from="main")
+    assert resp.status_code == 201, resp.text
+    new = _run(resp.json()["run_id"])
+    assert new.base_ref == "develop"
+    assert new.carry["start_from"]["branch"] == "develop"
+    refused, _ = _post(client, run_id, monkeypatch, start_from="pr")
+    assert "start from develop" in refused.json()["detail"]
+
+
+def test_a_secret_at_a_lines_cut_is_masked_whole_and_toolkit_secrets_are_known(client, monkeypatch):
+    _hosted(monkeypatch)
+    owner = auth_user_id()
+    provider_key = f"pk{uuid.uuid4().hex}{uuid.uuid4().hex[:6]}"
+    mcp_value = f"acme-{uuid.uuid4().hex}"
+    with session_scope() as session:
+        session.execute(
+            update(ProviderCredential)
+            .where(ProviderCredential.owner_id == owner, ProviderCredential.provider == "groq")
+            .values(secret_encrypted=encrypt_secret(provider_key))
+        )
+        secret = McpSecret(
+            owner_id=owner,
+            name=f"ACME_{uuid.uuid4().hex[:6]}",
+            secret_encrypted=encrypt_secret(mcp_value),
+        )
+        session.add(secret)
+        session.flush()
+        secret_id = secret.id
+    try:
+        run_id, _team, clone = _old_run(client)
+        with session_scope() as session:
+            # A reviewer's reasons long enough that the line is cut in the middle of the key.
+            reasons = ["x" * 220 + " " + provider_key]
+            session.add(
+                AgentInvocation(
+                    run_id=run_id,
+                    node_id=uuid.UUID(clone_node(clone, "reviewer")),
+                    iteration=3,
+                    status="done",
+                    outcome="approved",
+                    outcome_detail=json.dumps(reasons),
+                    started_at=_at(20),
+                    ended_at=_at(21),
+                )
+            )
+            inv = session.execute(
+                select(AgentInvocation.id).where(AgentInvocation.run_id == run_id).limit(1)
+            ).scalar_one()
+            session.add(
+                RunEvent(
+                    run_id=run_id,
+                    invocation_id=inv,
+                    seq=90,
+                    kind="observation",
+                    payload={"tool_name": "terminal", "observation": f"token {mcp_value}\n"},
+                    created_at=_at(1.3),
+                )
+            )
+        for fmt in ("text", "jsonl"):
+            body = client.get(f"/api/runs/{run_id}/log", params={"format": fmt}).text
+            assert provider_key[:6] not in body, fmt
+            assert mcp_value not in body, fmt
+    finally:
+        with session_scope() as session:
+            session.execute(
+                update(ProviderCredential)
+                .where(ProviderCredential.owner_id == owner, ProviderCredential.provider == "groq")
+                .values(secret_encrypted=encrypt_secret("dummy-offline-test-key-0000"))
+            )
+            session.execute(text("delete from mcp_secrets where id = :i"), {"i": secret_id})

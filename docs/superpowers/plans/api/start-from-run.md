@@ -138,13 +138,18 @@ stored provider keys, the GitHub token, the server's secret settings). It can't 
   reads "Approved[: reasons]" / "Asked for changes[: reasons]"; masked, 600 characters at most.
 - `POST /next` body: `carry` booleans default to true (an omitted `carry` brings everything). 422 details: "Write the
   next task first", the `reason` above, "This run has no pull request to start from", "The pull request was merged —
-  start from <default branch>". The new run takes only `idea`, `team_graph_id` (the library team), `github_repo` and
-  `base_ref` (`null` for "main": `POST /api/runs` resolves the repo's default branch) — budget, scope and Desktop
-  routing are `POST /api/runs`'s defaults. 201 `{"run_id", "number"}`.
+  start from <branch>". The new run takes `idea`, `team_graph_id` (the library team), `github_repo`, `base_ref` and
+  `desktop_target` (the old run's: a Desktop run's subscription agents run on Desktop again, as M3's Resume does) —
+  budget and scope are `POST /api/runs`'s defaults. "main" is the branch the old run started from (`runs.base_ref`),
+  else the repo's default branch (its label is that branch's name). 201 `{"run_id", "number"}`.
 - `started_from` (run payloads), the Activity line, the canvas card and `GET /carry` need both
   `started_from_run_id` and `carry`: once the old run is deleted (SET NULL) they read as a run that didn't start from
-  one; the agents still get the snapshot. The summary names the summaries too ("brought spec v3, 1 decision, 3
-  memories and 3 summaries"); nothing ticked reads "brought nothing".
+  one; the agents still get the snapshot. The summary names the spec, the decisions and the memories, as Next-Started
+  words it ("brought spec v3, 2 decisions and 3 memories" — the agents' summaries come along unnamed); only summaries:
+  "brought the agents’ summaries"; nothing ticked: "brought nothing".
+- A resumed run (M3) brings what its carried steps did too: decisions, summaries and memories are gathered over its
+  lineage (the runs it resumed, oldest first; a gate decided again keeps its newest decision, an agent its newest
+  brief).
 - The Activity line: `{"id": "run:from", "kind": "started", "came_along": true, "refs": {"run_id", "number"}, …}` —
   `came_along` is a key of that line only. The entry agent's first-step lines are kind `read` with
   `refs: {"files": [], "run_id"}`; one memory reads `Read 1 memory, “…”`. The canvas card: in
@@ -157,6 +162,7 @@ stored provider keys, the GitHub token, the server's secret settings). It can't 
   WHAT THE AGENTS LEARNED ---` (`- <content>`), `--- FROM RUN #12: WHAT EACH AGENT DID ---` (`- Engineer: <text>`).
   Resume (M3) copies `carry` to the resumed run, so the steps that run again read it too.
 - The log: `format` defaults to `text` (anything but `text`/`jsonl` is a 422); clock times are UTC; the header
-  leaves out the team and `team setup vN` when the run has none. Known secrets: the owner's provider keys, the GitHub
-  installation tokens this server holds for the owner's installations, every `SecretStr` server setting (values under 8
-  characters are left to the patterns); event texts are masked before any line is cut, then every field again.
+  leaves out the team and `team setup vN` when the run has none. Known secrets: the owner's provider keys and Toolkit
+  secrets (`mcp_secrets`), the GitHub installation tokens this server holds for the owner's installations, every
+  `SecretStr` server setting (values under 8 characters are left to the patterns); event texts, steps' details, the
+  run's failure and the carried memories are masked before any line is cut, then every field again.
