@@ -16,6 +16,7 @@ from dbos import DBOS, SetWorkflowID
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
 from pydantic import BaseModel, model_validator
 from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
 
 from tvashtr import db
 from tvashtr.auth import UserOut, _store_installation, get_current_user
@@ -35,7 +36,9 @@ from tvashtr.control_plane import (
     memory_distill,
     memory_review,
     provider_models,
+    resume,
     run_views,
+    stall_sweep,
     toolkit,
 )
 from tvashtr.control_plane.connector_proxy import EVENT_KINDS as CONNECTOR_EVENT_KINDS
@@ -999,7 +1002,9 @@ def _unservable_models_detail(models: list[str], nodes: list[str]) -> dict:
 _IN_FLIGHT_STATUSES = ("pending", "running", "awaiting_human")
 
 
-def _enforce_run_ceilings(owner_id: uuid.UUID, launching: int = 1) -> None:
+def _enforce_run_ceilings(
+    owner_id: uuid.UUID, launching: int = 1, replacing_in_flight: int = 0
+) -> None:
     """Refuse (429) a launch that would breach one of the three M-h3 HOSTED run ceilings.
 
     A hosted run is BYOK for the LLM — the owner's own key pays for tokens — so what the OPERATOR
@@ -1010,6 +1015,9 @@ def _enforce_run_ceilings(owner_id: uuid.UUID, launching: int = 1) -> None:
     POST /api/ab-runs pair — so an A/B launch cannot slip a second sandbox past a cap that had room
     for only one. Checked most-specific first (the owner's concurrency, then the fleet, then their
     rate) so the message names the limit the caller can actually act on.
+
+    ``replacing_in_flight`` (M3 Resume of a run still running with a Stalled step): runs this
+    request stops, so they don't count against the two concurrency caps.
 
     A no-op unless ``hosted_mode``: self-hosted runs on the operator's OWN machine, so there is
     nothing to bound and the create path stays byte-identical to the pre-M-h3 build.
@@ -1034,6 +1042,8 @@ def _enforce_run_ceilings(owner_id: uuid.UUID, launching: int = 1) -> None:
             .where(Run.owner_id == owner_id, Run.created_at >= since)
         ).scalar_one()
 
+    owner_in_flight -= replacing_in_flight
+    fleet_in_flight -= replacing_in_flight
     if owner_in_flight + launching > settings.hosted_max_concurrent_runs_per_owner:
         raise HTTPException(
             status_code=429,
@@ -1069,6 +1079,56 @@ def _enforce_run_ceilings(owner_id: uuid.UUID, launching: int = 1) -> None:
                 ),
             },
         )
+
+
+def _launch_preflight(owner_id: uuid.UUID, team_graph_id: str, desktop_target: bool) -> list[str]:
+    """The launch pre-flight shared by ``POST /api/runs`` and M3's Resume (422 on a refusal);
+    returns the Desktop-routed subscription engines (empty unless ``desktop_target``).
+
+    M-accounts Slice B launch pre-flight: the owner must have a provider key for EVERY distinct
+    provider the team's node models use, else refuse (422) BEFORE the workflow starts — mirroring
+    the brownfield validate-before-launch discipline (a keyless account can't run; the seeded
+    operator with imported keys passes). On the clone path this checks the clone (== the source's
+    models); a 422 leaves only a harmless non-library orphan clone, never a started run."""
+    desktop_routed: list[str] = []
+    if desktop_target:
+        # M-subs-desktop: a Desktop launch — a FRESH connected Claude/Grok subscription covers its
+        # provider (and its nodes then run on the owner's own Desktop via the owner's own CLI).
+        missing, missing_nodes, desktop_routed, _fresh = _desktop_launch_credentials(
+            owner_id, team_graph_id
+        )
+        if missing:
+            raise HTTPException(
+                status_code=422,
+                detail=_desktop_missing_detail(owner_id, missing, missing_nodes),
+            )
+    else:
+        missing, missing_nodes = _missing_provider_credentials(owner_id, team_graph_id)
+        if missing:
+            subs = _connected_subscription_ids(owner_id)
+            subscription_only = all(_MODEL_PROVIDER_TO_SUB.get(p) in subs for p in missing)
+            raise HTTPException(
+                status_code=422,
+                detail=_missing_credentials_detail(
+                    missing, missing_nodes, subscription_only=subscription_only
+                ),
+            )
+
+    # M-live: and the model must still EXIST. A slug its provider retired used to sail through
+    # here and die mid-run with an opaque error (NVIDIA's 410 on meta/llama-3.3-70b-instruct).
+    # Strictly after the credential check — see _unservable_node_models. (M-subs-desktop: providers
+    # whose nodes run on the owner's own CLI are not probed — the CLI decides its own models.)
+    dead_models, dead_nodes = _unservable_node_models(
+        owner_id,
+        team_graph_id,
+        frozenset(p for p, sub in _MODEL_PROVIDER_TO_SUB.items() if sub in desktop_routed),
+    )
+    if dead_models:
+        raise HTTPException(
+            status_code=422,
+            detail=_unservable_models_detail(dead_models, dead_nodes),
+        )
+    return desktop_routed
 
 
 @router.post("/api/runs")
@@ -1245,51 +1305,9 @@ def create_run(
     else:
         team_graph_id = build_two_node_team()
 
-    # M-accounts Slice B launch pre-flight: the owner must have a provider key for EVERY distinct
-    # provider the team's node models use, else refuse (422) BEFORE the workflow starts — mirroring
-    # the brownfield validate-before-launch discipline (a keyless account can't run; the seeded
-    # operator with imported keys passes). On the clone path this checks the clone (== the source's
-    # models); a 422 leaves only a harmless non-library orphan clone, never a started run.
-    desktop_routed: list[str] = []
-    if body.desktop_target:
-        # M-subs-desktop: a Desktop launch — a FRESH connected Claude/Grok subscription covers its
-        # provider (and its nodes then run on the owner's own Desktop via the owner's own CLI).
-        missing, missing_nodes, desktop_routed, _fresh = _desktop_launch_credentials(
-            uuid.UUID(current_user.id), team_graph_id
-        )
-        if missing:
-            raise HTTPException(
-                status_code=422,
-                detail=_desktop_missing_detail(uuid.UUID(current_user.id), missing, missing_nodes),
-            )
-    else:
-        missing, missing_nodes = _missing_provider_credentials(
-            uuid.UUID(current_user.id), team_graph_id
-        )
-        if missing:
-            subs = _connected_subscription_ids(uuid.UUID(current_user.id))
-            subscription_only = all(_MODEL_PROVIDER_TO_SUB.get(p) in subs for p in missing)
-            raise HTTPException(
-                status_code=422,
-                detail=_missing_credentials_detail(
-                    missing, missing_nodes, subscription_only=subscription_only
-                ),
-            )
-
-    # M-live: and the model must still EXIST. A slug its provider retired used to sail through
-    # here and die mid-run with an opaque error (NVIDIA's 410 on meta/llama-3.3-70b-instruct).
-    # Strictly after the credential check — see _unservable_node_models. (M-subs-desktop: providers
-    # whose nodes run on the owner's own CLI are not probed — the CLI decides its own models.)
-    dead_models, dead_nodes = _unservable_node_models(
-        uuid.UUID(current_user.id),
-        team_graph_id,
-        frozenset(p for p, sub in _MODEL_PROVIDER_TO_SUB.items() if sub in desktop_routed),
+    desktop_routed = _launch_preflight(
+        uuid.UUID(current_user.id), team_graph_id, body.desktop_target
     )
-    if dead_models:
-        raise HTTPException(
-            status_code=422,
-            detail=_unservable_models_detail(dead_models, dead_nodes),
-        )
 
     run_id = str(uuid.uuid4())
 
@@ -1967,6 +1985,74 @@ def get_run_activity(
     with db.session_scope() as session:
         run = _require_owned_run(session, run_id, uuid.UUID(current_user.id))
         return activity.run_activity(session, run, after)
+
+
+@router.get("/api/runs/{run_id}/resume")
+def get_run_resume(
+    run_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> dict:
+    """M3 (R8): where this run can be picked up again — its steps (Kept / Suggested), which ones can
+    be resumed and, for each, what is kept, what runs again and what it skips
+    (``control_plane/resume.py``). Owner-scoped (404); always 200 otherwise (``available``)."""
+    with db.session_scope() as session:
+        run = _require_owned_run(session, run_id, uuid.UUID(current_user.id))
+        return resume.points(session, run)
+
+
+class ResumeRunRequest(BaseModel):
+    invocation_id: int
+
+
+@router.post("/api/runs/{run_id}/resume", status_code=201)
+def resume_run(
+    run_id: str,
+    body: ResumeRunRequest,
+    current_user: Annotated[UserOut, Depends(get_current_user)],
+) -> dict:
+    """M3 (R8): start a NEW run that picks this one up from one of its agent steps (``body.
+    invocation_id``, one of THIS run's steps): the old snapshot, the documents as they stood, the
+    workspace rebuilt from the checkpoint; everything before that step carried. 404 another
+    account's run; 409 a run or step that can't be resumed, or a resumed run already in flight;
+    429 / 422 as ``POST /api/runs``. A run still running with a Stalled step is stopped first —
+    after every check has passed."""
+    owner_id = uuid.UUID(current_user.id)
+    with db.session_scope() as session:
+        run = _require_owned_run(session, run_id, owner_id)
+        reply = resume.points(session, run)
+        point = next((p for p in reply["points"] if p["invocation_id"] == body.invocation_id), None)
+        if not reply["available"] or point is None or not point["resumable"]:
+            raise HTTPException(
+                status_code=409, detail=reply["reason"] or "That step can't be picked up again"
+            )
+        stops_run = reply["stops_run"]
+        team_graph_id = str(run.team_graph_id)
+        desktop_target = bool(run.desktop_target)
+    _enforce_run_ceilings(owner_id, replacing_in_flight=1 if stops_run else 0)
+    desktop_routed = _launch_preflight(owner_id, team_graph_id, desktop_target)
+    if stops_run:
+        cancel_run_core(run_id)
+        stall_sweep._close_sandboxes(run_id)
+    try:
+        with db.session_scope() as session:
+            run = _require_owned_run(session, run_id, owner_id)
+            if run.status not in resume.RESUMABLE_STATUSES:
+                raise HTTPException(status_code=409, detail="The run finished meanwhile")
+            new = resume.create(
+                session, run, body.invocation_id, owner_id=owner_id, desktop_routed=desktop_routed
+            )
+            new_id, idea = str(new.id), new.idea
+            new_number = resume.number(session, new)
+    except resume.ResumeRefused as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except IntegrityError as exc:
+        if "uq_runs_resumed_in_flight" not in str(exc.orig):
+            raise
+        raise HTTPException(
+            status_code=409, detail="This run is already being picked up again"
+        ) from exc
+    with SetWorkflowID(new_id):
+        DBOS.start_workflow(run_team, idea)
+    return {"run_id": new_id, "number": new_number}
 
 
 @router.post("/api/runs/{run_id}/nodes/{node_id}/switch-backup")

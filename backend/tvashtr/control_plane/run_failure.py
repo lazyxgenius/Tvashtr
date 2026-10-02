@@ -34,6 +34,9 @@ UNKNOWN = "unknown"
 # M1 stall guard: a step ended by the stall sweep (no update for 20 minutes); its message is
 # written whole by the sweep ("The Engineer stopped responding: no update for 20 minutes").
 STALLED = "stalled"
+# M3 Resume: a resumed run whose workspace couldn't be rebuilt from its checkpoint; its message is
+# written whole ("Couldn't rebuild the work carried from run #12: …").
+CHECKPOINT = "checkpoint"
 
 # ``credentials.NoCredentialError``'s message: "owner <uuid> has no credential for provider 'xai'".
 _NO_CREDENTIAL = re.compile(r"has no credential for provider '([^']+)'")
@@ -138,8 +141,8 @@ def humanise(
             else f"The team's graph has a problem: {_first_line(text)}"
         )
         return {"code": INVALID_GRAPH, "message": message, "provider": None}
-    if code == STALLED and text:
-        return {"code": STALLED, "message": _first_line(text), "provider": None}
+    if code in (STALLED, CHECKPOINT) and text:
+        return {"code": code, "message": _first_line(text), "provider": None}
     if not text:
         return {"code": code or UNKNOWN, "message": GENERIC_MESSAGE, "provider": None}
     line = _first_line(text)

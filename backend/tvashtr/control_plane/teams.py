@@ -1545,8 +1545,27 @@ def clone_team_graph(source_team_graph_id: str, name: str | None = None) -> str:
         return str(clone_id)
 
 
+def copy_run_graph(session, run_graph_id: uuid.UUID) -> tuple[uuid.UUID, dict]:
+    """M3 Resume: copy a run's snapshot graph for the resumed run (within ``session``) — the old
+    run's team as it ran, never the team as it is now. Each copied node keeps the LIBRARY node its
+    source was cloned from. Returns ``(new graph id, {old node id: new node id})``."""
+    source = session.get(TeamGraph, run_graph_id)
+    id_map: dict = {}
+    graph_id = _copy_graph(
+        session, run_graph_id, name=source.name, link_origin=True, keep_origin=True, id_map=id_map
+    )
+    return graph_id, id_map
+
+
 def _copy_graph(
-    session, src_id: uuid.UUID, *, name: str, link_origin: bool, **graph_fields
+    session,
+    src_id: uuid.UUID,
+    *,
+    name: str,
+    link_origin: bool,
+    keep_origin: bool = False,
+    id_map: dict | None = None,
+    **graph_fields,
 ) -> uuid.UUID:
     """Copy a team graph's nodes and edges into a NEW ``TeamGraph`` (within ``session``) and return
     its id — the one copier behind the run snapshot (:func:`clone_team_graph`) and Duplicate
@@ -1554,7 +1573,11 @@ def _copy_graph(
 
     ``link_origin`` stamps each copied node's ``cloned_from_node_id`` with its source node (a run
     snapshot); a duplicate leaves it NULL so it never reads as a run of the source team.
-    ``graph_fields`` are extra ``TeamGraph`` columns (``is_library``, ``owner_id``, …)."""
+    ``graph_fields`` are extra ``TeamGraph`` columns (``is_library``, ``owner_id``, …).
+
+    M3: ``keep_origin`` copies a run snapshot's OWN link instead (each node keeps the library node
+    its source was cloned from — a resumed run's snapshot of the old run's snapshot); ``id_map``,
+    when given, is filled with ``{source node id: copied node id}``."""
     nodes = (
         session.execute(select(AgentNode).where(AgentNode.team_graph_id == src_id)).scalars().all()
     )
@@ -1564,7 +1587,8 @@ def _copy_graph(
     session.add(clone)
     session.flush()
 
-    id_map: dict[uuid.UUID, uuid.UUID] = {}
+    if id_map is None:
+        id_map = {}
     for n in nodes:
         new_node = AgentNode(
             team_graph_id=clone.id,
@@ -1586,7 +1610,9 @@ def _copy_graph(
             edits_allowed=n.edits_allowed,
             # M2: link the clone back to its origin authored node so the authoring endpoint can
             # read "what did THIS authored node do last run" — correct even for duplicates.
-            cloned_from_node_id=n.id if link_origin else None,
+            cloned_from_node_id=(n.cloned_from_node_id if keep_origin else n.id)
+            if link_origin
+            else None,
         )
         session.add(new_node)
         session.flush()

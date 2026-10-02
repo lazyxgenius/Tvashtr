@@ -9,17 +9,21 @@ Rebuilding is: cut a fresh workspace from that base, apply the diff once.
 Pure git (stdlib + ``subprocess``), openhands-free, so ``team_run`` may import it.
 """
 
+import logging
 import os
 import re
 import shutil
 import subprocess
 import tempfile
+import uuid
 
 # ponytail: the diff lives in a bytea column; a bigger change is not kept (its later steps can't be
 # resumed). Object storage if real repos outgrow it.
 MAX_DIFF_BYTES = 20 * 1024 * 1024
 _GIT_TIMEOUT_S = 120
 _MARKER = "tvashtr-checkpoint"
+
+logger = logging.getLogger(__name__)
 
 
 class CheckpointError(RuntimeError):
@@ -94,10 +98,9 @@ def apply(ws: str, diff: bytes, *, marker: str) -> bool:
     id) is written into the work tree's git dir, so a replay of the run that finds it applied
     leaves the workspace as it is; a patch already in place (a crash before the stamp) is left too.
     Returns whether it changed the workspace now."""
-    git_dir = _git(ws, "rev-parse", "--absolute-git-dir").stdout.strip()
-    stamp = os.path.join(git_dir, _MARKER)
-    if os.path.exists(stamp):
-        with open(stamp, encoding="utf-8") as f:
+    path = _marker_path(ws)
+    if os.path.exists(path):
+        with open(path, encoding="utf-8") as f:
             if f.read().strip() == marker:
                 return False
     applied = False
@@ -119,10 +122,156 @@ def apply(ws: str, diff: bytes, *, marker: str) -> bool:
                 applied = True
         finally:
             os.remove(patch)
-    with open(stamp, "w", encoding="utf-8") as f:
-        f.write(marker)
+    stamp(ws, marker)
     return applied
 
 
 def _untracked(ws: str, rel: str) -> bool:
     return _git(ws, "ls-files", "--error-unmatch", "--", rel, check=False).returncode != 0
+
+
+# ---- the database side: one row per finished step, and the rebuild of a fresh workspace ----------
+
+
+def _marker_path(ws: str) -> str:
+    return os.path.join(_git(ws, "rev-parse", "--absolute-git-dir").stdout.strip(), _MARKER)
+
+
+def stamp(ws: str, marker: str) -> None:
+    """Say the workspace holds this checkpoint (its git dir's marker)."""
+    with open(_marker_path(ws), "w", encoding="utf-8") as f:
+        f.write(marker)
+
+
+def step_marker(invocation_id: int) -> str:
+    return f"inv:{invocation_id}"
+
+
+def seed_marker(run_id: str) -> str:
+    return f"seed:{run_id}"
+
+
+def record(
+    run_id: str,
+    invocation_id: int,
+    node_id: str,
+    iteration: int,
+    workspace: str | None,
+    state: dict,
+) -> None:
+    """After a finished step: the workspace as a checkpoint, written once per step. A plain call
+    from the walk (never a DBOS step, so no recorded history moves); a replay finds the row and
+    leaves it. The workspace's marker is stamped BEFORE the row is written, so a live workspace
+    always carries one (``restore`` patches only a workspace without any). Never raises: a step
+    that can't be checkpointed only means Resume can't start after it."""
+    from sqlalchemy import select
+    from sqlalchemy.dialects.postgresql import insert
+
+    from tvashtr.db import session_scope
+    from tvashtr.models import RunCheckpoint
+
+    if workspace is None:
+        return
+    try:
+        with session_scope() as session:
+            done = session.execute(
+                select(RunCheckpoint.id).where(RunCheckpoint.invocation_id == invocation_id)
+            ).first()
+        if done is not None:
+            return
+        cp = capture(workspace)
+        stamp(workspace, step_marker(invocation_id))
+        with session_scope() as session:
+            session.execute(
+                insert(RunCheckpoint)
+                .values(
+                    run_id=uuid.UUID(run_id),
+                    invocation_id=invocation_id,
+                    node_id=uuid.UUID(node_id),
+                    iteration=iteration,
+                    base_sha=cp["base_sha"],
+                    diff=cp["diff"],
+                    too_large=cp["too_large"],
+                    state=state,
+                )
+                .on_conflict_do_nothing(index_elements=["invocation_id"])
+            )
+    except Exception:  # noqa: BLE001 — a missed checkpoint must never fail the run
+        logger.warning(
+            "checkpoint failed run_id=%s invocation=%s", run_id, invocation_id, exc_info=True
+        )
+
+
+def newest(run_id: str):
+    """The run's newest usable checkpoint (its own last step's, else its seed), or None."""
+    from sqlalchemy import select
+
+    from tvashtr.db import session_scope
+    from tvashtr.models import RunCheckpoint
+
+    with session_scope() as session:
+        rows = (
+            session.execute(
+                select(RunCheckpoint)
+                .where(
+                    RunCheckpoint.run_id == uuid.UUID(run_id), RunCheckpoint.too_large.is_(False)
+                )
+                .order_by(RunCheckpoint.invocation_id.desc().nulls_last())
+            )
+            .scalars()
+            .all()
+        )
+        for row in rows:
+            session.expunge(row)
+    return rows[0] if rows else None
+
+
+def restore(run_id: str, workspace: str) -> None:
+    """Rebuild a FRESH workspace — one with no marker: a resumed run's first, or one a recovery
+    re-made on another machine — from the run's newest checkpoint. A live workspace (marked) is left
+    alone. A resumed run whose carried work won't apply raises :class:`CheckpointError` (the walk
+    fails the run, readably); a recovered run's own checkpoint that won't apply falls back to its
+    seed, else to the fresh workspace (the old behaviour)."""
+    if os.path.exists(_marker_path(workspace)):
+        return
+    cp = newest(run_id)
+    if cp is None:
+        return
+    if cp.invocation_id is None:
+        apply(workspace, cp.diff or b"", marker=seed_marker(run_id))
+        return
+    try:
+        apply(workspace, cp.diff or b"", marker=step_marker(cp.invocation_id))
+    except CheckpointError:
+        logger.warning("checkpoint restore failed run_id=%s", run_id, exc_info=True)
+        seed = _seed(run_id)
+        if seed is not None:
+            apply(workspace, seed.diff or b"", marker=seed_marker(run_id))
+
+
+def _seed(run_id: str):
+    from sqlalchemy import select
+
+    from tvashtr.db import session_scope
+    from tvashtr.models import RunCheckpoint
+
+    with session_scope() as session:
+        row = session.execute(
+            select(RunCheckpoint).where(
+                RunCheckpoint.run_id == uuid.UUID(run_id), RunCheckpoint.invocation_id.is_(None)
+            )
+        ).scalar_one_or_none()
+        if row is not None:
+            session.expunge(row)
+    return row
+
+
+def rebuild_base(run_id: str) -> str | None:
+    """The commit a rebuilt workspace is cut from: the newest checkpoint's base (a resumed run's
+    seed, or a recovered run's own), else None (cut it as usual)."""
+    cp = newest(run_id)
+    return cp.base_sha if cp is not None and cp.base_sha else None
+
+
+def has_commit(repo: str, sha: str) -> bool:
+    return _git(repo, "cat-file", "-e", f"{sha}^{{commit}}", check=False).returncode == 0

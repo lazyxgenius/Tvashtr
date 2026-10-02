@@ -440,6 +440,13 @@ def push_branch(installation_id: int, full_name: str, repo_dir: str, branch: str
     _git("push", _tokenized_url(token, full_name), f"{branch}:{branch}", cwd=repo_dir)
 
 
+def fetch_commit(installation_id: int, full_name: str, repo_dir: str, sha: str) -> None:
+    """M3: fetch one commit ``repo_dir``'s clone lacks (a base that was force-pushed away) with a
+    FRESH token on the command line only — like :func:`push_branch`, nothing is persisted."""
+    token = get_installation_token(installation_id)
+    _git("fetch", "--quiet", _tokenized_url(token, full_name), sha, cwd=repo_dir)
+
+
 def find_repo_in_installations(
     installation_ids: list[int], full_name: str
 ) -> tuple[int, dict] | None:

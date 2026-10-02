@@ -50,6 +50,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from tvashtr.config import get_settings
 from tvashtr.control_plane import (
+    checkpoints,
     clone_reaper,
     github_app,
     live_state,
@@ -460,6 +461,7 @@ def load_graph_step(run_id: str) -> dict:
         repo_path = run.repo_path
         base_ref = run.base_ref
         subpath = run.subpath
+        resumed = run.resumed_from_run_id is not None
         nodes = (
             session.execute(select(AgentNode).where(AgentNode.team_graph_id == run.team_graph_id))
             .scalars()
@@ -518,7 +520,23 @@ def load_graph_step(run_id: str) -> dict:
         # scoped-mount Slice 1: the optional sub-path scope (NULL ⇒ whole repo). Recorded alongside
         # so the grounding step + the worker FOCUS directive read ONE replay-stable value.
         "subpath": subpath,
+        # M3 (R8): a run started after M3 checkpoints its steps, and a resumed run starts from its
+        # carried state. Both ride this RECORDED dict, so a workflow recorded before M3 replays a
+        # dict without them and its step sequence never changes.
+        "checkpoints": True,
+        "resumed": resumed,
     }
+
+
+@DBOS.step()
+def load_resume_step(run_id: str) -> dict:
+    """M3 (R8): where a resumed run's walk starts — the chosen step's node (in this run's own copy
+    of the graph), the rounds already run per node, the reviewer's notes it carries and its copied
+    spec document. Called only for a resumed run (``graph["resumed"]``), so no other run gains a
+    step. Ids and words only: the workspace diff is read by :func:`checkpoints.restore`."""
+    from tvashtr.control_plane import resume  # lazy: resume → node_history → team_run
+
+    return resume.seed_state(run_id)
 
 
 def next_node(edges: list[dict], source_id: str, outcome: str | None) -> str | None:
@@ -1050,6 +1068,10 @@ def _materialize_run_workspace(run_id: str) -> str:
         # Revamp P6: a hosted run may now target a non-default branch, which a fresh clone holds
         # only as ``origin/<branch>`` — cut from that. A local-folder run is unchanged.
         start = resolve_start_point(repo_path, base_ref) if github_repo else base_ref
+        # M3 (R8): a resumed run (or a recovery of a run that has checkpoints) is cut from the
+        # commit its checkpoint is against, so the carried diff applies exactly; the PR still
+        # targets base_ref. A run with no checkpoint is cut exactly as before.
+        start = _checkpoint_start(run_id, repo_path, github_repo) or start
         branch = add_worktree(repo_path, workspace, run_id, start)
         with session_scope() as session:
             session.execute(
@@ -1059,6 +1081,31 @@ def _materialize_run_workspace(run_id: str) -> str:
     init_workspace_repo(workspace)
     _write_workspace_gitignore(workspace)
     return workspace
+
+
+def _checkpoint_start(run_id: str, repo_path: str, github_repo: str | None) -> str | None:
+    """The commit a rebuilt worktree is cut from (``checkpoints.rebuild_base``) when the repo has
+    it — fetched from GitHub for a hosted clone that lacks it (a force-pushed base) — else None (cut
+    as usual; ``checkpoints.restore`` then reports a carried diff that won't apply)."""
+    sha = checkpoints.rebuild_base(run_id)
+    if not sha:
+        return None
+    if checkpoints.has_commit(repo_path, sha):
+        return sha
+    if github_repo:
+        with session_scope() as session:
+            owner_id = session.get(Run, uuid.UUID(run_id)).owner_id
+        match = github_app.find_repo_in_installations(
+            _owner_installation_ids(owner_id), github_repo
+        )
+        if match is not None:
+            try:
+                github_app.fetch_commit(match[0], github_repo, repo_path, sha)
+            except Exception:  # noqa: BLE001 — a missing base is reported by the restore
+                logger.warning("fetching checkpoint base %s failed run_id=%s", sha, run_id)
+        if checkpoints.has_commit(repo_path, sha):
+            return sha
+    return None
 
 
 def ensure_run_workspace(run_id: str, workspace: str) -> None:
@@ -2456,6 +2503,14 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
     workspace: str | None = None  # lazily created at the first agent node
     reviewer_feedback: str | None = None
     pm_document_id: str | None = None
+    # M3 (R8): a resumed run starts at the chosen step with what it carries. ``start_id`` stays the
+    # graph's root, so the entry node is still the one that owns the spec.
+    if graph.get("resumed"):
+        carried = load_resume_step(run_id)
+        current = carried["start_node_id"]
+        iters_by_node = dict(carried["iters_by_node"])
+        reviewer_feedback = carried["reviewer_feedback"]
+        pm_document_id = carried["pm_document_id"]
     # M-brownfield: ``repo_path is None`` ⇒ greenfield (everything below is the legacy path,
     # untouched); non-NULL ⇒ brownfield (an isolated worktree of the user's real repo + an appended
     # repo-grounding block). ``grounding`` is computed ONCE at the first agent node (recorded →
@@ -2512,6 +2567,23 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                 # recorded PATH and never re-runs its body, so nothing has re-created the workspace
                 # on this machine. Re-materialize here, outside the checkpoint, on every entry.
                 ensure_run_workspace(run_id, workspace)
+                # M3 (R8): a fresh workspace is rebuilt from the run's newest checkpoint — a resumed
+                # run's carried work, or a recovered run's own last step. A plain call (no step):
+                # a live workspace carries a marker and is left alone.
+                try:
+                    checkpoints.restore(run_id, workspace)
+                except checkpoints.CheckpointError as exc:
+                    reason = f"Couldn't rebuild the work this run carries: {exc}"
+                    mark_run_failed_step(
+                        run_id, code=run_failure.CHECKPOINT, message=reason, node_id=current
+                    )
+                    DBOS.logger.error(f"run_team checkpoint restore failed run_id={run_id}: {exc}")
+                    return {
+                        "run_id": run_id,
+                        "status": "failed",
+                        "document_id": pm_document_id,
+                        "error": reason,
+                    }
                 if brownfield:
                     # D6: compute the repo-grounding block ONCE off the freshly-set-up worktree,
                     # recorded → replayed verbatim on resume (``subpath`` roots the outline; None ⇒
@@ -2822,6 +2894,22 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
             # Thread the verdict's reasons into the next agent's revision context (None for a
             # non-emitting node → the next round carries no revision block).
             reviewer_feedback = result["reasons"]
+            # M3 (R8): the workspace + the walk's state after this step, for Resume (and a
+            # recovery's rebuild). A plain call, gated on the RECORDED graph, so a workflow
+            # recorded before M3 replays exactly as it ran.
+            if graph.get("checkpoints"):
+                checkpoints.record(
+                    run_id,
+                    inv_id,
+                    current,
+                    n,
+                    workspace,
+                    {
+                        "iters_by_node": dict(iters_by_node),
+                        "reviewer_feedback": reviewer_feedback,
+                        "pm_document_id": pm_document_id,
+                    },
+                )
             if apply_budget_hook(run_id, node_id=current, iteration=n):
                 return _finalize_over_budget(run_id, pm_document_id)
             current = next_node(edges, current, route_label)
@@ -2869,6 +2957,19 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                         "document_id": pm_document_id,
                         "error": failed,
                     }
+                if graph.get("checkpoints"):
+                    checkpoints.record(
+                        run_id,
+                        inv_id,
+                        current,
+                        n,
+                        workspace,
+                        {
+                            "iters_by_node": dict(iters_by_node),
+                            "reviewer_feedback": reviewer_feedback,
+                            "pm_document_id": pm_document_id,
+                        },
+                    )
                 current = next_node(edges, current, None)
                 continue
             result = domain_query_step(run_id, str(domain_id), question)
@@ -2894,6 +2995,19 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                 outcome_detail=truncate_outcome_detail(result.get("answer") or ""),
                 context_manifest=result.get("manifest"),
             )
+            if graph.get("checkpoints"):
+                checkpoints.record(
+                    run_id,
+                    inv_id,
+                    current,
+                    n,
+                    workspace,
+                    {
+                        "iters_by_node": dict(iters_by_node),
+                        "reviewer_feedback": reviewer_feedback,
+                        "pm_document_id": pm_document_id,
+                    },
+                )
             current = next_node(edges, current, None)
             continue
 
