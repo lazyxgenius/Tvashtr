@@ -38,11 +38,17 @@ def _real_settings() -> Settings:
 
 def _worst_case_to_switch_s(task: AgentTask) -> float:
     """How long a model that never answers keeps the step before the host sees the envelope used
-    up and can switch: every attempt runs to the per-request ``timeout``, and between attempts the
-    SDK waits ``wait_exponential(multiplier, min, max)`` — computed from the REAL settings and the
-    REAL ``LLM`` the adapters build, with the SDK's own retry parameters (``retry_multiplier`` /
-    ``retry_min_wait`` are the SDK defaults; ``retry_max_wait`` / ``timeout`` / ``num_retries`` come
-    from the host's routing)."""
+    up and can switch, from the REAL settings and the REAL ``LLM`` the adapters build:
+
+    - the SDK makes ``num_retries`` attempts, waiting ``wait_exponential(retry_multiplier,
+      retry_min_wait, retry_max_wait)`` between them (its own parameters: multiplier 8, min 8);
+    - inside ONE attempt litellm's OpenAI client makes up to ``1 + DEFAULT_MAX_RETRIES`` HTTP
+      requests, each cut at the per-request ``timeout``, with the client's own short backoff
+      (``INITIAL_RETRY_DELAY`` doubling, capped at ``MAX_RETRY_DELAY``). Measured live by
+      ``make backup-envelope-check`` (3 attempts at a 10 s timeout: switch after ~122 s)."""
+    from litellm.constants import DEFAULT_MAX_RETRIES
+    from openai._constants import INITIAL_RETRY_DELAY, MAX_RETRY_DELAY
+
     llm = LLM(
         **agent_llm_routing(
             _real_settings(),
@@ -56,8 +62,12 @@ def _worst_case_to_switch_s(task: AgentTask) -> float:
     wait = wait_exponential(
         multiplier=llm.retry_multiplier, min=llm.retry_min_wait, max=llm.retry_max_wait
     )
-    waits = sum(wait(SimpleNamespace(attempt_number=n)) for n in range(1, llm.num_retries))
-    return llm.num_retries * llm.timeout + waits
+    sdk_waits = sum(wait(SimpleNamespace(attempt_number=n)) for n in range(1, llm.num_retries))
+    client_backoff = sum(
+        min(INITIAL_RETRY_DELAY * 2**i, MAX_RETRY_DELAY) for i in range(DEFAULT_MAX_RETRIES)
+    )
+    one_attempt = (1 + DEFAULT_MAX_RETRIES) * llm.timeout + client_backoff
+    return llm.num_retries * one_attempt + sdk_waits
 
 
 def _first_worker_task(monkeypatch, tmp_path, **kwargs) -> tuple[str, list]:
@@ -83,11 +93,12 @@ def test_a_hanging_model_reaches_the_switch_before_the_stall_sweep(client, monke
 
     today = _worst_case_to_switch_s(without[0])
     r17 = _worst_case_to_switch_s(with_backup[0])
-    # 8 tries × 120 s + 8+16+32+64+120+120+120 s of waits = 1440 s: the sweep ends the step first.
+    # 8 attempts × (3 HTTP tries × 120 s + 1.5 s) + 8+16+32+64+120+120+120 s of waits ≈ 3372 s:
+    # the 20-minute sweep ends the step long before the envelope is used up.
     assert today > ceiling, (today, ceiling)
-    # 3 tries × 120 s + 8+16 s = 384 s (~6.5 min): the switch happens long before the 20 minutes.
+    # 3 attempts × (3 × 120 s + 1.5 s) + 8+16 s = 1108.5 s (~18.5 min): the switch comes first.
     assert r17 < ceiling, (r17, ceiling)
-    assert r17 == 3 * 120 + 8 + 16
+    assert r17 == 3 * (3 * 120 + 1.5) + 8 + 16
 
 
 # ---- (b) the task each adapter gets -------------------------------------------------------------

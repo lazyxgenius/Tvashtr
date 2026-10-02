@@ -774,8 +774,10 @@ class Settings(BaseSettings):
 
 
 # MA ruling R17: an agent node with a usable backup gets R2's envelope — 3 attempts — instead of the
-# milestone-B one above (8 attempts ≈ 24 minutes for a model that never answers, past R1's 20-minute
-# stall ceiling, so the switch could never happen). 3 attempts × 120 s + 8 + 16 s of waits ≈ 6.5 min
+# milestone-B one above. A model that never answers burns, per attempt, up to 3 HTTP tries of
+# ``agent_request_timeout_s`` (litellm's OpenAI client retries twice itself): 8 attempts ≈ 56 min,
+# far past R1's 20-minute stall ceiling, so the switch could never happen; 3 attempts ≈ 18.5 min
+# (3 × (3 × 120 s + 1.5 s) + 8 + 16 s of waits), so it does. Measured by make backup-envelope-check.
 BACKUP_ENVELOPE_RETRIES = 3
 
 
