@@ -12,7 +12,7 @@ import {
   type RunRow,
 } from "../../lib/api";
 import { listRunDocs } from "../../lib/api/docs";
-import type { NodeRound } from "../../lib/api/nodes";
+import { getNodeRuns, type NodeRound } from "../../lib/api/nodes";
 import type { NodeTab } from "../../lib/nav";
 import { nodeDescription, nodeTitle } from "../../lib/nodeNames";
 import {
@@ -132,6 +132,7 @@ export function RunNodeDrawer({
   onOpenDoc,
   onEditOnTeam,
   onMakeTest,
+  teamAgent,
   offTeam = false,
   initialTool,
   activityLines,
@@ -154,6 +155,8 @@ export function RunNodeDrawer({
   onEditOnTeam?: () => void;
   /** M7: a round's ⋯ › Make this a test (the team's agent, its New test dialog on the round). */
   onMakeTest?: (invocationId: number) => void;
+  /** M7: the team's agent this run copied — its rounds in this run say which can't be a test. */
+  teamAgent?: { teamId: string; nodeId: string };
   /** The agent this run copied has since been deleted from the team. */
   offTeam?: boolean;
   /** M2: the run tool to open on (the Activity panel's "View change" opens Changes). */
@@ -171,9 +174,21 @@ export function RunNodeDrawer({
   // M7 (Test-FromRun): a round's ⋯ — Make this a test (on the team's agent) and Copy the answer.
   // The run view has no focus mode, so "Open in focus view" stays on the team drawer.
   const invocationOf = new Map(node.invocations.map((inv) => [inv.iteration, inv.invocation_id]));
+  // Test-RoundMenuOff: why a round can't be a test, from the team agent's rounds in this run.
+  const teamRounds = useLoaded(
+    onMakeTest && teamAgent && runId && tab === "runs"
+      ? `${teamAgent.teamId}:${teamAgent.nodeId}:${runId}:${node.invocations.length}`
+      : null,
+    () => getNodeRuns(teamAgent?.teamId ?? "", teamAgent?.nodeId ?? "", { runId: runId ?? "" }),
+    { keep: true },
+  );
+  const blocked = new Map(
+    (teamRounds.value?.run?.rounds ?? []).map((r) => [r.invocation_id, r.test_blocked]),
+  );
   const roundMenu = (r: NodeRound): MenuEntry[] => {
     const invocationId = invocationOf.get(r.iteration);
     const answer = r.outcome_detail?.trim();
+    const why = invocationId != null ? blocked.get(invocationId) : null;
     return [
       ...(onMakeTest && invocationId != null
         ? [
@@ -182,6 +197,8 @@ export function RunNodeDrawer({
               label: "Make this a test",
               icon: <FlaskConical size={15} strokeWidth={1.6} aria-hidden />,
               end: "new",
+              disabled: Boolean(why),
+              description: why ?? undefined,
               onSelect: () => onMakeTest(invocationId),
             },
           ]

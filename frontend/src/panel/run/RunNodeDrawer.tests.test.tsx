@@ -105,6 +105,56 @@ describe("RunNodeDrawer — M7 round ⋯", () => {
     expect(writeText).toHaveBeenCalledWith("Round 1: register rsi.");
   });
 
+  it("Test-RoundMenuOff: the team agent's rounds say which can't be a test", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: string) =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify(
+              input.startsWith("/api/teams/t1/nodes/n-rev/runs?run_id=r1")
+                ? {
+                    runs: [],
+                    run: {
+                      run_id: "r1",
+                      rounds: [
+                        {
+                          invocation_id: 811,
+                          iteration: 1,
+                          test_blocked:
+                            "Can’t make a test from this round (it ran before checkpoints)",
+                        },
+                      ],
+                    },
+                  }
+                : { run_id: "r1", events: [] },
+            ),
+          ),
+        ),
+      ),
+    );
+    render(
+      <RunNodeDrawer
+        node={node([inv(1), inv(2)])}
+        nodes={[]}
+        edges={[]}
+        runId="r1"
+        run={run}
+        workflowStatus={null}
+        tab="runs"
+        onTabChange={vi.fn()}
+        onClose={vi.fn()}
+        onMakeTest={vi.fn()}
+        teamAgent={{ teamId: "t1", nodeId: "n-rev" }}
+      />,
+    );
+    const d = screen.getByRole("complementary", { name: "Reviewer in this run" });
+    fireEvent.click(within(d).getByRole("button", { name: "More for round 1" }));
+    const item = within(d).getByRole("menuitem", { name: /Make this a test/ });
+    await waitFor(() => expect(item).toBeDisabled());
+    expect(item).toHaveTextContent("Can’t make a test from this round (it ran before checkpoints)");
+  });
+
   it("a round with nothing to offer has no ⋯", () => {
     const d = renderDrawer([inv(1, { invocation_id: undefined, outcome_detail: null })], vi.fn());
     expect(within(d).queryByRole("button", { name: "More for round 1" })).toBeNull();

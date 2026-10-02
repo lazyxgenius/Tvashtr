@@ -993,14 +993,20 @@ export default function App({
   };
   // M7: the run view's round ⋯ › Make this a test — the team's agent on Tests, its New test dialog
   // on that round.
-  const makeTestOnTeam = (node: GraphNode) => {
+  const teamAgentOf = (node: GraphNode) => {
     const origin = node.origin_node_id;
     return teamOfRun && origin && !offTeam(node)
+      ? { teamId: teamOfRun, nodeId: origin }
+      : undefined;
+  };
+  const makeTestOnTeam = (node: GraphNode) => {
+    const agent = teamAgentOf(node);
+    return agent
       ? (invocationId: number) =>
           navigate({
             page: "team",
-            teamId: teamOfRun,
-            node: origin,
+            teamId: agent.teamId,
+            node: agent.nodeId,
             tab: "tests",
             testFrom: invocationId,
           })
@@ -1329,6 +1335,7 @@ export default function App({
                   onOpenDoc={openRunDoc}
                   onEditOnTeam={editOnTeam(selectedRunNode)}
                   onMakeTest={makeTestOnTeam(selectedRunNode)}
+                  teamAgent={teamAgentOf(selectedRunNode)}
                   offTeam={offTeam(selectedRunNode)}
                 />
               )}
