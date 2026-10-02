@@ -635,6 +635,57 @@
   background: var(--sage-100);
   color: #52613e;
 }
+/* M9 (Set-CheckedWorse): a version that did worse on its task set. */
+.cv-tpill--warn {
+  background: var(--amber-100);
+  color: #7a5423;
+}
+.cv-hist__l3 {
+  flex-wrap: wrap;
+}
+/* M9 (Set-Checked / Set-CheckedWorse): the newest check's callout under the versions. */
+.cv-check {
+  box-sizing: border-box;
+  display: flex;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: #f3f6ee;
+  border: 1px solid #c9d3b8;
+}
+.cv-check > svg {
+  flex: none;
+  margin-top: 1px;
+  color: #52613e;
+}
+.cv-check--worse {
+  background: #fbf5ea;
+  border-color: #e2c48f;
+}
+.cv-check--worse > svg {
+  color: #7a5423;
+}
+.cv-check__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--ink-700);
+}
+.cv-check__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-900);
+}
+.cv-check__acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
 .cv-hist__acts {
   margin-left: auto;
   display: inline-flex;

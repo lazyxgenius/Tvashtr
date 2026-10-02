@@ -840,7 +840,8 @@ export default function App({
   // Every outcome reloads the summary, and the button stays busy until it arrives; a 409 ("Nothing
   // changed since v7.") is a refresh, said plainly.
   // M7 (R6): when a changed agent has tests, Save as vN asks first (a note, run its tests or just
-  // save); otherwise it saves at once, as in M5.
+  // save); otherwise it saves at once, as in M5. M9: so does a team with task sets (compare the new
+  // version with the last one on a set).
   // The drawer's guard may have just saved a draft, so the decision reads the summary again (#4).
   const saveAsNext = () =>
     guardLeave(() => {
@@ -853,13 +854,13 @@ export default function App({
         )
         .then((now) => {
           if (!mountedRef.current) return;
-          if (now?.tests) {
+          if (now?.tests || now?.check_sets?.length) {
             setSaveStep(null);
             setSaveNudge(now);
           } else postVersion();
         });
     });
-  const postVersion = (body?: { note?: string; run_tests: boolean }) => {
+  const postVersion = (body?: { note?: string; run_tests?: boolean; check_set?: string }) => {
     if (!currentTeamId) return;
     const teamOfSave = currentTeamId;
     setSaveStep("posting");
@@ -899,6 +900,15 @@ export default function App({
   // The reloaded summary is in (or failed): Save as vN is free again; after a save, focus goes back
   // to the chip (the button it was on is gone).
   const versionsLoading = versions.state === "loading";
+  // M9 (R6): while a version's set check runs, open History reads the versions every 2 s (R15) so
+  // its pill moves on; each read, answered or failed, arms the next.
+  const checking =
+    historyPanelOpen && (shownVersions?.versions ?? []).some((v) => v.check?.status === "running");
+  useEffect(() => {
+    if (!checking || versionsLoading) return;
+    const t = window.setTimeout(() => setVersionTick((n) => n + 1), 2000);
+    return () => window.clearTimeout(t);
+  }, [checking, versionsLoading]);
   useEffect(() => {
     if (saveStep !== "reloading" || versionsLoading) return;
     setSaveStep(null);
@@ -1264,11 +1274,12 @@ export default function App({
               onClose={() => setFileOpen(false)}
             />
           )}
-          {saveNudge?.tests && (
+          {saveNudge && (
             <SaveNudgeDialog
               current={saveNudge.current}
               next={saveNudge.next}
-              tests={saveNudge.tests}
+              tests={saveNudge.tests ?? null}
+              checkSets={saveNudge.check_sets}
               onClose={() => setSaveNudge(null)}
               onSave={(body) => {
                 setSaveNudge(null);
