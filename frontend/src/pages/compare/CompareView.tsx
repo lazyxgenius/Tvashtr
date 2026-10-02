@@ -185,13 +185,15 @@ function Lane({ side, c, teamId }: { side: CompareSide; c: Compare; teamId: stri
           {duration(side.elapsed_s)} · {money(side.cost_usd)}
         </span>
         {side.status === "needs_you" && side.run_id && (
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => openRun(teamId, side.run_id as string)}
-          >
-            Open run
-          </Button>
+          <span className="cmp-lane__open">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => openRun(teamId, side.run_id as string)}
+            >
+              Open run
+            </Button>
+          </span>
         )}
       </div>
       <div className="cmp-lane__strip">

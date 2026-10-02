@@ -352,14 +352,14 @@
   table-layout: fixed;
 }
 .cmp-res__table col:first-child {
-  width: 236px;
+  width: 254px; /* the board's 18px row padding + 220px column + 16px gap */
 }
 .cmp-res__table col:last-child {
-  width: 218px;
+  width: 218px; /* 200px + the row's 18px */
 }
 .cmp-res__table th,
 .cmp-res__table td {
-  padding: 11px 8px;
+  padding: 11px 16px 11px 0; /* the board's 16px column gap */
   border-bottom: 1px solid var(--line-200);
   text-align: left;
   vertical-align: middle;
@@ -370,14 +370,15 @@
 .cmp-res__table tr > :last-child {
   padding-right: 18px;
 }
-.cmp-res__table thead th {
+.cmp-res__table thead th,
+.cmp-res__table thead td {
   padding-top: 12px;
   padding-bottom: 12px;
   background: var(--surface-sunk);
   font-weight: 400;
 }
 .cmp-res__side {
-  display: inline-flex;
+  display: flex; /* a block, so the header row is the board's 47px (12 + 22 + 12 + 1) */
   align-items: center;
   gap: 8px;
 }
@@ -403,6 +404,7 @@
   color: var(--ink-800);
 }
 .cmp-res__cell svg {
+  display: inline-block; /* Tailwind's base makes an svg a block: keep the ✓ on the line */
   margin-right: 6px;
   vertical-align: -2px;
   color: #52613e;
@@ -439,4 +441,9 @@
   border: 1px solid var(--border-hairline);
   border-radius: 14px;
   background: var(--surface-card);
+}
+/* Cmp-NeedsYou: "Open run" sits in the lane head without making it taller (the board's -3px). */
+.cmp-lane__open {
+  display: inline-flex;
+  margin: -3px 0;
 }

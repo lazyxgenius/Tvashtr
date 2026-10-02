@@ -105,3 +105,15 @@ Ver-Draft web: matched 63/80 design items · 4 with size/type drift · 12 only m
 kept-m8-teamcanvas: web 14/14, desktop 14/14 kept items present — none missing (after: 15, added "button: Compare")
 #   and the earlier records still hold on m08-parity: kept-m7-teamcanvas-web 46/46, -desktop 46/46; kept-m7-history-web 29/29,
 #   -desktop 29/29 (each adds only "button: Compare").
+
+# Lead follow-up (feat/m08-compare, after the record above) — the three reported items are fixed:
+# 1. Cmp-NeedsYou "Working": the board was corrected to "Running" (Quality canvas v1790962441-df04), matching Cmp-Running's
+#    running lane; re-shot Desktop: matched 51/53, 0 size/type drift, 2 not found (the Task sets tab — arrives with M9).
+# 2. The results table (compare.css): the grid follows the board's `220px 1fr 1fr 200px`, gap 16, row padding 18 (first column
+#    254 px, the last 218, cells padded 0 left / 16 right), the header side is a block (the 47 px header row), the empty header
+#    cell is tinted, and the ✓ stays on its line (Tailwind's base makes an svg a block). Re-shot Desktop: Cmp-Results 46/53 and
+#    Cmp-SideFailed 42/45 matched, 0 size/type drift; A / B / Difference text at x 287 / 738 / 1189 as drawn. The remaining
+#    "only moved" rows are the matcher pairing the board's text spans with the app's th/td cell boxes (cell x 33 = text x 51
+#    after the 18 px padding; cell centres 356.5 vs the board's 357.5), the footer 130 px higher because the "One task is a
+#    small sample" callout arrives with M9, and the Versions tab 103 px left because the Task sets tab arrives with M9.
+# 3. The Needs-you lane head: "Open run" sits in a `margin: -3px 0` wrapper as the board draws it (lane heads equal).
