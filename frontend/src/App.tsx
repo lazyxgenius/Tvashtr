@@ -6,7 +6,8 @@ import { RunBlockedBanner } from "./canvas/RunBlockedBanner";
 import { TeamFilePanel } from "./canvas/TeamFilePanel";
 import { HistoryPanel } from "./canvas/HistoryPanel";
 import { VersionChip } from "./canvas/VersionChip";
-import { getVersions, saveVersion } from "./lib/api/versions";
+import { getVersions, saveVersion, type TeamVersions } from "./lib/api/versions";
+import { ApiDetailError } from "./lib/api/runs";
 import type { ImportFix } from "./lib/api/teams";
 import { isDesktopApp } from "./lib/desktopRepos";
 import {
@@ -257,10 +258,12 @@ export default function App({
   const [imported, setImported] = useState(() => (teamId ? readImportNotice(teamId) : null));
   const [githubInstall, setGithubInstall] = useState(false);
   // M5: History (from the header's version chip), the versions summary's reload tick (after Save as
-  // vN / Restore) and Save as vN on its way.
+  // vN / Restore) and Save as vN on its way (its POST, then the summary it reloads).
   const [historyOpen, setHistoryOpen] = useState(false);
   const [versionTick, setVersionTick] = useState(0);
-  const [savingVersion, setSavingVersion] = useState(false);
+  const [saveStep, setSaveStep] = useState<"posting" | "reloading" | null>(null);
+  const savedVersion = useRef(false);
+  const chipRef = useRef<HTMLButtonElement>(null);
   // Credential preflight for Run (UX): null until the first successful providers load so we
   // don't flash-disable the CTA; once loaded, missing BYOK (and no Desktop subscription cover)
   // blocks launch and points at Engines.
@@ -808,6 +811,13 @@ export default function App({
     () => getVersions(currentTeamId ?? ""),
     { keep: true },
   );
+  // A refetch that fails keeps the last good summary on screen (a failed first load shows none).
+  const lastVersions = useRef<{ team: string; value: TeamVersions } | null>(null);
+  if (versions.value && currentTeamId)
+    lastVersions.current = { team: currentTeamId, value: versions.value };
+  const shownVersions =
+    versions.value ??
+    (lastVersions.current?.team === currentTeamId ? lastVersions.current.value : null);
   const historyPanelOpen = authoring && historyOpen && !nodeDrawerOpen;
   const openHistory = () =>
     guardLeave(() => {
@@ -817,18 +827,39 @@ export default function App({
     });
   const reloadVersions = () => setVersionTick((t) => t + 1);
   // A drawer draft isn't in the working copy until it's saved: Save as vN asks about it first.
+  // Every outcome reloads the summary, and the button stays busy until it arrives; a 409 ("Nothing
+  // changed since v7.") is a refresh, said plainly.
   const saveAsNext = () =>
     guardLeave(() => {
-      if (!currentTeamId) return;
-      setSavingVersion(true);
+      if (!currentTeamId || saveStep) return;
+      setSaveStep("posting");
       saveVersion(currentTeamId)
-        .then(reloadVersions, (e: unknown) =>
-          toast({ message: e instanceof Error ? e.message : String(e), tone: "error" }),
+        .then(
+          () => {
+            savedVersion.current = true;
+          },
+          (e: unknown) =>
+            toast(
+              e instanceof ApiDetailError && e.status === 409
+                ? { message: e.message }
+                : { message: e instanceof Error ? e.message : String(e), tone: "error" },
+            ),
         )
         .finally(() => {
-          if (mountedRef.current) setSavingVersion(false);
+          if (!mountedRef.current) return;
+          setSaveStep("reloading");
+          reloadVersions();
         });
     });
+  // The reloaded summary is in (or failed): Save as vN is free again; after a save, focus goes back
+  // to the chip (the button it was on is gone).
+  const versionsLoading = versions.state === "loading";
+  useEffect(() => {
+    if (saveStep !== "reloading" || versionsLoading) return;
+    setSaveStep(null);
+    if (savedVersion.current) chipRef.current?.focus();
+    savedVersion.current = false;
+  }, [saveStep, versionsLoading]);
   const openTeamFileRef = useRef(openTeamFile);
   openTeamFileRef.current = openTeamFile;
   // Right after an import: "Imported as a new team", once (its "Open the file" opens the panel).
@@ -1010,11 +1041,12 @@ export default function App({
         teamName={teamGraph?.name ?? ""}
         spend={spendLabel}
         version={
-          authoring && currentTeamId && versions.value ? (
+          authoring && currentTeamId && shownVersions ? (
             <VersionChip
-              versions={versions.value}
+              chipRef={chipRef}
+              versions={shownVersions}
               open={historyPanelOpen}
-              saving={savingVersion}
+              saving={saveStep !== null}
               onToggle={() => (historyPanelOpen ? setHistoryOpen(false) : openHistory())}
               onSave={saveAsNext}
             />
@@ -1161,7 +1193,7 @@ export default function App({
           {historyPanelOpen && currentTeamId && (
             <HistoryPanel
               teamId={currentTeamId}
-              versions={versions}
+              versions={{ ...versions, value: shownVersions }}
               revision={graphRevision(teamGraph)}
               guard={guardLeave}
               onRestored={() => {
@@ -1188,7 +1220,7 @@ export default function App({
                   onFocusChange={(focus) => setPlace({ ...place, focus })}
                   onClose={() => handleSelectNodeId(null)}
                   onSaved={() => loadTeam(currentTeamId)}
-                  teamVersion={versions.value?.current}
+                  teamVersion={shownVersions?.current}
                   guardRef={leaveGuardRef}
                   onDelete={() => handleDeleteNodes([selectedTeamNode.id])}
                   catalogue={config?.provider_catalogue}

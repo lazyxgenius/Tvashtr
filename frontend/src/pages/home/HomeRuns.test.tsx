@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { reportFetchFailed, reportFetchOk } from "../../lib/backendStatus";
 import { registerBadgeLoader } from "../../lib/workspaceStatus";
+import { readFileSync } from "node:fs";
 import {
   type Call,
   DOCS_RUN,
@@ -486,6 +487,14 @@ describe("Recent runs and Spend", () => {
     await userEvent.click(screen.getByRole("option", { name: "Stopped" }));
     expect(await within(recent).findByText("No runs match this filter.")).toBeInTheDocument();
     expect(calls.some((c) => c.path === "/api/runs?status=stopped&limit=5")).toBe(true);
+  });
+
+  it("the existing meta line keeps its own wrapping; only the version tag's rule is new (M5, §2.2)", () => {
+    const homeRunsCss = readFileSync(`${process.cwd()}/src/pages/home/home-runs.css`, "utf8");
+    const meta = /\.hm-recent__meta \{([^}]*)\}/.exec(homeRunsCss)?.[1] ?? "";
+    expect(meta).toContain("font-size: 12px");
+    expect(meta).not.toMatch(/white-space|overflow|text-overflow/);
+    expect(homeRunsCss).toMatch(/\.hm-recent__meta \.tv-vtag \{/);
   });
 
   it("each row's meta line shows the version its run used (M5, Ver-HomeRuns)", async () => {

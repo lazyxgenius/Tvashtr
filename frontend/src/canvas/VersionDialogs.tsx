@@ -11,16 +11,18 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { Badge, Button, IconButton } from "../design-system/components";
 import {
   getRestorePreview,
   getVersion,
+  type RestorePreview,
   restoreVersion,
   type VersionChange,
 } from "../lib/api/versions";
+import { ApiDetailError } from "../lib/api/runs";
 import { useModalDialog } from "../lib/useModalDialog";
 import { diffPill, restoreTitles, runLook, versionAge } from "../lib/versionFormat";
 import { listNatural } from "../pages/home/homeFormat";
@@ -47,7 +49,8 @@ export function VersionDialog({
   /** Ver-Changes / Ver-AgentCompare: 720px, 96px from the top; else Ver-Restore's 560px, centred. */
   wide?: boolean;
   onClose: () => void;
-  children: ReactNode;
+  /** The body (none: the dialog is its header and footer). */
+  children?: ReactNode;
   footNote?: ReactNode;
   actions: ReactNode;
 }) {
@@ -73,7 +76,7 @@ export function VersionDialog({
             <X size={16} strokeWidth={1.6} aria-hidden />
           </IconButton>
         </header>
-        <div className="lv-confirm__body">{children}</div>
+        {children ? <div className="lv-confirm__body">{children}</div> : null}
         <footer className="lv-confirm__foot">
           <div className="lv-confirm__foot-note">{footNote}</div>
           <div className="lv-confirm__actions">{actions}</div>
@@ -265,6 +268,10 @@ export function VersionChanges({
     >
       {d ? (
         <>
+          {d.compared_with == null && (
+            // v1 has nothing before it: its own line ("First version", "Imported from a team file").
+            <div className="cv-vfirst">{d.note || d.summary}</div>
+          )}
           <ChangeRows changes={d.changes} />
           {d.compared_with != null && d.same.length > 0 && (
             <div className="cv-vsame">
@@ -324,8 +331,23 @@ export function VersionRestore({
   onRestored: () => void;
   onClose: () => void;
 }) {
-  const loaded = useLoaded(`${teamId}:${number}:restore`, () => getRestorePreview(teamId, number));
-  const p = loaded.value;
+  // Loaded here, not through useLoaded: a 409 ("v9 already matches v7.") keeps the server's words.
+  const [loaded, setLoaded] = useState<{ p: RestorePreview } | { err: unknown } | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    let live = true;
+    getRestorePreview(teamId, number).then(
+      (preview) => live && setLoaded({ p: preview }),
+      (err: unknown) => live && setLoaded({ err }),
+    );
+    return () => {
+      live = false;
+    };
+  }, [teamId, number, attempt]);
+  const p = loaded && "p" in loaded ? loaded.p : null;
+  const failed = loaded && "err" in loaded ? loaded.err : null;
+  // Restore would change nothing: the dialog says why, with Cancel only.
+  const refused = failed instanceof ApiDetailError && failed.status === 409 ? failed.message : null;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const cancel = () => {
@@ -348,11 +370,13 @@ export function VersionRestore({
       title={`Restore v${number}?`}
       icon={<RotateCcw size={17} strokeWidth={1.6} aria-hidden />}
       sub={
-        p
-          ? draft != null
-            ? `Your changes are saved as v${draft} first. Restoring makes a new version, v${p.makes}, that matches v${number}. v${p.current} and v${draft} stay in History, so you can switch back at any time.`
-            : `Restoring makes a new version, v${p.makes}, that matches v${number}. v${p.current} stays in History, so you can switch back at any time.`
-          : ""
+        refused
+          ? refused
+          : p
+            ? draft != null
+              ? `Your changes are saved as v${draft} first. Restoring makes a new version, v${p.makes}, that matches v${number}. v${p.current} and v${draft} stay in History, so you can switch back at any time.`
+              : `Restoring makes a new version, v${p.makes}, that matches v${number}. v${p.current} stays in History, so you can switch back at any time.`
+            : ""
       }
       onClose={cancel}
       actions={
@@ -360,16 +384,18 @@ export function VersionRestore({
           <Button variant="ghost" onClick={cancel} disabled={busy}>
             Cancel
           </Button>
-          <Button
-            variant="primary"
-            className="cv-btn-flush"
-            loading={busy}
-            disabled={!p}
-            onClick={restore}
-          >
-            <RotateCcw size={14} strokeWidth={1.6} aria-hidden />
-            <span>Restore as v{p?.makes ?? ""}</span>
-          </Button>
+          {!refused && (
+            <Button
+              variant="primary"
+              className="cv-btn-flush"
+              loading={busy}
+              disabled={!p}
+              onClick={restore}
+            >
+              <RotateCcw size={14} strokeWidth={1.6} aria-hidden />
+              <span>Restore as v{p?.makes ?? ""}</span>
+            </Button>
+          )}
         </>
       }
     >
@@ -415,12 +441,15 @@ export function VersionRestore({
             </div>
           )}
         </>
-      ) : (
+      ) : refused ? null : (
         <LoadState
-          state={loaded.state === "error" ? "error" : "loading"}
+          state={failed ? "error" : "loading"}
           loading="Loading what Restore changes"
           error="Couldn’t load what Restore changes."
-          onRetry={loaded.retry}
+          onRetry={() => {
+            setLoaded(null);
+            setAttempt((a) => a + 1);
+          }}
         />
       )}
     </VersionDialog>

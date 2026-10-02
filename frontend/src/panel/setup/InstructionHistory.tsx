@@ -145,10 +145,20 @@ export function InstructionHistory({
               </div>
               {!e.current && (
                 <div className="nd-ihist__acts">
-                  <Button variant="ghost" size="sm" onClick={() => onUse(e.text, e.number)}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label={`Use the v${e.number} text`}
+                    onClick={() => onUse(e.text, e.number)}
+                  >
                     Use this text
                   </Button>
-                  <button type="button" className="cv-link" onClick={() => setComparing(e)}>
+                  <button
+                    type="button"
+                    className="cv-link"
+                    aria-label={`Compare v${e.number}`}
+                    onClick={() => setComparing(e)}
+                  >
                     Compare
                   </button>
                 </div>
