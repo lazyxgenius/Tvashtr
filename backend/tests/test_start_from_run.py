@@ -28,6 +28,7 @@ from tvashtr.config import get_settings
 from tvashtr.control_plane import context_compiler, github_app, resume, team_run
 from tvashtr.control_plane.context_compiler import compile_context
 from tvashtr.control_plane.credentials import encrypt_secret
+from tvashtr.control_plane.run_failure import node_label
 from tvashtr.db import session_scope
 from tvashtr.documents.service import add_version, create_document_with_initial_version
 from tvashtr.engines.base import AgentRunResult
@@ -325,6 +326,14 @@ def test_the_dialog_offers_what_can_come_along_and_where_to_start(client, monkey
     ]
     assert body["default_start"] == "pr"
     assert body["team"] == {"id": team, "version": 1}
+    # The team's entry agent (as the team is now) updates the starting spec.
+    with session_scope() as session:
+        pm = session.execute(
+            select(AgentNode).where(
+                AgentNode.team_graph_id == uuid.UUID(team), AgentNode.role_name == "pm"
+            )
+        ).scalar_one()
+        assert body["entry_agent"] == node_label(pm.role_name, pm.kind, pm.config)
     # Never the agents' conversations.
     for words in _CONVO.values():
         assert words not in json.dumps(body)
@@ -362,6 +371,7 @@ def test_who_can_start_one(client, monkeypatch):
         body = client.get(f"/api/runs/{run_id}/next").json()
         assert body["available"] is False and body["reason"], (run_id, body)
         assert body["start_from"] == [] and body["team"] is None
+        assert body["entry_agent"] is None
         resp, started = _post(client, run_id, monkeypatch)
         assert resp.status_code == 422, resp.text
         assert started == [] and _children(run_id) == 0
@@ -466,13 +476,19 @@ def test_refusals_follow_post_api_runs(client, monkeypatch):
         f"/api/teams/{team}/nodes/{eng['id']}", json={"model": "anthropic/claude-sonnet-4"}
     )
     resp, started = _post(client, run_id, monkeypatch)
-    assert resp.status_code == 422, resp.text
+    plain = client.post("/api/runs", json={"idea": TASK, "team_graph_id": team})
+    assert resp.status_code == plain.status_code == 422, resp.text
+    assert resp.json() == plain.json()  # POST /api/runs's own body, unchanged
     assert resp.json()["detail"]["missing_providers"] == ["anthropic"]
     # The repo left the installation.
     client.patch(f"/api/teams/{team}/nodes/{eng['id']}", json={"model": eng["model"]})
     monkeypatch.setattr(github_app, "list_installation_repositories", lambda _inst: [])
     resp, started = _post(client, run_id, monkeypatch, start_from="main")
     assert resp.status_code == 422, resp.text
+    assert resp.json()["detail"] == {
+        "message": "github_repo is not in your installations",
+        "github_repo": REPO,
+    }
     assert started == [] and _children(run_id) == 0
 
 
@@ -481,14 +497,16 @@ def test_refusals_follow_post_api_runs(client, monkeypatch):
 
 def test_the_new_run_says_where_it_started_from(client, monkeypatch):
     _hosted(monkeypatch)
-    run_id, _team, _clone = _old_run(client)
+    run_id, team, _clone = _old_run(client)
     resp, _ = _post(client, run_id, monkeypatch)
     new_id = resp.json()["run_id"]
     number = _run(new_id).carry["from"]["number"]
     summary = "brought spec v3, 1 decision, 3 memories and 3 summaries"
     expected = {"run_id": run_id, "number": number, "summary": summary}
     assert client.get(f"/api/runs/{new_id}").json()["run"]["started_from"] == expected
-    listed = {r["run_id"]: r for r in client.get("/api/runs").json()["runs"]}
+    # (the team's runs: the shared account has more runs than one page)
+    runs = client.get("/api/runs", params={"team_id": team}).json()["runs"]
+    listed = {r["run_id"]: r for r in runs}
     assert listed[new_id]["started_from"] == expected
     assert listed[run_id]["started_from"] is None
 
@@ -507,17 +525,59 @@ def test_the_new_run_says_where_it_started_from(client, monkeypatch):
     # the carried spec until the run writes its own.
     act = client.get(f"/api/runs/{new_id}/activity").json()
     first = act["lines"][0]
-    assert first["kind"] == "started" and first["came_along"] is True
+    assert first["kind"] == "started" and first["came_along"] is True  # top level, not in refs
+    assert "came_along" not in first["refs"] and first["from_run"] is None
     assert first["text"] == f"Started from run #{number} · {summary}"
     assert act["lines"][1]["kind"] == "started" and "came_along" not in act["lines"][1]
-    graph = client.get(f"/api/runs/{new_id}/graph").json()
-    pm = next(n for n in graph["nodes"] if n["role_name"] == "pm")
-    assert pm["carried"] == {
-        "from_run_id": run_id,
-        "number": number,
-        "text": f"From spec v3 of run #{number}",
-    }
-    assert all(n["carried"] is None for n in graph["nodes"] if n["role_name"] != "pm")
+
+    def _cards() -> dict:
+        graph = client.get(f"/api/runs/{new_id}/graph").json()
+        assert all(n["carried"] is None for n in graph["nodes"])  # nothing was carried over
+        return {n["role_name"]: n["live"] for n in graph["nodes"]}
+
+    card = f"From spec v3 of run #{number}"
+    live = _cards()
+    assert (live["pm"]["live_state"], live["pm"]["activity"]) == ("waiting", card)
+    assert all(v["activity"] != card for role, v in live.items() if role != "pm")
+    # Its first step started, with no activity of its own yet: still the carried spec, Working.
+    with session_scope() as session:
+        new = session.get(Run, uuid.UUID(new_id))
+        pm_id = session.execute(
+            select(AgentNode.id).where(
+                AgentNode.team_graph_id == new.team_graph_id, AgentNode.role_name == "pm"
+            )
+        ).scalar_one()
+        inv = AgentInvocation(run_id=new_id, node_id=pm_id, iteration=1, status="running")
+        session.add(inv)
+        session.flush()
+        inv_id = inv.id
+    live = _cards()
+    assert (live["pm"]["live_state"], live["pm"]["activity"]) == ("working", card)
+    # Its first event: the card says what the step is doing.
+    action = "command='ls core' kind='TerminalAction'"
+    with session_scope() as session:
+        session.add(
+            RunEvent(
+                run_id=new_id,
+                invocation_id=inv_id,
+                seq=0,
+                kind="action",
+                payload={"tool_name": "terminal", "action": action},
+            )
+        )
+    assert _cards()["pm"]["activity"] != card
+    with session_scope() as session:
+        session.execute(text("delete from run_events where run_id = :r"), {"r": new_id})
+    assert _cards()["pm"]["activity"] == card
+    # Once the run has a spec of its own, the card is the node's own again.
+    doc = create_document_with_initial_version(
+        "Mini-PRD", "prd", "NEW SPEC", "agent:entry", f"{new_id}:spec:1", run_id=uuid.UUID(new_id)
+    )
+    with session_scope() as session:
+        session.execute(
+            update(Run).where(Run.id == uuid.UUID(new_id)).values(pm_document_id=doc.id)
+        )
+    assert _cards()["pm"]["activity"] != card
     _end([new_id])
 
 
@@ -551,6 +611,46 @@ def test_the_entry_agents_first_step_reads_the_spec_and_memories_in_activity(cli
         "Read 3 memories, including “Register every indicator on INDICATORS”",
     ]
     _end([new_id])
+
+
+def test_memories_waiting_for_review_get_a_run_line(client, monkeypatch):
+    _hosted(monkeypatch)
+    run_id, _team, _clone = _old_run(client)  # one memory waits for review (at minute 13)
+
+    def _line():
+        lines = client.get(f"/api/runs/{run_id}/activity").json()["lines"]
+        found = [ln for ln in lines if ln["kind"] == "memories"]
+        assert len(found) <= 1
+        return found[0] if found else None
+
+    line = _line()
+    assert line["text"] == "Saved 1 new memory from this run · review them in Toolkit"
+    assert (line["node_id"], line["label"], line["review_memories"]) == (None, "Run", True)
+    assert datetime.fromisoformat(line["at"]) == _at(13)
+    with session_scope() as session:
+        for k in (20, 21):
+            session.add(
+                NodeMemory(
+                    owner_id=auth_user_id(),
+                    content=f"lesson {k}",
+                    status="pending_review",
+                    source_run_id=run_id,
+                    created_at=_at(k),
+                )
+            )
+    line = _line()
+    assert line["text"] == "Saved 3 new memories from this run · review them in Toolkit"
+    assert datetime.fromisoformat(line["at"]) == _at(21)
+    # Reviewed (kept or rejected): no line.
+    with session_scope() as session:
+        session.execute(
+            update(NodeMemory)
+            .where(NodeMemory.source_run_id == run_id, NodeMemory.status == "pending_review")
+            .values(status="active")
+        )
+    assert _line() is None
+    other = client.get(f"/api/runs/{run_id}/activity").json()["lines"]
+    assert not [ln for ln in other if "review_memories" in ln]
 
 
 # ------------------------------------------------------------- the compiled context (the walk)

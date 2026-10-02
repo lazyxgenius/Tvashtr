@@ -24,7 +24,7 @@ from collections import OrderedDict
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
-from sqlalchemy import literal_column, or_, select
+from sqlalchemy import func, literal_column, or_, select
 from sqlalchemy.dialects.postgresql import JSONB
 
 from tvashtr.control_plane import live_state, run_views
@@ -37,6 +37,7 @@ from tvashtr.models import (
     Document,
     DocumentVersion,
     HumanTask,
+    NodeMemory,
     Run,
     RunEvent,
 )
@@ -520,10 +521,13 @@ def build(
     resumed_from: dict | None = None,
     start_node: str | None = None,
     number: int | None = None,
+    waiting_memories: tuple[int, datetime] | None = None,
 ) -> dict:
     """The Activity reply for one run (see the contract). ``events`` in ``(created_at, id)`` order;
     ``versions`` are ``(DocumentVersion, document name)`` pairs. M3: a resumed run's ``carried``
-    step rows (``resume.carried``) come first, one line each, then the Resumed line."""
+    step rows (``resume.carried``) come first, one line each, then the Resumed line. M10:
+    ``waiting_memories`` is ``(count, newest created_at)`` of the memories the run saved that still
+    wait for review."""
     from tvashtr.control_plane import resume  # lazy: resume imports this module
 
     carried = carried or []
@@ -715,6 +719,20 @@ def build(
                 "name": doc,
             },
         )
+
+    # M10: the memories the run saved that still wait for review (the page links "Review").
+    if waiting_memories:
+        count, newest = waiting_memories
+        noun = "new memory" if count == 1 else "new memories"
+        row = out.add(
+            "run:memories",
+            newest,
+            None,
+            None,
+            "memories",
+            f"Saved {count} {noun} from this run · review them in Toolkit",
+        )
+        row["review_memories"] = True
 
     # The end: the pull request, then done / failed / stopped. The run ended at its last step close
     # or event — ``updated_at`` moves on any later write. (A step left open counts from its start.)
@@ -1132,6 +1150,13 @@ def run_activity(
         session, [i for nid, i in latest.items() if kinds.get(nid) in live_state.STEP_KINDS]
     )
     spent = run_views.spent_usd(run, run_views.live_costs(session, [run_id]))
+    waiting, newest = session.execute(
+        select(func.count(), func.max(NodeMemory.created_at)).where(
+            NodeMemory.owner_id == run.owner_id,
+            NodeMemory.source_run_id == run_id,
+            NodeMemory.status == "pending_review",
+        )
+    ).one()
     carried, resumed_from, start_node = resume.carried(session, run)
     reply = build(
         run,
@@ -1148,6 +1173,7 @@ def run_activity(
         resumed_from=resumed_from,
         start_node=start_node,
         number=resume.number(session, run),
+        waiting_memories=(waiting, newest) if waiting else None,
     )
     all_lines = reply.pop("_all_lines")
     pinned = reply["pinned"]

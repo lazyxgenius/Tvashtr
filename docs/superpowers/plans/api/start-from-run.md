@@ -105,6 +105,12 @@ line as today. At the entry agent's first invocation: `"Read the spec from run #
 including “<the first>”"` (when carried). The run view's canvas card for the entry agent reads `"From spec v3 of run
 #12"` until the run has a spec of its own.
 
+Any run whose distilled memories still wait for review (`node_memories.source_run_id` = the run's workflow id, `status
+'pending_review'`) gets one run-level line near its end: `"Saved 3 new memories from this run · review them in
+Toolkit"` ("1 new memory" when one) — who `Run` (`node_id` null), `at` the newest such memory's `created_at`, kind
+`memories`, and a top-level `"review_memories": true` (the page adds the "Review" link to Toolkit › Memory › Inbox).
+No line when none wait.
+
 ### `GET /api/runs/{run_id}/log?format=text|jsonl` — Download the run log (Next-Log)
 
 An attachment (`run-12.txt` / `run-12.jsonl`), every step in order:
@@ -141,8 +147,12 @@ stored provider keys, the GitHub token, the server's secret settings). It can't 
   memories and 3 summaries"); nothing ticked reads "brought nothing".
 - The Activity line: `{"id": "run:from", "kind": "started", "came_along": true, "refs": {"run_id", "number"}, …}` —
   `came_along` is a key of that line only. The entry agent's first-step lines are kind `read` with
-  `refs: {"files": [], "run_id"}`; one memory reads `Read 1 memory, “…”`. The canvas card is the run graph node's
-  existing `carried` field: `{"from_run_id", "number", "text": "From spec v3 of run #12"}`.
+  `refs: {"files": [], "run_id"}`; one memory reads `Read 1 memory, “…”`. The canvas card: in
+  `GET /api/runs/{id}/graph` the entry node's `live.activity` reads "From spec v3 of run #12" while it has no
+  activity of its own and the run has no spec of its own (its `live_state` and `carried` stay as they are).
+- `GET /next` also carries `"entry_agent"`: the display name of the team's entry agent as the team is now (the agent
+  that updates the starting spec); `null` when not available.
+- `started_from` sits in `GET /api/runs/{id}`'s `run` object (beside `resumed_from`) and on each `GET /api/runs` row.
 - Compiled parts: `--- FROM RUN #12: THE PERSON'S DECISIONS ---` (`- Spec approved: <note>`), `--- FROM RUN #12:
   WHAT THE AGENTS LEARNED ---` (`- <content>`), `--- FROM RUN #12: WHAT EACH AGENT DID ---` (`- Engineer: <text>`).
   Resume (M3) copies `carry` to the resumed run, so the steps that run again read it too.

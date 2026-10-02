@@ -1924,10 +1924,15 @@ def get_run_graph(run_id: str, current_user: Annotated[UserOut, Depends(get_curr
             for n in nodes
         }
 
+        # M10: a run started from another one — its entry agent's card reads the carried spec
+        # ("From spec v3 of run #12") until its own step has something to say; the state word
+        # stays its own.
+        for nid, text in start_from.spec_card(session, run, nodes, edges).items():
+            if nid in live_by_node:
+                live_by_node[nid] = {**live_by_node[nid], "activity": text}
+
         carried_rows, _from, start_node = resume.carried(session, run)
         carried_nodes = resume.carried_by_node(carried_rows)
-        # M10: a run started from another one — its entry agent's card reads the carried spec.
-        spec_cards = start_from.spec_card(run, nodes, edges)
         runs_again = (
             activity._reachable(
                 run_views._graph_edges(session, {run.team_graph_id}).get(run.team_graph_id, []),
@@ -1974,8 +1979,7 @@ def get_run_graph(run_id: str, current_user: Annotated[UserOut, Depends(get_curr
                     # "Not reached". ``None`` for every other node.
                     "carried": _carried_card(
                         carried_nodes, str(n.id), latest_by_node, str(n.id) in runs_again
-                    )
-                    or spec_cards.get(str(n.id)),
+                    ),
                     # P1.5c (§14.1): the node's per-round invocation history, ascending by
                     # iteration — additive read of the already-persisted rows ([] before the
                     # node is reached). The Reviewer panel renders each round's `outcome`

@@ -32,11 +32,13 @@ from tvashtr.models import (
     AgentInvocation,
     AgentNode,
     DocumentVersion,
+    Edge,
     GithubInstallation,
     HumanTask,
     NodeMemory,
     ProviderCredential,
     Run,
+    RunEvent,
     TeamGraph,
 )
 
@@ -209,6 +211,7 @@ def dialog(owner_id: uuid.UUID, run_id: str) -> dict:
             "start_from": [],
             "default_start": None,
             "team": None,
+            "entry_agent": None,
         }
         if out["reason"] is not None:
             return out
@@ -217,6 +220,13 @@ def dialog(owner_id: uuid.UUID, run_id: str) -> dict:
         top, changes = versions.pending(session, team, owner_id)
         # R3: a run starts on the current version, or on the next one when there are changes.
         out["team"] = {"id": str(team.id), "version": top.number + (1 if changes else 0)}
+        # The agent that updates the starting spec: the team's entry agent, as the team is now.
+        entry = _entry(
+            session.execute(select(AgentNode).where(AgentNode.team_graph_id == team.id)).scalars(),
+            session.execute(select(Edge).where(Edge.team_graph_id == team.id)).scalars().all(),
+        )
+        if entry is not None:
+            out["entry_agent"] = node_label(entry.role_name, entry.kind, entry.config)
         github_repo, pr = run.github_repo, _pr(run)
     default, merged = github_facts(owner_id, github_repo, pr)
     out.update(
@@ -306,21 +316,37 @@ def came_along(owner_id: uuid.UUID, run_id: str) -> dict:
     }
 
 
-def spec_card(run: Run, nodes: list, edges: list) -> dict[str, dict]:
-    """``{entry node id: card}`` — the run view's card for the entry agent reads "From spec v3 of
-    run #12" until the run has a spec of its own; ``{}`` otherwise."""
-    spec = (run.carry or {}).get("spec") if _started_from(run) else None
-    if not spec or run.pm_document_id is not None:
-        return {}
+def _entry(nodes: list, edges: list):
+    """The graph's entry node — the root, as ``team_run.load_graph_step`` picks it."""
     targets = {str(e.target_node_id) for e in edges}
-    roots = sorted(str(n.id) for n in nodes if str(n.id) not in targets)
-    if not roots:
+    return min(
+        (n for n in nodes if str(n.id) not in targets), key=lambda n: str(n.id), default=None
+    )
+
+
+def spec_card(session, run: Run, nodes: list, edges: list) -> dict[str, str]:
+    """``{entry node id: "From spec v3 of run #12"}`` — what the run view's card for the entry
+    agent reads until its first step has activity of its own (an event) and while the run has no
+    spec of its own; ``{}`` otherwise."""
+    spec = (run.carry or {}).get("spec") if _started_from(run) else None
+    entry = _entry(nodes, edges) if spec and run.pm_document_id is None else None
+    if entry is None:
         return {}
-    number = (run.carry.get("from") or {}).get("number")
-    ref = resume.run_ref(number)
+    its_steps = select(AgentInvocation.id).where(
+        AgentInvocation.run_id == run.workflow_id, AgentInvocation.node_id == entry.id
+    )
+    spoke = session.execute(
+        select(RunEvent.id)
+        .where(RunEvent.run_id == run.workflow_id, RunEvent.invocation_id.in_(its_steps))
+        .limit(1)
+    ).first()
+    if spoke is not None:
+        return {}
+    ref = resume.run_ref((run.carry.get("from") or {}).get("number"))
     version = spec.get("version")
-    text = f"From spec v{version} of {ref}" if version else f"From the spec of {ref}"
-    return {roots[0]: {"from_run_id": str(run.started_from_run_id), "number": number, "text": text}}
+    return {
+        str(entry.id): f"From spec v{version} of {ref}" if version else f"From the spec of {ref}"
+    }
 
 
 # ---------------------------------------------------------------------------------- the log
