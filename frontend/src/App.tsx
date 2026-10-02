@@ -270,7 +270,8 @@ export default function App({
   const [versionTick, setVersionTick] = useState(0);
   const [saveStep, setSaveStep] = useState<"posting" | "reloading" | null>(null);
   // M7 (R6): Save as vN's dialog when a changed agent has tests (Test-SaveNudge).
-  const [saveNudge, setSaveNudge] = useState(false);
+  // The summary it was opened with (read after the click: a draft the guard saved may add tests).
+  const [saveNudge, setSaveNudge] = useState<TeamVersions | null>(null);
   const savedVersion = useRef(false);
   const chipRef = useRef<HTMLButtonElement>(null);
   // Credential preflight for Run (UX): null until the first successful providers load so we
@@ -840,11 +841,23 @@ export default function App({
   // changed since v7.") is a refresh, said plainly.
   // M7 (R6): when a changed agent has tests, Save as vN asks first (a note, run its tests or just
   // save); otherwise it saves at once, as in M5.
+  // The drawer's guard may have just saved a draft, so the decision reads the summary again (#4).
   const saveAsNext = () =>
     guardLeave(() => {
       if (!currentTeamId || saveStep) return;
-      if (shownVersions?.tests) setSaveNudge(true);
-      else postVersion();
+      const teamOfSave = currentTeamId;
+      setSaveStep("posting");
+      void getVersions(teamOfSave)
+        .catch(() =>
+          lastVersions.current?.team === teamOfSave ? lastVersions.current.value : null,
+        )
+        .then((now) => {
+          if (!mountedRef.current) return;
+          if (now?.tests) {
+            setSaveStep(null);
+            setSaveNudge(now);
+          } else postVersion();
+        });
     });
   const postVersion = (body?: { note?: string; run_tests: boolean }) => {
     if (!currentTeamId) return;
@@ -872,12 +885,17 @@ export default function App({
   };
   // M7: while an agent's tests run, the graph is read every 2 s (R15) so its canvas chip
   // ("● Testing 3 of 6") moves on; it stops once no agent is testing.
+  // Each read, answered or failed, arms the next (#9: a failed read doesn't stop the poll).
   const testing = authoring && (teamGraph?.nodes ?? []).some((n) => n.tests?.running);
+  const [testsPoll, setTestsPoll] = useState(0);
   useEffect(() => {
     if (!testing || !currentTeamId) return;
-    const t = window.setTimeout(() => void loadTeam(currentTeamId), 2000);
+    const t = window.setTimeout(
+      () => void loadTeam(currentTeamId).finally(() => setTestsPoll((n) => n + 1)),
+      2000,
+    );
     return () => window.clearTimeout(t);
-  }, [testing, teamGraph, currentTeamId, loadTeam]);
+  }, [testing, testsPoll, currentTeamId, loadTeam]);
   // The reloaded summary is in (or failed): Save as vN is free again; after a save, focus goes back
   // to the chip (the button it was on is gone).
   const versionsLoading = versions.state === "loading";
@@ -1238,14 +1256,14 @@ export default function App({
               onClose={() => setFileOpen(false)}
             />
           )}
-          {saveNudge && shownVersions?.tests && (
+          {saveNudge?.tests && (
             <SaveNudgeDialog
-              current={shownVersions.current}
-              next={shownVersions.next}
-              tests={shownVersions.tests}
-              onClose={() => setSaveNudge(false)}
+              current={saveNudge.current}
+              next={saveNudge.next}
+              tests={saveNudge.tests}
+              onClose={() => setSaveNudge(null)}
               onSave={(body) => {
-                setSaveNudge(false);
+                setSaveNudge(null);
                 postVersion(body);
               }}
             />

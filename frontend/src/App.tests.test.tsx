@@ -70,6 +70,10 @@ type Fetch = (input: string, init?: RequestInit) => Promise<Response>;
 let fetchMock: Mock<Fetch>;
 let summary: TeamVersions;
 let testing: boolean;
+// The graph reads that fail (a 502) before the next one answers.
+let graphFails: number;
+// What the next GET /versions answers instead of `summary` (a fresher summary).
+let nextSummary: TeamVersions | null;
 const reply = (body: unknown, status = 200) =>
   Promise.resolve(new Response(JSON.stringify(body), { status }));
 const posts = () =>
@@ -83,15 +87,27 @@ beforeEach(() => {
   window.location.hash = "";
   summary = versions(TESTS);
   testing = false;
+  graphFails = 0;
+  nextSummary = null;
   fetchMock = vi.fn<Fetch>((url, init) => {
     const method = init?.method ?? "GET";
     if (url === "/api/teams") return reply({ teams: [{ team_graph_id: "team-1", name: "x" }] });
-    if (url === "/api/teams/team-1/graph") return reply(graph(testing));
+    if (url === "/api/teams/team-1/graph") {
+      if (graphFails > 0) {
+        graphFails -= 1;
+        return reply({ detail: "Bad gateway" }, 502);
+      }
+      return reply(graph(testing));
+    }
     if (url === "/api/teams/team-1/validate")
       return reply({ errors: [], warnings: [], runnable: true });
     if (url === "/api/teams/team-1/versions" && method === "POST") {
       summary = { ...versions(null, 0), current: 8, next: 9, saved_at: ago(0) };
       return reply({ number: 8, tests_started: [] }, 201);
+    }
+    if (url === "/api/teams/team-1/versions" && nextSummary) {
+      summary = nextSummary;
+      nextSummary = null;
     }
     if (url === "/api/teams/team-1/versions") return reply(summary);
     if (url === "/api/teams/team-1/runs") return reply({ runs: [] });
@@ -117,7 +133,7 @@ describe("App — M7 Save as vN offers the tests (R6)", () => {
   it("Test-SaveNudge: the note, the two choices, the restore line; Save and run tests posts both", async () => {
     renderApp();
     await saveAs();
-    const dialog = screen.getByRole("dialog", { name: "Save as v8" });
+    const dialog = await screen.findByRole("dialog", { name: "Save as v8" });
     expect(dialog).toHaveTextContent(TESTS.sub);
     expect(dialog).toHaveTextContent(
       "About 4 min · about $0.40 on your keys. Results show next to v8 in History.",
@@ -141,7 +157,7 @@ describe("App — M7 Save as vN offers the tests (R6)", () => {
   it("Just save: the button reads Save as v8 and posts run_tests false (no note when empty)", async () => {
     renderApp();
     await saveAs();
-    const dialog = screen.getByRole("dialog", { name: "Save as v8" });
+    const dialog = await screen.findByRole("dialog", { name: "Save as v8" });
     fireEvent.click(within(dialog).getByRole("radio", { name: "Just save" }));
     fireEvent.click(within(dialog).getByRole("button", { name: "Save as v8" }));
     await waitFor(() => expect(posts()).toEqual([{ run_tests: false }]));
@@ -151,11 +167,23 @@ describe("App — M7 Save as vN offers the tests (R6)", () => {
     renderApp();
     await saveAs();
     fireEvent.click(
-      within(screen.getByRole("dialog", { name: "Save as v8" })).getByRole("button", {
+      within(await screen.findByRole("dialog", { name: "Save as v8" })).getByRole("button", {
         name: "Cancel",
       }),
     );
     expect(screen.queryByRole("dialog")).toBeNull();
+    expect(posts()).toHaveLength(0);
+  });
+
+  it("decides from the versions read after the click (#4: a draft the guard saved first can add tests)", async () => {
+    // On screen: no changed agent with tests. The drawer's draft, saved through the guard, changes the
+    // Reviewer, so the summary read after the click offers its tests.
+    summary = versions(null);
+    renderApp();
+    await screen.findByRole("button", { name: "Save as v8" });
+    nextSummary = versions(TESTS);
+    fireEvent.click(screen.getByRole("button", { name: "Save as v8" }));
+    expect(await screen.findByRole("dialog", { name: "Save as v8" })).toHaveTextContent(TESTS.sub);
     expect(posts()).toHaveLength(0);
   });
 
@@ -195,5 +223,18 @@ describe("App — M7 the graph while an agent tests", () => {
     expect(await screen.findByText("5 of 6 tests")).toBeInTheDocument();
     await new Promise((r) => setTimeout(r, 2200));
     expect(graphReads()).toBe(first + 1);
+  }, 10_000);
+
+  it("keeps reading after a failed read (#9: R15's 2 s poll doesn't stop on a 502)", async () => {
+    testing = true;
+    summary = versions(null, 0);
+    renderApp();
+    await screen.findByText("● Testing 3 of 6");
+    const first = graphReads();
+    graphFails = 1;
+    await waitFor(() => expect(graphReads()).toBe(first + 1), { timeout: 3000 });
+    testing = false;
+    await waitFor(() => expect(graphReads()).toBe(first + 2), { timeout: 3000 });
+    expect(await screen.findByText("5 of 6 tests")).toBeInTheDocument();
   }, 10_000);
 });
