@@ -194,6 +194,9 @@ def test_migration_0049_adds_the_compares_table(client):
         "created_at",
         "started_at",
         "ended_at",
+        # M9 (0050): a compare on a task set.
+        "task_set_id",
+        "item_count",
     } == cols
 
 

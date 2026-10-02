@@ -3460,6 +3460,9 @@ class SaveVersionRequest(BaseModel):
     note: str | None = Field(default=None, max_length=versions.NOTE_LIMIT)
     # M7 (R6): then run the changed agents' tests on the new version (never blocks the save).
     run_tests: bool = False
+    # M9 (R6): then compare the new version with the previous one on this task set of the team
+    # (never blocks or fails the save; an unknown set is a 404 before anything is saved).
+    check_set: str | None = Field(default=None, max_length=64)
 
 
 @router.get("/api/teams/{team_id}/versions")
@@ -3481,9 +3484,13 @@ def save_team_version(
     current_user: Annotated[UserOut, Depends(get_current_user)],
 ) -> dict:
     """M5: Save as vN — the working copy as a new version (409 when nothing changed)."""
+    from tvashtr.control_plane import compare, task_sets  # they import this module lazily
+
     me = uuid.UUID(current_user.id)
     with db.session_scope() as session:
         team = _require_library_team(session, team_id, me)
+        if body.check_set is not None:
+            task_sets.team_set(session, team.id, body.check_set)
         offer = agent_tests.nudge(session, versions.pending(session, team, me)[1])
         version = versions.save(session, team, me, note=body.note)
         if version is None:
@@ -3503,9 +3510,27 @@ def save_team_version(
             except Exception as exc:  # noqa: BLE001 — R6: a test run never fails the save
                 logger.warning("starting tests after a save failed: %s", type(exc).__name__)
                 continue
+    check_started = check_error = None
+    if body.check_set is not None:
+        try:
+            made = compare.create(
+                me, team_id, a=number - 1, b=number, task_set_id=body.check_set, auto_approve=True
+            )
+            check_started = {"compare_id": made["id"], "status": made["status"]}
+        except HTTPException as exc:  # R6: a refused check never fails the save
+            detail = exc.detail
+            check_error = detail.get("message", str(detail)) if isinstance(detail, dict) else detail
+        except Exception as exc:  # noqa: BLE001 — R6: a check never fails the save
+            logger.warning("starting a set check after a save failed: %s", type(exc).__name__)
+            check_error = "The check couldn't start. Try Compare on the set later."
     with db.session_scope() as session:
         team = _require_library_team(session, team_id, me)
-        return {**versions.listing(session, team, me)["versions"][0], "tests_started": started}
+        return {
+            **versions.listing(session, team, me)["versions"][0],
+            "tests_started": started,
+            "check_started": check_started,
+            "check_error": check_error,
+        }
 
 
 def _version_number(number: str) -> int:

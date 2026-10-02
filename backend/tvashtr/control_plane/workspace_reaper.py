@@ -90,7 +90,7 @@ from sqlalchemy import select
 
 from tvashtr.config import get_settings
 from tvashtr.db import session_scope
-from tvashtr.models import Run, RunArtifact
+from tvashtr.models import Compare, Run, RunArtifact
 
 logger = logging.getLogger("tvashtr.control_plane.workspace_reaper")
 
@@ -139,7 +139,10 @@ def _spared_run_ids(candidate_ids: list[str]) -> set[str]:
 
     * it is **LIVE** (a resume needs the directory), whatever its type; **or**
     * it is **GREENFIELD** (``repo_path IS NULL``) **and has NO** ``run_artifacts`` **row** — its
-      shipped diff is not yet durable anywhere else, so the directory is still the deliverable.
+      shipped diff is not yet durable anywhere else, so the directory is still the deliverable —
+      **unless it is a compare run** (M8/M9): a compare run never ships, so it would never get that
+      row and its workspace was kept forever; its work lives in its M3 checkpoints (what the
+      compare's results read), so once it has ended (after its hidden check) the directory goes.
 
     The second arm used to read simply "greenfield", i.e. spared forever. ``ship_step`` now
     snapshots a greenfield run's diff into ``run_artifacts`` while the workspace still exists, and
@@ -171,8 +174,14 @@ def _spared_run_ids(candidate_ids: list[str]) -> set[str]:
     ids = list(parsed.keys())
     with session_scope() as session:
         rows = session.execute(
-            select(Run.id, Run.status, Run.repo_path).where(Run.id.in_(ids))
+            select(Run.id, Run.status, Run.repo_path, Run.pair_id).where(Run.id.in_(ids))
         ).all()
+        pair_ids = {row.pair_id for row in rows if row.pair_id is not None}
+        compares = (
+            set(session.execute(select(Compare.id).where(Compare.id.in_(pair_ids))).scalars())
+            if pair_ids
+            else set()
+        )
         # Which candidates already have a durable diff snapshot. A separate SELECT rather than an
         # outer join so the spare rule above reads as the sentence it is, and so a run type that
         # never persists (brownfield) costs nothing to evaluate.
@@ -181,8 +190,9 @@ def _spared_run_ids(candidate_ids: list[str]) -> set[str]:
         )
     return {
         parsed[row_id]
-        for row_id, status, repo_path in rows
-        if status in LIVE_STATUSES or (repo_path is None and row_id not in persisted)
+        for row_id, status, repo_path, pair_id in rows
+        if status in LIVE_STATUSES
+        or (repo_path is None and row_id not in persisted and pair_id not in compares)
     }
 
 

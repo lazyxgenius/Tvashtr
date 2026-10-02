@@ -685,7 +685,10 @@ ROUTES: dict[str, tuple[str, object]] = {
     ),
     "POST /api/teams/{team_id}/compare": (
         "id",
-        ["test_compare::test_compare_routes_are_owner_scoped"],
+        [
+            "test_compare::test_compare_routes_are_owner_scoped",
+            "test_task_sets::test_task_set_routes_are_owner_scoped",
+        ],
     ),
     "GET /api/compares/{compare_id}": (
         "id",
@@ -695,13 +698,32 @@ ROUTES: dict[str, tuple[str, object]] = {
         "id",
         ["test_compare::test_compare_routes_are_owner_scoped"],
     ),
+    "GET /api/teams/{team_id}/task-sets": (
+        "id",
+        ["test_task_sets::test_task_set_routes_are_owner_scoped"],
+    ),
+    "POST /api/teams/{team_id}/task-sets": (
+        "id",
+        ["test_task_sets::test_task_set_routes_are_owner_scoped"],
+    ),
+    "PATCH /api/task-sets/{set_id}": (
+        "id",
+        ["test_task_sets::test_task_set_routes_are_owner_scoped"],
+    ),
+    "DELETE /api/task-sets/{set_id}": (
+        "id",
+        ["test_task_sets::test_task_set_routes_are_owner_scoped"],
+    ),
     "GET /api/teams/{team_id}/versions": (
         "id",
         ["test_team_versions::test_versions_are_owner_scoped"],
     ),
     "POST /api/teams/{team_id}/versions": (
         "id",
-        ["test_team_versions::test_versions_are_owner_scoped"],
+        [
+            "test_team_versions::test_versions_are_owner_scoped",
+            "test_task_sets::test_task_set_routes_are_owner_scoped",
+        ],
     ),
     "GET /api/teams/{team_id}/versions/{number}": (
         "id",

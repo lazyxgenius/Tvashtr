@@ -816,9 +816,11 @@ def listing(session, team: TeamGraph, viewer: uuid.UUID) -> dict:
         .scalars()
         .all()
     )
-    from tvashtr.control_plane import agent_tests  # M7 (lazy: it reads this module's callers)
+    # M7 / M9 (lazy: they read this module's callers)
+    from tvashtr.control_plane import agent_tests, compare, task_sets
 
     tested = agent_tests.version_rows(session, team)
+    checks = compare.version_checks(session, team)
     return {
         "current": top.number,
         "saved_at": top.created_at.isoformat(),
@@ -826,11 +828,18 @@ def listing(session, team: TeamGraph, viewer: uuid.UUID) -> dict:
         "next": top.number + 1,
         "total": len(versions),
         "versions": [
-            {**_row(v, viewer, runs.get(v.number, 0)), "tests": tested.get(v.number)}
+            {
+                **_row(v, viewer, runs.get(v.number, 0)),
+                "tests": tested.get(v.number),
+                # M9 (R6): its set check — a compare of it with an earlier version on a set.
+                "check": checks.get(v.number),
+            }
             for v in versions
         ],
         # M7 (R6): the changed agents that have tests — Save as vN offers to run them.
         "tests": agent_tests.nudge(session, rows),
+        # M9 (R6): the sets Save as vN can compare the new version on, with each one's estimate.
+        "check_sets": task_sets.check_sets(session, team, top.number),
     }
 
 
