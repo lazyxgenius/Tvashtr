@@ -65,6 +65,8 @@ export type AgentNodeData = {
     at: string | null;
     retry?: { attempt: number; of: number } | null;
   };
+  /** M3 (run view): a step carried from the run this one resumed — "From run #12". */
+  carried?: string | null;
 };
 
 /** The authoring overlay classes for a node (P1.8d): a red ring for a blocking issue, a dim for an
@@ -273,7 +275,7 @@ function AgentCard({ nodeId, data: d }: { nodeId: string; data: AgentNodeData })
 
   return (
     <div
-      className={`rf-node rf-node--${d.status}${d.isEntry ? " rf-node--entry" : ""}${flagClasses(d)}${d.live && LIVE_RING.has(d.live.state) ? ` rf-node--live-${d.live.state}` : ""}`}
+      className={`rf-node rf-node--${d.status}${d.isEntry ? " rf-node--entry" : ""}${flagClasses(d)}${d.live && LIVE_RING.has(d.live.state) ? ` rf-node--live-${d.live.state}` : ""}${d.carried ? " rf-node--carried" : ""}`}
       title={d.errorMessage}
     >
       <NodeHandles />
@@ -296,7 +298,12 @@ function AgentCard({ nodeId, data: d }: { nodeId: string; data: AgentNodeData })
           {capabilityLabel(d)}
         </span>
         {d.engine && <span className="rf-node__engine">{prettyEngine(d.engine)}</span>}
-        <CardStatus status={d.status} />
+        {/* M3: a carried step says where it was done, not "Waiting" (Prob-Resumed). */}
+        {d.carried ? (
+          <span className="rf-node__status">{d.carried}</span>
+        ) : (
+          <CardStatus status={d.status} />
+        )}
         {d.live && LIVE_CHIP[d.live.state] && (
           <span className={`rf-node__livechip rf-node__livechip--${LIVE_CHIP[d.live.state][1]}`}>
             ● {liveChipText(d.live)}
@@ -342,7 +349,7 @@ function GateCard({ nodeId, data: d }: { nodeId: string; data: AgentNodeData }) 
   const label = nodeTitle(d);
   return (
     <div
-      className={`rf-gate rf-gate--${state}${flagClasses(d)}`}
+      className={`rf-gate rf-gate--${state}${flagClasses(d)}${d.carried ? " rf-gate--carried" : ""}`}
       title={d.errorMessage || cfg.title || label}
     >
       <NodeHandles />
@@ -352,7 +359,8 @@ function GateCard({ nodeId, data: d }: { nodeId: string; data: AgentNodeData }) 
       </span>
       <div className="rf-gate__text">
         <div className="rf-gate__label">{label}</div>
-        <div className="rf-gate__state">{GATE_STATE_LINE[state]}</div>
+        {/* M3: "Approved in run #12" (Prob-Resumed). */}
+        <div className="rf-gate__state">{d.carried ?? GATE_STATE_LINE[state]}</div>
       </div>
     </div>
   );

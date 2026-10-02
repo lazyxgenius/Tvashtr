@@ -1027,3 +1027,11 @@
   background: var(--red-100);
   color: #8f3b2f;
 }
+
+/* ---- M3: a resumed run's step carried from the run it resumed (Prob-Resumed) ---- */
+.rf-node--carried,
+.rf-gate--carried {
+  opacity: 0.72;
+  border: 1px dashed var(--line-400);
+  box-shadow: none;
+}

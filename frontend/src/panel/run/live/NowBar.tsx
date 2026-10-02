@@ -34,6 +34,10 @@ function chipLine(
     return `No update for ${duration(silentSeconds(a, now))}${last}`;
   }
   if (a.live_state === "waiting") {
+    // M3: a step with rounds carried from the run this one resumed says so ("Round 1 notes carried
+    // over"); it was reached there, so never "Not reached".
+    const carried = graph?.nodes.find((n) => n.id === a.node_id)?.carried;
+    if (carried) return a.activity ?? carried.text;
     if (ended) return "Not reached";
     const from = graph?.edges.find(
       (e) => e.target_node_id === a.node_id && e.edge_type !== "escalation",
@@ -42,13 +46,20 @@ function chipLine(
     return before ? startsAfter(before) : "";
   }
   // A decided gate: "You approved · 10:43" — the time in the viewer's clock.
-  if (a.kind === "gate" && a.live_state !== "needs_you" && a.activity && a.last_event_at)
+  if (
+    a.kind === "gate" &&
+    a.live_state !== "needs_you" &&
+    a.live_state !== "carried_over" &&
+    a.activity &&
+    a.last_event_at
+  )
     return `${a.activity} · ${clock(a.last_event_at).slice(0, 5)}`;
   return a.activity ?? "";
 }
 
 function ago(a: ActivityAgent, now: number): string {
-  if (!a.last_event_at || a.live_state === "waiting") return "";
+  // M3: a carried step did its work in the run this one resumed (Prob-Resumed draws no ago).
+  if (!a.last_event_at || a.live_state === "waiting" || a.live_state === "carried_over") return "";
   return a.live_state === "quiet" || a.live_state === "stalled"
     ? `${duration(silentSeconds(a, now))} ago`
     : agoLong(a.last_event_at, now);
@@ -103,7 +114,7 @@ export function NowBar({
           );
         }
         // An ended run's agent it never reached (Prob-Failed: "Reviewer · Not reached").
-        const notReached = ended && a.live_state === "waiting";
+        const notReached = ended && a.live_state === "waiting" && !byId.get(a.node_id)?.carried;
         return (
           <button
             key={a.node_id}

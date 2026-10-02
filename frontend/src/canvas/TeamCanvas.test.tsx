@@ -252,6 +252,32 @@ describe("TeamCanvas — M2: a running card shows what it is doing now", () => {
     expect(screen.queryByText(/^Starts after/)).toBeNull();
   });
 
+  it("M3: a carried card says where it was done, dimmed, and counts as reached (Prob-Resumed)", () => {
+    const waiting = { ...quiet.nodes.find((n) => n.id === "n-eng")!.live!, live_state: "waiting" };
+    const from = (text: string) => ({ from_run_id: "r-12", number: 12, text });
+    const g: GraphData = {
+      ...graph,
+      nodes: graph.nodes.map((n) =>
+        n.id === "n-rev"
+          ? { ...n, status: "idle", live: waiting, carried: from("From run #12") }
+          : n.id === "n-gate"
+            ? { ...n, status: "idle", live: waiting, carried: from("Approved in run #12") }
+            : n,
+      ),
+    };
+    for (const status of ["running", "failed"]) {
+      const { container, unmount } = render(
+        <TeamCanvas graph={g} run={mkRun({ status })} workflowStatus="PENDING" tasks={[]} />,
+      );
+      expect(screen.getByText("From run #12")).toBeInTheDocument();
+      expect(screen.getByText("Approved in run #12")).toBeInTheDocument();
+      expect(screen.queryByText(/^Starts after|^Not reached$|● Waiting/)).toBeNull();
+      expect(container.querySelector(".rf-node--carried")).not.toBeNull();
+      expect(container.querySelector(".rf-gate--carried")).not.toBeNull();
+      unmount();
+    }
+  });
+
   it("draws nothing new for a card with no live block (authoring, older servers)", () => {
     const { container } = render(
       <TeamCanvas graph={graph} run={mkRun()} workflowStatus="PENDING" tasks={[gateTask]} />,

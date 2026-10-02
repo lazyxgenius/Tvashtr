@@ -75,7 +75,8 @@ function entryNodeIds(graph: GraphData): Set<string> {
 /** M2: a run's step that hasn't started says what it starts after, as its Now bar chip does
  *  (Live-NeedsYou) — or, once the run ended, that it was never reached. */
 function waitingLine(graph: GraphData, n: GraphNode, run: RunRow | null): string | null {
-  if (n.live?.live_state !== "waiting" || n.status !== "idle") return null;
+  // M3: a step carried from the run this one resumed was reached there (its card says so).
+  if (n.live?.live_state !== "waiting" || n.status !== "idle" || n.carried) return null;
   if (run && RUN_TERMINAL.has(run.status)) return "Not reached";
   const from = graph.edges.find(
     (e) => e.target_node_id === n.id && e.edge_type !== "escalation",
@@ -122,6 +123,7 @@ function nodeData(
       n.invocations?.[n.invocations.length - 1]?.outcome ??
       (n as Partial<TeamGraphNode>).last_run?.outcome,
     toolConfig: (n as Partial<TeamGraphNode>).tool_config,
+    carried: n.carried?.text ?? null,
     live:
       n.live && n.status === "running"
         ? {
