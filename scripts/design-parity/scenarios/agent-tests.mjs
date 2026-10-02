@@ -28,6 +28,7 @@ const GETS = {
   ],
   test_output: "3 failed, 38 passed",
   feedback: false,
+  change_by: "Engineer",
 };
 const test = (
   id,
@@ -277,7 +278,18 @@ const JUDGE_TESTS = view(
               {
                 kind: "ai",
                 value: "Asks for RSI to be registered on INDICATORS",
-                judge: null,
+                // The board's ten saved labels (seven shown, "3 more labelled"), 9 of 10.
+                judge: {
+                  agree: 9,
+                  total: 10,
+                  trusted: true,
+                  labels: JUDGE.map(([answer, you, ai]) => ({
+                    answer,
+                    you,
+                    ai,
+                    reason: "",
+                  })),
+                },
               },
             ],
           }
@@ -662,12 +674,9 @@ export default [
         .click();
       const dialog = p.getByRole("dialog", { name: "Check the AI check" });
       await dialog.getByRole("list", { name: "Saved answers" }).waitFor();
-      for (const [i, [, you]] of JUDGE.slice(0, 7).entries())
-        await dialog
-          .getByRole("group", { name: `You: answer ${i + 1}` })
-          .getByRole("button", { name: you ? "Yes" : "No" })
-          .click();
+      // The labels saved with the test open preloaded.
       await dialog.getByText("Agrees with you on 9 of 10").waitFor();
+      await dialog.getByText("3 more labelled").waitFor();
       await settle(p);
     },
   }),

@@ -49,6 +49,36 @@ describe("agent tests client (M7 contract)", () => {
     });
   });
 
+  it("additive: whose change it was, and an AI check's saved labels (none when absent)", async () => {
+    const label = { answer: "Approved.", you: false, ai: false, reason: "No" };
+    const withExtras = {
+      ...tests(DONE_RUN),
+      tests: [
+        {
+          ...TESTS[5],
+          gets: { ...TESTS[5].gets, change_by: "Engineer" },
+          checks: [
+            TESTS[5].checks[0],
+            {
+              kind: "ai",
+              value: "x",
+              judge: { agree: 1, total: 1, trusted: false, labels: [label] },
+            },
+            { kind: "ai", value: "y", judge: { agree: 0, total: 0, trusted: false } },
+          ],
+        },
+      ],
+    };
+    mockApi({ [`GET ${BASE}`]: withExtras });
+    const [t] = (await listTests("t1", "n-rev")).tests;
+    expect(t.gets.change_by).toBe("Engineer");
+    expect(t.checks[1].judge?.labels).toEqual([label]);
+    expect(t.checks[2].judge?.labels).toEqual([]);
+    expect(t.checks[0].judge).toBeUndefined();
+    mockApi({ [`GET ${BASE}`]: tests(DONE_RUN) });
+    expect((await listTests("t1", "n-rev")).tests[0].gets.change_by).toBeNull();
+  });
+
   it("a round as a test (409 says why it can't be one)", async () => {
     const calls = mockApi({ [`GET ${BASE}/from-round`]: FROM_ROUND });
     expect((await getFromRound("t1", "n-rev", 812)).role).toBe("Reviewer");

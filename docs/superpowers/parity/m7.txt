@@ -58,6 +58,13 @@
 #   120727e parity fixes: icons flush in their buttons' labels (was +8px wide), the M7 menus' 32px rows (was 34), Add a check spans
 #     its column and opens upward (the board's below-the-dialog menu would be clipped by the dialog's scroll), a passed row opens to its
 #     answer and skipped checks with the actions on failed rows only (Test-Worse), Check the AI check pages seven answers (Test-Judge).
+#   m7-fe-2 (follow-up, two "not found" items built; the contract's additive `gets.change_by` and an AI check's `judge.labels`):
+#     the gets row reads "The Engineer’s change" when `change_by` is set (Test-New, Test-Replay; else "The change"); Check the AI check
+#     opens with the saved labels (You / AI values, the saved agreement callout; opening posts nothing) and shows Test-Judge's
+#     "3 more labelled" (12px ink-500) for labelled answers below the ones shown. The scenario gives `change_by: "Engineer"` and the ten
+#     saved labels. The five affected boards (Test-New, -AddCheck, -NoAI, -Replay, -Judge) were not re-shot: the worktree's Vite shares
+#     its dependency cache with the main checkout, where the live e2e was running; the lines below are the pre-follow-up shots, in
+#     which 'The Engineer’s change' and '3 more labelled' were the not-found items now built.
 # waiver W1 (app governs, brief 2.2/2.3 — the drawer and canvas cards; every board) 'Read-only' 10→12px 400→500 (the board's canvas
 #   chip pairs with the drawer header's Read-only badge; the app's card reads "Edits off") and [ctl] 'Skills & tools4' 44/60→28 high,
 #   50/60→97 wide: the boards wrap the tab labels to fit six tabs; the app keeps every label on one line exactly as today and lets the
@@ -78,9 +85,8 @@
 #   '4 skills', 'GitHub', 'Grok plan · this Mac', 'Spec approval', 'Gate · asks you', 'Up to 3 rounds' — the app's cards and edges;
 #   'Changes requested · 2h ago' — the fixture's 31m); the run view's board chrome (W2: 'Run #12 · 3 rounds', the rounds' token lines,
 #   'Back to the team', 'More for this run', 'Focus mode', 'More actions', 'Memory3', 'Tests' — the run view keeps its five tabs);
-#   'Open in focus view' in the run view's round menu (the run view has no focus mode; the team drawer's menu has it); 'The Engineer’s
-#   change' (the contract's `change` doesn't say whose; the row reads "The change"); Test-Judge's '3 more labelled' (the API returns no
-#   earlier labels) and its hand-written miss sentence (the app says "The one miss: it said No to “…”." from the labels); Test-RowMenu
+#   'Open in focus view' in the run view's round menu (the run view has no focus mode; the team drawer's menu has it); Test-Judge's
+#   hand-written miss sentence (the app says "The one miss: it said No to “…”." from the labels); Test-RowMenu
 #   draws the ⋯ menu and the delete confirm at once (the menu closes when Delete test is picked: two shots); Set-Checked's M9 parts
 #   (task sets, the version note, "v8 passed both checks") — only its Tests pill is M7's; Test-Focus's canvas edge labels behind the
 #   dialog.

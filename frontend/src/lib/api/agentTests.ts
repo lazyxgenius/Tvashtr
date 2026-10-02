@@ -12,6 +12,8 @@ export interface CheckJudge {
   agree: number;
   total: number;
   trusted: boolean;
+  /** The saved labels (Check the AI check opens with them). */
+  labels?: JudgeRow[];
 }
 
 export interface TestCheck {
@@ -28,6 +30,8 @@ export interface TestGets {
   change: { path: string; added: number; removed: number }[];
   test_output: string | null;
   feedback: boolean;
+  /** The role whose change it was ("Engineer": "The Engineer’s change"); null: unknown. */
+  change_by?: string | null;
 }
 
 export interface AgentTest {
@@ -187,11 +191,15 @@ const gets = (v: unknown): TestGets => {
     change: list(g.change),
     test_output: typeof g.test_output === "string" ? g.test_output : null,
     feedback: g.feedback === true,
+    change_by: typeof g.change_by === "string" && g.change_by.trim() ? g.change_by : null,
   };
 };
+/** An AI check's saved agreement; its labels default to none. */
+const check = (c: TestCheck): TestCheck =>
+  isObj(c.judge) ? { ...c, judge: { ...c.judge, labels: list<JudgeRow>(c.judge.labels) } } : c;
 const test = (v: unknown): AgentTest => {
   const t = v as AgentTest;
-  return { ...t, checks: list(t.checks), gets: gets(t.gets) };
+  return { ...t, checks: list<TestCheck>(t.checks).map(check), gets: gets(t.gets) };
 };
 
 /** The Tests tab: the agent's tests, its newest test run, `last`, the estimate and AI checks. */

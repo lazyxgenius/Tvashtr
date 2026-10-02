@@ -27,14 +27,14 @@ const flush = async () => {
   for (let i = 0; i < 5; i++) await act(async () => Promise.resolve());
 };
 
-function renderDialog() {
+function renderDialog(test = TESTS[5]) {
   const onClose = vi.fn();
   const onUsed = vi.fn();
   render(
     <JudgeDialog
       teamId="t1"
       nodeId="n-rev"
-      test={TESTS[5]}
+      test={test}
       check={1}
       first={FAILED}
       onClose={onClose}
@@ -124,5 +124,61 @@ describe("JudgeDialog", () => {
     });
     await flush();
     expect(within(dialog).getByRole("alert")).toHaveTextContent("AI checks aren’t available yet");
+  });
+
+  it("opens with the labels saved with the test: their You and AI values, the saved agreement, and how many more are labelled", async () => {
+    // Ten saved labels on answers 1–10 (Yes on the odd ones); the AI said the opposite on answer 4.
+    const labels = ANSWERS.slice(0, 10).map((a, i) => ({
+      answer: a.text,
+      you: i % 2 === 0,
+      ai: i % 2 === 0,
+      reason: "",
+    }));
+    labels[3] = { ...labels[3], ai: !labels[3].you };
+    const test = {
+      ...TESTS[5],
+      checks: [
+        TESTS[5].checks[0],
+        { ...TESTS[5].checks[1], judge: { agree: 9, total: 10, trusted: true, labels } },
+      ],
+    };
+    const calls = mockApi({
+      [`GET ${BASE}/answers`]: { answers: ANSWERS },
+      [`POST ${BASE}/judge`]: { rows: labels, agree: 9, total: 10, trusted: true, ai: null },
+    });
+    const { dialog } = renderDialog(test);
+    await flush();
+    expect(within(dialog).getByRole("status")).toHaveTextContent("Agrees with you on 9 of 10");
+    expect(within(row(dialog, 1)).getByRole("button", { name: "Yes" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(within(row(dialog, 2)).getByRole("button", { name: "No" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(within(dialog).getByLabelText("AI check: answer 1")).toHaveTextContent("Yes");
+    // Answer 4 is the miss.
+    expect(within(dialog).getAllByLabelText("Not what you said")).toHaveLength(1);
+    // Seven shown, three more labelled below them.
+    expect(within(dialog).getByText("3 more labelled")).toBeInTheDocument();
+    // Opening runs nothing.
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    await flush();
+    expect(calls.filter((c) => c.method === "POST")).toHaveLength(0);
+    // A change sends every label, the saved ones too.
+    fireEvent.click(within(row(dialog, 2)).getByRole("button", { name: "Yes" }));
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+    await flush();
+    const posts = calls.filter((c) => c.method === "POST");
+    expect(posts).toHaveLength(1);
+    expect((posts[0].body as { labels: unknown[] }).labels).toHaveLength(10);
+    // Label more shows them: nothing more labelled below.
+    fireEvent.click(within(dialog).getByRole("button", { name: "Label more" }));
+    expect(within(dialog).queryByText(/more labelled/)).toBeNull();
   });
 });
