@@ -217,3 +217,20 @@ def test_a_busy_primary_switches_once_inside_the_ceiling(client, monkeypatch, tm
     assert _worst_case_to_switch_s(tasks[0]) < _real_settings().stall_fail_after_s
     assert len(_backup_events(run_id)) == 1
     assert len(_fallback_warnings(run_id)) == 1
+
+
+def test_a_backup_key_that_cannot_be_read_keeps_todays_envelope(client, monkeypatch, tmp_path):
+    """Review fix: an owner key that fails to decrypt for the backup must never crash the step —
+    no usable backup, so the configured envelope."""
+    from tvashtr.control_plane import team_run
+
+    real = team_run._owner_api_key
+
+    def _flaky(run_id, model):
+        if model == _NODE_FALLBACK:
+            raise RuntimeError("InvalidToken")
+        return real(run_id, model)
+
+    monkeypatch.setattr(team_run, "_owner_api_key", _flaky)
+    _, tasks = _first_worker_task(monkeypatch, tmp_path, fallback=_NODE_FALLBACK)
+    assert tasks[0].llm_num_retries is None

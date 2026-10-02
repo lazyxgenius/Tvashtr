@@ -1079,6 +1079,16 @@ def run_activity(session, run: Run, after: str | None = None, *, resume_info: bo
         points = resume.points(session, run, all_lines)
         pinned["resume"] = resume.resume_hint_from(points)
         pinned["safe"] = resume.safe_text(points) if pinned["resume"] else None
-        if pinned["kind"] == "stopped" and pinned["resume"]:
-            pinned["title"] = f"You stopped this run at {pinned['resume']['label']}"
+        # The title names the step only when Resume picks up the step it stopped at (the suggested
+        # point); stopped at a gate or Ship, the hint is an earlier step and the title names none.
+        hint = pinned["resume"]
+        if (
+            pinned["kind"] == "stopped"
+            and hint
+            and any(
+                p["invocation_id"] == hint["invocation_id"] and p["state"] == "suggested"
+                for p in points["points"]
+            )
+        ):
+            pinned["title"] = f"You stopped this run at {hint['label']}"
     return reply

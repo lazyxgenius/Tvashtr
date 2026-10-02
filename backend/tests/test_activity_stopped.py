@@ -69,3 +69,20 @@ def test_a_stopped_run_does_not_join_needs_you(client, monkeypatch):
     run_id, _ = _stopped_run(monkeypatch)
     items = client.get("/api/inbox").json()["items"]
     assert [i for i in items if run_id in str(i)] == []
+
+
+def test_a_run_stopped_at_its_gate_does_not_name_an_earlier_step(monkeypatch):
+    """Review fix: stopped while the approval gate waited, the step it stopped at is the gate, not
+    the last agent that finished — so the title names no step (Resume still offers the PM)."""
+    from home_fixtures import fresh_account, library_team
+
+    monkeypatch.setattr(routers.DBOS, "start_workflow", lambda *a, **k: None)
+    c, owner = fresh_account("stopped-gate")
+    run_id, clone = make_run(owner, library_team(c), status="running")
+    add_invocation(run_id, clone_node(clone, "pm"), "done")
+    add_invocation(run_id, clone_node(clone, "prd_gate"), "running")
+    with session_scope() as session:
+        session.execute(update(Run).where(Run.workflow_id == run_id).values(status="cancelled"))
+    pinned = c.get(f"/api/runs/{run_id}/activity").json()["pinned"]
+    assert pinned["kind"] == "stopped"
+    assert pinned["title"] == "You stopped this run"

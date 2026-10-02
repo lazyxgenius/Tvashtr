@@ -297,7 +297,8 @@ def _has_usable_backup(
         return True
     try:
         _owner_api_key(run_id, backup)
-    except NoCredentialError:
+    except Exception:  # no key, or one that can't be read: never crash the step over the envelope
+        logger.info("no usable backup key run_id=%s backup=%s", run_id, backup, exc_info=True)
         return False
     return True
 
