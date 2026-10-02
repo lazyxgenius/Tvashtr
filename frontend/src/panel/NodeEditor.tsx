@@ -1,7 +1,15 @@
 import { type MutableRefObject, useEffect, useState } from "react";
-import { Zap } from "lucide-react";
+import { Copy, FlaskConical, Maximize2, Zap } from "lucide-react";
 
-import { Button } from "../design-system/components";
+import { Button, type MenuEntry } from "../design-system/components";
+import {
+  type AgentTest,
+  deleteTest,
+  type FromRound,
+  getFromRound,
+  type TestResult,
+} from "../lib/api/agentTests";
+import { getInstructionHistory, type InstructionEntry } from "../lib/api/versions";
 import {
   type GateConfig,
   getProviderCatalogue,
@@ -18,7 +26,7 @@ import {
   type SavedAgent,
   undoAgent,
 } from "../lib/api/myAgents";
-import { getNodeRuns, type NodeTemplate } from "../lib/api/nodes";
+import { getNodeRuns, type NodeRound, type NodeTemplate } from "../lib/api/nodes";
 import { serverWords } from "../lib/myAgentsFormat";
 import type { EnginesTab, NodeTab, Route } from "../lib/nav";
 import { nodeDescription, nodeTitle } from "../lib/nodeNames";
@@ -72,6 +80,13 @@ import { desktopSubscriptionName, desktopSubscriptionNote } from "./skills/nodeS
 import { AddSkillView, type SkillSub } from "./skills/AddSkillViews";
 import { SkillsToolsTab } from "./skills/SkillsToolsTab";
 import { useShelves } from "./skills/useShelves";
+import { InstructionCompare } from "./setup/InstructionHistory";
+import { JudgeDialog } from "./tests/JudgeDialog";
+import { NewTestDialog } from "./tests/NewTestDialog";
+import { ReplayView } from "./tests/ReplayView";
+import { DeleteTestBar, TestsFooter, TestsTab } from "./tests/TestsTab";
+import { UploadTestsDialog } from "./tests/UploadTestsDialog";
+import { useAgentTests } from "./tests/useAgentTests";
 import { AddToolView, type ToolSub } from "./tools/AddToolViews";
 import { connectorsOf } from "./tools/nodeTools";
 import { useAgentDraft } from "./useAgentDraft";
@@ -120,6 +135,10 @@ export interface NodeEditorProps {
   onOpenRun?: (runId: string) => void;
   /** M5: the team's latest version (the instruction history is read again when it changes). */
   teamVersion?: number;
+  /** M7: open the New test dialog on this round once (the run view's "Make this a test"). */
+  testFrom?: number;
+  /** The New test dialog was asked for: drop `test_from` from the address. */
+  onTestFromOpened?: () => void;
 }
 
 /**
@@ -237,6 +256,8 @@ function AgentEditor({
   onOpenDoc,
   onOpenRun,
   teamVersion,
+  testFrom,
+  onTestFromOpened,
   cover: pageCover,
 }: NodeEditorProps) {
   const api = useAgentDraft(node, { teamId, onSaved: () => onSaved() });
@@ -304,6 +325,26 @@ function AgentEditor({
     historyWanted && last ? `${last.run_id}:${last.iteration}:${last.outcome ?? ""}` : null,
     () => getNodeRuns(teamId, node.id),
   );
+  // M7: this agent's tests, read when the Tests tab first wants them and polled while they run; a
+  // run that ends reads the graph again (the canvas chip and the tab count).
+  const [testsWanted, setTestsWanted] = useState(false);
+  if (!testsWanted && tab === "tests") setTestsWanted(true);
+  const tests = useAgentTests(teamId, node.id, testsWanted, () => void onSaved());
+  const [testsBusy, setTestsBusy] = useState(false);
+  const [newTest, setNewTest] = useState<FromRound | null>(null);
+  const [upload, setUpload] = useState<{ filename: string; content: string } | null>(null);
+  const [judging, setJudging] = useState<{
+    test: AgentTest;
+    check: number;
+    first: string | null;
+  } | null>(null);
+  // "Open this replay": its result id (an in-drawer sheet on the Tests tab).
+  const [replay, setReplay] = useState<string | null>(null);
+  if (replay !== null && tab !== "tests") setReplay(null);
+  const [deletingTest, setDeletingTest] = useState<AgentTest | null>(null);
+  const [deleteTestBusy, setDeleteTestBusy] = useState(false);
+  // "Compare with v6": the instructions then against the text now (M5's compare).
+  const [comparing, setComparing] = useState<InstructionEntry | null>(null);
 
   // The header follows the draft, so a rename shows before it's saved.
   const cfg = (node.config as Record<string, unknown> | null) ?? {};
@@ -354,7 +395,18 @@ function AgentEditor({
     ((skillSub !== null || toolSub !== null) && tab === "skills");
   // ⌘S / Ctrl+S saves; while a confirm is open the confirm's own buttons decide.
   useSaveShortcut(() => {
-    const busy = guard.asking || deleting || pending || forgetting || templatesOpen || savingAgent;
+    const busy =
+      guard.asking ||
+      deleting ||
+      pending ||
+      forgetting ||
+      templatesOpen ||
+      savingAgent ||
+      newTest ||
+      upload ||
+      judging ||
+      comparing ||
+      deletingTest;
     if (canSave && !busy && !subCoversFooter) void save();
   });
 
@@ -412,6 +464,97 @@ function AgentEditor({
     void detachAgent(teamId, node.id).then(reloaded, (err: unknown) =>
       failed(err, "Couldn’t detach. Try again."),
     );
+  // M7: a test added or deleted — the list, and the graph (the tab count and the canvas chip).
+  const testsChanged = () => {
+    tests.reload();
+    void onSaved();
+  };
+  // Runs › round ⋯ › Make this a test: the round as a test (409: why it can't be one), on Tests.
+  const makeTest = (invocationId: number) =>
+    void getFromRound(teamId, node.id, invocationId).then(
+      (round) => {
+        setTestsWanted(true);
+        onTabChange("tests");
+        setNewTest(round);
+      },
+      (err: unknown) => failed(err, "Can’t make a test from this round."),
+    );
+  const copyAnswer = (text: string) =>
+    void Promise.resolve()
+      .then(() => navigator.clipboard.writeText(text))
+      .then(
+        () => toast.show("Answer copied"),
+        () => toast.show("Couldn’t copy the answer."),
+      );
+  const roundMenu = (r: NodeRound): MenuEntry[] => [
+    {
+      key: "focus",
+      label: "Open in focus view",
+      icon: <Maximize2 size={15} strokeWidth={1.6} aria-hidden />,
+      onSelect: () => onFocusChange(true),
+    },
+    {
+      key: "test",
+      label: "Make this a test",
+      icon: <FlaskConical size={15} strokeWidth={1.6} aria-hidden />,
+      end: "new",
+      disabled: Boolean(r.test_blocked),
+      description: r.test_blocked ?? undefined,
+      onSelect: () => makeTest(r.invocation_id),
+    },
+    ...(r.outcome_detail?.trim()
+      ? [
+          {
+            key: "copy",
+            label: "Copy the answer",
+            icon: <Copy size={15} strokeWidth={1.6} aria-hidden />,
+            onSelect: () => copyAnswer(r.outcome_detail ?? ""),
+          },
+        ]
+      : []),
+  ];
+  // Run all N replays the SAVED agent: a draft is saved or discarded first.
+  const runAllTests = () =>
+    guard.request(() => {
+      setTestsBusy(true);
+      void tests
+        .runAll()
+        .then(
+          () => void onSaved(),
+          (err: unknown) => failed(err, "Couldn’t start the tests. Try again."),
+        )
+        .finally(() => setTestsBusy(false));
+    });
+  const stopTests = () => {
+    setTestsBusy(true);
+    void tests
+      .stop()
+      .catch((err: unknown) => failed(err, "Couldn’t stop the tests. Try again."))
+      .finally(() => setTestsBusy(false));
+  };
+  const pickTestFile = (file: File) =>
+    void file.text().then(
+      (content) => setUpload({ filename: file.name, content }),
+      () => toast.show("Couldn’t read that file."),
+    );
+  // The text in effect at vN is the newest entry at or before it.
+  const compareWith = (version: number) =>
+    void getInstructionHistory(teamId, node.id).then(
+      (h) => {
+        const entry = h.entries.find((e) => e.number <= version) ?? h.entries.at(-1);
+        if (!entry || entry.current)
+          toast.show(`${name}’s instructions haven’t changed since v${version}.`);
+        else setComparing(entry);
+      },
+      (err: unknown) => failed(err, "Couldn’t load the instruction history."),
+    );
+  useEffect(() => {
+    if (testFrom === undefined) return;
+    makeTest(testFrom);
+    onTestFromOpened?.();
+    // Once per address: the page drops `test_from` as soon as it's asked for.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [testFrom]);
   // More › Save as my agent: the SAVED agent goes, so a dirty draft is saved (or discarded) first.
   const openSaveAgent = () =>
     guard.request(() => {
@@ -730,6 +873,63 @@ function AgentEditor({
         }}
       />
     );
+  } else if (newTest) {
+    overlay = (
+      <NewTestDialog
+        teamId={teamId}
+        nodeId={node.id}
+        round={newTest}
+        onClose={() => setNewTest(null)}
+        onSaved={() => {
+          setNewTest(null);
+          testsChanged();
+        }}
+      />
+    );
+  } else if (upload) {
+    overlay = (
+      <UploadTestsDialog
+        teamId={teamId}
+        nodeId={node.id}
+        agent={name}
+        file={upload}
+        onClose={() => setUpload(null)}
+        onAdded={() => {
+          setUpload(null);
+          testsChanged();
+        }}
+      />
+    );
+  } else if (judging) {
+    overlay = (
+      <JudgeDialog
+        teamId={teamId}
+        nodeId={node.id}
+        test={judging.test}
+        check={judging.check}
+        first={judging.first}
+        onClose={() => setJudging(null)}
+        onUsed={() => {
+          setJudging(null);
+          tests.reload();
+        }}
+      />
+    );
+  } else if (comparing) {
+    const entry = comparing;
+    overlay = (
+      <InstructionCompare
+        entry={entry}
+        agent={name}
+        role={node.role_name}
+        draft={draft.prompt}
+        onUse={() => {
+          applyOlderText(entry.text, entry.number);
+          setComparing(null);
+        }}
+        onClose={() => setComparing(null)}
+      />
+    );
   }
 
   // Focus mode has no sheet slot on the Skills tab: an open sheet takes the tab's place.
@@ -803,6 +1003,33 @@ function AgentEditor({
           history={history}
           onOpenFocus={() => onFocusChange(true)}
           onOpenConnector={openConnector}
+          roundMenu={roundMenu}
+        />
+      );
+      break;
+    case "tests":
+      body = (focus && replay !== null && (
+        <ReplayView
+          teamId={teamId}
+          nodeId={node.id}
+          agent={name}
+          resultId={replay}
+          onBack={() => setReplay(null)}
+        />
+      )) || (
+        <TestsTab
+          agent={name}
+          tests={tests}
+          onRunAll={runAllTests}
+          onStop={stopTests}
+          busy={testsBusy}
+          onPickRound={() => onTabChange("runs")}
+          onPickFile={pickTestFile}
+          onOpenReplay={(r: TestResult) => setReplay(r.id)}
+          onCompare={compareWith}
+          onJudge={(test, check, first) => setJudging({ test, check, first })}
+          onDelete={setDeletingTest}
+          focus={focus}
         />
       );
       break;
@@ -921,9 +1148,34 @@ function AgentEditor({
       onChange={onTabChange}
       skillsCount={skillsAndToolsCount(draft.skills, draft.toolConfig)}
       memoryCount={memories.count}
+      testsCount={tests.value ? tests.value.tests.length : (node.tests?.total ?? 0)}
     />
   );
-  const footer = (
+  // M7: on Tests the delete confirm takes the footer's place (Test-RowMenu); with a clean draft the
+  // drawer's footer is New test / "Add tests from a file" (none while there are no tests or they
+  // run). A draft keeps the Save footer, and focus mode keeps it always (Test-Focus).
+  const testsFooter = tab === "tests" && !focus && !api.isDirty && api.saveState !== "saving";
+  const doomed = tab === "tests" ? deletingTest : null;
+  const footer = doomed ? (
+    <DeleteTestBar
+      name={doomed.name}
+      busy={deleteTestBusy}
+      onCancel={() => setDeletingTest(null)}
+      onDelete={() => {
+        setDeleteTestBusy(true);
+        void deleteTest(teamId, node.id, doomed.id)
+          .then(testsChanged, (err: unknown) => failed(err, "Couldn’t delete the test. Try again."))
+          .finally(() => {
+            setDeleteTestBusy(false);
+            setDeletingTest(null);
+          });
+      }}
+    />
+  ) : testsFooter ? (
+    (tests.value?.tests.length ?? 0) > 0 && !tests.running ? (
+      <TestsFooter onNewTest={() => onTabChange("runs")} onPickFile={pickTestFile} />
+    ) : undefined
+  ) : (
     <SaveBar
       dirtyCount={api.dirtyCount}
       saveState={api.saveState}
@@ -952,7 +1204,7 @@ function AgentEditor({
         header={header}
         tabs={tabs}
         footer={footer}
-        scroll={sheetOpen}
+        scroll={sheetOpen || (tab === "tests" && replay !== null)}
         toast={toastHost}
         overlay={overlay}
         // Escape leaves the preview / review first, then docks (FOCUS-13).
@@ -968,7 +1220,20 @@ function AgentEditor({
       header={header}
       tabs={tabs}
       footer={footer}
-      sub={schemaEditor ?? skillEditor ?? toolEditor}
+      sub={
+        schemaEditor ??
+        skillEditor ??
+        toolEditor ??
+        (replay !== null && tab === "tests" ? (
+          <ReplayView
+            teamId={teamId}
+            nodeId={node.id}
+            agent={name}
+            resultId={replay}
+            onBack={() => setReplay(null)}
+          />
+        ) : null)
+      }
       toast={toastHost}
       overlay={overlay}
     >

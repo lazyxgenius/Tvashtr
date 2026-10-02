@@ -1,0 +1,781 @@
+/* ---- M7: the agent drawer's Tests tab (Test-Empty / -List / -Running / -Results) and its
+   dialogs (Test-New / -Upload / -Judge), measured from the boards ---- */
+
+/* Small pills (the canvas-chip style). */
+.tt-pill {
+  font-size: 10px;
+  line-height: 1.6;
+  padding: 1px 7px;
+  border-radius: 999px;
+  white-space: nowrap;
+  background: var(--panel-300);
+  color: var(--ink-500);
+}
+.tt-pill--good {
+  background: var(--sage-100);
+  color: #52613e;
+}
+.tt-pill--bad {
+  background: var(--red-100);
+  color: #8f3b2f;
+}
+.tt-pill--live {
+  background: var(--coral-100);
+  color: var(--coral-700);
+}
+.tt-pill--outline {
+  background: transparent;
+  color: var(--ink-600);
+  border: 1px solid var(--line-300);
+}
+.tt-pill--since {
+  font-weight: 600;
+}
+
+/* A text button: "Add tests from a file", "Compare with v6", "Add a check". */
+.tt-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--coral-700);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.tt-link--quiet {
+  color: var(--ink-500);
+}
+.tt-link:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-radius: 4px;
+}
+
+/* Empty (Test-Empty). */
+.tt-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 12px;
+  padding: 18px 6px 22px;
+}
+.tt-empty__disc {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--sage-100);
+  color: #52613e;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.tt-empty__title {
+  font-family: var(--font-display);
+  font-size: 20px;
+  color: var(--ink-900);
+}
+.tt-empty__body {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--ink-600);
+}
+.tt-empty__hint {
+  font-size: 12px;
+  color: var(--ink-500);
+}
+.tt-how {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--border-hairline);
+  border-radius: 12px;
+  background: var(--surface-card);
+}
+.tt-eyebrow {
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-500);
+}
+.tt-how__step {
+  display: flex;
+  gap: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-700);
+}
+.tt-how__n {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--panel-300);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ink-700);
+}
+
+/* Header block: the title + subline and a button, then the estimate box. */
+.tt-head {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.tt-head__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.tt-head__titles {
+  min-width: 0;
+}
+.tt-head__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--ink-900);
+}
+.tt-head__timer {
+  font-family: var(--font-code);
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--ink-500);
+}
+.tt-head__sub {
+  font-size: 12px;
+  color: var(--ink-500);
+  margin-top: 2px;
+}
+.tt-estimate {
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: var(--surface-sunk);
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink-600);
+}
+.tt-error {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #8f3b2f;
+}
+.tt-progress {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--panel-300);
+  overflow: hidden;
+  margin: -4px 0 12px;
+}
+.tt-progress__fill {
+  height: 100%;
+  background: var(--coral-500);
+}
+
+/* The rows. */
+.tt-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.tt-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 9px 12px;
+  border: 1px solid var(--border-hairline);
+  border-radius: 10px;
+  background: var(--surface-card);
+}
+.tt-row--failed {
+  border-color: #e5bfb7;
+}
+.tt-row--running {
+  border-color: var(--coral-200);
+}
+.tt-row__l1 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+/* Test-RowMenu: the ⋯ after the pill, pulled into the row's padding. */
+.tt-row__more {
+  flex: none;
+  display: inline-flex;
+  margin: -7px -6px -7px -2px;
+}
+.tt-row__toggle {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+.tt-row__toggle:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-radius: 4px;
+}
+.tt-row__icon {
+  flex: none;
+  display: inline-flex;
+  color: var(--ink-500);
+}
+.tt-row--passed .tt-row__icon {
+  color: #52613e;
+}
+.tt-row--failed .tt-row__icon {
+  color: #8f3b2f;
+}
+.tt-row--running .tt-row__icon {
+  color: var(--coral-700);
+}
+.tt-row--running .tt-row__icon svg {
+  animation: tt-spin 1.2s linear infinite;
+}
+@keyframes tt-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tt-row--running .tt-row__icon svg {
+    animation: none;
+  }
+}
+.tt-row__name {
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-900);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tt-row__pill {
+  margin-left: auto;
+  flex: none;
+}
+.tt-row__meta {
+  padding-left: 23px;
+  font-size: 12px;
+  color: var(--ink-500);
+}
+.tt-detail {
+  margin: 6px 0 2px 23px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line-200);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.tt-detail__line {
+  font-size: 12px;
+  color: var(--ink-800);
+}
+.tt-detail__line b {
+  font-weight: 600;
+}
+.tt-bad {
+  color: #8f3b2f;
+}
+.tt-good {
+  color: #52613e;
+}
+.tt-answer {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--surface-sunk);
+  font-family: var(--font-code);
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--ink-800);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.tt-detail__reason {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-600);
+}
+/* Test-Worse: a replay that didn't finish ("It took more than 10 minutes, so it was stopped."). */
+.tt-detail__error {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #8f3b2f;
+}
+
+/* Test-Queued: the owner's runs use every slot (R12). */
+.tt-queued {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 9px 12px;
+  border: 1px solid var(--line-300);
+  border-radius: 10px;
+  background: var(--surface-card);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-700);
+}
+.tt-queued__icon {
+  flex: none;
+  display: inline-flex;
+  color: var(--ink-600);
+  margin-top: 1px;
+}
+
+/* Test-RowMenu: the delete confirm in the footer's place. */
+.nd-foot.tt-confirm {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+.tt-confirm__text {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-800);
+}
+.tt-confirm__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+/* Test-Focus: a 760px column, the tests two by two, New test under them. */
+.tt-focus {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+}
+.tt-focus__col {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 18px 0 24px;
+}
+.tt-focus .tt-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+.tt-focus__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+}
+.tt-detail__acts {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/* ---- Dialogs (VersionDialog shell): New 680/40, Upload 720/70, Judge 720/44 ---- */
+.lv-confirm.tt-dlg--new,
+.lv-confirm.tt-dlg--upload,
+.lv-confirm.tt-dlg--judge {
+  transform: translateX(-50%);
+}
+.lv-confirm.tt-dlg--new {
+  width: 680px;
+  top: 40px;
+  max-height: calc(100vh - 56px);
+}
+.lv-confirm.tt-dlg--upload {
+  width: 720px;
+  top: 70px;
+  max-height: calc(100vh - 86px);
+}
+.lv-confirm.tt-dlg--judge {
+  width: 720px;
+  top: 44px;
+  max-height: calc(100vh - 60px);
+}
+.tt-dlg--new .lv-confirm__body,
+.tt-dlg--judge .lv-confirm__body {
+  gap: 14px;
+}
+.tt-dlg--new .lv-confirm__icon,
+.tt-dlg--upload .lv-confirm__icon,
+.tt-dlg--judge .lv-confirm__icon {
+  width: 38px;
+  height: 38px;
+}
+.tt-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.tt-section--checks {
+  gap: 6px;
+}
+.tt-section__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* "What the Reviewer gets". */
+.tt-gets {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border-hairline);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.tt-gets li {
+  display: grid;
+  grid-template-columns: 18px 150px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line-200);
+}
+.tt-gets li:last-child {
+  border-bottom: 0;
+}
+.tt-gets--compact li {
+  grid-template-columns: 18px 146px minmax(0, 1fr);
+  padding: 6px 12px;
+}
+
+/* Test-Replay (in the drawer's SubView). */
+.tt-replay__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--ink-500);
+}
+.tt-replay__section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.tt-replay__files {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.tt-replay__files-list {
+  font-size: 12.5px;
+  color: var(--ink-600);
+}
+.tt-replay__checks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border-hairline);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.tt-replay__checks li {
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr) auto;
+  gap: 4px 10px;
+  align-items: center;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--line-200);
+}
+.tt-replay__checks li:last-child {
+  border-bottom: 0;
+}
+.tt-replay__kind {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-700);
+}
+.tt-replay__value {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink-900);
+  overflow-wrap: anywhere;
+}
+.tt-replay__reason {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-600);
+}
+.tt-gets__icon {
+  display: inline-flex;
+  color: var(--ink-500);
+}
+.tt-gets__label {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink-800);
+}
+.tt-gets__value {
+  font-size: 12.5px;
+  color: var(--ink-600);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tt-code {
+  font-family: var(--font-code);
+  font-size: 11.5px;
+  background: var(--surface-sunk);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+
+/* The checks. */
+.tt-checks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.tt-check {
+  display: grid;
+  grid-template-columns: 128px minmax(0, 1fr) auto 24px;
+  gap: 10px;
+  align-items: center;
+  padding: 7px 10px;
+  border: 1px solid var(--border-hairline);
+  border-radius: 9px;
+  background: var(--surface-card);
+}
+.tt-check__kind {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-700);
+}
+/* Test-AddCheck: each value is a small DS input (32px, radius 6, 13px; a file's 12px mono). */
+.tt-check .ds-input {
+  min-width: 0;
+  height: 32px;
+  border-radius: 6px;
+  font-size: 13px;
+  padding: 0 10px;
+}
+.tt-check .ds-input--mono {
+  font-size: 12px;
+}
+.tt-check > button:last-child {
+  justify-self: end;
+}
+.tt-info {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-600);
+}
+.tt-info__icon {
+  flex: none;
+  display: inline-flex;
+  margin-top: 2px;
+}
+
+/* Upload (Test-Upload). */
+.tt-file {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-300);
+  border-radius: 10px;
+  background: var(--surface-page);
+}
+.tt-file__icon {
+  display: inline-flex;
+  color: var(--ink-600);
+}
+.tt-file__text {
+  flex: 1;
+  min-width: 0;
+}
+.tt-file__name {
+  font-family: var(--font-code);
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+.tt-file__meta {
+  font-size: 12px;
+  color: var(--ink-500);
+}
+.tt-file .tt-link {
+  font-size: 12.5px;
+}
+.tt-map__head,
+.tt-map li {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr) 210px;
+  gap: 12px;
+}
+.tt-map__head {
+  padding: 0 12px;
+}
+.tt-map {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border-hairline);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.tt-map li {
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line-200);
+}
+.tt-map li:last-child {
+  border-bottom: 0;
+}
+.tt-map__col {
+  font-family: var(--font-code);
+  font-size: 12.5px;
+  color: var(--ink-900);
+  overflow-wrap: anywhere;
+}
+.tt-map__first {
+  font-size: 12.5px;
+  color: var(--ink-600);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Judge (Test-Judge). */
+.tt-judge__check {
+  font-size: 14px;
+  color: var(--ink-900);
+  margin-top: 6px;
+}
+.tt-judge__head,
+.tt-judge li {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) 64px 72px;
+  gap: 12px;
+}
+.tt-judge__head {
+  padding: 0 12px;
+}
+.tt-judge {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border-hairline);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.tt-judge li {
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line-200);
+}
+.tt-judge li:last-child {
+  border-bottom: 0;
+}
+.tt-judge li.tt-judge__miss {
+  background: #fbf5ea;
+}
+.tt-judge__n {
+  font-family: var(--font-code);
+  font-size: 11.5px;
+  color: var(--ink-500);
+}
+.tt-judge__answer {
+  font-size: 12.5px;
+  color: var(--ink-800);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tt-judge__you {
+  display: inline-flex;
+  gap: 4px;
+}
+.tt-yn {
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  font-size: 10px;
+  line-height: 1.6;
+  padding: 1px 7px;
+  border-radius: 999px;
+  white-space: nowrap;
+  background: transparent;
+  color: var(--ink-500);
+  box-shadow: inset 0 0 0 1px var(--line-300);
+}
+.tt-yn[aria-pressed="true"] {
+  box-shadow: none;
+  background: var(--panel-300);
+}
+.tt-yn--yes[aria-pressed="true"] {
+  background: var(--sage-100);
+  color: #52613e;
+}
+.tt-yn:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.tt-judge__ai {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.tt-judge__warn {
+  display: inline-flex;
+  color: #7a5423;
+}
+.tt-callout .lv-confirm__mark {
+  color: #52613e;
+}
+.tt-callout--bad {
+  background: var(--red-100);
+  border-color: #e5bfb7;
+}
+.tt-callout--bad .lv-confirm__mark {
+  color: #8f3b2f;
+}
+.tt-section > .ds-anchor {
+  align-self: flex-start;
+}
+.tt-link--add {
+  font-size: 12.5px;
+}
+.tt-callout--plain {
+  background: var(--surface-sunk);
+  border-color: var(--border-hairline);
+}
+.tt-callout--plain .lv-confirm__mark {
+  color: var(--ink-500);
+}

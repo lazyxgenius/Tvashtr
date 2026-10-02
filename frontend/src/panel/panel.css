@@ -121,6 +121,29 @@
 .nd-tabs .ds-tab {
   font-size: 13.5px;
 }
+/* M7: six tabs (with Tests) are wider than the 384px drawer. The row scrolls sideways with no
+   scrollbar and every label on one line; the hairline moves to the wrapper and the row's 1px / 3px
+   paddings (pulled back by negative margins) keep the active underline and the focus ring unclipped. */
+.nd-tabs--scroll {
+  border-bottom: var(--border-width) solid var(--border-hairline);
+}
+.nd-tabs--scroll .ds-tabs {
+  border-bottom: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  padding-top: 3px;
+  margin-top: -3px;
+  padding-bottom: 1px;
+  margin-bottom: -1px;
+}
+.nd-tabs--scroll .ds-tabs::-webkit-scrollbar {
+  display: none;
+}
+.nd-tabs--scroll .ds-tab {
+  flex: none;
+  white-space: nowrap;
+}
 
 /* ---- Body + footer ---- */
 .nd-body {

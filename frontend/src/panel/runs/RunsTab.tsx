@@ -1,7 +1,7 @@
 import { type ReactNode, useState } from "react";
 import { ChevronDown, ChevronRight, History } from "lucide-react";
 
-import { Badge, Button } from "../../design-system/components";
+import { Badge, Button, Menu, type MenuEntry } from "../../design-system/components";
 import type { NodeRound, NodeRuns } from "../../lib/api/nodes";
 import { formatRelativeTime } from "../../lib/time";
 import type { OpenConnector } from "../connectors/connectorFormat";
@@ -87,12 +87,15 @@ export function RunsTab({
   history,
   onOpenFocus,
   onOpenConnector,
+  roundMenu,
 }: {
   /** "idle" when the agent never ran (nothing to load). */
   history: Loaded<NodeRuns>;
   onOpenFocus?: () => void;
   /** Open a connection's page through the drawer's unsaved-changes guard ("Sign in"). */
   onOpenConnector?: OpenConnector;
+  /** M7: each round's ⋯ menu ("Make this a test"); none: no ⋯. */
+  roundMenu?: (round: NodeRound) => MenuEntry[];
 }) {
   if (history.state === "loading" || history.state === "error") {
     return (
@@ -112,7 +115,24 @@ export function RunsTab({
       </EmptyCard>
     );
   }
-  return <RoundsList rounds={rounds} onOpenFocus={onOpenFocus} onOpenConnector={onOpenConnector} />;
+  return (
+    <RoundsList
+      rounds={rounds}
+      onOpenFocus={onOpenFocus}
+      onOpenConnector={onOpenConnector}
+      roundMenu={roundMenu}
+    />
+  );
+}
+
+/** M7 (Test-FromRun): a round's ⋯ ("More for round N"); none when it has nothing to offer. */
+function roundMenuOf(round: NodeRound, menu?: (round: NodeRound) => MenuEntry[]) {
+  const items = menu?.(round) ?? [];
+  // Test-RoundMenuOff: 290px when an item says why it's off, else Test-FromRun's 250px.
+  const why = items.some((it) => typeof it === "object" && "key" in it && it.description != null);
+  return items.length > 0 ? (
+    <Menu label={`More for round ${round.iteration}`} items={items} width={why ? 290 : 250} />
+  ) : undefined;
 }
 
 /**
@@ -126,11 +146,14 @@ export function RoundsList({
   onOpenFocus,
   onOpenConnector,
   more,
+  roundMenu,
 }: {
   rounds: NodeRound[];
   onOpenFocus?: () => void;
   onOpenConnector?: OpenConnector;
   more?: (round: NodeRound) => ReactNode;
+  /** M7: each round's ⋯ menu; none: no ⋯ (the cards stay as they were). */
+  roundMenu?: (round: NodeRound) => MenuEntry[];
 }) {
   const [last, ...earlier] = rounds;
   return (
@@ -140,6 +163,7 @@ export function RoundsList({
       </div>
       <LastRunCard
         round={last}
+        menu={roundMenuOf(last, roundMenu)}
         more={
           <>
             <ConnectorsSkipped connectors={last.connectors} onOpen={onOpenConnector} />
@@ -160,6 +184,7 @@ export function RoundsList({
                 onOpenFocus={onOpenFocus}
                 onOpenConnector={onOpenConnector}
                 more={more?.(r)}
+                menu={roundMenuOf(r, roundMenu)}
               />
             ))}
           </ul>
@@ -169,22 +194,40 @@ export function RoundsList({
   );
 }
 
-function LastRunCard({ round, more }: { round: NodeRound; more?: ReactNode }) {
+function LastRunCard({
+  round,
+  more,
+  menu,
+}: {
+  round: NodeRound;
+  more?: ReactNode;
+  menu?: ReactNode;
+}) {
   const [all, setAll] = useState(false);
   const badge = statusBadge(round, false);
   const detail = round.outcome_detail?.trim() ?? "";
   const clipped = clipDetail(detail);
   const when = roundTime(round);
+  const roundWhen = (
+    <span className="nd-lastrun__when">
+      Round {round.iteration}
+      {when && ` · ${when}`}
+    </span>
+  );
   return (
     <section className={`nd-lastrun nd-lastrun--${badge.variant}`} aria-label="Last run">
       <div className="nd-lastrun__head">
         <Badge variant={badge.variant} dot={badge.dot}>
           {badge.label}
         </Badge>
-        <span className="nd-lastrun__when">
-          Round {round.iteration}
-          {when && ` · ${when}`}
-        </span>
+        {menu ? (
+          <span className="nd-lastrun__end">
+            {roundWhen}
+            {menu}
+          </span>
+        ) : (
+          roundWhen
+        )}
       </div>
       {detail && (
         <div className="nd-lastrun__detail">
@@ -209,35 +252,47 @@ function RoundItem({
   onOpenFocus,
   onOpenConnector,
   more,
+  menu,
 }: {
   round: NodeRound;
   onOpenFocus?: () => void;
   onOpenConnector?: OpenConnector;
   more?: ReactNode;
+  menu?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const badge = statusBadge(round, false);
   const when = roundTime(round);
   const Chevron = open ? ChevronDown : ChevronRight;
+  const toggle = (
+    <button
+      type="button"
+      className="nd-round__toggle"
+      aria-expanded={open}
+      onClick={() => setOpen(!open)}
+    >
+      <span className="nd-round__id">
+        <span className="nd-round__n">Round {round.iteration}</span>
+        <Badge variant={badge.variant} dot={badge.dot}>
+          {badge.label}
+        </Badge>
+      </span>
+      <span className="nd-round__when">
+        {!open && when}
+        <Chevron size={14} strokeWidth={1.6} aria-hidden />
+      </span>
+    </button>
+  );
   return (
     <li className={`nd-round${open ? " nd-round--open" : ""}`}>
-      <button
-        type="button"
-        className="nd-round__toggle"
-        aria-expanded={open}
-        onClick={() => setOpen(!open)}
-      >
-        <span className="nd-round__id">
-          <span className="nd-round__n">Round {round.iteration}</span>
-          <Badge variant={badge.variant} dot={badge.dot}>
-            {badge.label}
-          </Badge>
-        </span>
-        <span className="nd-round__when">
-          {!open && when}
-          <Chevron size={14} strokeWidth={1.6} aria-hidden />
-        </span>
-      </button>
+      {menu ? (
+        <div className="nd-round__row">
+          {toggle}
+          {menu}
+        </div>
+      ) : (
+        toggle
+      )}
       {open && (
         <>
           {round.outcome_detail && (

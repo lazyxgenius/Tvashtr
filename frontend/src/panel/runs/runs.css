@@ -140,6 +140,26 @@
 .nd-round__focus {
   align-self: flex-start;
 }
+/* M7 (Test-FromRun): a round's ⋯ at the right of its card head. */
+.nd-lastrun__end {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.nd-round__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.nd-round__row .nd-round__toggle {
+  flex: 1;
+  min-width: 0;
+}
+/* The ⋯ (a 28px IconButton) doesn't make the head taller. */
+.nd-lastrun__end > .ds-anchor,
+.nd-round__row > .ds-anchor {
+  margin-block: -4px;
+}
 
 /* Empty (Panel-RunsEmpty; the Docs tab's "No documents yet"). */
 .nd-runs__empty {

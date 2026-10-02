@@ -16,7 +16,7 @@ const OPS = { same: "context", add: "added", del: "removed" } as const;
  * Ver-AgentCompare — an older text against the drawer's text now (the client-side line diff, 1 line
  * of context), with "Use this text".
  */
-function InstructionCompare({
+export function InstructionCompare({
   entry: e,
   agent,
   role,

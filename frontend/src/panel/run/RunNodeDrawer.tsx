@@ -1,9 +1,9 @@
 import type { ActivityLine } from "../../lib/api/activity";
 import { ReadableSteps } from "./live/ReadableSteps";
 import { useState } from "react";
-import { FileText, Zap } from "lucide-react";
+import { Copy, FileText, FlaskConical, Zap } from "lucide-react";
 
-import { Button } from "../../design-system/components";
+import { Button, type MenuEntry } from "../../design-system/components";
 import {
   type GraphEdge,
   type GraphNode,
@@ -30,6 +30,8 @@ import { modelLabel, type StatusBadge, statusBadge } from "../nodeBadges";
 import { NodeChat } from "../NodeChat";
 import { skillsAndToolsCount } from "../nodeCounts";
 import { NodeDrawer } from "../NodeDrawer";
+import { DrawerToast } from "../DrawerToast";
+import { useDrawerToast } from "../useDrawerToast";
 import { glyphForNode } from "../nodeGlyph";
 import { NodeBadges, NodeHeader } from "../NodeHeader";
 import { NodeTabs } from "../NodeTabs";
@@ -129,6 +131,7 @@ export function RunNodeDrawer({
   onClose,
   onOpenDoc,
   onEditOnTeam,
+  onMakeTest,
   offTeam = false,
   initialTool,
   activityLines,
@@ -149,6 +152,8 @@ export function RunNodeDrawer({
   onOpenDoc?: (docId: string) => void;
   /** "Edit on the team": the team's canvas with this agent open on Setup. Omitted: no button. */
   onEditOnTeam?: () => void;
+  /** M7: a round's ⋯ › Make this a test (the team's agent, its New test dialog on the round). */
+  onMakeTest?: (invocationId: number) => void;
   /** The agent this run copied has since been deleted from the team. */
   offTeam?: boolean;
   /** M2: the run tool to open on (the Activity panel's "View change" opens Changes). */
@@ -162,6 +167,43 @@ export function RunNodeDrawer({
   const live = !isRunTerminal(run, workflowStatus);
   const last = node.invocations[node.invocations.length - 1] ?? null;
   const copy = readOnlyDraft(node);
+  const toast = useDrawerToast();
+  // M7 (Test-FromRun): a round's ⋯ — Make this a test (on the team's agent) and Copy the answer.
+  // The run view has no focus mode, so "Open in focus view" stays on the team drawer.
+  const invocationOf = new Map(node.invocations.map((inv) => [inv.iteration, inv.invocation_id]));
+  const roundMenu = (r: NodeRound): MenuEntry[] => {
+    const invocationId = invocationOf.get(r.iteration);
+    const answer = r.outcome_detail?.trim();
+    return [
+      ...(onMakeTest && invocationId != null
+        ? [
+            {
+              key: "test",
+              label: "Make this a test",
+              icon: <FlaskConical size={15} strokeWidth={1.6} aria-hidden />,
+              end: "new",
+              onSelect: () => onMakeTest(invocationId),
+            },
+          ]
+        : []),
+      ...(answer
+        ? [
+            {
+              key: "copy",
+              label: "Copy the answer",
+              icon: <Copy size={15} strokeWidth={1.6} aria-hidden />,
+              onSelect: () =>
+                void Promise.resolve()
+                  .then(() => navigator.clipboard.writeText(answer))
+                  .then(
+                    () => toast.show("Answer copied"),
+                    () => toast.show("Couldn’t copy the answer."),
+                  ),
+            },
+          ]
+        : []),
+    ];
+  };
 
   let body;
   switch (tab) {
@@ -231,6 +273,7 @@ export function RunNodeDrawer({
           live={live}
           initialTool={initialTool}
           activityLines={activityLines}
+          roundMenu={roundMenu}
         />
       );
   }
@@ -282,6 +325,7 @@ export function RunNodeDrawer({
         />
       }
       footer={footer}
+      toast={<DrawerToast toast={toast.toast} onDismiss={toast.dismiss} />}
     >
       {body}
     </NodeDrawer>
@@ -310,6 +354,7 @@ function RunRounds({
   live,
   initialTool,
   activityLines,
+  roundMenu,
 }: {
   node: GraphNode;
   runId: string | null;
@@ -319,6 +364,7 @@ function RunRounds({
   live: boolean;
   initialTool?: "changes";
   activityLines?: ActivityLine[];
+  roundMenu?: (round: NodeRound) => MenuEntry[];
 }) {
   const tools: RunTool[] = [
     ...(node.kind === "agent" ? (["activity", "changes"] as const) : []),
@@ -343,6 +389,7 @@ function RunRounds({
         <RoundsList
           rounds={rounds}
           more={(r) => <RoundLedger inv={byIteration.get(r.iteration)} />}
+          roundMenu={roundMenu}
         />
       )}
       {tool && (
