@@ -79,6 +79,13 @@ describe("parseRoute / routeToHash", () => {
       "#/teams/t1?node=n1&tab=tests&test_from=812",
       { page: "team", teamId: "t1", node: "n1", tab: "tests", testFrom: 812 },
     ],
+    // M8 / M9: the Compare page's Versions and Task sets tabs.
+    ["#/teams/t1/compare?tab=versions", { page: "compare", teamId: "t1", tab: "versions" }],
+    ["#/teams/t1/compare?tab=sets", { page: "compare", teamId: "t1", tab: "sets" }],
+    [
+      "#/teams/t1/compare/c1?tab=sets",
+      { page: "compare", teamId: "t1", compareId: "c1", tab: "sets" },
+    ],
   ];
 
   it.each(cases)("%s round-trips", (hash, route) => {

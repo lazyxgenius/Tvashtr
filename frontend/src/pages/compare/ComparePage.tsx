@@ -3,7 +3,7 @@ import "../../panel/run/live/live.css";
 import "../home/home-runs.css";
 import "./compare.css";
 
-import { ArrowLeft, Info, Play } from "lucide-react";
+import { ArrowLeft, Circle, Info, Play } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { CanvasHeader } from "../../canvas/CanvasHeader";
@@ -14,7 +14,9 @@ import {
   type CompareVersion,
   getCompareChanges,
   getCompareStart,
+  listTaskSets,
   startCompare,
+  type TaskSet,
 } from "../../lib/api/compare";
 import { listRecentTasks } from "../../lib/api/myAgents";
 import { navigate } from "../../lib/nav";
@@ -25,13 +27,9 @@ import { money } from "../home/homeFormat";
 import { GithubIcon } from "../home/homeIcons";
 import type { ShellUser } from "../shell/Shell";
 import { CompareView } from "./CompareView";
+import { TaskSets } from "./TaskSets";
 
-type Tab = "compare" | "versions";
-// The board's "Task sets" tab arrives with M9 (brief §2.4: no dead tabs).
-const TABS = [
-  { value: "compare" as const, label: "Compare" },
-  { value: "versions" as const, label: "Versions" },
-];
+type Tab = "compare" | "sets" | "versions";
 
 /** "now", "yesterday", "3 days ago" (the boards' word for a version saved this minute is "now"). */
 const when = (iso: string) => versionAge(iso).replace(/^just now$/, "now");
@@ -41,6 +39,7 @@ const caption = (v: CompareVersion) =>
   [capital(when(v.when)), v.runs > 0 && runsPill(v.runs), v.summary].filter(Boolean).join(" · ");
 const options = (versions: CompareVersion[]) =>
   versions.map((v) => ({ value: String(v.number), label: `v${v.number} · ${when(v.when)}` }));
+const tasks = (n: number) => `${n} ${n === 1 ? "task" : "tasks"}`;
 
 type Pick = { a: number | null; b: number | null };
 
@@ -59,7 +58,7 @@ export function ComparePage({
 }: {
   teamId: string;
   compareId?: string;
-  tab?: "versions";
+  tab?: "versions" | "sets";
   user?: ShellUser | null;
   onLogout?: () => void;
 }) {
@@ -72,6 +71,25 @@ export function ComparePage({
   const s = start.value;
   const [pick, setPick] = useState<Pick | null>(null);
   const current: Tab = tab ?? "compare";
+  // M9: the team's task sets (the tab's cards, its count and the start form's "A task set"), read
+  // again on every move and after an edit; `chosen` is the set the Compare tab runs on (null: one task).
+  const [setsTick, setSetsTick] = useState(0);
+  const sets = useLoaded(
+    `${teamId}:${compareId ?? ""}:${tab ?? ""}:${setsTick}`,
+    () => listTaskSets(teamId),
+    { keep: true },
+  );
+  const list = sets.value ?? [];
+  const [chosen, setChosen] = useState<string | null>(null);
+  const compareOn = (setId: string) => {
+    setChosen(setId);
+    navigate({ page: "compare", teamId }, { replace: true });
+  };
+  const tabs = [
+    { value: "compare" as const, label: "Compare" },
+    { value: "sets" as const, label: "Task sets", count: list.length || null },
+    { value: "versions" as const, label: "Versions" },
+  ];
 
   const fresh = start.state === "ready" ? s?.latest : null;
   useEffect(() => {
@@ -109,11 +127,11 @@ export function ComparePage({
         <Tabs<Tab>
           variant="line"
           aria-label="Compare versions"
-          items={TABS}
+          items={tabs}
           value={current}
           onChange={(t) =>
             navigate(
-              { page: "compare", teamId, compareId, tab: t === "versions" ? t : undefined },
+              { page: "compare", teamId, compareId, tab: t === "compare" ? undefined : t },
               { replace: true },
             )
           }
@@ -132,10 +150,34 @@ export function ComparePage({
           ) : (
             loading
           )
+        ) : current === "sets" ? (
+          sets.value ? (
+            <TaskSets
+              teamId={teamId}
+              sets={list}
+              onChanged={() => setSetsTick((t) => t + 1)}
+              onCompare={compareOn}
+            />
+          ) : (
+            <LoadState
+              state={sets.state === "error" ? "error" : "loading"}
+              loading="Loading the task sets"
+              error="Couldn’t load the task sets."
+              onRetry={sets.retry}
+            />
+          )
         ) : compareId ? (
-          <CompareView key={compareId} id={compareId} teamId={teamId} />
+          <CompareView key={compareId} id={compareId} teamId={teamId} onCompareOn={compareOn} />
         ) : s ? (
-          <Start teamId={teamId} start={s} pick={pick ?? s.defaults} onPick={setPick} />
+          <Start
+            teamId={teamId}
+            start={s}
+            pick={pick ?? s.defaults}
+            onPick={setPick}
+            sets={list}
+            chosen={chosen}
+            onChoose={setChosen}
+          />
         ) : (
           loading
         )}
@@ -144,18 +186,26 @@ export function ComparePage({
   );
 }
 
-/** Cmp-Start / Cmp-OneVersion. */
+/** Cmp-Start / Cmp-OneVersion; M9's Set-StartSet ("A task set") when the team has sets. */
 function Start({
   teamId,
   start,
   pick,
   onPick,
+  sets,
+  chosen,
+  onChoose,
 }: {
   teamId: string;
   start: CompareStart;
   pick: Pick;
   onPick: (p: Pick) => void;
+  sets: TaskSet[];
+  /** The task set to run on; null (or a set that's gone): one task. */
+  chosen: string | null;
+  onChoose: (setId: string | null) => void;
 }) {
+  const set = sets.find((x) => x.id === chosen) ?? null;
   const one = start.versions.length < 2;
   const a = one ? (start.versions[0]?.number ?? null) : pick.a;
   const b = one ? null : pick.b;
@@ -192,7 +242,7 @@ function Start({
   );
   const changes = !pair ? 0 : isDefault ? start.changes : (other.value?.rows.length ?? 0);
 
-  const canStart = !busy && pair && task.trim() !== "";
+  const canStart = !busy && pair && (set !== null || task.trim() !== "");
   const go = () => {
     if (!canStart) return;
     setBusy(true);
@@ -200,7 +250,7 @@ function Start({
     startCompare(teamId, {
       a,
       b,
-      task: task.trim(),
+      ...(set ? { task_set_id: set.id } : { task: task.trim() }),
       auto_approve: auto,
     }).then(
       (made) => navigate({ page: "compare", teamId, compareId: made.id }, { replace: true }),
@@ -263,19 +313,69 @@ function Start({
         </div>
       )}
       <div className="cmp-start__on">
-        <span className="cmp-eyebrow">Run them on</span>
-        <Input
-          label="Task"
-          value={task}
-          onChange={(e) => {
-            typed.current = true;
-            setTask(e.target.value);
-          }}
-          // An input method's Enter (composing, or keyCode 229) picks a character, not Start.
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.nativeEvent.isComposing && e.keyCode !== 229) go();
-          }}
-        />
+        {sets.length > 0 ? (
+          <div className="cmp-start__onhead">
+            <span className="cmp-eyebrow">Run them on</span>
+            <div className="tv-seg" role="radiogroup" aria-label="Run them on">
+              {(
+                [
+                  [null, "One task"],
+                  [sets[0].id, "A task set"],
+                ] as const
+              ).map(([id, label]) => {
+                const on = (id === null) === (set === null);
+                return (
+                  <button
+                    key={label}
+                    type="button"
+                    role="radio"
+                    aria-checked={on}
+                    className={`tv-seg__btn${on ? " tv-seg__btn--active" : ""}`}
+                    onClick={() => !on && onChoose(id)}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <span className="cmp-eyebrow">Run them on</span>
+        )}
+        {set ? (
+          <div className="cmp-start__set">
+            <Select
+              label="Task set"
+              options={sets.map((x) => ({
+                value: x.id,
+                label: `${x.name} · ${tasks(x.items.length)}`,
+              }))}
+              value={set.id}
+              onChange={(e) => onChoose(e.target.value)}
+            />
+            <ul className="cmp-start__tasks" aria-label={`Tasks in ${set.name}`}>
+              {set.items.map((it, i) => (
+                <li key={i}>
+                  <Circle size={6} strokeWidth={2} aria-hidden />
+                  {it.task}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : (
+          <Input
+            label="Task"
+            value={task}
+            onChange={(e) => {
+              typed.current = true;
+              setTask(e.target.value);
+            }}
+            // An input method's Enter (composing, or keyCode 229) picks a character, not Start.
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.nativeEvent.isComposing && e.keyCode !== 229) go();
+            }}
+          />
+        )}
         {start.target && (
           <div className="cmp-start__repo">
             <GithubIcon size={14} />
@@ -296,14 +396,26 @@ function Start({
         onChange={(e) => setAuto(e.target.checked)}
       />
       <div className="cmp-start__foot">
-        <span>
-          {start.estimate && (
-            <>
-              About <b>{money(start.estimate.cost_usd)}</b> on your keys · about{" "}
-              {start.estimate.minutes} min
-            </>
-          )}
-        </span>
+        {set ? (
+          <span>
+            {set.estimate && (
+              <>
+                About <b>{money(set.estimate.cost_usd)}</b> on your keys · about{" "}
+                {set.estimate.minutes} min ·{" "}
+              </>
+            )}
+            {tasks(set.items.length)} × 2 versions
+          </span>
+        ) : (
+          <span>
+            {start.estimate && (
+              <>
+                About <b>{money(start.estimate.cost_usd)}</b> on your keys · about{" "}
+                {start.estimate.minutes} min
+              </>
+            )}
+          </span>
+        )}
         <Button variant="primary" className="cv-btn-flush" disabled={!canStart} onClick={go}>
           <Play size={14} fill="currentColor" strokeWidth={0} aria-hidden />
           <span>Start compare</span>

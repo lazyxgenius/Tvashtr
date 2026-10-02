@@ -1,9 +1,18 @@
-import { ChevronDown, FlaskConical, History, X } from "lucide-react";
+import {
+  ChevronDown,
+  CircleCheck,
+  FlaskConical,
+  History,
+  ListChecks,
+  RotateCcw,
+  TriangleAlert,
+  X,
+} from "lucide-react";
 import { type ReactNode, useState } from "react";
 
 import { Badge, Button, IconButton, Select } from "../design-system/components";
 import { getTeamRuns, type TeamRunRow } from "../lib/api";
-import type { TeamVersion, TeamVersions } from "../lib/api/versions";
+import type { TeamVersion, TeamVersions, VersionCheck } from "../lib/api/versions";
 import { useTicker } from "../lib/useTicker";
 import { runLook, runMeta, runsPill, versionAge } from "../lib/versionFormat";
 import { LoadState } from "../panel/runs/RunsTab";
@@ -173,6 +182,7 @@ function VersionsTab({
               Show {older} older version{older === 1 ? "" : "s"}
             </button>
           )}
+          <CheckCallout versions={v.versions} onRestore={(n) => onOpen("restore", n)} />
         </>
       ) : (
         <LoadState
@@ -223,6 +233,8 @@ function VersionRow({
             Tests {row.tests.passed} of {row.tests.total}
           </span>
         )}
+        {/* M9 (R6, Set-Checked / Set-CheckedWorse): how it did on a task set against an earlier version. */}
+        {row.check && <CheckPill check={row.check} />}
         <span className="cv-hist__acts">
           <button
             type="button"
@@ -245,6 +257,99 @@ function VersionRow({
         </span>
       </div>
     </li>
+  );
+}
+
+/** "$0.70 less than v7" (within a cent: nothing). */
+const costWords = (c: VersionCheck) =>
+  c.cost_delta_usd == null || Math.abs(c.cost_delta_usd) < 0.005
+    ? ""
+    : `$${Math.abs(c.cost_delta_usd).toFixed(2)} ${c.cost_delta_usd < 0 ? "less" : "more"}`;
+
+function CheckPill({ check: c }: { check: VersionCheck }) {
+  const done = c.status === "finished";
+  const cost = costWords(c);
+  const tone = !done
+    ? ""
+    : c.worse
+      ? " cv-tpill--warn"
+      : c.passed === c.total
+        ? " cv-tpill--good"
+        : "";
+  return (
+    <span className={`cv-tpill${tone}`}>
+      <ListChecks size={12} strokeWidth={2} aria-hidden />
+      {done
+        ? `${c.set}: ${c.passed} of ${c.total}${cost && `, ${cost} than v${c.against}`}`
+        : `${c.set}: checking…`}
+    </span>
+  );
+}
+
+/**
+ * The newest checked version, once its check has finished: "v8 passed both checks" (good), or "v8 did
+ * worse on Indicators" with Restore v7 (M5's Restore).
+ */
+function CheckCallout({
+  versions,
+  onRestore,
+}: {
+  versions: TeamVersion[];
+  onRestore: (number: number) => void;
+}) {
+  const row = versions.find((r) => r.check);
+  const c = row?.check;
+  if (!row || !c || c.status !== "finished") return null;
+  if (c.worse) {
+    // "(v7: 5 of 5)": the version it ran against, from its own check on the same set.
+    const was = versions.find((r) => r.number === c.against)?.check;
+    const before = was && was.set === c.set && was.status === "finished" ? was : null;
+    return (
+      <div className="cv-check cv-check--worse">
+        <TriangleAlert size={16} strokeWidth={1.6} aria-hidden />
+        <div className="cv-check__text">
+          <div className="cv-check__title">
+            v{row.number} did worse on {c.set}
+          </div>
+          <div>
+            {c.passed} of {c.total} hidden checks passed
+            {before && ` (v${c.against}: ${before.passed} of ${before.total})`}. Restore v
+            {c.against} to go back.
+          </div>
+          <div className="cv-check__acts">
+            <Button
+              variant="secondary"
+              size="sm"
+              className="cv-btn-flush"
+              onClick={() => onRestore(c.against)}
+            >
+              <RotateCcw size={14} strokeWidth={1.6} aria-hidden />
+              <span>Restore v{c.against}</span>
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  const t = row.tests;
+  const allTests = t && !t.running && t.passed === t.total;
+  const cost = costWords(c);
+  return (
+    <div className="cv-check">
+      <CircleCheck size={16} strokeWidth={1.6} aria-hidden />
+      <div className="cv-check__text">
+        <div className="cv-check__title">
+          {allTests
+            ? `v${row.number} passed both checks`
+            : `v${row.number} did as well as v${c.against} on ${c.set}`}
+        </div>
+        <div>
+          {allTests
+            ? `All ${t.total} tests pass, and it did as well as v${c.against} on ${c.set}${cost && ` for ${cost}`}.`
+            : `${c.passed} of ${c.total} hidden checks passed${cost && `, for ${cost}`}.`}
+        </div>
+      </div>
+    </div>
   );
 }
 
