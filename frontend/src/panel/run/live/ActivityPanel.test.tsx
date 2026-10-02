@@ -189,6 +189,33 @@ describe("ActivityPanel", () => {
     expect(within(panel).getByText("Wrote the spec (v2)")).toBeInTheDocument();
   });
 
+  it("following the live end, keeps it in view when the list's box changes size", () => {
+    // E.g. "Resume run #12" opens beside it: the callout above wraps and the list gets shorter.
+    const resized: (() => void)[] = [];
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(cb: ResizeObserverCallback) {
+          resized.push(() => cb([], this));
+        }
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    try {
+      render(<ActivityPanel activity={activity()} now={NOW} actions={actions()} />);
+      const list = screen.getByRole("region", { name: "Activity" }).querySelector("ol");
+      if (!list) throw new Error("no step list");
+      Object.defineProperty(list, "scrollHeight", { configurable: true, value: 600 });
+      list.scrollTop = 0;
+      resized.forEach((tick) => tick());
+      expect(list.scrollTop).toBe(600);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("filters to one agent and back to all", () => {
     render(<ActivityPanel activity={activity()} now={NOW} actions={actions()} />);
     fireEvent.click(screen.getByRole("button", { name: "Show 2 earlier steps" }));
