@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { ArrowLeft, FileCode, FileText, Play } from "lucide-react";
+import { ArrowLeft, FileCode, FileText, GitCompare, Play } from "lucide-react";
 
 import { Button, IconButton } from "../design-system/components";
 import { useBackendStatus } from "../lib/backendStatus";
@@ -30,6 +30,7 @@ export function CanvasToolbar({
   spend,
   docs,
   file,
+  compare,
   version,
   children,
 }: {
@@ -42,6 +43,8 @@ export function CanvasToolbar({
   docs?: { count: number | null; open: boolean; onToggle: () => void };
   /** M4: the "Team file" button (authoring), tinted while its panel is open. */
   file?: { open: boolean; onToggle: () => void };
+  /** M8 (Ver-Draft): "Compare" opens Compare versions, right before Team file (authoring). */
+  compare?: { onOpen: () => void };
   /** M5: the version chip (and Save as vN), right after the team's name (authoring). */
   version?: ReactNode;
   children?: ReactNode;
@@ -89,6 +92,12 @@ export function CanvasToolbar({
         )}
       </div>
       <div className="cv-right">
+        {compare && (
+          <Button variant="ghost" size="sm" className="cv-btn-flush" onClick={compare.onOpen}>
+            <GitCompare size={14} strokeWidth={1.6} aria-hidden />
+            <span>Compare</span>
+          </Button>
+        )}
         {file && (
           <Button
             variant={file.open ? "tint" : "ghost"}

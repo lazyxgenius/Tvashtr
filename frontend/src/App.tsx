@@ -1126,6 +1126,14 @@ export default function App({
               }
             : undefined
         }
+        compare={
+          authoring && currentTeamId
+            ? {
+                onOpen: () =>
+                  guardLeave(() => navigate({ page: "compare", teamId: currentTeamId })),
+              }
+            : undefined
+        }
         docs={
           toolbarRunId
             ? {
