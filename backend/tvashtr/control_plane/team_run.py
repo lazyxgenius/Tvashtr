@@ -1289,7 +1289,8 @@ def _forced_hang(run_id: str, node_id: str | None, invocation_id: int) -> dict |
     matches waits like a model that never answers — no adapter, no LLM, no key — until its run's
     sandboxes are closed (what the stall sweep does) and then fails like a dropped call. Writes the
     one event a real step writes first (the instruction going to the model), so the live state
-    counts from it. ``None`` for every other node, and always when the setting is unset."""
+    counts from it. ``None`` for every other node, and always when the setting is unset. MA (the
+    R19 proof): like the forced failure, never in a run that is itself a resume."""
     role = get_settings().force_hang_role
     if not role or node_id is None:
         return None
@@ -1297,7 +1298,10 @@ def _forced_hang(run_id: str, node_id: str | None, invocation_id: int) -> dict |
         node_role = session.execute(
             select(AgentNode.role_name).where(AgentNode.id == uuid.UUID(str(node_id)))
         ).scalar_one_or_none()
-    if node_role != role:
+        resumed = session.execute(
+            select(Run.resumed_from_run_id).where(Run.id == uuid.UUID(run_id))
+        ).scalar_one_or_none()
+    if node_role != role or resumed is not None:
         return None
     released = threading.Event()
     sandbox_cache.put(

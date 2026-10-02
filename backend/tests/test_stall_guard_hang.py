@@ -59,3 +59,26 @@ def test_unset_is_inert(client):
     run_id, node, inv_id = _setup()
     assert get_settings().force_hang_role is None
     assert team_run._forced_hang(run_id, node, inv_id) is None
+
+
+def test_never_in_a_resumed_run(client, monkeypatch):
+    """MA (R19 proof): like the forced failure, the forced hang never applies to a run that is
+    itself a resume, so a stopped run can be picked up and finish for real."""
+    from sqlalchemy import update
+
+    from tvashtr.models import Run
+
+    monkeypatch.setattr(get_settings(), "force_hang_role", "engineer")
+    run_id, node, inv_id = _setup()
+    earlier, _ = _setup()[:2]
+    with session_scope() as s:
+        s.execute(
+            update(Run)
+            .where(Run.workflow_id == run_id)
+            .values(
+                resumed_from_run_id=select(Run.id)
+                .where(Run.workflow_id == earlier)
+                .scalar_subquery()
+            )
+        )
+    assert team_run._forced_hang(run_id, node, inv_id) is None
