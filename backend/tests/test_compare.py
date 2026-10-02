@@ -572,6 +572,66 @@ def test_a_compare_waits_for_two_free_slots(client, monkeypatch):
         c.post(f"/api/compares/{cid}/stop")
 
 
+_FULL = {  # a cap of ``_enforce_run_ceilings`` set so that two more runs breach it
+    "owner_concurrency_limit": ("hosted_max_concurrent_runs_per_owner", 1),
+    "global_concurrency_limit": ("hosted_max_concurrent_runs_global", 0),
+    "owner_daily_limit": ("hosted_max_runs_per_owner_per_day", 1),
+}
+
+
+@pytest.mark.parametrize("code", list(_FULL))
+def test_only_the_owners_run_slots_make_a_compare_wait(client, monkeypatch, code):
+    """Cmp-Queued waits on YOUR run slots. The daily and fleet caps refuse the compare with
+    ``POST /api/runs``'s 429 (no compare is made); a waiter that later meets them keeps waiting."""
+    from tvashtr.routers import _enforce_run_ceilings
+
+    settings = get_settings()
+    c, owner = fresh_account("cmp-caps")
+    _seed_dummy_credentials(str(owner))
+    team = _two_versions(c, f"Caps {uuid.uuid4().hex[:8]}")
+    roomy = {
+        "hosted_max_concurrent_runs_per_owner": 10,
+        "hosted_max_concurrent_runs_global": 10**6,
+        "hosted_max_runs_per_owner_per_day": 100,
+    }
+    monkeypatch.setattr(settings, "hosted_mode", True)
+    for name, value in roomy.items():
+        monkeypatch.setattr(settings, name, value)
+    cap, full = _FULL[code]
+    monkeypatch.setattr(settings, cap, full)
+
+    resp, started, waiters = _post(c, team, monkeypatch)
+    if code != "owner_concurrency_limit":
+        with pytest.raises(Exception) as runs_429:
+            _enforce_run_ceilings(owner, launching=2)
+        assert resp.status_code == 429, resp.text
+        assert resp.json() == {"detail": runs_429.value.detail}
+        assert resp.json()["detail"]["code"] == code
+        assert started == [] and waiters == []
+        with session_scope() as session:
+            assert (
+                session.execute(
+                    select(Compare.id).where(Compare.team_graph_id == uuid.UUID(team))
+                ).all()
+                == []
+            )
+        # Queued on your slots, the waiter then meets this cap: it keeps waiting.
+        monkeypatch.setattr(settings, cap, roomy[cap])
+        monkeypatch.setattr(settings, "hosted_max_concurrent_runs_per_owner", 1)
+        resp, _, waiters = _post(c, team, monkeypatch)
+        monkeypatch.setattr(settings, "hosted_max_concurrent_runs_per_owner", 10)
+        monkeypatch.setattr(settings, cap, full)
+    cid = resp.json()["id"]
+    try:
+        assert resp.status_code == 201 and resp.json()["status"] == "waiting", resp.text
+        assert waiters == [cid] and _runs_of(cid) == []
+        if code != "owner_concurrency_limit":
+            assert compare.try_start(uuid.UUID(cid)) is False
+            assert c.get(f"/api/compares/{cid}").json()["status"] == "waiting"
+    finally:
+        c.post(f"/api/compares/{cid}/stop")
+
+
 def test_stop_while_waiting_and_waiters_re_arm_at_startup(client, monkeypatch):
     settings = get_settings()
     c, owner = fresh_account("cmp-stop")

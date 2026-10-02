@@ -34,10 +34,12 @@ Every route is owner-scoped (another account → 404, never 403), listed in `tes
     answers `available: false`, reason "A compare run can’t be picked up again. Start a new compare instead.",
     `POST` 409s with it and the run view's failed / stopped callout offers no Resume.
 - R5 caps (R12: compare runs count fully, like any run): a compare starts BOTH runs together when the hosted
-  ceilings have room for two (`_enforce_run_ceilings(launching=2)` succeeds); otherwise the compare is `waiting`
-  (no run rows yet) and a plain daemon waiter (no DBOS; like M7's replays) starts both as soon as two slots are
-  free, polling every 5 s; waiters are re-armed on app startup for every `waiting` compare. Self-hosted (no
-  ceilings) ⇒ always immediate.
+  ceilings have room for two (`_enforce_run_ceilings(launching=2)` succeeds). When only the owner's own run slots
+  are full (code `owner_concurrency_limit`, what Cmp-Queued draws) the compare is `waiting` (no run rows yet) and a
+  plain daemon waiter (no DBOS; like M7's replays) starts both as soon as two slots are free, polling every 5 s;
+  waiters are re-armed on app startup for every `waiting` compare. The fleet (`global_concurrency_limit`) and daily
+  (`owner_daily_limit`) caps refuse the POST with the same 429 body `POST /api/runs` gives (no compare is made); a
+  waiter that later meets either keeps waiting. Self-hosted (no ceilings) ⇒ always immediate.
 - Targets: the team's own repo (`team_graphs.repo`, M4), else the newest GitHub-repo run of the team, else none
   (greenfield). A Desktop-folder target is not offered. Hosted mode only (`POST /api/runs` takes `github_repo`
   only there); self-hosted compares are greenfield. At launch the repo is checked against the owner's GitHub
@@ -80,7 +82,8 @@ Body `{"a": 6, "b": 7, "task": "Add an RSI indicator", "auto_approve": true}`. 4
 unknown, the task is empty, or the launch pre-flight fails on either side's snapshot (the graph-validity check
 and `_launch_preflight`: not runnable / missing provider key / unservable model — the same 422 bodies as
 `POST /api/runs`), or the target repo is not in the owner's installations (same body as `POST /api/runs`). 409 while another compare of this team is `waiting` or
-`running`. → **201**
+`running`. 429 (the body of `POST /api/runs`) when the fleet or the daily cap is full; only full run slots of
+your own make it wait. → **201**
 
 ```json
 {"id": "…", "status": "running" | "waiting", "runs": [{"label": "A", "version": 6, "run_id": "…" | null}, …]}

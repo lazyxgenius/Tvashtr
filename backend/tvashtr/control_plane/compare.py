@@ -262,10 +262,14 @@ def _drop(snapshots) -> None:
         session.execute(delete(TeamGraph).where(TeamGraph.id.in_(list(snapshots))))
 
 
-def _launch(session, cmp: Compare, snapshots: dict | None = None) -> list[str] | None:
-    """Insert both runs (in ``session``) when the owner's caps have room for two, else None. Under
-    the owner's slot lock (M7's), so a compare and a replay never both take the last slot. The
-    caller starts their workflows after the commit."""
+def _launch(
+    session, cmp: Compare, snapshots: dict | None = None, *, waiter: bool = False
+) -> list[str] | None:
+    """Insert both runs (in ``session``) when the hosted caps have room for two, else None (wait).
+    Only the owner's own run slots make a new compare wait (Cmp-Queued); the daily and fleet caps
+    refuse it with ``POST /api/runs``'s 429. A ``waiter`` waits on any cap. Under the owner's slot
+    lock (M7's), so a compare and a replay never both take the last slot. The caller starts their
+    workflows after the commit."""
     from tvashtr.routers import _enforce_run_ceilings  # the router mounts after this module
 
     session.execute(
@@ -275,6 +279,8 @@ def _launch(session, cmp: Compare, snapshots: dict | None = None) -> list[str] |
         _enforce_run_ceilings(cmp.owner_id, launching=2)
     except HTTPException as exc:
         if exc.status_code != 429:
+            raise
+        if not waiter and exc.detail.get("code") != "owner_concurrency_limit":
             raise
         return None
     team = session.get(TeamGraph, cmp.team_graph_id)
@@ -396,7 +402,7 @@ def try_start(compare_id: uuid.UUID) -> bool | None:
             or session.get(TeamGraph, cmp.team_graph_id) is None
         ):
             return None
-        started = _launch(session, cmp)
+        started = _launch(session, cmp, waiter=True)
         task = cmp.task
     if started is None:
         return False
