@@ -500,9 +500,16 @@ def create(
         _spawn(cid)
     else:
         _start(started, idea)
-        # A set's other tasks: as many as fit now, the rest by the waiter.
-        if tasks is not None and try_start(cid) is False:
-            _spawn(cid)
+        # A set's other tasks: as many as fit now, the rest by the waiter (which also retries a
+        # task that failed to launch — the compare has started, so the POST still succeeds).
+        if tasks is not None:
+            try:
+                rest = try_start(cid)
+            except Exception:  # noqa: BLE001
+                logger.exception("compare launch failed compare_id=%s", cid)
+                rest = False
+            if rest is False:
+                _spawn(cid)
     return {
         "id": str(cid),
         "status": status,
@@ -1142,6 +1149,7 @@ def version_checks(session, team: TeamGraph) -> dict[int, dict]:
             "cost_delta_usd": round(cost["B"] - cost["A"], 2),
             "status": "finished" if finished else "running",
             "worse": finished and passed["B"] < passed["A"],
+            "ended_at": cmp.ended_at.isoformat() if finished and cmp.ended_at else None,
         }
     return out
 

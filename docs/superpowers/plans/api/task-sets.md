@@ -109,11 +109,11 @@ Body gains `"check_set": "<task set id>"`: after the save commits, a compare of 
 that set starts (`auto_approve` true); never blocking or failing the save (a refusal is returned as
 `"check_started": null` with `"check_error"`). The versions listing gains, per version, `"check": {"compare_id",
 "set": "Indicators", "passed": 5, "total": 5, "against": 7, "against_passed": 4, "cost_delta_usd": -0.70,
-"status": "running"|"finished", "worse": false} | null` and, at the top, `"check_sets": [{"id", "name", "count",
+"status": "running"|"finished", "worse": false, "ended_at": "…" | null} | null` and, at the top, `"check_sets": [{"id", "name", "count",
 "estimate"}]` for the Save-as dialog.
 Built: the save's 201 body gains `"check_started": {"compare_id", "status"} | null` and `"check_error": "<plain words>"
 | null` (both null when no `check_set` was sent). A `check_set` that isn't a set of this team ⇒ **404 before anything
 is saved** (owner scope; the sweep's body-id rule). `against_passed` = the earlier version's hidden checks passed in
-the same compare; `worse` = finished and B passed fewer than A. The check is the newest set compare that is not
+the same compare; `worse` = finished and B passed fewer than A; `ended_at` = the compare's end (null while it runs). The check is the newest set compare that is not
 stopped with `version_b` = the version and `version_a` < it. `check_sets[].estimate` compares the new version with
 the current one (M8's estimate × N, as the set list's).

@@ -295,6 +295,36 @@ def test_a_set_compare_runs_both_versions_on_every_task(client, monkeypatch):
         _end(_set_runs(cid))
 
 
+def test_a_later_task_that_fails_to_launch_is_left_to_the_waiter(client, monkeypatch):
+    """The compare has started (its first task's runs exist): an error launching the rest never
+    turns the POST into a 500 — the waiter retries it."""
+    team = _two_versions(client)
+    ts = _make_set(client, team)
+    monkeypatch.setattr(get_settings(), "hosted_mode", False)
+
+    def _boom(cid):
+        raise RuntimeError("snapshot failed")
+
+    monkeypatch.setattr(compare, "try_start", _boom)
+    try:
+        resp, calls, waiters = _starts(client, team, monkeypatch, task_set_id=ts["id"])
+        assert resp.status_code == 201, resp.text
+        assert len(calls) == 2 and waiters == [resp.json()["id"]]
+    finally:
+        # Even when the POST fails: a half-launched set compare left running would be re-armed
+        # (its next task launched for real) by the next app startup.
+        with session_scope() as session:
+            session.execute(
+                update(Compare)
+                .where(Compare.team_graph_id == uuid.UUID(team))
+                .values(status="stopped", stop_requested=True)
+            )
+            ids = session.execute(
+                select(Run.workflow_id).where(Run.library_team_id == uuid.UUID(team))
+            ).scalars()
+        _end(list(ids))
+
+
 def test_exactly_one_of_task_and_set(client, monkeypatch):
     team = _two_versions(client)
     ts = _make_set(client, team)
@@ -719,6 +749,7 @@ def test_save_and_check_starts_a_compare_of_the_new_version_with_the_previous(cl
             "cost_delta_usd": 0.0,
             "status": "running",
             "worse": False,
+            "ended_at": None,
         }
         assert listing["versions"][1]["check"] is None
 
@@ -743,7 +774,7 @@ def test_a_finished_check_that_did_worse_says_so_in_history(client):
     owner = auth_user_id()
     team = _two_versions(client)
     ts = _make_set(client, team)
-    cid = _seed_set_compare(team, owner, ts)
+    cid = _seed_set_compare(team, owner, ts, ended_at=_T0 + timedelta(minutes=30))
     ids = [i["id"] for i in ts["items"]]
     _cell(owner, team, cid, ids[0], "A", 1, at=_T0, check=True, cost="1.00")
     _cell(owner, team, cid, ids[0], "B", 2, at=_T0, check=False, cost="0.80")
@@ -761,6 +792,7 @@ def test_a_finished_check_that_did_worse_says_so_in_history(client):
         "cost_delta_usd": -0.7,
         "status": "finished",
         "worse": True,
+        "ended_at": (_T0 + timedelta(minutes=30)).isoformat(),
     }
 
 
