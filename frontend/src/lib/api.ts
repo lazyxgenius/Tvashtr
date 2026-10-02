@@ -778,6 +778,16 @@ export interface TeamGraphNode {
     status?: string | null;
     ended_at?: string | null;
   } | null;
+  // M7: the agent's tests for the canvas chip ("5 of 6 tests" / "● Testing 3 of 6") and the Tests
+  // tab's count. `passed`/`ran` are of the newest finished run (null: never run).
+  tests?: {
+    total: number;
+    passed: number | null;
+    ran: number | null;
+    running: { done: number; total: number } | null;
+    /** The newest finished run was stopped (its chip is neutral). */
+    stopped?: boolean;
+  } | null;
 }
 
 // ===== M-tools C7.B (Skills) — skill-source union (OWNED BY C7.B; keep in this region) =========

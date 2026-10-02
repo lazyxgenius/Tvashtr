@@ -16,6 +16,19 @@ export interface TeamVersion {
   runs: number;
   source: "first" | "save" | "run" | "restore";
   restored_from: number | null;
+  /** M7 (R6): the newest test run of each agent on this version, added up (History's pill). */
+  tests?: { passed: number; total: number; running: boolean } | null;
+}
+
+/** M7 (R6): the changed agents that have tests (null: no nudge, Save as vN saves at once). */
+export interface VersionTests {
+  count: number;
+  agents: { node_id: string; name: string; count: number }[];
+  /** "You changed the Reviewer’s instructions. The Reviewer has 6 tests." */
+  sub: string;
+  /** "Save and run the Reviewer’s 6 tests". */
+  option: string;
+  estimate: { cost_usd: number; minutes: number } | null;
 }
 
 /** The chip and History › Versions. */
@@ -29,6 +42,8 @@ export interface TeamVersions {
   next: number;
   total: number;
   versions: TeamVersion[];
+  /** M7: set when the changed agents have tests (Save as vN offers to run them). */
+  tests?: VersionTests | null;
 }
 
 /** One changed thing: an agent's / gate's field, a whole agent / gate / end, a route, a team field. */
@@ -103,9 +118,15 @@ export function getVersions(teamId: string): Promise<TeamVersions> {
   return apiRequest("GET", `${team(teamId)}/versions`);
 }
 
-/** Save as vN. 409 "Nothing changed since v7." throws `ApiDetailError`. */
-export function saveVersion(teamId: string): Promise<TeamVersion> {
-  return apiRequest("POST", `${team(teamId)}/versions`, {});
+/**
+ * Save as vN. 409 "Nothing changed since v7." throws `ApiDetailError`. M7: `run_tests` starts the
+ * changed agents' tests after the save commits (never blocking it); no body posts `{}` as before.
+ */
+export function saveVersion(
+  teamId: string,
+  body: { note?: string; run_tests?: boolean } = {},
+): Promise<TeamVersion & { tests_started?: { node_id: string; run_id: string }[] }> {
+  return apiRequest("POST", `${team(teamId)}/versions`, body);
 }
 
 export function getVersion(teamId: string, number: number): Promise<VersionDetail> {

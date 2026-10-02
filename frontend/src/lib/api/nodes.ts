@@ -81,6 +81,8 @@ export interface NodeRound {
   } | null;
   /** What the round called through connectors and what it ran without; null when neither. */
   connectors?: RoundConnectors | null;
+  /** M7: why this round can't be a test (null: "Make this a test" is enabled). */
+  test_blocked?: string | null;
 }
 
 export interface NodeRunDetail {
@@ -335,6 +337,7 @@ function toRound(r: Record<string, unknown>): NodeRound {
     given,
     produced,
     connectors: parseRoundConnectors(r.connectors),
+    test_blocked: strOrNull(r.test_blocked),
   };
 }
 
