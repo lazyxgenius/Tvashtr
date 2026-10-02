@@ -52,16 +52,21 @@ export function useAgentTests(
   const [got, setGot] = useState<Got | null>(null);
   const [rev, setRev] = useState(0);
   const [watched, setWatched] = useState<{ key: string; run: string } | null>(null);
+  // The newest request wins (#6): a read only lands if nothing (another read, Run all, Stop) has
+  // happened since it was sent.
+  const generation = useRef(0);
 
   useEffect(() => {
     if (!wanted) return;
     let live = true;
+    const mine = ++generation.current;
+    const current = () => live && mine === generation.current;
     listTests(teamId, nodeId).then(
       (value) =>
-        live &&
+        current() &&
         setGot((g) => ({ key, value, failed: false, seq: (g?.seq ?? 0) + 1, at: Date.now() })),
       () =>
-        live &&
+        current() &&
         setGot((g) => ({
           key,
           value: g?.key === key ? g.value : null,
@@ -99,12 +104,14 @@ export function useAgentTests(
   }, [running]);
 
   const putRun = useCallback(
-    (next: TestRun | null) =>
+    (next: TestRun | null) => {
+      generation.current += 1;
       setGot((g) =>
         g && g.key === key && g.value
           ? { ...g, value: { ...g.value, run: next }, seq: g.seq + 1, at: Date.now() }
           : g,
-      ),
+      );
+    },
     [key],
   );
   const retry = useCallback(() => {

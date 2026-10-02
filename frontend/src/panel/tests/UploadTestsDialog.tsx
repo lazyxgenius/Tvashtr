@@ -40,6 +40,8 @@ export function UploadTestsDialog({
   const [mapping, setMapping] = useState<Record<string, ColumnUse> | null>(null);
   const [check, setCheck] = useState<FileCheck | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Add's own refusal: said, but Add stays available to try again (#2).
+  const [addError, setAddError] = useState<string | null>(null);
   const [checking, setChecking] = useState(true);
   const [busy, setBusy] = useState(false);
   const seq = useRef(0);
@@ -75,12 +77,12 @@ export function UploadTestsDialog({
 
   const add = async () => {
     setBusy(true);
-    setError(null);
+    setAddError(null);
     try {
       const res = await importTestFile(teamId, nodeId, { ...file, mapping: uses });
       onAdded(res.added);
     } catch (err) {
-      setError(serverWords(err, "Couldn’t add the tests. Try again."));
+      setAddError(serverWords(err, "Couldn’t add the tests. Try again."));
       setBusy(false);
     }
   };
@@ -195,11 +197,11 @@ export function UploadTestsDialog({
           </div>
         </div>
       )}
-      {error && !why && (
+      {(error && !why) || addError ? (
         <div className="lv-confirm__error" role="alert">
-          {error}
+          {addError ?? error}
         </div>
-      )}
+      ) : null}
     </VersionDialog>
   );
 }

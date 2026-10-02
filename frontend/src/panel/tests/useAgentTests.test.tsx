@@ -96,4 +96,32 @@ describe("useAgentTests", () => {
     await flush();
     expect(result.current.state).toBe("ready");
   });
+
+  it("an older read still in flight can't undo the run Run all just put in place (#6)", async () => {
+    // The first read answers at once; the next (a reload) waits until the test lets it answer.
+    let release: (r: Response) => void = () => {};
+    let reads = 0;
+    mockApi({
+      [`GET ${BASE}`]: () => {
+        reads += 1;
+        return reads === 1
+          ? tests(DONE_RUN)
+          : new Promise<Response>((resolve) => {
+              release = resolve;
+            });
+      },
+      [`POST ${BASE}/run`]: { run: RUNNING_RUN },
+    });
+    const { result } = renderHook(() => useAgentTests("t1", "n-rev", true));
+    await flush();
+    act(() => result.current.reload());
+    await flush();
+    await act(() => result.current.runAll());
+    expect(result.current.running).toBe(true);
+    // The reload sent before Run all answers late, with the old finished run.
+    release(new Response(JSON.stringify(tests(DONE_RUN)), { status: 200 }));
+    await flush();
+    expect(result.current.running).toBe(true);
+    expect(result.current.value?.run?.status).toBe("running");
+  });
 });

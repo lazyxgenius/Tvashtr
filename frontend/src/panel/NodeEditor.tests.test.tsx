@@ -129,7 +129,9 @@ function renderEditor(over: Partial<NodeEditorProps> = {}) {
     ...over,
   };
   const view = render(<NodeEditor {...props} />);
-  return { props, view, drawer: screen.getByRole("complementary", { name: "Reviewer settings" }) };
+  // Focus mode has no docked drawer (its tests look for the focus view instead).
+  const drawer = screen.queryByRole("complementary", { name: "Reviewer settings" }) as HTMLElement;
+  return { props, view, drawer };
 }
 const toastOf = (drawer: HTMLElement) => drawer.querySelector(".nd-toast-host") as HTMLElement;
 
@@ -315,5 +317,89 @@ describe("NodeEditor — M7 round ⋯ on the Runs tab", () => {
     renderEditor({ testFrom: 812, onTestFromOpened });
     expect(await screen.findByRole("dialog", { name: "New test from round 1" })).toBeVisible();
     expect(onTestFromOpened).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("NodeEditor — M7 review fixes", () => {
+  const instructions = (drawer: HTMLElement) =>
+    within(drawer).getByRole("textbox", { name: /^Instructions/ });
+  const patches = () =>
+    fetchMock.mock.calls.filter((c) => (c[1] as RequestInit | undefined)?.method === "PATCH");
+  const saveKey = () => fireEvent.keyDown(document, { key: "s", metaKey: true });
+
+  it("a run the graph says has started (Save and run tests) refreshes the open, idle tab (#3)", async () => {
+    const idle = reviewer({ last_run: ran, tests: { total: 6, passed: 5, ran: 6, running: null } });
+    const { drawer, props, view } = renderEditor({ node: idle });
+    expect(await within(drawer).findByText("6 tests")).toBeInTheDocument();
+    listed = tests(RUNNING_RUN);
+    view.rerender(
+      <NodeEditor
+        {...props}
+        node={reviewer({
+          last_run: ran,
+          tests: { total: 6, passed: 5, ran: 6, running: { done: 2, total: 6 } },
+        })}
+      />,
+    );
+    expect(await within(drawer).findByText("Running 3 of 6")).toBeInTheDocument();
+  });
+
+  it("in focus mode New test docks to the drawer's Runs tab, where rounds have Make this a test (#8)", async () => {
+    const { props, view } = renderEditor({ focus: true });
+    const focusView = await screen.findByRole("dialog", { name: "Reviewer in focus view" });
+    fireEvent.click(await within(focusView).findByRole("button", { name: "New test" }));
+    expect(props.onFocusChange).toHaveBeenCalledWith(false);
+    expect(props.onTabChange).not.toHaveBeenCalledWith("runs");
+    view.rerender(<NodeEditor {...props} focus={false} />);
+    await waitFor(() => expect(props.onTabChange).toHaveBeenCalledWith("runs"));
+  });
+
+  it("a slow round answer after this agent closed goes nowhere (#10)", async () => {
+    let answer: (r: Response) => void = () => {};
+    fromRound = () =>
+      new Promise<Response>((resolve) => {
+        answer = resolve;
+      });
+    const { drawer, props, view } = renderEditor({ tab: "runs" });
+    fireEvent.click(await within(drawer).findByRole("button", { name: "More for round 2" }));
+    fireEvent.click(within(drawer).getByRole("menuitem", { name: /Make this a test/ }));
+    view.unmount();
+    answer(new Response(JSON.stringify(FROM_ROUND), { status: 200 }));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(props.onTabChange).not.toHaveBeenCalledWith("tests");
+  });
+
+  it("⌘S does nothing while the replay sheet covers the Save footer, and saves once it's closed (#12)", async () => {
+    const { drawer, props, view } = renderEditor({ tab: "setup" });
+    fireEvent.change(instructions(drawer), { target: { value: "You are a stricter Reviewer." } });
+    view.rerender(<NodeEditor {...props} tab="tests" />);
+    fireEvent.click(await within(drawer).findByRole("button", { name: /^Names the file to fix/ }));
+    fireEvent.click(within(drawer).getByRole("button", { name: "Open this replay" }));
+    const sheet = await within(drawer).findByRole("region", {
+      name: "Replay · Names the file to fix",
+    });
+    saveKey();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(patches()).toHaveLength(0);
+    fireEvent.click(within(sheet).getByRole("button", { name: "Back" }));
+    saveKey();
+    await waitFor(() => expect(patches()).toHaveLength(1));
+  });
+
+  it("leaving an open Delete confirm for another tab lets ⌘S save there (#17)", async () => {
+    const { drawer, props, view } = renderEditor();
+    await within(drawer).findByText("6 tests");
+    fireEvent.click(
+      within(drawer).getByRole("button", { name: "More for Flags a missing test file" }),
+    );
+    fireEvent.click(within(drawer).getByRole("menuitem", { name: "Delete test" }));
+    expect(within(drawer).getByRole("alertdialog", { name: "Delete test" })).toBeInTheDocument();
+    view.rerender(<NodeEditor {...props} tab="setup" />);
+    fireEvent.change(instructions(drawer), { target: { value: "You are a stricter Reviewer." } });
+    saveKey();
+    await waitFor(() => expect(patches()).toHaveLength(1));
+    // Back on Tests the confirm is gone.
+    view.rerender(<NodeEditor {...props} tab="tests" />);
+    expect(within(drawer).queryByRole("alertdialog", { name: "Delete test" })).toBeNull();
   });
 });

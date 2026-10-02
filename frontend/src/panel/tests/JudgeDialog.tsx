@@ -1,5 +1,5 @@
 import { Check, CircleCheck, Info, ThumbsUp, TriangleAlert } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { VersionDialog } from "../../canvas/VersionDialogs";
 import { Button } from "../../design-system/components";
@@ -67,6 +67,17 @@ export function JudgeDialog({
   const [touched, setTouched] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const seq = useRef(0);
+  // The labels waiting on the debounce (sent at once if the dialog closes first).
+  const pending = useRef<ReadonlyMap<string, boolean> | null>(null);
+  const testId = test.id;
+  const send = useCallback(
+    (sending: ReadonlyMap<string, boolean>) =>
+      judgeCheck(teamId, nodeId, testId, {
+        check,
+        labels: [...sending].map(([answer, you]) => ({ answer, you })),
+      }),
+    [teamId, nodeId, testId, check],
+  );
 
   // The server keys answers by their trimmed text. Saved labels on answers no longer listed come last.
   const top = first?.trim() || null;
@@ -81,13 +92,17 @@ export function JudgeDialog({
   const judged = new Map((result?.rows ?? []).map((r) => [r.answer.trim(), r]));
 
   useEffect(() => {
-    if (!touched || labels.size === 0) return;
+    if (!touched || labels.size === 0) {
+      pending.current = null;
+      return;
+    }
     const mine = ++seq.current;
+    pending.current = labels;
     const t = window.setTimeout(() => {
-      judgeCheck(teamId, nodeId, test.id, {
-        check,
-        labels: [...labels].map(([answer, you]) => ({ answer, you })),
-      }).then(
+      // Already sent on closing.
+      if (pending.current !== labels) return;
+      pending.current = null;
+      send(labels).then(
         (res) => {
           if (mine !== seq.current) return;
           setResult(res);
@@ -99,14 +114,28 @@ export function JudgeDialog({
       );
     }, JUDGE_DEBOUNCE_MS);
     return () => window.clearTimeout(t);
-  }, [touched, labels, teamId, nodeId, test.id, check]);
+  }, [touched, labels, send]);
 
   const label = (answer: string, you: boolean) => {
     const next = new Map(labels);
     if (next.get(answer) === you) next.delete(answer);
     else next.set(answer, you);
+    // Nothing labelled: no agreement to show, and an answer still on its way is ignored (#11).
+    if (next.size === 0) {
+      seq.current += 1;
+      setResult(null);
+      setError(null);
+    }
     setTouched(true);
     setLabels(next);
+  };
+  // Closing (Use this check, Close, Escape) sends a label still waiting on its 400 ms (#11).
+  const leave = (then: () => void) => () => {
+    const waiting = pending.current;
+    pending.current = null;
+    seq.current += 1;
+    if (waiting && waiting.size > 0) void send(waiting).catch(() => undefined);
+    then();
   };
   const misses = (result?.rows ?? []).filter((r) => r.ai !== null && r.ai !== r.you);
 
@@ -116,7 +145,7 @@ export function JudgeDialog({
       icon={<ThumbsUp size={17} strokeWidth={1.6} aria-hidden />}
       sub="Label a few saved answers yourself. If the AI check agrees with you on at least 8 of 10, you can rely on it in tests."
       size="tt-dlg--judge"
-      onClose={onClose}
+      onClose={leave(onClose)}
       footNote="Your labels are saved with the test"
       actions={
         <>
@@ -125,7 +154,7 @@ export function JudgeDialog({
               Label more
             </Button>
           )}
-          <Button variant="primary" className="tt-flush" onClick={onUsed}>
+          <Button variant="primary" className="tt-flush" onClick={leave(onUsed)}>
             <Check size={14} strokeWidth={2} aria-hidden />
             <span>Use this check</span>
           </Button>

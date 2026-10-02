@@ -276,10 +276,18 @@ function TestsList({
   const byTest = new Map((run?.results ?? []).map((r) => [r.test_id, r]));
   const [toggled, setToggled] = useState<Record<string, boolean>>({});
 
+  // A stop asked for mid-replay holds until that replay ends (#5): "Stopping…", busy.
+  const stopping = run?.stopping === true;
   const stop = (
-    <Button variant="secondary" size="sm" loading={busy} className="tt-flush" onClick={onStop}>
-      <Square size={14} strokeWidth={1.6} aria-hidden />
-      <span>Stop</span>
+    <Button
+      variant="secondary"
+      size="sm"
+      loading={busy || stopping}
+      className="tt-flush"
+      onClick={onStop}
+    >
+      {!stopping && <Square size={14} strokeWidth={1.6} aria-hidden />}
+      <span>{stopping ? "Stopping…" : "Stop"}</span>
     </Button>
   );
   const again = (

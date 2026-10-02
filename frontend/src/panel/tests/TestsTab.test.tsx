@@ -107,6 +107,16 @@ describe("TestsTab", () => {
     expect(screen.queryByRole("button", { name: /Run all/ })).not.toBeInTheDocument();
   });
 
+  it("a stop asked for mid-replay reads Stopping… and can't be pressed again (#5)", () => {
+    const props = renderTab(api(testsOf({ ...RUNNING_RUN, stopping: true })));
+    const stop = screen.getByRole("button", { name: "Stopping…" });
+    expect(stop).toBeDisabled();
+    expect(stop).toHaveAttribute("aria-busy", "true");
+    fireEvent.click(stop);
+    expect(props.onStop).not.toHaveBeenCalled();
+    expect(screen.getByText("Running 3 of 6")).toBeInTheDocument();
+  });
+
   it("Test-Queued: waiting to start while the owner's runs use every slot", () => {
     renderTab(api(testsOf(QUEUED_RUN)));
     expect(screen.getByText("Waiting to start")).toBeInTheDocument();
