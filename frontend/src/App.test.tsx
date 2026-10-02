@@ -465,7 +465,11 @@ describe("App — the agent drawer (F5)", () => {
     // canvas, and Open Connectors can't be clicked.
     expect(banner.closest(".cv-bar")).toBeNull();
     expect(banner.parentElement).toHaveClass("cv-warnings");
-    expect(banner.parentElement?.nextElementSibling).toHaveClass("cv-main");
+    // Then the canvas: M3's Resume wrapper is `display: contents` while its panel is closed, so the
+    // canvas is the next box.
+    const next = banner.parentElement?.nextElementSibling;
+    expect(next).toHaveClass("lv-split--off");
+    expect(next?.firstElementChild?.firstElementChild).toHaveClass("cv-main");
     expect(within(banner).getByRole("link", { name: "Open Connectors" })).toHaveAttribute(
       "href",
       "#/toolkit/connectors",

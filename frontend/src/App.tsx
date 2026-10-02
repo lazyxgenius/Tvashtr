@@ -5,6 +5,7 @@ import { RunBlockedBanner } from "./canvas/RunBlockedBanner";
 import { credentialBlock, validityBlock } from "./canvas/runBlocked";
 import { TeamCanvas } from "./canvas/TeamCanvas";
 import "./canvas/chrome.css";
+import { useToast } from "./design-system/components";
 import { type DashView, navigate, type NodeTab } from "./lib/nav";
 import { CancelRunButton } from "./components/CancelRunButton";
 import { RunBanner } from "./components/RunBanner";
@@ -252,13 +253,7 @@ export default function App({
   const resumeFlow = useResume(authoring ? null : runId);
   const openResume = resumeFlow.open;
   const resumeRequested = useRef(routeResume === true);
-  useEffect(() => {
-    if (!resumeRequested.current) return;
-    resumeRequested.current = false;
-    void openResume("pick")
-      .catch(() => undefined)
-      .finally(() => onResumeOpened?.());
-  }, [openResume, onResumeOpened]);
+  const toast = useToast();
 
   // Load BYOK + subscription coverage while authoring so Run can gate on missing providers.
   useEffect(() => {
@@ -313,6 +308,21 @@ export default function App({
       mountedRef.current = false;
     };
   }, []);
+
+  // Home's Resume (`?resume=1`): open the panel once, or say why Resume isn't offered any more
+  // (e.g. "Picked up again as run #13"); then drop it from the address — unless the person has
+  // already left this run view.
+  useEffect(() => {
+    if (!resumeRequested.current) return;
+    resumeRequested.current = false;
+    void openResume("pick")
+      .catch((e: unknown) => {
+        if (mountedRef.current) toast({ message: e instanceof Error ? e.message : String(e) });
+      })
+      .finally(() => {
+        if (mountedRef.current) onResumeOpened?.();
+      });
+  }, [openResume, onResumeOpened, toast]);
 
   // Resolve the default open team when none was passed (a standalone mount / the tests): pick the
   // first library team. Team management + selection live on the Dashboard now (Part A); this only
@@ -859,27 +869,27 @@ export default function App({
   };
   const resumedFrom = run?.resumed_from ?? activity?.resumed_from ?? null;
   const confirmPoint = resumeFlow.confirm;
+  // Only this run's own steps resume (a step carried from an earlier run has no invocation).
+  const resumeAt = confirmPoint?.invocation_id;
   const pickInfo = !authoring && resumeFlow.pick ? resumeFlow.info : null;
-  const withPick = (canvas: ReactNode, below: ReactNode) =>
-    pickInfo ? (
-      <div className="lv-split">
-        <div className="lv-split__main">
-          {canvas}
-          {below}
-        </div>
+  // One tree whether the panel is open or not, so opening it never remounts the canvas or
+  // Activity; closed, the wrapper is `display: contents` and the layout is as without it.
+  const withPick = (canvas: ReactNode, below: ReactNode) => (
+    <div className={pickInfo ? "lv-split" : "lv-split lv-split--off"}>
+      <div className="lv-split__main">
+        {canvas}
+        {below}
+      </div>
+      {pickInfo && (
         <ResumePick
           info={pickInfo}
           roleOf={(nodeId) => graph?.nodes.find((n) => n.id === nodeId)?.role_name}
           onPick={resumeFlow.choose}
           onClose={resumeFlow.closePick}
         />
-      </div>
-    ) : (
-      <>
-        {canvas}
-        {below}
-      </>
-    );
+      )}
+    </div>
+  );
 
   return (
     <>
@@ -1106,11 +1116,11 @@ export default function App({
           />
         ),
       )}
-      {resumeFlow.info && confirmPoint && (
+      {resumeFlow.info && confirmPoint && resumeAt != null && (
         <ResumeConfirm
           info={resumeFlow.info}
           point={confirmPoint}
-          onResume={() => startResumed(confirmPoint.invocation_id)}
+          onResume={() => startResumed(resumeAt)}
           onCancel={resumeFlow.closeConfirm}
         />
       )}

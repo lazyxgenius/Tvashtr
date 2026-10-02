@@ -1,8 +1,9 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { ResumeInfo, ResumePoint } from "../../../lib/api/resume";
 import { ApiDetailError } from "../../../lib/api/runs";
+import { pushOverlay, removeOverlay } from "../../../lib/overlayStack";
 import { ResumeConfirm, ResumedFrom, ResumePick } from "./Resume";
 
 const T = (h: number, m: number, s = 0) => new Date(2026, 9, 2, h, m, s).toISOString();
@@ -127,6 +128,51 @@ describe("ResumePick (Prob-Pick)", () => {
     expect(screen.getByRole("complementary", { name: "Resume this run" })).toBeInTheDocument();
     expect(screen.getByText("Uses the same team setup as this run")).toBeInTheDocument();
   });
+  it("lists steps carried from an earlier run (no step of this run) once each, never resumable", () => {
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    const carried = (node_id: string, title: string) =>
+      point({
+        invocation_id: null,
+        node_id,
+        title,
+        text: "From run #11",
+        resumable: false,
+        confirm: null,
+        from_run: { run_id: "r-11", number: 11 },
+      });
+    render(
+      <ResumePick
+        info={info({
+          points: [
+            carried("n-pm", "Product manager"),
+            carried("n-prd", "Approval gate"),
+            POINTS[3],
+          ],
+        })}
+        onPick={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    const panel = screen.getByRole("complementary", { name: "Resume run #12" });
+    expect(within(panel).getAllByText("From run #11")).toHaveLength(2);
+    expect(within(panel).getAllByRole("button", { name: "Resume from here" })).toHaveLength(1);
+    // No React key warning for the carried steps (they have no invocation id).
+    expect(err.mock.calls.flat().join(" ")).not.toMatch(/key/);
+    err.mockRestore();
+  });
+
+  it("takes focus on its Close, and Escape closes it unless a dialog is on top", () => {
+    const onClose = vi.fn();
+    render(<ResumePick info={info()} onPick={vi.fn()} onClose={onClose} />);
+    const panel = screen.getByRole("complementary", { name: "Resume run #12" });
+    expect(within(panel).getByRole("button", { name: "Close" })).toHaveFocus();
+    const dialog = pushOverlay();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(onClose).not.toHaveBeenCalled();
+    removeOverlay(dialog);
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("ResumeConfirm (Prob-Confirm)", () => {
@@ -190,6 +236,36 @@ describe("ResumeConfirm (Prob-Confirm)", () => {
     expect(screen.getByRole("button", { name: "Resume run" })).toBeEnabled();
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(onCancel).toHaveBeenCalled();
+  });
+
+  it("while Resume run is on its way nothing cancels it, and a late refusal still shows", async () => {
+    let refuse: (e: Error) => void = () => undefined;
+    const onResume = vi.fn(
+      () =>
+        new Promise((_, reject) => {
+          refuse = reject;
+        }),
+    );
+    const onCancel = vi.fn();
+    render(
+      <ResumeConfirm info={info()} point={POINTS[3]} onResume={onResume} onCancel={onCancel} />,
+    );
+    const dialog = screen.getByRole("dialog", { name: "Resume from Engineer, round 2?" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Resume run" }));
+    await waitFor(() => expect(onResume).toHaveBeenCalledTimes(1));
+    // Escape, the scrim, the X and Cancel all wait for the answer.
+    fireEvent.keyDown(document, { key: "Escape" });
+    const scrim = document.querySelector(".ds-scrim");
+    if (scrim) fireEvent.click(scrim);
+    expect(within(dialog).getByRole("button", { name: "Close" })).toBeDisabled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(onCancel).not.toHaveBeenCalled();
+    act(() => refuse(new ApiDetailError(429, "You have 3 runs going.", null)));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("You have 3 runs going.");
+    // Answered: closing works again.
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(onCancel).toHaveBeenCalledTimes(1);
   });
 });
 

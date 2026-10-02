@@ -1,7 +1,8 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 
 import App from "./App";
+import { ToastProvider } from "./design-system/components";
 import type { ResumeInfo } from "./lib/api/resume";
 
 // M3 — Resume from here on the real <App/> (the control plane stubbed): the callouts open the pick
@@ -76,6 +77,7 @@ let runStatus: string;
 let runExtra: Record<string, unknown>;
 let pin: unknown;
 let postReply: { status: number; body: unknown };
+let getInfo: () => Promise<Response>;
 type Fetch = (input: string, init?: RequestInit) => Promise<Response>;
 let fetchMock: Mock<Fetch>;
 const reply = (body: unknown, status = 200) =>
@@ -87,9 +89,10 @@ beforeEach(() => {
   runExtra = {};
   pin = pinned("failed");
   postReply = { status: 201, body: { run_id: "run-13", number: 13 } };
+  getInfo = () => reply(INFO);
   fetchMock = vi.fn<Fetch>((url, init) => {
     if (url === `/api/runs/${RUN}/resume`)
-      return init?.method === "POST" ? reply(postReply.body, postReply.status) : reply(INFO);
+      return init?.method === "POST" ? reply(postReply.body, postReply.status) : getInfo();
     if (url === `/api/runs/${RUN}`)
       return reply({
         run_id: RUN,
@@ -192,6 +195,61 @@ describe("App — M3 Resume from here", () => {
       await screen.findByRole("complementary", { name: "Resume run #12" }),
     ).toBeInTheDocument();
     await waitFor(() => expect(opened).toHaveBeenCalledTimes(1));
+  });
+
+  it("opening and closing Resume run #12 keeps the canvas and Activity mounted as they were", async () => {
+    runStatus = "running";
+    pin = pinned("stalled");
+    render(<App teamId="team-1" initialRunId={RUN} />);
+    const open = await screen.findByRole("button", { name: "Resume from the last finished step" });
+    const activity = screen.getByRole("region", { name: "Activity" });
+    const main = document.querySelector("main.cv-main");
+    expect(main).not.toBeNull();
+    fireEvent.click(open);
+    const panel = await screen.findByRole("complementary", { name: "Resume run #12" });
+    // The same nodes: nothing remounted (the canvas keeps its view, Activity its place).
+    expect(screen.getByRole("region", { name: "Activity" })).toBe(activity);
+    expect(document.querySelector("main.cv-main")).toBe(main);
+    fireEvent.click(within(activity).getByRole("button", { name: "Hide activity" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("complementary", { name: "Resume run #12" })).toBeNull();
+    expect(screen.getByRole("region", { name: "Activity" })).toBe(activity);
+    expect(document.querySelector("main.cv-main")).toBe(main);
+    expect(within(activity).getByRole("button", { name: "Show activity" })).toBeInTheDocument();
+  });
+
+  it("Home's ?resume=1 on a run that can't resume any more says why, then drops it", async () => {
+    getInfo = () =>
+      reply({ ...INFO, available: false, reason: "Picked up again as run #13", points: [] });
+    const opened = vi.fn();
+    render(
+      <ToastProvider>
+        <App teamId="team-1" initialRunId={RUN} resume onResumeOpened={opened} />
+      </ToastProvider>,
+    );
+    const toast = await screen.findByText("Picked up again as run #13");
+    expect(toast.closest("[role=status]")).toHaveClass("ds-toast");
+    await waitFor(() => expect(opened).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("complementary", { name: "Resume run #12" })).toBeNull();
+  });
+
+  it("Home's ?resume=1 leaves the address alone once the run view has gone", async () => {
+    let answer: ((r: Response) => void) | null = null;
+    getInfo = () =>
+      new Promise<Response>((resolve) => {
+        answer = resolve;
+      });
+    const opened = vi.fn();
+    const { unmount } = render(
+      <App teamId="team-1" initialRunId={RUN} resume onResumeOpened={opened} />,
+    );
+    await waitFor(() => expect(answer).not.toBeNull());
+    unmount();
+    await act(async () => {
+      answer?.(new Response(JSON.stringify(INFO), { status: 200 }));
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    expect(opened).not.toHaveBeenCalled();
   });
 
   it("a resumed run's bar links to the run it resumed", async () => {

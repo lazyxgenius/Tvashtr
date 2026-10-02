@@ -419,6 +419,17 @@ export function ActivityPanel({
   useEffect(() => {
     if (follow && list.current) list.current.scrollTop = list.current.scrollHeight;
   }, [follow, shown.length]);
+  // While following, a change of the list's size (the Resume panel opening beside it wraps the
+  // callout above) keeps the live end in view too.
+  useEffect(() => {
+    const el = list.current;
+    if (!follow || !el) return;
+    const observer = new ResizeObserver(() => {
+      el.scrollTop = el.scrollHeight;
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [follow, folded]);
 
   return (
     <section className={`lv-act${folded ? " lv-act--folded" : ""}`} aria-label="Activity">
