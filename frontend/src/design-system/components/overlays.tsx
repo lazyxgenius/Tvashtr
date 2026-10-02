@@ -21,10 +21,17 @@ export interface MenuItem {
   icon?: ReactNode;
   danger?: boolean;
   disabled?: boolean;
+  /** Right-aligned meta ("in use", "v2 · 2 teams"). */
+  end?: ReactNode;
   onSelect: () => void;
 }
 
-export type MenuEntry = MenuItem | "separator";
+/** A section heading ("Built-in", "My agents"): a label, not an item. */
+export interface MenuHeading {
+  heading: string;
+}
+
+export type MenuEntry = MenuItem | MenuHeading | "separator";
 
 /**
  * A ⋯ button that opens a menu of actions. `label` names the button for screen readers
@@ -103,6 +110,10 @@ export function Menu({
           {items.map((it, i) =>
             it === "separator" ? (
               <div key={`sep-${i}`} className="ds-menu__sep" role="separator" />
+            ) : "heading" in it ? (
+              <div key={`head-${i}`} className="ds-menu__heading" role="presentation">
+                {it.heading}
+              </div>
             ) : (
               <button
                 key={it.key}
@@ -120,6 +131,12 @@ export function Menu({
                   <span className="ds-menu__label">{it.label}</span>
                   {it.description && <span className="ds-menu__desc">{it.description}</span>}
                 </span>
+                {/* Meta, not part of the item's name ("Reviewer", not "Reviewer in use"). */}
+                {it.end != null && (
+                  <span className="ds-menu__end" aria-hidden>
+                    {it.end}
+                  </span>
+                )}
               </button>
             ),
           )}
