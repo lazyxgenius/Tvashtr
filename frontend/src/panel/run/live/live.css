@@ -515,6 +515,11 @@
   display: flex;
   flex-direction: column;
 }
+/* Closed: no boxes of its own, so the run view lays out exactly as it does without the panel. */
+.lv-split--off,
+.lv-split--off > .lv-split__main {
+  display: contents;
+}
 
 /* ---- "Resume run #12" (Prob-Pick) ---- */
 .lv-pick {

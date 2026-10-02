@@ -860,26 +860,24 @@ export default function App({
   const resumedFrom = run?.resumed_from ?? activity?.resumed_from ?? null;
   const confirmPoint = resumeFlow.confirm;
   const pickInfo = !authoring && resumeFlow.pick ? resumeFlow.info : null;
-  const withPick = (canvas: ReactNode, below: ReactNode) =>
-    pickInfo ? (
-      <div className="lv-split">
-        <div className="lv-split__main">
-          {canvas}
-          {below}
-        </div>
+  // One tree whether the panel is open or not, so opening it never remounts the canvas or
+  // Activity; closed, the wrapper is `display: contents` and the layout is as without it.
+  const withPick = (canvas: ReactNode, below: ReactNode) => (
+    <div className={pickInfo ? "lv-split" : "lv-split lv-split--off"}>
+      <div className="lv-split__main">
+        {canvas}
+        {below}
+      </div>
+      {pickInfo && (
         <ResumePick
           info={pickInfo}
           roleOf={(nodeId) => graph?.nodes.find((n) => n.id === nodeId)?.role_name}
           onPick={resumeFlow.choose}
           onClose={resumeFlow.closePick}
         />
-      </div>
-    ) : (
-      <>
-        {canvas}
-        {below}
-      </>
-    );
+      )}
+    </div>
+  );
 
   return (
     <>

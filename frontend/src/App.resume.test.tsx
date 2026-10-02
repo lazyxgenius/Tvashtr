@@ -194,6 +194,27 @@ describe("App — M3 Resume from here", () => {
     await waitFor(() => expect(opened).toHaveBeenCalledTimes(1));
   });
 
+  it("opening and closing Resume run #12 keeps the canvas and Activity mounted as they were", async () => {
+    runStatus = "running";
+    pin = pinned("stalled");
+    render(<App teamId="team-1" initialRunId={RUN} />);
+    const open = await screen.findByRole("button", { name: "Resume from the last finished step" });
+    const activity = screen.getByRole("region", { name: "Activity" });
+    const main = document.querySelector("main.cv-main");
+    expect(main).not.toBeNull();
+    fireEvent.click(open);
+    const panel = await screen.findByRole("complementary", { name: "Resume run #12" });
+    // The same nodes: nothing remounted (the canvas keeps its view, Activity its place).
+    expect(screen.getByRole("region", { name: "Activity" })).toBe(activity);
+    expect(document.querySelector("main.cv-main")).toBe(main);
+    fireEvent.click(within(activity).getByRole("button", { name: "Hide activity" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("complementary", { name: "Resume run #12" })).toBeNull();
+    expect(screen.getByRole("region", { name: "Activity" })).toBe(activity);
+    expect(document.querySelector("main.cv-main")).toBe(main);
+    expect(within(activity).getByRole("button", { name: "Show activity" })).toBeInTheDocument();
+  });
+
   it("a resumed run's bar links to the run it resumed", async () => {
     runStatus = "running";
     pin = null;
