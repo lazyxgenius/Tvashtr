@@ -1,0 +1,68 @@
+# Kept-elements inventory — m7-history (the team canvas with History open from the version chip (Versions)), captured at fe82239 (feat/m07-agent-tests before M7's frontend) with scripts/design-parity/shoot-app.mjs INVENTORY=1
+# Scenarios: scripts/design-parity/scenarios/agent-tests.mjs (kept-m7-history-web / -desktop). After the change every line must still be present (superset).
+
+## kept-m7-history-desktop
+aside: History
+button: Account
+button: Add to canvas
+button: Back to teams
+button: Close
+button: Documents 0
+button: Fit View
+button: Restore v3
+button: Restore v4
+button: Restore v5
+button: Restore v6
+button: Run this team
+button: Runs
+button: Set this node’s model
+button: Show 2 older versions
+button: Team file
+button: Version history
+button: Versions
+button: What changed in v3
+button: What changed in v4
+button: What changed in v5
+button: What changed in v6
+button: What changed in v7
+button: Zoom In
+button: Zoom Out
+footer: 
+header: 
+main: 
+toolbar: Team
+
+## kept-m7-history-web
+aside: History
+button: Account
+button: Add to canvas
+button: Back to teams
+button: Close
+button: Documents 0
+button: Fit View
+button: Restore v3
+button: Restore v4
+button: Restore v5
+button: Restore v6
+button: Run this team
+button: Runs
+button: Set this node’s model
+button: Show 2 older versions
+button: Team file
+button: Version history
+button: Versions
+button: What changed in v3
+button: What changed in v4
+button: What changed in v5
+button: What changed in v6
+button: What changed in v7
+button: Zoom In
+button: Zoom Out
+footer: 
+header: 
+main: 
+toolbar: Team
+
+# After M7 (re-shot on the M7 frontend):
+#   desktop: superset (29 kept, 0 missing); added nothing
+#   web: superset (29 kept, 0 missing); added nothing

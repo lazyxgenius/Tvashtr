@@ -1,0 +1,102 @@
+# Kept-elements inventory — m7-runview-runs (the run view (run #12, Done) with the Reviewer's drawer on Runs), captured at fe82239 (feat/m07-agent-tests before M7's frontend) with scripts/design-parity/shoot-app.mjs INVENTORY=1
+# Scenarios: scripts/design-parity/scenarios/agent-tests.mjs (kept-m7-runview-runs-web / -desktop). After the change every line must still be present (superset).
+
+## kept-m7-runview-runs-desktop
+aside: Reviewer in this run
+button: Account
+button: Activity
+button: All
+button: Approval gate
+button: Ask
+button: Back to teams
+button: Changes
+button: Close panel
+button: Documents 0
+button: Edit this team
+button: Engineer
+button: Fit View
+button: Hide activity
+button: Jump to live
+button: Notifications
+button: Product manager
+button: Raw log
+button: Read notes
+button: Readable
+button: Reviewer
+button: Round 1 Changes requested 1d ago
+button: Round 2 Changes requested 1d ago
+button: See the last run
+button: Show 25 earlier steps
+button: Show output
+button: Zoom In
+button: Zoom Out
+button: anthropic/claude-sonnet-4
+button: xai/grok-4.7
+header: 
+heading: Reviewer
+link: Open on GitHub
+link: Open pull request #42
+link: Opened PR →
+main: 
+section: Activity
+section: In this run
+section: Last run
+section: Run summary
+tab: Docs
+tab: Memory
+tab: Runs
+tab: Setup
+tab: Skills & tools 4
+toolbar: Team
+
+## kept-m7-runview-runs-web
+aside: Reviewer in this run
+button: Account
+button: Activity
+button: All
+button: Approval gate
+button: Ask
+button: Back to teams
+button: Changes
+button: Close panel
+button: Documents 0
+button: Edit this team
+button: Engineer
+button: Fit View
+button: Hide activity
+button: Jump to live
+button: Notifications
+button: Product manager
+button: Raw log
+button: Read notes
+button: Readable
+button: Reviewer
+button: Round 1 Changes requested 1d ago
+button: Round 2 Changes requested 1d ago
+button: See the last run
+button: Show 25 earlier steps
+button: Show output
+button: Zoom In
+button: Zoom Out
+button: anthropic/claude-sonnet-4
+button: xai/grok-4.7
+header: 
+heading: Reviewer
+link: Open on GitHub
+link: Open pull request #42
+link: Opened PR →
+main: 
+section: Activity
+section: In this run
+section: Last run
+section: Run summary
+tab: Docs
+tab: Memory
+tab: Runs
+tab: Setup
+tab: Skills & tools 4
+toolbar: Team
+
+# After M7 (re-shot on the M7 frontend):
+#   desktop: superset (46 kept, 0 missing); added button: More for round 1, button: More for round 2, button: More for round 3
+#   web: superset (46 kept, 0 missing); added button: More for round 1, button: More for round 2, button: More for round 3

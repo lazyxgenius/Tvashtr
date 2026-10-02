@@ -1,0 +1,135 @@
+# M7 — Agent tests: parity record, branch worktree-agent-a8e88babde91d988a (the M7 frontend, on feat/m07-agent-tests bfa9465), 2026-10-02.
+# Design: the Claude Design "Quality" canvas, page "Agent tests · 7" (export at …/scratchpad/m7boards), shot with shoot-design.mjs at
+#   1440x900, FONT_CACHE_DIR …/scratchpad/m4/fonts: Test-Empty, -FromRun, -New, -List, -Running, -Results, -Upload, -Judge, -SaveNudge
+#   and the twelve drawn for the states those don't show — Test-RoundMenuOff, -AddCheck, -NoAI, -Replay, -RowMenu, -UploadError, -Worse,
+#   -Stopped, -Queued, -Focus, -Chips, -SaveNudgeTwo — plus Set-Checked (M9's board; only its History "Tests 6 of 6" pill is M7's):
+#   22 design shots, 22 fonts-ok.
+# App: scripts/design-parity/scenarios/agent-tests.mjs (46 board shots + 8 kept shots, website + Desktop, versions.mjs's `pair`
+#   convention; runs-live.mjs's for the two run-view boards) answering the contract's shapes (docs/superpowers/plans/api/agent-tests.md):
+#   the boards' canvas (versions.mjs's teamRoutes: Product manager → Spec approval → Engineer ⇄ Reviewer → Ship, v7) with the
+#   Reviewer's drawer on Tests; GET …/nodes/n-rev/tests the Reviewer's six tests (five passed, "Names the file to fix" failed on its AI
+#   check) and the run in each board's state (running 3 of 6 at 1m 40s / $0.14; waiting for a slot; done 5 of 6 +1 since v6 / $0.38;
+#   4 of 6 −1 since v6 with a 10-minute stop and a skipped AI check; stopped 2 of 6), the estimate $0.40 · 4 min, AI checks 186 of 200;
+#   GET …/tests/from-round run #12 round 1 "Changes requested" with the board's four checks (no AI key for Test-NoAI); POST
+#   …/tests/file/check reviewer-examples.csv (12 rows, 5 columns, 12 ready, 9 with a file; a 422 "line 3 isn’t valid JSON" for
+#   Test-UploadError); the answers and judge of Test-Judge (the board's seven labels, 9 of 10); the replay of Test-Replay; the graph's
+#   tests chips (5 of 6 / ● Testing 3 of 6 / 6 tests / 4 of 6 / 2 of 6 stopped); the versions summary's `tests` nudge (one agent / the
+#   Reviewer and the Engineer) and History rows' tests (6 of 6, 5 of 6, 4 of 6). The run view (Live-Done's run #12) with the Reviewer's
+#   rounds' answers and GET …/nodes/n-rev/runs?run_id= giving round 1's "Can’t make a test from this round (it ran before checkpoints)".
+# States are reached through the UI: ?tab=tests (and focus=1); a watched run (the first read running, the 2 s poll's read done or
+#   stopped: Test-Results / -Worse / -Stopped / -Judge / -Replay); Make this a test through ?test_from=812 (the run view's link) with
+#   the board's name typed; Add a check › Must not say, then Add a check open (Test-AddCheck); the footer's file input given the
+#   board's file (Test-Upload / -UploadError); "The AI check is wrong" and the seven labels clicked (Test-Judge); "Open this replay"
+#   (Test-Replay); a test's ⋯ (Test-RowMenu) and ⋯ › Delete test (the confirm shot); Save as v8 with the note typed (and Just save for
+#   Test-SaveNudgeTwo); the version chip › History (Set-Checked); the run view's round 1 ⋯ (Test-FromRun, Test-RoundMenuOff).
+#   The clock stands still (Date.now) so the timer and ages read as drawn; the pointer is moved off the controls.
+# Which render is the comparison: every board is drawn in Desktop (the 30px title strip): the Desktop render is the comparison and the
+#   web render is framed 30px down. Both renders are recorded below.
+# GATE: MET — every new M7 element is at 0 size/type drift: the Tests tab (13.5px, its 12px count); the empty start (the 48px disc,
+#   "No tests yet" Newsreader 20px, the 13px paragraph, Pick a round from a run primary md, Add tests from a file secondary md, the 12px
+#   hint, HOW IT WORKS 11.5/600 and its three 13px steps); the header (14.5/600 title, the mono 12px timer, the 12px subline, Run all 6
+#   primary sm / Stop / Run again secondary sm, the 10px since pill), the 12px estimate box, the waiting-for-a-slot note 12.5px, the 4px
+#   bar; each row (the 15px status icon, 13/600 name, the 10px pills, the 12px meta, the row's ⋯) and its detail (12px unmet line,
+#   11.5px mono answer, 12px reason / error / skipped lines, Open this replay secondary sm, the 12px Compare with v6 and The AI check is
+#   wrong links); the footer (New test secondary sm, the 12px Add tests from a file link) and the delete confirm in its place (13px, Cancel
+#   ghost sm, Delete danger sm); focus mode's two columns; the round ⋯ menu (32px rows, the 11.5px "new", the disabled row's 12px
+#   reason); the New test dialog (680px, 40px from the top, the 38px tile, title 22px, sub 13px, Test name, the 11.5/600 eyebrows, the
+#   10px Saved from the round / from the round / Included / Not available yet pills, the gets rows 12.5px, the 12/600 check kinds with
+#   their 32px inputs, Remove, Add a check 12.5/500 and its menu with the kinds' 12px hints, the 12px AI line, the 12.5px footer note,
+#   Save test primary md); Add tests from a file (720px, 70px down: the file card, COLUMN / FIRST ROW / USE IT AS, the 12.5px mono
+#   column and first row, the ready callout 14/600 + 13px, the unreadable callout, Add 12 tests); Check the AI check (720px, 44px down:
+#   the check card 14px, the four columns, the 11.5px mono index, the 12.5px answers, the 10px Yes / No toggles and the AI column, the
+#   warning icon, the 9 of 10 callout, Label more, Use this check); the replay sheet (14/600 title, 12px meta, the pills, the narrower
+#   gets rows, the 11.5px answer, Files it changed, the checks list 12/600 · 12.5px · Met / Not met); Save as v8 (560px centred, What
+#   changed, the two 22px radios with their 13px description, the 12.5px restore line, Save and run tests / Save as v8 primary md); the
+#   canvas card's 10px tests chip; History's 11px "Tests 6 of 6" pill with its 12px flask.
+#   Every drift item below is an existing element (app governs, brief 2.2/2.3) or a board word with no counterpart, paired by the
+#   matcher with the same words elsewhere; each is covered by a waiver.
+# built (frontend/, vitest 243 files / 2522 tests + tsc + eslint --max-warnings 0 + prettier + build green):
+#   7162098 api-client: lib/api/agentTests.ts (every route of the contract, light guards) and lib/agentTestsFormat.ts (the boards'
+#     words); additive NodeRound.test_blocked, TeamGraphNode.tests, TeamVersions.tests, TeamVersion.tests; saveVersion(team, body?).
+#   c8abe6c nav: NodeTab "tests", ?tab=tests, ?test_from= (team canvas only).
+#   9dab3c8 panel: the Tests tab (team drawer only; the six-tab row scrolls sideways), its states, rows, footer, delete confirm, the
+#     round ⋯ (team drawer and run view), New test / Add tests from a file / Check the AI check / the replay sheet, focus mode.
+#   cf71518 canvas: the tests chip (the graph read every 2 s while an agent tests), History's Tests pill, Save as v8's nudge.
+#   f621f71 tests: every new component and hook; the kept tabs / menus / cards they touch.
+#   c49dc47 e2e: frontend/e2e/agent-tests.spec.ts, scripts/agent_tests_e2e.sh, make agent-tests-e2e (not run here: live stack).
+#   fc7026b run view: the round ⋯ says why a round can't be a test (Test-RoundMenuOff).
+#   120727e parity fixes: icons flush in their buttons' labels (was +8px wide), the M7 menus' 32px rows (was 34), Add a check spans
+#     its column and opens upward (the board's below-the-dialog menu would be clipped by the dialog's scroll), a passed row opens to its
+#     answer and skipped checks with the actions on failed rows only (Test-Worse), Check the AI check pages seven answers (Test-Judge).
+# waiver W1 (app governs, brief 2.2/2.3 — the drawer and canvas cards; every board) 'Read-only' 10→12px 400→500 (the board's canvas
+#   chip pairs with the drawer header's Read-only badge; the app's card reads "Edits off") and [ctl] 'Skills & tools4' 44/60→28 high,
+#   50/60→97 wide: the boards wrap the tab labels to fit six tabs; the app keeps every label on one line exactly as today and lets the
+#   six-tab row scroll sideways (no scrollbar, the open tab kept in view, arrow keys unchanged) — a recorded deviation.
+# waiver W2 (app governs — the run view, M2; Test-FromRun, Test-RoundMenuOff) the board's run-view chrome and round cards: '22m 38s',
+#   'Approved', 'Ship', 'Jump to live', 'Product manager', 'Round 3' (the board's mono card label vs the canvas card's "round 3"), the
+#   Last run card's 13px detail; the app's RoundsList (Last run + Earlier rounds) is kept and gains the ⋯. Its menu rows are at 0 drift.
+# waiver W3 (Test-New / -NoAI / -AddCheck) 'No tests yet' 14.5/600 Inter → the app's 20px Newsreader: the boards draw a compact empty
+#   state behind the dialog that contradicts Test-Empty, which governs; 'Changes requested' / 'Approved' 13→10px: Test-New and Test-NoAI
+#   draw the check values as text, Test-AddCheck as inputs — the app follows Test-AddCheck (editable in place), so those words pair
+#   with the canvas cards' chips.
+# waiver W4 (Test-AddCheck) 'Must not say' 13→12px 400→600: the menu's label, paired by the matcher with the new row's kind label
+#   (the menu row itself is at 0 drift).
+# waiver W5 (Test-Upload) [ctl] 'task' / 'file' 16→12.5px: the board's Selects carry its own keys (task / must / file / skip) as
+#   values; the app's are the contract's (gets / must_say / must_name_file / skip), so the matcher pairs the board's selects with the
+#   column-name cells. The Selects' labels are verbatim and at 0 drift.
+# not found, by rule: the canvas chrome and sample data ('Compare' and 'More for this team': M8 / not built, brief 2.4; '2 skills',
+#   '4 skills', 'GitHub', 'Grok plan · this Mac', 'Spec approval', 'Gate · asks you', 'Up to 3 rounds' — the app's cards and edges;
+#   'Changes requested · 2h ago' — the fixture's 31m); the run view's board chrome (W2: 'Run #12 · 3 rounds', the rounds' token lines,
+#   'Back to the team', 'More for this run', 'Focus mode', 'More actions', 'Memory3', 'Tests' — the run view keeps its five tabs);
+#   'Open in focus view' in the run view's round menu (the run view has no focus mode; the team drawer's menu has it); 'The Engineer’s
+#   change' (the contract's `change` doesn't say whose; the row reads "The change"); Test-Judge's '3 more labelled' (the API returns no
+#   earlier labels) and its hand-written miss sentence (the app says "The one miss: it said No to “…”." from the labels); Test-RowMenu
+#   draws the ⋯ menu and the delete confirm at once (the menu closes when Delete test is picked: two shots); Set-Checked's M9 parts
+#   (task sets, the version note, "v8 passed both checks") — only its Tests pill is M7's; Test-Focus's canvas edge labels behind the
+#   dialog.
+# Kept elements: docs/superpowers/parity/kept-m7-teamcanvas.txt, kept-m7-drawer-runs.txt, kept-m7-runview-runs.txt and
+#   kept-m7-history.txt, captured at fe82239 (the base) and re-shot after: each a superset (added: the Tests tab, the rounds' ⋯).
+
+Test-Empty desktop: matched 55/67 design items · 2 with size/type drift · 29 only moved · 12 not found in app — covered: W1×2
+Test-Empty web: matched 53/67 design items · 2 with size/type drift · 29 only moved · 14 not found in app — covered: W1×2
+Test-FromRun desktop: matched 61/92 design items · 7 with size/type drift · 42 only moved · 31 not found in app — covered: W1×1, W2×6
+Test-FromRun web: matched 59/92 design items · 8 with size/type drift · 41 only moved · 33 not found in app — covered: W1×1, W2×7
+Test-New desktop: matched 82/98 design items · 5 with size/type drift · 19 only moved · 16 not found in app — covered: W1×2, W3×3
+Test-New web: matched 80/98 design items · 5 with size/type drift · 19 only moved · 18 not found in app — covered: W1×2, W3×3
+Test-List desktop: matched 71/83 design items · 2 with size/type drift · 44 only moved · 12 not found in app — covered: W1×2
+Test-List web: matched 69/83 design items · 2 with size/type drift · 44 only moved · 14 not found in app — covered: W1×2
+Test-Running desktop: matched 69/81 design items · 2 with size/type drift · 45 only moved · 12 not found in app — covered: W1×2
+Test-Running web: matched 67/81 design items · 2 with size/type drift · 45 only moved · 14 not found in app — covered: W1×2
+Test-Results desktop: matched 72/84 design items · 2 with size/type drift · 45 only moved · 12 not found in app — covered: W1×2
+Test-Results web: matched 70/84 design items · 2 with size/type drift · 45 only moved · 14 not found in app — covered: W1×2
+Test-Upload desktop: matched 99/113 design items · 5 with size/type drift · 43 only moved · 14 not found in app — covered: W1×2, W5×3
+Test-Upload web: matched 97/113 design items · 5 with size/type drift · 43 only moved · 16 not found in app — covered: W1×2, W5×3
+Test-Judge desktop: matched 101/119 design items · 2 with size/type drift · 57 only moved · 18 not found in app — covered: W1×2
+Test-Judge web: matched 99/119 design items · 2 with size/type drift · 57 only moved · 20 not found in app — covered: W1×2
+Test-SaveNudge desktop: matched 85/97 design items · 2 with size/type drift · 43 only moved · 12 not found in app — covered: W1×2
+Test-SaveNudge web: matched 83/97 design items · 2 with size/type drift · 43 only moved · 14 not found in app — covered: W1×2
+Test-RoundMenuOff desktop: matched 63/94 design items · 7 with size/type drift · 44 only moved · 31 not found in app — covered: W1×1, W2×6
+Test-RoundMenuOff web: matched 61/94 design items · 7 with size/type drift · 44 only moved · 33 not found in app — covered: W1×1, W2×6
+Test-AddCheck desktop: matched 98/113 design items · 4 with size/type drift · 67 only moved · 15 not found in app — covered: W1×2, W3×1, W4×1
+Test-AddCheck web: matched 96/113 design items · 4 with size/type drift · 67 only moved · 17 not found in app — covered: W1×2, W3×1, W4×1
+Test-NoAI desktop: matched 82/98 design items · 5 with size/type drift · 19 only moved · 16 not found in app — covered: W1×2, W3×3
+Test-NoAI web: matched 80/98 design items · 5 with size/type drift · 19 only moved · 18 not found in app — covered: W1×2, W3×3
+Test-Replay desktop: matched 74/87 design items · 2 with size/type drift · 49 only moved · 13 not found in app — covered: W1×2
+Test-Replay web: matched 72/87 design items · 2 with size/type drift · 49 only moved · 15 not found in app — covered: W1×2
+Test-RowMenu desktop: matched 75/92 design items · 2 with size/type drift · 51 only moved · 17 not found in app — covered: W1×2
+Test-RowMenu web: matched 73/92 design items · 2 with size/type drift · 51 only moved · 19 not found in app — covered: W1×2
+Test-UploadError desktop: matched 83/95 design items · 2 with size/type drift · 43 only moved · 12 not found in app — covered: W1×2
+Test-UploadError web: matched 81/95 design items · 2 with size/type drift · 43 only moved · 14 not found in app — covered: W1×2
+Test-Worse desktop: matched 70/83 design items · 2 with size/type drift · 43 only moved · 13 not found in app — covered: W1×2
+Test-Worse web: matched 68/83 design items · 2 with size/type drift · 43 only moved · 15 not found in app — covered: W1×2
+Test-Stopped desktop: matched 71/83 design items · 2 with size/type drift · 44 only moved · 12 not found in app — covered: W1×2
+Test-Stopped web: matched 69/83 design items · 2 with size/type drift · 44 only moved · 14 not found in app — covered: W1×2
+Test-Queued desktop: matched 66/78 design items · 2 with size/type drift · 42 only moved · 12 not found in app — covered: W1×2
+Test-Queued web: matched 64/78 design items · 2 with size/type drift · 42 only moved · 14 not found in app — covered: W1×2
+Test-Focus desktop: matched 83/87 design items · 0 with size/type drift · 39 only moved · 4 not found in app
+Test-Focus web: matched 81/87 design items · 0 with size/type drift · 39 only moved · 6 not found in app
+Test-Chips desktop: matched 27/39 design items · 0 with size/type drift · 13 only moved · 12 not found in app
+Test-Chips web: matched 25/39 design items · 0 with size/type drift · 13 only moved · 14 not found in app
+Test-SaveNudgeTwo desktop: matched 85/97 design items · 2 with size/type drift · 43 only moved · 12 not found in app — covered: W1×2
+Test-SaveNudgeTwo web: matched 83/97 design items · 2 with size/type drift · 43 only moved · 14 not found in app — covered: W1×2
+Set-Checked desktop: matched 35/60 design items · 0 with size/type drift · 20 only moved · 25 not found in app
+Set-Checked web: matched 33/60 design items · 0 with size/type drift · 20 only moved · 27 not found in app
+Test-RowMenu (the confirm shot) desktop: matched 79/92 design items · 2 with size/type drift · 50 only moved · 13 not found in app — covered: W1×2
+Test-RowMenu (the confirm shot) web: matched 77/92 design items · 2 with size/type drift · 48 only moved · 15 not found in app — covered: W1×2

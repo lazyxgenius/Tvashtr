@@ -1,0 +1,102 @@
+# Kept-elements inventory — m7-teamcanvas (the team canvas (authoring) with the Reviewer's drawer on Setup), captured at fe82239 (feat/m07-agent-tests before M7's frontend) with scripts/design-parity/shoot-app.mjs INVENTORY=1
+# Scenarios: scripts/design-parity/scenarios/agent-tests.mjs (kept-m7-teamcanvas-web / -desktop). After the change every line must still be present (superset).
+
+## kept-m7-teamcanvas-desktop
+aside: Reviewer settings
+button: ADVANCED Backup model: none · Output format: none
+button: Account
+button: Add
+button: Add to canvas
+button: Back to teams
+button: Can edit files
+button: Choose
+button: Close panel
+button: Documents 0
+button: Fit View
+button: Focus mode
+button: History
+button: More actions
+button: Open full editor
+button: Read-only
+button: Remove spec
+button: Run this team
+button: Save
+button: See the last run
+button: Set this node’s model
+button: Show all
+button: Team file
+button: Templates
+button: Update instructions
+button: Version history
+button: X grok-4.7
+button: Zoom In
+button: Zoom Out
+footer: 
+header: 
+heading: ACCESS & DOCUMENTS
+heading: Instructions
+heading: MODEL
+heading: Reviewer
+main: 
+section: Access & documents
+section: Instructions
+section: Model
+tab: Docs
+tab: Memory 3
+tab: Runs
+tab: Setup
+tab: Skills & tools 4
+textarea: You are the Reviewer on a software team. The engineer’s build is in your current
+toolbar: Team
+
+## kept-m7-teamcanvas-web
+aside: Reviewer settings
+button: ADVANCED Backup model: none · Output format: none
+button: Account
+button: Add
+button: Add to canvas
+button: Back to teams
+button: Can edit files
+button: Choose
+button: Close panel
+button: Documents 0
+button: Fit View
+button: Focus mode
+button: History
+button: More actions
+button: Open full editor
+button: Read-only
+button: Remove spec
+button: Run this team
+button: Save
+button: See the last run
+button: Set this node’s model
+button: Show all
+button: Team file
+button: Templates
+button: Update instructions
+button: Version history
+button: X grok-4.7
+button: Zoom In
+button: Zoom Out
+footer: 
+header: 
+heading: ACCESS & DOCUMENTS
+heading: Instructions
+heading: MODEL
+heading: Reviewer
+main: 
+section: Access & documents
+section: Instructions
+section: Model
+tab: Docs
+tab: Memory 3
+tab: Runs
+tab: Setup
+tab: Skills & tools 4
+textarea: You are the Reviewer on a software team. The engineer’s build is in your current
+toolbar: Team
+
+# After M7 (re-shot on the M7 frontend):
+#   desktop: superset (46 kept, 0 missing); added tab: Tests 6
+#   web: superset (46 kept, 0 missing); added tab: Tests 6

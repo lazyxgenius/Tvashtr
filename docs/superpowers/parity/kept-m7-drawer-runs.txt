@@ -1,0 +1,70 @@
+# Kept-elements inventory — m7-drawer-runs (the team canvas with the Reviewer's drawer on Runs (Last run + Earlier rounds)), captured at fe82239 (feat/m07-agent-tests before M7's frontend) with scripts/design-parity/shoot-app.mjs INVENTORY=1
+# Scenarios: scripts/design-parity/scenarios/agent-tests.mjs (kept-m7-drawer-runs-web / -desktop). After the change every line must still be present (superset).
+
+## kept-m7-drawer-runs-desktop
+aside: Reviewer settings
+button: Account
+button: Add to canvas
+button: Back to teams
+button: Close panel
+button: Documents 0
+button: Fit View
+button: Focus mode
+button: More actions
+button: Round 1 Changes requested 37m ago
+button: Round 2 Changes requested 36m ago
+button: Run this team
+button: Save
+button: See the last run
+button: Set this node’s model
+button: Team file
+button: Version history
+button: Zoom In
+button: Zoom Out
+footer: 
+header: 
+heading: Reviewer
+main: 
+section: Last run
+tab: Docs
+tab: Memory 3
+tab: Runs
+tab: Setup
+tab: Skills & tools 4
+toolbar: Team
+
+## kept-m7-drawer-runs-web
+aside: Reviewer settings
+button: Account
+button: Add to canvas
+button: Back to teams
+button: Close panel
+button: Documents 0
+button: Fit View
+button: Focus mode
+button: More actions
+button: Round 1 Changes requested 37m ago
+button: Round 2 Changes requested 36m ago
+button: Run this team
+button: Save
+button: See the last run
+button: Set this node’s model
+button: Team file
+button: Version history
+button: Zoom In
+button: Zoom Out
+footer: 
+header: 
+heading: Reviewer
+main: 
+section: Last run
+tab: Docs
+tab: Memory 3
+tab: Runs
+tab: Setup
+tab: Skills & tools 4
+toolbar: Team
+
+# After M7 (re-shot on the M7 frontend):
+#   desktop: superset (30 kept, 0 missing); added button: More for round 1, button: More for round 2, button: More for round 3, tab: Tests 6
+#   web: superset (30 kept, 0 missing); added button: More for round 1, button: More for round 2, button: More for round 3, tab: Tests 6
