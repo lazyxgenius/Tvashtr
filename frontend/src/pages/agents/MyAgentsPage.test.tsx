@@ -200,6 +200,46 @@ describe("Toolkit › My agents (Agents-Page)", () => {
     expect(screen.getByRole("article", { name: "Spec writer" })).toBeInTheDocument();
   });
 
+  it("Rename's what it's for is at most 300 characters; a 5xx says the plain words", async () => {
+    setup([STRICT], { "PATCH /api/my-agents/:id": jsonError(500, "Traceback: boom") });
+    await screen.findByRole("article", { name: "Strict reviewer" });
+    fireEvent.click(screen.getByRole("button", { name: "More for Strict reviewer" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Rename" }));
+    const dialog = screen.getByRole("dialog", { name: "Rename Strict reviewer" });
+    expect(within(dialog).getByLabelText("What it’s for")).toHaveAttribute("maxLength", "300");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    expect(await within(dialog).findByText("Couldn’t save. Try again.")).toBeVisible();
+    expect(within(dialog).queryByText(/boom/)).toBeNull();
+  });
+
+  it("Update: busy while it goes, the server's words only for a 4xx, no Undo when nothing moved", async () => {
+    let answer: (r: Response) => void = () => {};
+    setup([STRICT], {
+      "POST /api/my-agents/:id/update-team": () =>
+        new Promise<Response>((r) => {
+          answer = r;
+        }),
+    });
+    await screen.findByRole("article", { name: "Strict reviewer" });
+    const update = screen.getByRole("button", { name: "Update Bugfix squad" });
+    fireEvent.click(update);
+    await waitFor(() => expect(update).toBeDisabled());
+    answer(
+      new Response(JSON.stringify({ updated: [], text: "Bugfix squad is up to date" }), {
+        status: 200,
+      }),
+    );
+    const toast = await screen.findByText("Bugfix squad is up to date");
+    expect(
+      within(toast.closest(".ds-toast") as HTMLElement).queryByRole("button", { name: "Undo" }),
+    ).toBeNull();
+    await waitFor(() => expect(update).toBeEnabled());
+    fireEvent.click(update);
+    answer(new Response(JSON.stringify({ detail: "Traceback: boom" }), { status: 500 }));
+    expect(await screen.findByText("Couldn’t update. Try again.")).toBeInTheDocument();
+    expect(screen.queryByText(/boom/)).toBeNull();
+  });
+
   it("Delete's words for one version and no teams", async () => {
     setup([{ ...SPEC, used_in: [] }]);
     await screen.findByRole("article", { name: "Spec writer" });

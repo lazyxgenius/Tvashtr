@@ -1,10 +1,9 @@
 import { Layers, UserRound } from "lucide-react";
-import { type ReactNode, useId } from "react";
+import { type ReactNode, useId, useState } from "react";
 
 import { Button, useToast } from "../../design-system/components";
 import { type SavedAgent, undoAgent, updateTeamAgent } from "../../lib/api/myAgents";
-import { ApiDetailError } from "../../lib/api/runs";
-import { behindPill, libraryMeta, usedInLine } from "../../lib/myAgentsFormat";
+import { behindPill, libraryMeta, serverWords, usedInLine } from "../../lib/myAgentsFormat";
 
 /**
  * One saved agent (Agents-Library / Agents-Page): its tile, name and version, what it's for, what
@@ -29,26 +28,34 @@ export function SavedAgentCard({
   const nameId = useId();
   const used = usedInLine(agent);
   const pill = behindPill(agent);
+  // The teams whose Update is on its way (their button waits).
+  const [updating, setUpdating] = useState<ReadonlySet<string>>(new Set());
   const failed = (err: unknown) =>
-    toast({
-      tone: "error",
-      message: err instanceof ApiDetailError ? err.message : "Couldn’t update. Try again.",
-    });
-  const update = (teamId: string) =>
-    void updateTeamAgent(agent.id, teamId).then((res) => {
-      onChanged();
-      toast({
-        message: res.text,
-        action: {
-          label: "Undo",
-          onClick: () =>
-            void Promise.all(res.updated.map((u) => undoAgent(teamId, u.node_id, u.before))).then(
-              onChanged,
-              failed,
-            ),
-        },
-      });
-    }, failed);
+    toast({ tone: "error", message: serverWords(err, "Couldn’t update. Try again.") });
+  const update = (teamId: string) => {
+    setUpdating((s) => new Set(s).add(teamId));
+    void updateTeamAgent(agent.id, teamId)
+      .then((res) => {
+        onChanged();
+        const undo = () =>
+          void Promise.all(res.updated.map((u) => undoAgent(teamId, u.node_id, u.before))).then(
+            onChanged,
+            failed,
+          );
+        // Nothing moved: nothing to undo.
+        toast({
+          message: res.text,
+          action: res.updated.length > 0 ? { label: "Undo", onClick: undo } : undefined,
+        });
+      }, failed)
+      .finally(() =>
+        setUpdating((s) => {
+          const next = new Set(s);
+          next.delete(teamId);
+          return next;
+        }),
+      );
+  };
 
   return (
     <article className="ag-card" aria-labelledby={nameId}>
@@ -78,6 +85,7 @@ export function SavedAgentCard({
                 key={b.team_id}
                 type="button"
                 className="ag-card__update"
+                disabled={updating.has(b.team_id)}
                 onClick={() => update(b.team_id)}
               >
                 Update {b.team_name}

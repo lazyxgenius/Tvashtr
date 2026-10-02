@@ -139,7 +139,10 @@ const NOTES = [
 
 /** The canvas with the Reviewer's drawer open; `used` flips once use-agent is posted. */
 function canvasRoutes(desktop, { agents = MENU_AGENTS } = {}) {
+  // use-agent makes the Reviewer Strict reviewer v2 (1 change since v7); Save to My agents makes
+  // it Strict reviewer v1 (Agents-Saved: the chip stays "saved").
   let used = false;
+  let saved = false;
   const base = teamRoutes(desktop);
   const graphKey = `GET /api/teams/${TEAM_ID}/graph`;
   const versionsKey = `GET /api/teams/${TEAM_ID}/versions`;
@@ -150,17 +153,20 @@ function canvasRoutes(desktop, { agents = MENU_AGENTS } = {}) {
     ),
   });
   const plain = { tool_config: ONE_TOOL };
-  const based = {
+  const basedOn = (version) => ({
     tool_config: ONE_TOOL,
     prompt: STRICT_PROMPT,
     config: {
       ...NODES.rev.config,
-      based_on: { id: STRICT.id, name: STRICT.name, version: 2 },
+      based_on: { id: STRICT.id, name: STRICT.name, version },
     },
-  };
+  });
+  const based = basedOn(2);
   return {
     ...base,
-    [graphKey]: () => ({ json: withRev(used ? based : plain) }),
+    [graphKey]: () => ({
+      json: withRev(used ? based : saved ? basedOn(1) : plain),
+    }),
     [versionsKey]: () => ({
       json: { ...base[versionsKey], changes: used ? 1 : 0 },
     }),
@@ -175,6 +181,17 @@ function canvasRoutes(desktop, { agents = MENU_AGENTS } = {}) {
       },
     }),
     "GET /api/my-agents": { agents },
+    "POST /api/my-agents": () => {
+      saved = true;
+      return {
+        status: 201,
+        json: {
+          agent: { ...STRICT, latest: 1, used_in: [], behind: [] },
+          version: 1,
+          created: true,
+        },
+      };
+    },
     [`POST /api/teams/${TEAM_ID}/nodes/n-rev/use-agent`]: () => {
       used = true;
       return {
@@ -226,9 +243,38 @@ const TEAMS = [
     last_run: null,
   },
 ];
-const toolkitRoutes = () => ({
+// Agents-Updated: Update Bugfix squad brings it to v2 (no team behind any more).
+const toolkitRoutes = () => {
+  let updated = false;
+  return {
+    ...toolkitBase(),
+    "GET /api/my-agents": () => ({
+      json: {
+        agents: updated
+          ? [
+              {
+                ...STRICT,
+                used_in: STRICT.used_in.map((u) => ({ ...u, version: 2 })),
+                behind: [],
+              },
+              SPEC,
+            ]
+          : [STRICT, SPEC],
+      },
+    }),
+    "POST /api/my-agents/a-strict/update-team": () => {
+      updated = true;
+      return {
+        json: {
+          updated: [{ node_id: "n-bug-rev", before: { prompt: "v1" } }],
+          text: "Bugfix squad now uses Strict reviewer v2",
+        },
+      };
+    },
+  };
+};
+const toolkitBase = () => ({
   ...skillsRoutes({ library: LIBRARY }),
-  "GET /api/my-agents": { agents: [STRICT, SPEC] },
   "GET /api/teams": { teams: TEAMS },
   // Agents-Page's nav: Tools 3, Skills 3, My agents 2, Memory 2 new, Secrets 1 missing.
   "GET /api/toolkit/summary": {
@@ -246,6 +292,7 @@ const page = (board, then = async () => {}) =>
     desktopBoard: false,
     path: "/#/toolkit/agents",
     routes: toolkitRoutes(),
+    desktopRoutes: toolkitRoutes(),
     init: frozenClock,
     steps: async (p) => {
       await p.getByRole("article", { name: "Strict reviewer" }).waitFor();
@@ -309,6 +356,27 @@ export default [
     },
     { agents: [] },
   ),
+  // Agents-Saved: Save to My agents → the toast, the badge and the banner (the drawer toast's
+  // place is the app's).
+  ...reviewerBoard(
+    "Agents-Saved",
+    async (p) => {
+      await drawer(p).getByRole("button", { name: "More actions" }).click();
+      await p.getByRole("menuitem", { name: "Save as my agent" }).click();
+      const dialog = p.getByRole("dialog", {
+        name: "Save Reviewer as my agent",
+      });
+      await dialog.getByLabel("Name").fill("Strict reviewer");
+      await dialog.getByLabel("What it’s for").fill(STRICT.purpose);
+      await dialog.getByRole("button", { name: "Save to My agents" }).click();
+      await p.getByText("Saved as Strict reviewer v1").waitFor();
+      await drawer(p)
+        .getByText("Its memory and routes stay with this team")
+        .waitFor();
+      await settle(p);
+    },
+    { agents: [] },
+  ),
   ...reviewerBoard("Agents-Menu", async (p) => {
     await drawer(p).getByRole("button", { name: "Templates" }).click();
     await p.getByRole("menuitem", { name: "Strict reviewer" }).waitFor();
@@ -344,6 +412,14 @@ export default [
     await more(p);
     await p.getByRole("menuitem", { name: "Delete" }).click();
     await p.getByRole("dialog", { name: "Delete Strict reviewer?" }).waitFor();
+  }),
+  // Agents-Updated: the toast with Undo (the app's toast host governs its place).
+  ...page("Agents-Updated", async (p) => {
+    await p.getByRole("button", { name: "Update Bugfix squad" }).click();
+    await p.getByText("Bugfix squad now uses Strict reviewer v2").waitFor();
+    await p
+      .getByText("Used in Indicator sprint team (v2) and Bugfix squad (v2)")
+      .waitFor();
   }),
   ...page("Agents-UseInTeam", async (p) => {
     await p
