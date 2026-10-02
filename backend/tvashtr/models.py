@@ -455,6 +455,13 @@ class Run(Base):
     task_set_item_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("task_set_items.id", ondelete="SET NULL"), nullable=True
     )
+    # M10 (migration ``0051``, ruling R9): the run this one was started from, and a snapshot of
+    # what came along from it (spec, decisions, memories, summaries, where it started from) — taken
+    # at start, never changed after. Both NULL for every other run.
+    started_from_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("runs.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    carry: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
