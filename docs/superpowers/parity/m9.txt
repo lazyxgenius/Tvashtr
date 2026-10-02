@@ -29,10 +29,9 @@
 #   m5.txt's Ver-AgentHistory-list). The clock stands still at compare.mjs's moment, 10:34:26, so the ages read as drawn.
 # Which render is the comparison: every board is drawn in Desktop (the 30px title strip): the Desktop render is the comparison and the web render is
 #   framed 30px down (m7.txt / m8.txt's convention). Both renders are recorded below; each web render's 2 extra "not found" are by rule (below).
-# GATE: size/type MET — every new M9 element is at 0 size/type drift on every render (web and Desktop); NOT CLEAN — 4 items are reported below for the
-#   lead (TO FIX 1–4: Set-SaveCheck redraws M7's Save-as dialog, the 3 drift items there are M7's existing elements; History's sub words; "Checks
-#   finished …" not built; v7's pill tone) and 1 kept line is relabelled (kept-m9-saveas: "Save and run tests" → "Save and check", the board's word)
-#   for a ruling; none is waived. Every other drift item is covered (W11, W13).
+# GATE: size/type MET — every new M9 element is at 0 size/type drift on every render (web and Desktop). The helper's 4 items for the lead and the
+#   1 relabelled kept line are RULED (LEAD RULINGS below, feat/m09-task-sets): 1 and 2 waived (app governs: M7's dialog, M5's words), 3 and 4 built,
+#   the kept line restored (kept-m9-saveas 23/23). Every other drift item is covered (W11, W13).
 #   At 0 drift, box for box where measured (Desktop; x,y w×h): the tab 'Task sets' 14/500 with its count 2 (Set-List … Cmp-Results), uncounted on
 #   Set-Empty; Set-List: the 26px Newsreader 'Task sets' 640x42, the 14px lede 640x43, New task set 134x40 14/500 (1274,256), the cards (33…709,
 #   731…1407): name 16/600, '5 tasks · each has a hidden check' 12px, ⋯ 32x32 (659,339), the tasks 13px 640x21 each, the 12.5px 'Last used: v6 vs v7 ·
@@ -67,7 +66,19 @@
 #   baseline), 15px ✓/✗, the badge a 110x18 block (was a 56x14 inline pill right-aligned); the set menu's 32px rows (were 34), Delete #8f3b2f (was the
 #   DS red-500), 15px icons, the open ⋯ tinted; the recent popover 8px under its link (was 4px); 18px icons in the three callouts
 #   (were 16: their words sat 2px left); Add N's 14px plus.
-# TO FIX (for the lead; measured on the Desktop render, the web render is the same 30px lower):
+# LEAD RULINGS (feat/m09-task-sets, after m09-parity):
+#   1 → waiver: app governs (brief 2.2/2.3) — Set-SaveCheck redraws M7's existing Save-as dialog (width, the radio pair, Cancel, the note); M7's
+#      Test-SaveNudge keeps governing them. M9 adds only its own parts (eyebrow, compare checkbox + line, footnote), at 0 drift.
+#   2 → waiver: app governs (brief 2.2) — History's sub keeps M5's existing words ("… Nothing is ever deleted."); the list "only moved" 18px.
+#   3 → BUILT: the versions listing's `check` gains `ended_at` (the compare's end) and History's footer adds "Checks finished 2 minutes ago"
+#      (cv-hist__foot, 12px ink-500, as drawn) beside M5's kept footer line (the board draws the footer with only the new line; the existing
+#      line stays — brief 2.2). Test: App.tests.test.tsx "did as well…".
+#   4 → BUILT: only the newest check's pill is toned (good / warn); an older version's check is plain, as Set-Checked draws v7. Same test.
+#   kept-m9-saveas → RESTORED: while M7's tests are picked the primary keeps "Save and run tests" (also with the set ticked; the footnote
+#      "About $X for both checks" says both run); "Save and check" shows only when the set check is the one picked (Just save + compare ticked,
+#      or no tests offered). Re-shot after the fix (Vite :5331, the same scenario): kept-m9-saveas 23/23 and kept-m9-history 30/30, web and
+#      Desktop. The Set-SaveCheck board's primary word "Save and check" therefore shows only in those states (an existing label wins, 2.2).
+# TO FIX as the helper reported them (measured on the Desktop render, the web render is the same 30px lower):
 #   1. Set-SaveCheck redraws M7's Save-as dialog (existing elements, not changed here): the board's dialog is 580 wide (app 560: the note input
 #      514 where drawn 534 — 1 drift item), offers the tests as a checkbox "Run the Reviewer’s 6 tests" with the line "About 4 min · about $0.40 on
 #      your keys" (app: M7's radio pair "<option>" / "Just save" and the line "… Results show next to v8 in History."), puts "Just save" in the
@@ -110,8 +121,8 @@
 # note (copy, server words) Set-SaveCheck's sub and tests option are the board's words in the fixture; the server writes "Save and run the
 #   Reviewer’s 6 tests" and names only the agents that have tests ("You changed the Reviewer’s Instructions. The Reviewer has 6 tests.",
 #   agent_tests.py) — same element and size.
-# Not found in app (a new element, real): 'Checks finished 2 minutes ago' (TO FIX 3). The Set-SaveCheck callout and its line (TO FIX 1) replace an
-#   existing element. Everything else not found is by rule or by name, above.
+# Not found in app (a new element, real): 'Checks finished 2 minutes ago' (TO FIX 3) — built after this shoot (LEAD RULINGS). The Set-SaveCheck
+#   callout and its line (TO FIX 1) replace an existing element (waived). Everything else not found is by rule or by name, above.
 Set-List desktop: matched 41/41 design items · 0 with size/type drift · 0 only moved · 0 not found in app
 Set-List web: matched 39/41 design items · 0 with size/type drift · 0 only moved · 2 not found in app
 Set-Edit desktop: matched 68/78 design items · 0 with size/type drift · 5 only moved · 10 not found in app
@@ -157,9 +168,8 @@ Cmp-Results web: matched 50/53 design items · 0 with size/type drift · 19 only
 kept-m9-compare-start: web 13/13, desktop 13/13 kept items present — none missing (after: 16, added "radio: One task", "radio: A task set", "tab: Task sets 2")
 kept-m9-compare-results: web 11/11, desktop 11/11 kept items present — none missing (after: 13, added "button: Compare on Indicators", "tab: Task sets 2")
 kept-m9-history: web 30/30, desktop 30/30 kept items present — none missing
-kept-m9-saveas: web 22/23, desktop 22/23 kept items present — MISSING "button: Save and run tests" (after: 23, added "button: Save and check")
+kept-m9-saveas: web 23/23, desktop 23/23 kept items present — none missing (re-shot after the lead's ruling; m09-parity's shoot had
+#   "Save and run tests" relabelled "Save and check" with the set ticked — restored)
 kept-m9-saveas-nocheck: web 23/23, desktop 23/23 kept items present — none missing
-# kept-m9-saveas: the one missing line is the primary relabelled, not removed — with a set the dialog opens with the compare ticked and the
-#   primary reads "Save and check" (Set-SaveCheck's word); unticked it reads "Save and run tests" again (-nocheck, 23/23). Reported for a ruling.
 # and the earlier records still hold on m09-parity: kept-m8-teamcanvas-web 14/14, -desktop 14/14; kept-m7-history-web 29/29, -desktop 29/29;
 #   kept-m7-teamcanvas-web 46/46, -desktop 46/46 (each adds only "button: Compare"; kept-m7-teamcanvas also MA's "tab: Tests 6").

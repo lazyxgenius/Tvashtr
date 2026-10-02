@@ -66,7 +66,7 @@ export function SaveNudgeDialog({
           >
             <Save size={14} strokeWidth={2} aria-hidden />
             <span>
-              {compare ? "Save and check" : run ? "Save and run tests" : `Save as v${next}`}
+              {run ? "Save and run tests" : compare ? "Save and check" : `Save as v${next}`}
             </span>
           </Button>
         </>

@@ -730,6 +730,10 @@
   line-height: 1.45;
   color: var(--ink-500);
 }
+.cv-hist__foot--when {
+  flex: none;
+  white-space: nowrap;
+}
 .cv-hist__intro {
   font-size: 12.5px;
   line-height: 1.5;

@@ -282,7 +282,7 @@ const openHistory = async () => {
 };
 
 describe("App — M9 Save as vN offers a compare on a task set (Set-SaveCheck)", () => {
-  it("keeps M7's choices and adds Compare v8 with v7 on the set; Save and check posts both", async () => {
+  it("keeps M7's choices and adds Compare v8 with v7 on the set; Save and run tests (M7's label, kept) posts both", async () => {
     summary = { ...versions(TESTS), check_sets: [INDICATORS] };
     renderApp();
     await saveAs();
@@ -306,7 +306,9 @@ describe("App — M9 Save as vN offers a compare on a task set (Set-SaveCheck)",
     fireEvent.change(within(dialog).getByLabelText("What changed (optional)"), {
       target: { value: "Engineer on GPT-4.1" },
     });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Save and check" }));
+    // Kept (brief 2.2): while M7's tests are picked the button keeps its label, with the set ticked too.
+    expect(within(dialog).queryByRole("button", { name: "Save and check" })).toBeNull();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save and run tests" }));
     await waitFor(() =>
       expect(posts()).toEqual([
         { note: "Engineer on GPT-4.1", run_tests: true, check_set: "set-ind" },
@@ -370,12 +372,19 @@ describe("App — M9 Save as vN offers a compare on a task set (Set-SaveCheck)",
 
 describe("App — M9 History's set check (Set-Checked, Set-CheckedWorse)", () => {
   it("did as well: the pill in the good tone and the newest check's callout", async () => {
-    summary = checked(check(), check({ cost_delta_usd: null, against: 6 }));
+    summary = checked(
+      check({ ended_at: new Date(Date.now() - 2 * 60_000).toISOString() }),
+      check({ cost_delta_usd: null, against: 6 }),
+    );
     renderApp();
     const panel = await openHistory();
     const pill = within(panel).getByText("Indicators: 5 of 5, $0.70 less than v7");
     expect(pill).toHaveClass("cv-tpill", "cv-tpill--good");
-    expect(within(panel).getByText("Indicators: 5 of 5")).toBeInTheDocument();
+    // Only the newest check is toned; v7's older one is drawn plain (Set-Checked).
+    expect(within(panel).getByText("Indicators: 5 of 5").className).toBe("cv-tpill");
+    // The footer keeps its line and adds when the newest check finished.
+    expect(within(panel).getByText(/^Edits stay a draft until you save/)).toBeInTheDocument();
+    expect(within(panel).getByText("Checks finished 2 minutes ago")).toBeInTheDocument();
     expect(within(panel).getByText("v8 passed both checks")).toBeInTheDocument();
     expect(
       within(panel).getByText(

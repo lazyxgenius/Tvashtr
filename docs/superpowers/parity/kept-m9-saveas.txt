@@ -58,6 +58,8 @@ toolbar: Team
 
 # After M9 (m09-parity, the same scenario):
 kept-m9-saveas: web 22/23, desktop 22/23 kept items present — MISSING "button: Save and run tests" (after: 23 each, added "button: Save and check")
+# LEAD RULING (feat/m09-task-sets): restored — the primary keeps "Save and run tests" while M7's tests are picked. Re-shot (Vite :5331, the same
+#   scenario): kept-m9-saveas web 23/23, desktop 23/23 — none missing; kept-m9-history web 30/30, desktop 30/30 — none missing.
 kept-m9-saveas-nocheck: web 23/23, desktop 23/23 kept items present — none missing (after: 23 each, nothing added)
 # The one missing line is the dialog's primary button relabelled, not removed: with a task set the dialog opens with M9's compare ticked and the
 #   primary reads "Save and check" (Set-SaveCheck draws exactly that); unticking the compare brings back "Save and run tests" (the -nocheck shots, 23/23).

@@ -36,6 +36,8 @@ export interface VersionCheck {
   cost_delta_usd: number | null;
   status: "running" | "finished";
   worse: boolean;
+  /** When the compare finished (History's "Checks finished 2 minutes ago"). */
+  ended_at?: string | null;
 }
 
 /** M9: a task set the Save-as dialog can check the new version on. */

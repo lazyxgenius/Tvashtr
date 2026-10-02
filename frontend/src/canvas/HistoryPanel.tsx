@@ -13,6 +13,7 @@ import { type ReactNode, useState } from "react";
 import { Badge, Button, IconButton, Select } from "../design-system/components";
 import { getTeamRuns, type TeamRunRow } from "../lib/api";
 import type { TeamVersion, TeamVersions, VersionCheck } from "../lib/api/versions";
+import { formatRelativeTimeWords } from "../lib/time";
 import { useTicker } from "../lib/useTicker";
 import { runLook, runMeta, runsPill, versionAge } from "../lib/versionFormat";
 import { LoadState } from "../panel/runs/RunsTab";
@@ -54,6 +55,8 @@ export function HistoryPanel({
   const close = useDockedPanel(onClose);
   const [tab, setTab] = useState<"versions" | "runs">("versions");
   const [dialog, setDialog] = useState<Dialog | null>(null);
+  const newest = versions.value?.versions.find((r) => r.check)?.check;
+  const finished = newest?.status === "finished" ? newest.ended_at : null;
   return (
     <aside className="cv-file" aria-label="History">
       <header className="cv-file__head">
@@ -82,6 +85,12 @@ export function HistoryPanel({
           Edits stay a draft until you save. Starting a run saves them first, so every run has a
           version.
         </span>
+        {/* M9 (Set-Checked): when the newest set check finished. */}
+        {finished && (
+          <span className="cv-hist__foot cv-hist__foot--when">
+            Checks finished {formatRelativeTimeWords(finished)}
+          </span>
+        )}
       </footer>
       {dialog?.kind === "changes" && (
         <VersionChanges
@@ -172,6 +181,7 @@ function VersionsTab({
                 current={row.number === v.current}
                 now={now}
                 last={i === shown.length - 1}
+                newest={row.number === shown.find((r) => r.check)?.number}
                 onOpen={onOpen}
               />
             ))}
@@ -201,6 +211,7 @@ function VersionRow({
   current,
   now,
   last,
+  newest,
   onOpen,
 }: {
   row: TeamVersion;
@@ -208,6 +219,8 @@ function VersionRow({
   /** The time now (a 60 s tick: "2m ago" ages while the panel sits open). */
   now: number;
   last: boolean;
+  /** The newest version with a set check (only its pill is toned). */
+  newest: boolean;
   onOpen: (kind: Dialog["kind"], number: number) => void;
 }) {
   return (
@@ -234,7 +247,7 @@ function VersionRow({
           </span>
         )}
         {/* M9 (R6, Set-Checked / Set-CheckedWorse): how it did on a task set against an earlier version. */}
-        {row.check && <CheckPill check={row.check} />}
+        {row.check && <CheckPill check={row.check} newest={newest} />}
         <span className="cv-hist__acts">
           <button
             type="button"
@@ -266,14 +279,15 @@ const costWords = (c: VersionCheck) =>
     ? ""
     : `$${Math.abs(c.cost_delta_usd).toFixed(2)} ${c.cost_delta_usd < 0 ? "less" : "more"}`;
 
-function CheckPill({ check: c }: { check: VersionCheck }) {
+/** Only the newest check is toned (Set-Checked draws an older version's check plain). */
+function CheckPill({ check: c, newest }: { check: VersionCheck; newest: boolean }) {
   const done = c.status === "finished";
   const cost = costWords(c);
   const tone = !done
     ? ""
     : c.worse
       ? " cv-tpill--warn"
-      : c.passed === c.total
+      : newest && c.passed === c.total
         ? " cv-tpill--good"
         : "";
   return (
