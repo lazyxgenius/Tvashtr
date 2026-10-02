@@ -61,6 +61,7 @@ from tvashtr.models import (
     HiddenCheckResult,
     Run,
     RunEvent,
+    TaskSet,
     TaskSetItem,
     TeamGraph,
     TeamVersion,
@@ -397,6 +398,18 @@ def _start(run_ids: list[str], task: str) -> None:
     for run_id in run_ids:
         with SetWorkflowID(run_id):
             DBOS.start_workflow(run_team, task)
+    # A Stop that landed after the runs were committed and before this cancelled them while their
+    # workflows didn't exist yet (``DBOS.cancel_workflow`` had nothing to cancel): cancel them now.
+    with session_scope() as session:
+        stopped = list(
+            session.execute(
+                select(Run.workflow_id).where(
+                    Run.workflow_id.in_(run_ids), Run.status == "cancelled"
+                )
+            ).scalars()
+        )
+    for run_id in stopped:
+        DBOS.cancel_workflow(run_id)
 
 
 def _fits_today(owner_id: uuid.UUID, runs: int) -> None:
@@ -470,6 +483,15 @@ def create(
             _check_runnable(snapshot, owner_id)
         repo, base_ref = _authorise(owner_id, target)
         with session_scope() as session:
+            if tasks is not None:
+                # The set is locked from here to the commit (an edit waits, then sees this compare)
+                # and its tasks counted again: an edit since the first read changed what runs.
+                locked = session.execute(
+                    select(TaskSet.id).where(TaskSet.id == set_uuid).with_for_update()
+                ).scalar_one_or_none()
+                if locked is None:
+                    raise HTTPException(status_code=404, detail=task_sets.NOT_FOUND)
+                tasks = len(task_sets.items_of(session, set_uuid))
             cmp = Compare(
                 owner_id=owner_id,
                 team_graph_id=team_uuid,
@@ -926,7 +948,7 @@ def _cards(cmp: Compare, by: dict[str, list[dict]]) -> tuple[list[dict], int | N
         for k, fs in by.items()
     }
     d_pass = passed["B"] - passed["A"]
-    n_rounds = round(abs(rounds["B"] - rounds["A"]))
+    n_rounds = math.floor(abs(rounds["B"] - rounds["A"]) + 0.5)  # half a round counts as one
     d_cost = cost["B"] - cost["A"]
     d_shaky = sum(shaky["B"].values()) - sum(shaky["A"].values())
     if d_pass:

@@ -110,6 +110,13 @@ _TEARDOWN_NODE = "__fly_machine__"
 
 # M9: where a set compare run's hidden check runs on its machine — a fresh dir, never a node's.
 _CHECK_DIR = f"{_WORKSPACE_ROOT}/__check__"
+# Before a check: kill what an earlier check of this run left running on the machine (a walk
+# recovered mid-check starts it again), then a fresh dir.
+_CHECK_PREP = (
+    'for p in /proc/[0-9]*; do case "$(readlink "$p/cwd" 2>/dev/null)" in '
+    f'{_CHECK_DIR}|{_CHECK_DIR}/*) kill -9 "${{p#/proc/}}" 2>/dev/null;; esac; done; '
+    f"rm -rf {_CHECK_DIR} && mkdir -p {_CHECK_DIR}"
+)
 
 
 class _FlyNodeHandle:
@@ -449,6 +456,8 @@ def run_check(
     state) and the command runs there; nothing comes back but ``(exit code, output, timed out)``.
     The machine is resumed or reattached as an agent step's would be, and torn down with the run.
     Raises on a sandbox failure (the caller records a failed check)."""
+    from tvashtr.control_plane import hidden_checks  # the bounded, self-timed runner (lazy)
+
     sandbox, created_now = _ensure_run_sandbox(run_id)
     if created_now:
         _register_teardown(run_id, sandbox)
@@ -457,16 +466,11 @@ def run_check(
         working_dir=_CHECK_DIR,
         api_key=sandbox.session_api_key,
     )
-    workspace.execute_command(
-        f"rm -rf {_CHECK_DIR} && mkdir -p {_CHECK_DIR}", cwd="/tmp", timeout=60.0
-    )
-    _push_workspace(workspace, host_dir, mode)
-    result = workspace.execute_command(command, cwd=_CHECK_DIR, timeout=timeout_s)
-    return (
-        result.exit_code,
-        (result.stdout or "") + (result.stderr or ""),
-        bool(result.timeout_occurred),
-    )
+    prep = workspace.execute_command(_CHECK_PREP, cwd="/tmp", timeout=60.0)
+    if prep.exit_code != 0:
+        raise RuntimeError("the check's directory couldn't be made")
+    _push_workspace(workspace, host_dir, mode, strict=True)
+    return hidden_checks.run_remote(workspace, command, _CHECK_DIR, timeout_s)
 
 
 def close_run_machine(run_id: str) -> None:

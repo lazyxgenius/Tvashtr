@@ -165,7 +165,9 @@ def _pull_workspace(
     return pulled
 
 
-def _push_workspace(workspace, host_dir: str, mode: str = "greenfield") -> list[str]:
+def _push_workspace(
+    workspace, host_dir: str, mode: str = "greenfield", *, strict: bool = False
+) -> list[str]:
     """Seed the container's working dir from the host BEFORE the agent runs — the
     mirror of :func:`_pull_workspace` (P1.5c). The cyclic loop reworks the prior
     round's deliverable in place (Q4), but in docker mode each iteration gets a FRESH
@@ -183,7 +185,8 @@ def _push_workspace(workspace, host_dir: str, mode: str = "greenfield") -> list[
     tracked dotfiles, honoring ``.gitignore``) so the container sees the real repo, not a stripped
     copy. ``file_upload(source_path, destination_path)`` takes the HOST path first, the CONTAINER
     path second (confirmed against the installed SDK). Returns the relative paths pushed (for the
-    log)."""
+    log). ``strict`` (M9's hidden check) raises on a file that couldn't be pushed instead of
+    logging it — a check on half the files would be a wrong result."""
     working_dir = workspace.working_dir
     rels = (
         enumerate_push_files_git(host_dir)
@@ -206,6 +209,8 @@ def _push_workspace(workspace, host_dir: str, mode: str = "greenfield") -> list[
         result = workspace.file_upload(src, dest)  # (host source, container dest)
         if getattr(result, "success", False):
             pushed.append(rel)
+        elif strict:
+            raise RuntimeError(f"{rel} couldn't be copied for the check")
         else:
             logger.warning("file_upload failed for %s: %s", rel, getattr(result, "error", None))
     return pushed
@@ -218,23 +223,22 @@ def run_check(
     the host workspace (the run's final state) — never a node's warm container, never the host.
     Nothing comes back but ``(exit code, output, timed out)``; the container is removed (and
     de-registered from the live registry) whatever happens."""
+    from tvashtr.control_plane import hidden_checks  # the bounded, self-timed runner (lazy)
+
     settings = get_settings()
     workspace = DockerWorkspace(
         server_image=settings.agent_server_image,
         host_port=settings.agent_server_host_port,
         platform=settings.agent_server_platform or _detect_platform(),
         extra_ports=False,
+        # The container's own log would carry the command into the server's log (R11).
+        detach_logs=False,
     )
     container_id = getattr(workspace, "_container_id", None)
     sandbox_cache.register_live_container(container_id, run_id=run_id, pid=os.getpid())
     try:
-        _push_workspace(workspace, host_dir, mode)
-        result = workspace.execute_command(command, cwd=workspace.working_dir, timeout=timeout_s)
-        return (
-            result.exit_code,
-            (result.stdout or "") + (result.stderr or ""),
-            bool(result.timeout_occurred),
-        )
+        _push_workspace(workspace, host_dir, mode, strict=True)
+        return hidden_checks.run_remote(workspace, command, workspace.working_dir, timeout_s)
     finally:
         try:
             workspace.cleanup()

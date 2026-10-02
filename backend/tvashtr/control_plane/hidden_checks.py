@@ -20,8 +20,10 @@ from __future__ import annotations
 import contextlib
 import logging
 import os
+import shlex
 import signal
 import subprocess
+import tempfile
 import time
 import uuid
 
@@ -41,30 +43,85 @@ _TAIL = 12
 # What a LOCAL check's shell gets from the server's environment: enough to find its tools,
 # none of the server's settings or keys.
 _ENV_KEEP = ("PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "USER", "SHELL")
+# Only the end of a check's output is ever read: a check that prints without end must not fill the
+# server's memory (only 12 lines are kept anyway).
+OUTPUT_CAP = 65536
+# A sandbox check runs on its own timer (GNU ``timeout``, below); the SDK's poll and the sandbox
+# server's timer get this much longer, so ours always fires first — its exit code says it timed out
+# and neither of theirs logs the command.
+GRACE_S = 30
+# The SDK module that logs the commands it runs (at DEBUG, and the command again on its timeout).
+SDK_LOGGER = "openhands.sdk.workspace.remote.remote_workspace_mixin"
 
 
 def run_local(cwd: str, command: str, limit_s: float) -> tuple[int | None, str, bool]:
     """``(exit code, output, timed out)`` of ``command`` in ``cwd`` on this machine — dev only. Its
-    own process group, killed whole at the limit (exit code None)."""
-    proc = subprocess.Popen(  # noqa: S602 — the owner's own check command, in their own dev box
-        command,
-        shell=True,
-        cwd=cwd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        errors="replace",
-        start_new_session=True,
-        env={k: os.environ[k] for k in _ENV_KEEP if k in os.environ},
+    own process group, killed whole at the limit (exit code None). The output goes to a temporary
+    file and only its last :data:`OUTPUT_CAP` bytes are read."""
+    with tempfile.TemporaryFile() as out:
+        proc = subprocess.Popen(  # noqa: S602 — the owner's own check command, in their own dev box
+            command,
+            shell=True,
+            cwd=cwd,
+            stdout=out,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+            env={k: os.environ[k] for k in _ENV_KEEP if k in os.environ},
+        )
+        try:
+            proc.wait(timeout=limit_s)
+            code, timed_out = proc.returncode, False
+        except subprocess.TimeoutExpired:
+            with contextlib.suppress(ProcessLookupError):
+                os.killpg(proc.pid, signal.SIGKILL)
+            proc.wait()
+            code, timed_out = None, True
+        out.seek(max(0, os.fstat(out.fileno()).st_size - OUTPUT_CAP))
+        return code, out.read().decode(errors="replace"), timed_out
+
+
+def sandbox_command(command: str, limit_s: float) -> str:
+    """The check as a sandbox runs it: under GNU ``timeout`` (its own process group, killed whole at
+    the limit, exit 124), stdout and stderr in one stream in order, and only the last
+    :data:`OUTPUT_CAP` bytes passed back (``pipefail`` keeps the check's own exit code)."""
+    inner = (
+        f"timeout -k 5 {int(limit_s)} bash -c {shlex.quote(command)} 2>&1 | tail -c {OUTPUT_CAP}"
     )
+    return f"bash -o pipefail -c {shlex.quote(inner)}"
+
+
+class _DropCommand(logging.Filter):
+    def __init__(self, text: str) -> None:
+        super().__init__()
+        self.text = text
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return self.text not in record.getMessage()
+
+
+def run_remote(workspace, command: str, cwd: str, limit_s: float) -> tuple[int | None, str, bool]:
+    """``(exit code, output, timed out)`` of the check through an SDK workspace (the Fly and docker
+    helpers). A sandbox that fails (the SDK's "Remote execution error", exit -1) raises — the check
+    couldn't run — and the SDK never logs the command (R11)."""
+    wrapped = sandbox_command(command, limit_s)
+    quiet = _DropCommand(wrapped)
+    sdk_logger = logging.getLogger(SDK_LOGGER)
+    sdk_logger.addFilter(quiet)
+    began = time.monotonic()
     try:
-        out, _ = proc.communicate(timeout=limit_s)
-        return proc.returncode, out or "", False
-    except subprocess.TimeoutExpired:
-        with contextlib.suppress(ProcessLookupError):
-            os.killpg(proc.pid, signal.SIGKILL)
-        out, _ = proc.communicate()
-        return None, out or "", True
+        result = workspace.execute_command(wrapped, cwd=cwd, timeout=limit_s + GRACE_S)
+    finally:
+        sdk_logger.removeFilter(quiet)
+    elapsed = time.monotonic() - began
+    output = ((result.stdout or "") + (result.stderr or ""))[-OUTPUT_CAP:]
+    timed_out = bool(result.timeout_occurred) or (
+        result.exit_code in (124, 137) and elapsed >= limit_s - 1
+    )
+    if timed_out:
+        return None, output, True
+    if result.exit_code == -1:
+        raise RuntimeError("the sandbox failed while running the check")
+    return result.exit_code, output, False
 
 
 def _execute(

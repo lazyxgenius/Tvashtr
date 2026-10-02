@@ -840,3 +840,89 @@ def test_task_set_routes_are_owner_scoped(client, monkeypatch):
         kept = session.get(TaskSet, uuid.UUID(ts["id"]))
         assert kept.name == "Indicators"
     assert len(_items_of(ts["id"])) == 2
+
+
+# ------------------------------------------------------------------ review fixes (M9 review)
+
+
+def test_a_name_that_lowercases_differently_in_python_still_409s(client):
+    """The name check compares in the database on both sides: Python's "ΟΔΟΣ".lower() ends in a
+    final sigma, Postgres's doesn't — the unique index must never surface as a 500."""
+    team = library_team(client)
+    item = {"task": "t", "starts_from": None, "hidden_check": "true"}
+    _make_set(client, team, "ΟΔΟΣ", [item])
+    again = client.post(f"/api/teams/{team}/task-sets", json={"name": "ΟΔΟΣ", "items": [item]})
+    assert again.status_code == 409, again.text
+    other = _make_set(client, team, "Bugs", [item])
+    rename = client.patch(f"/api/task-sets/{other['id']}", json={"name": "ΟΔΟΣ", "items": [item]})
+    assert rename.status_code == 409, rename.text
+
+
+def test_a_set_edited_while_its_compare_is_created_counts_the_tasks_it_runs(client, monkeypatch):
+    """An edit that lands between the first read of the set and the compare's insert: the compare
+    counts the tasks it actually launches (the set is locked at the insert), so it can finish."""
+    team = _two_versions(client)
+    ts = _make_set(client, team, items=[*ITEMS, {**ITEMS[0], "task": "Add an ATR indicator"}])
+    monkeypatch.setattr(get_settings(), "hosted_mode", False)
+    real = compare._authorise
+
+    def _edit_meanwhile(owner_id, target):
+        with session_scope() as session:  # another tab cuts the set to 2 tasks
+            session.execute(
+                text("delete from task_set_items where task_set_id = :s and position = 3"),
+                {"s": ts["id"]},
+            )
+        return real(owner_id, target)
+
+    monkeypatch.setattr(compare, "_authorise", _edit_meanwhile)
+    resp, _calls, _waiters = _starts(client, team, monkeypatch, task_set_id=ts["id"])
+    assert resp.status_code == 201, resp.text
+    cid = resp.json()["id"]
+    try:
+        with session_scope() as session:
+            assert session.get(Compare, uuid.UUID(cid)).item_count == 2
+        assert len(_set_runs(cid)) == 4
+    finally:
+        _end(_set_runs(cid))
+
+
+def test_a_stop_before_the_workflows_start_cancels_them(client, monkeypatch):
+    """A Stop that lands after a task's runs are committed but before their workflows exist marks
+    the runs cancelled while DBOS has nothing to cancel yet: starting them then cancels them."""
+    from dbos import DBOS
+
+    started: list[str] = []
+    cancelled: list[str] = []
+    owner = auth_user_id()
+    run_ids = [str(make_run(owner, None, status="cancelled")[0]) for _ in range(2)]
+    monkeypatch.setattr(
+        DBOS,
+        "start_workflow",
+        lambda fn, idea: started.append(idea),  # noqa: ARG005
+    )
+    monkeypatch.setattr(DBOS, "cancel_workflow", lambda wid: cancelled.append(wid))
+    compare._start(run_ids, "Add an RSI indicator")
+    assert started == ["Add an RSI indicator"] * 2
+    assert sorted(cancelled) == sorted(run_ids)
+    live = str(make_run(owner, None, status="running")[0])
+    cancelled.clear()
+    compare._start([live], "Add an RSI indicator")
+    assert cancelled == []
+    _end([live, *run_ids])
+
+
+def test_half_a_round_apart_reads_about_1_fewer_round(client):
+    owner = auth_user_id()
+    team = _two_versions(client)
+    item = {"task": "t", "starts_from": None, "hidden_check": "true"}
+    ts = _make_set(client, team, "Pair", [item, {**item, "task": "u"}])
+    cid = _seed_set_compare(team, owner, ts)
+    ids = [i["id"] for i in ts["items"]]
+    # A: 3 and 3 rounds (3.0); B: 3 and 2 (2.5) — half a round fewer is "about 1 fewer round".
+    _cell(owner, team, cid, ids[0], "A", 1, at=_T0, check=True, rounds=3)
+    _cell(owner, team, cid, ids[0], "B", 2, at=_T0, check=True, rounds=3)
+    t2 = _T0 + timedelta(minutes=1)
+    _cell(owner, team, cid, ids[1], "A", 1, at=t2, check=True, rounds=3)
+    _cell(owner, team, cid, ids[1], "B", 2, at=t2, check=True, rounds=2)
+    cards = {c["key"]: c for c in client.get(f"/api/compares/{cid}").json()["results"]["cards"]}
+    assert (cards["rounds"]["note"], cards["rounds"]["tone"]) == ("about 1 fewer round", "good")

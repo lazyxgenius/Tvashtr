@@ -21,14 +21,14 @@ NAME_MAX = 80
 TEXT_MAX = 2000
 ITEMS_MAX = 20
 _BUSY = "This set is in a compare that is still running. Stop it first, or wait for it to finish."
-_NOT_FOUND = "task set not found"
+NOT_FOUND = "task set not found"
 
 
 def _uuid(set_id: str) -> uuid.UUID:
     try:
         return uuid.UUID(str(set_id))
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=_NOT_FOUND) from exc
+        raise HTTPException(status_code=404, detail=NOT_FOUND) from exc
 
 
 def require(session, owner_id: uuid.UUID, set_id: str) -> TaskSet:
@@ -37,7 +37,7 @@ def require(session, owner_id: uuid.UUID, set_id: str) -> TaskSet:
         select(TaskSet).where(TaskSet.id == _uuid(set_id)).with_for_update()
     ).scalar_one_or_none()
     if found is None or found.owner_id != owner_id:
-        raise HTTPException(status_code=404, detail=_NOT_FOUND)
+        raise HTTPException(status_code=404, detail=NOT_FOUND)
     return found
 
 
@@ -45,7 +45,7 @@ def team_set(session, team_id: uuid.UUID, set_id: str) -> TaskSet:
     """A set of this (already owner-checked) team; any other set is a 404."""
     found = session.get(TaskSet, _uuid(set_id))
     if found is None or found.team_graph_id != team_id:
-        raise HTTPException(status_code=404, detail=_NOT_FOUND)
+        raise HTTPException(status_code=404, detail=NOT_FOUND)
     return found
 
 
@@ -162,7 +162,10 @@ def _clean(name: str, items: list[dict]) -> tuple[str, list[tuple[str, str | Non
 
 def _taken(session, team_id: uuid.UUID, name: str, own: uuid.UUID | None = None) -> None:
     stmt = select(TaskSet.id).where(
-        TaskSet.team_graph_id == team_id, func.lower(TaskSet.name) == name.lower()
+        # Lowered by the database on both sides, as its unique index is (Python's lower() differs
+        # for some letters, e.g. a final sigma).
+        TaskSet.team_graph_id == team_id,
+        func.lower(TaskSet.name) == func.lower(name),
     )
     if own is not None:
         stmt = stmt.where(TaskSet.id != own)
@@ -170,7 +173,17 @@ def _taken(session, team_id: uuid.UUID, name: str, own: uuid.UUID | None = None)
         raise HTTPException(status_code=409, detail=f"This team already has a set called {name}.")
 
 
+def _flush(session, name: str) -> None:
+    try:
+        session.flush()
+    except IntegrityError as exc:  # the same name, saved at the same moment
+        raise HTTPException(
+            status_code=409, detail=f"This team already has a set called {name}."
+        ) from exc
+
+
 def _write(session, ts: TaskSet, items: list[tuple]) -> None:
+    _flush(session, ts.name)  # a rename first, so a clash is a 409
     session.execute(delete(TaskSetItem).where(TaskSetItem.task_set_id == ts.id))
     for position, (task, starts_from, check) in enumerate(items, start=1):
         session.add(
@@ -182,12 +195,7 @@ def _write(session, ts: TaskSet, items: list[tuple]) -> None:
                 hidden_check=check,
             )
         )
-    try:
-        session.flush()
-    except IntegrityError as exc:  # the same name, saved at the same moment
-        raise HTTPException(
-            status_code=409, detail=f"This team already has a set called {ts.name}."
-        ) from exc
+    _flush(session, ts.name)
 
 
 def create(session, team: TeamGraph, owner_id: uuid.UUID, name: str, items: list[dict]) -> dict:
@@ -195,7 +203,7 @@ def create(session, team: TeamGraph, owner_id: uuid.UUID, name: str, items: list
     _taken(session, team.id, name)
     ts = TaskSet(owner_id=owner_id, team_graph_id=team.id, name=name)
     session.add(ts)
-    session.flush()
+    _flush(session, name)
     _write(session, ts, cleaned)
     return _view(session, ts, team)
 

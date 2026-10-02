@@ -67,6 +67,96 @@ def test_local_a_command_past_its_limit_is_killed_with_its_children(tmp_path):
     assert time.monotonic() - began < 10  # the group was killed, its pipe did not hold us
 
 
+def test_local_only_the_end_of_a_noisy_checks_output_is_kept(tmp_path):
+    """A check that prints without end never fills the server's memory: only its last 64 KB come
+    back (the review's OOM finding)."""
+    code, out, timed_out = hidden_checks.run_local(
+        str(tmp_path),
+        "head -c 3000000 /dev/zero | tr '\\0' x; echo; echo the last line",
+        30,
+    )
+    assert (code, timed_out) == (0, False)
+    assert len(out) <= hidden_checks.OUTPUT_CAP
+    assert out.rstrip().endswith("the last line")
+
+
+def test_the_sandbox_runs_the_check_bounded_and_on_its_own_timer():
+    """In a sandbox the check runs under its own GNU timeout (its whole process group killed at the
+    limit), stdout and stderr in one stream, and only its last 64 KB come back."""
+    import shlex
+
+    assert shlex.split(hidden_checks.sandbox_command("pytest -q -k 'rsi or macd'", 600)) == [
+        "bash",
+        "-o",
+        "pipefail",
+        "-c",
+        "timeout -k 5 600 bash -c 'pytest -q -k '\"'\"'rsi or macd'\"'\"'' 2>&1"
+        f" | tail -c {hidden_checks.OUTPUT_CAP}",
+    ]
+
+
+def _remote(result, *, log_command=None):
+    calls: list = []
+
+    def _execute(command, **kwargs):
+        calls.append((command, kwargs))
+        if log_command:
+            import logging
+
+            logging.getLogger(hidden_checks.SDK_LOGGER).warning(
+                f"Command timed out after 630 seconds: {command}"
+            )
+        return result
+
+    return SimpleNamespace(execute_command=_execute), calls
+
+
+def test_run_remote_passes_the_wrapped_command_with_room_for_its_own_timer():
+    ws, calls = _remote(
+        SimpleNamespace(exit_code=1, stdout="1 failed\n", stderr="", timeout_occurred=False)
+    )
+    assert hidden_checks.run_remote(ws, "pytest -q", "/w", 600) == (1, "1 failed\n", False)
+    ((command, kwargs),) = calls
+    assert command == hidden_checks.sandbox_command("pytest -q", 600)
+    assert kwargs == {"cwd": "/w", "timeout": 600 + hidden_checks.GRACE_S}
+
+
+def test_run_remote_a_check_its_timer_stopped_is_timed_out(monkeypatch):
+    clock = iter([100.0, 701.0])
+    monkeypatch.setattr(hidden_checks.time, "monotonic", lambda: next(clock))
+    ws, _ = _remote(
+        SimpleNamespace(exit_code=124, stdout="tick\n", stderr="", timeout_occurred=False)
+    )
+    assert hidden_checks.run_remote(ws, "sleep 9999", "/w", 600) == (None, "tick\n", True)
+    # A check that itself exits 124 at once is an ordinary failure.
+    clock = iter([100.0, 102.0])
+    ws, _ = _remote(SimpleNamespace(exit_code=124, stdout="", stderr="", timeout_occurred=False))
+    assert hidden_checks.run_remote(ws, "exit 124", "/w", 600) == (124, "", False)
+
+
+def test_run_remote_a_sandbox_error_is_raised_not_recorded_as_the_checks_output():
+    ws, _ = _remote(
+        SimpleNamespace(
+            exit_code=-1,
+            stdout="",
+            stderr="Remote execution error: ConnectError for url 'http://tv-run-x.flycast/api/bash'",
+            timeout_occurred=False,
+        )
+    )
+    with pytest.raises(RuntimeError):
+        hidden_checks.run_remote(ws, "pytest -q", "/w", 600)
+
+
+def test_run_remote_never_lets_the_sdk_log_the_command(caplog):
+    caplog.set_level("DEBUG")
+    ws, _ = _remote(
+        SimpleNamespace(exit_code=0, stdout="", stderr="", timeout_occurred=False),
+        log_command=True,
+    )
+    hidden_checks.run_remote(ws, "pytest -q -k SECRETCHECK", "/w", 600)
+    assert "SECRETCHECK" not in caplog.text
+
+
 def test_local_the_check_does_not_see_the_servers_secrets(tmp_path, monkeypatch):
     monkeypatch.setenv("TVASHTR_M9_PROBE", "server-only-value")
     _code, out, _ = hidden_checks.run_local(str(tmp_path), 'echo "[$TVASHTR_M9_PROBE]"', 30)
@@ -266,17 +356,42 @@ def test_fly_runs_the_check_in_a_fresh_dir_on_the_runs_microvm(tmp_path, monkeyp
         "api_key": "per-run-key",
     }
     commands = [c.args[0] for c in ws.execute_command.call_args_list]
-    assert commands[0] == "rm -rf /workspace/__check__ && mkdir -p /workspace/__check__"
-    assert commands[-1] == "pytest -q"
+    # A check left running on the machine by a recovered walk is killed before the fresh dir.
+    assert commands[0] == mod._CHECK_PREP
+    assert "kill -9" in commands[0] and commands[0].endswith(
+        "rm -rf /workspace/__check__ && mkdir -p /workspace/__check__"
+    )
+    assert commands[-1] == hidden_checks.sandbox_command("pytest -q", 600)
     assert ws.execute_command.call_args_list[-1].kwargs == {
         "cwd": "/workspace/__check__",
-        "timeout": 600,
+        "timeout": 600 + hidden_checks.GRACE_S,
     }
     ws.file_upload.assert_called_once_with(
         str(host / "pkg" / "rsi.py"), "/workspace/__check__/pkg/rsi.py"
     )
     # A machine this process (re)attached to is torn down with the run, like an agent step's.
     assert sandbox_cache.get(f"{_RUN}::__fly_machine__") is not None
+
+    # The check can't run: a fresh dir that couldn't be made, or a file that couldn't be pushed.
+    def _failing_prep(**kwargs):
+        ws = _workspace(**kwargs)
+        ws.execute_command.return_value = SimpleNamespace(
+            exit_code=1, stdout="", stderr="read-only file system", timeout_occurred=False
+        )
+        return ws
+
+    monkeypatch.setattr(mod, "RemoteWorkspace", _failing_prep)
+    with pytest.raises(RuntimeError):
+        mod.run_check(_RUN, str(host), "pytest -q", "greenfield", 600)
+
+    def _failing_upload(**kwargs):
+        ws = _workspace(**kwargs)
+        ws.file_upload.return_value = SimpleNamespace(success=False, error="disk full")
+        return ws
+
+    monkeypatch.setattr(mod, "RemoteWorkspace", _failing_upload)
+    with pytest.raises(RuntimeError):
+        mod.run_check(_RUN, str(host), "pytest -q", "greenfield", 600)
 
 
 def test_fly_a_check_that_times_out_reports_it(tmp_path, monkeypatch, _clean_cache):
@@ -285,13 +400,19 @@ def test_fly_a_check_that_times_out_reports_it(tmp_path, monkeypatch, _clean_cac
     sandbox = SimpleNamespace(machine=SimpleNamespace(flycast_host="h"), session_api_key="k")
     monkeypatch.setattr(mod, "_ensure_run_sandbox", lambda run_id: (sandbox, False))
     ws = MagicMock()
-    ws.execute_command.return_value = SimpleNamespace(
-        exit_code=-1, stdout="", stderr="Command timed out after 600 seconds", timeout_occurred=True
-    )
+    ws.execute_command.side_effect = [
+        SimpleNamespace(exit_code=0, stdout="", stderr="", timeout_occurred=False),  # the fresh dir
+        SimpleNamespace(
+            exit_code=-1,
+            stdout="",
+            stderr="Command timed out after 630 seconds",
+            timeout_occurred=True,
+        ),
+    ]
     monkeypatch.setattr(mod, "RemoteWorkspace", lambda **k: ws)
     assert mod.run_check(_RUN, str(tmp_path), "sleep 9999", "greenfield", 600) == (
-        -1,
-        "Command timed out after 600 seconds",
+        None,
+        "Command timed out after 630 seconds",
         True,
     )
     assert sandbox_cache.get(f"{_RUN}::__fly_machine__") is None  # already registered elsewhere
@@ -329,9 +450,16 @@ def test_docker_runs_the_check_in_a_fresh_container_and_removes_it(tmp_path, mon
     )
     ((kwargs, ws),) = made
     assert kwargs["extra_ports"] is False
+    # The check container's log stream is not copied into the server's log.
+    assert kwargs["detach_logs"] is False
     ws.file_upload.assert_called_once_with(str(host / "pkg" / "rsi.py"), "/workspace/pkg/rsi.py")
-    assert ws.execute_command.call_args_list[-1].args == ("pytest -q",)
-    assert ws.execute_command.call_args_list[-1].kwargs == {"cwd": "/workspace", "timeout": 600}
+    assert ws.execute_command.call_args_list[-1].args == (
+        hidden_checks.sandbox_command("pytest -q", 600),
+    )
+    assert ws.execute_command.call_args_list[-1].kwargs == {
+        "cwd": "/workspace",
+        "timeout": 600 + hidden_checks.GRACE_S,
+    }
     ws.cleanup.assert_called_once()
     assert registered == []
 
