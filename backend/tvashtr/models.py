@@ -15,6 +15,7 @@ from sqlalchemy import (
     CheckConstraint,
     Computed,
     DateTime,
+    Float,
     ForeignKey,
     Identity,
     Index,
@@ -535,6 +536,111 @@ class SavedAgentVersion(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+class AgentTest(Base):
+    """M7: one saved round of one library agent — what it got (``inputs``: the task, the documents it
+    read, the change it saw and its base, the test output) + ``diff`` (that change, applied to a
+    rebuilt workspace) and the ``checks`` on what it says."""
+
+    __tablename__ = "agent_tests"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    owner_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    team_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("team_graphs.id", ondelete="CASCADE"), nullable=False
+    )
+    node_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("agent_nodes.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    source: Mapped[str] = mapped_column(Text, nullable=False)  # "round" | "file"
+    source_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("runs.id", ondelete="SET NULL"), nullable=True
+    )
+    source_run_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    source_invocation_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    source_iteration: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    source_row: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    inputs: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    diff: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True, deferred=True)
+    checks: Mapped[list] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class AgentTestRun(Base):
+    """M7: one "Run all N" of a library agent's tests (or the run a save started, R6)."""
+
+    __tablename__ = "agent_test_runs"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    owner_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    team_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("team_graphs.id", ondelete="CASCADE"), nullable=False
+    )
+    node_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("agent_nodes.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    version_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    status: Mapped[str] = mapped_column(Text, nullable=False)  # running | done | stopped | failed
+    trigger: Mapped[str] = mapped_column(Text, nullable=False, server_default="manual")
+    stop_requested: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=false())
+    waiting_for_slot: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=false())
+    total: Mapped[int] = mapped_column(Integer, nullable=False)
+    cost_usd: Mapped[float] = mapped_column(Float, nullable=False, server_default="0")
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    heartbeat_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AgentTestResult(Base):
+    """M7: one test's replay in a test run. Its id is the replay's id (sandbox key, R12 count)."""
+
+    __tablename__ = "agent_test_results"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    test_run_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("agent_test_runs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    test_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("agent_tests.id", ondelete="SET NULL"), nullable=True
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    answer: Mapped[str | None] = mapped_column(Text, nullable=True)
+    files: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    checks: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cost_usd: Mapped[float] = mapped_column(Float, nullable=False, server_default="0")
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AiCheckUsage(Base):
+    """M7 (R7): an account's AI checks this month (``month`` = "YYYY-MM"), limit 200."""
+
+    __tablename__ = "ai_check_usage"
+
+    owner_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    month: Mapped[str] = mapped_column(Text, primary_key=True)
+    count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
 
 
 class EngineerRunAttempt(Base):
