@@ -48,3 +48,11 @@ describe("an import's fixes (M4)", () => {
     });
   });
 });
+
+describe("a Domain the import couldn't find (M4)", () => {
+  it("is made on the Domains page and its node says it needs one", () => {
+    const f = fix("domain:docs", "open_domains", "docs", ["ask"]);
+    expect(fixRoute(f)).toEqual({ page: "domains" });
+    expect(fixChips([f]).get("ask")).toEqual(["Needs a Domain"]);
+  });
+});

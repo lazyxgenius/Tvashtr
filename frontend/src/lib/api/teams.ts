@@ -175,7 +175,7 @@ export interface ImportCheck {
 export interface ImportFix {
   key: string;
   text: string;
-  action: "sign_in" | "open_toolkit" | "open_engines";
+  action: "sign_in" | "open_toolkit" | "open_engines" | "open_domains";
   target: string;
   /** The new team's nodes that need it. */
   node_ids: string[];

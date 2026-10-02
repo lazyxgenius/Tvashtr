@@ -52,7 +52,11 @@ export function ImportFixCard({
             </Button>
           ) : (
             <Button variant="ghost" size="sm" onClick={() => onFix(f)}>
-              {f.action === "open_engines" ? "Open Engines" : "Open Toolkit"}
+              {f.action === "open_engines"
+                ? "Open Engines"
+                : f.action === "open_domains"
+                  ? "Open Domains"
+                  : "Open Toolkit"}
             </Button>
           )}
         </div>
