@@ -1,0 +1,137 @@
+# M10 — Start a new run from this one: parity record, branch m10-parity (= feat/m10-start-from-run e21dca04 + 4911213), 2026-10-03.
+# Design: the Claude Design "Runs" canvas export: Next-Finished, Next-Carry, Next-CarryMerged, Next-Started, Next-CameAlong, Next-More,
+#   Next-Log. Shot with shoot-design.mjs at 1440x900, FONT_CACHE_DIR …/scratchpad/font-cache: 7 design shots, 7 fonts-ok.
+# App: Vite :5341 on the m10-parity worktree (its own node_modules and cacheDir), no backend. scripts/design-parity/scenarios/start-from.mjs
+#   answers the contract's shapes (docs/superpowers/plans/api/start-from-run.md) with the boards' data on runs-fixtures.mjs's run #12 (Live-Done:
+#   "Indicator sprint team", "Add an RSI indicator", done in 22m 38s for $1.12 of $5.00, pull request #42 from tvashtr/run-12, 31 steps; `number`
+#   12; the boards' Ship line "Opened pull request #42 from branch tvashtr/run-12"). GET /api/runs/r-12/next: spec v3, decisions "Spec approved" and
+#   "The reviewer’s rule: every indicator is registered on INDICATORS", the three memories (Register every indicator on INDICATORS · Indicators take
+#   a length and default to 14 · Run python -m pytest -q tests/test_indicators.py before you finish), pending_memories 1, the three summaries
+#   (Product manager · Wrote the RSI spec (v3) and its acceptance tests. / Engineer · Added RSI to core/indicators.py, registered it and made 41
+#   tests pass in 3 rounds. / Reviewer · Approved in round 3: RSI is registered, bounded 0–100 and tested.), pr #42 unmerged, start_from
+#   "tvashtr/run-12 (pull request #42)" / "main" (default pr), team v7, entry_agent "Product manager"; Next-CarryMerged: merged, no decisions, only
+#   "main", and POST /api/runs/r-12/next answers routers.py's 429 owner_concurrency_limit body (limit 3). GET /api/runs/r-12/log?format=text
+#   (Next-Log; a page route, as text): the board's first eight lines, ~180 KB of middle, the last line "11:03:22  ship  opened pull request #42".
+#   Run #14 (Next-Started, -CameAlong): "Add a MACD indicator", running 0m 12s / $0.01, `number` 14, `started_from` {r-12, 12, "brought spec v3, 2
+#   decisions and 3 memories"}, the Product manager at work ("Updating spec v3 for MACD", 2 s ago), its 5 Activity lines (11:10:02 Run "Started from
+#   run #12 · brought spec v3, 2 decisions and 3 memories" with `came_along`, 11:10:03 "Working on branch tvashtr/run-14, from pull request #42",
+#   11:10:05 "Read the spec from run #12 (v3)", 11:10:09 "Read 3 memories, including “register every indicator on INDICATORS”", 11:10:12 "Updating
+#   the spec for MACD" live) and GET /api/runs/r-14/carry (the snapshot above).
+# States are reached through the UI: run #12's address with the mouse on "Start the next run from this" (Next-Finished: its tip); its click, the
+#   task typed (Next-Carry), then Start run (Next-CarryMerged: the refusal); the run bar's ⋯ with the mouse back on the start button (Next-More:
+#   the menu and the tip, as drawn); ⋯ › Download the run log (Next-Log); run #14's address (Next-Started) › "See what came along" (Next-CameAlong).
+#   The clock stands still at the boards' moments: 11:04:00 (run #12, Live-Done's) and 11:10:14 (run #14: "2 s ago", "live · 2 s").
+# Which render is the comparison: every board is drawn in Desktop (the 30px title strip): the Desktop render is the comparison and the web render is
+#   framed 30px down (m7.txt / m8.txt / m9.txt's convention). Both renders are recorded below; each web render's 2 extra "not found" are by rule.
+# GATE: size/type MET — every new M10 element is at 0 size/type drift on every render (web and Desktop) after this sweep's two fixes (4911213);
+#   every other drift item is an existing element covered by a waiver (W1–W3 from m2.txt, W14 below). NOT CLEAN — 1 layout item on a new element
+#   (TO FIX 1: where "What came along" opens) and 3 real "not found in app" (TO FIX 2–4) are reported for the lead; none is waived.
+#   At 0 drift, box for box where measured (Desktop; x,y w×h): Next-Finished / -More: Start the next run from this 207x32 13/500 at (1213,158) —
+#   the board's box —, its tip 400x129 at (1020,214) with 'Start the next feature where this one ended' 12.5/600 368x19 at (1036,228) and the
+#   12.5px text, as drawn; the ⋯ More for this run 32x32; Download the run log 13/400 220x32 (drawn 218x32; the DS Menu's 5px padding, m9.txt's
+#   note). Next-Carry / -CarryMerged: 'Start a new run from run #12' 22px Newsreader 482x26, its 13px sub 482x20, Close 32x32, 'What should the team
+#   do next?' 14/500 207x22, the 574x96 16px task box, 'Brings along' 11.5/600, the four ticks' labels 14px ('The final spec (v3)' 475x20, 'Your
+#   decisions (2)' 500x20 / '(none)' 305x20, 'What the agents learned (3 memories)' 431x20, 'A short summary from each agent' 258x20) and their
+#   13px lines (the spec line names the team's first agent: "…The product manager updates it for the new task."), 'Start from' 14/500, the
+#   574x44 16px select ('tvashtr/run-12 (pull request #42)' / 'main'), 'Left behind: the agents’ full conversations' 14/600 514x22 and its 13px
+#   line 514x20, the refusal 'You have 3 runs going, the most at once. Start this one when one of them finishes.' 12.5px 570x20 at (435,733)
+#   (drawn (435,737)), 'Uses the team as it is now (v7)' 12.5px 203x20, Cancel 80x40 / Start run 106x40 14/500 — all at the board's place
+#   relative to the dialog (2px left for the checkbox column: the DS Checkbox, m9.txt's note). Next-Started: 'From run #12' 11px 98x20 (the
+#   board's box); the Activity's five lines exactly where drawn — 'Started from run #12 · brought spec v3, 2 decisions and 3 memories' 13/600
+#   1021x21 at (266,623) on its tinted row, 'See what came along' 12/500 123x19 at (1297,623), 'Read the spec from run #12 (v3)', 'Read 3
+#   memories, including “…”' 13px, 'Updating the spec for MACD' 13/600 with 'live · 2 s' 11px mono 66x18 at (1354,756). Next-CameAlong: 'What came
+#   along from run #12' 20px Newsreader 255x32, Close 32x32, the eyebrows 11.5/600 378x18, the items 13px 378 wide (the two-line ones 39 high), the
+#   agents' names 13/600 (108/56/58 wide), the foot 12.5px 378x53 — each the board's box, 214px higher (TO FIX 1). Next-Log: 'Download the run
+#   log' 22px 502x26, its 13px sub, Close, 'Format' 11.5/600 52x18, Readable text 116x30 / JSON lines 100x30 12.5/500, the preview 11.5px mono
+#   594x228, the 12.5px note 594x39, 'About 180 KB · 31 steps' 12.5px 139x20, Cancel 80x40 / Download 115x40 14/500.
+# built in this sweep (4911213, CSS / markup on new M10 elements only; vitest / tsc / eslint / prettier green): Start the next run from this
+#   carries its icon flush in the label (`cv-btn-flush`, as M3's Resume buttons; the DS Button's 8px icon gap made it 215 wide, drawn 207); the
+#   run's ⋯ menu rows are 32 high (`.lv-more .ds-menu__item { line-height: normal }`, as M9's set menu; the DS Menu's were 34).
+# LEAD RULINGS (made before this sweep; recorded, not changed):
+#   existing elements keep the app's look (brief 2.3): "Open pull request #42" stays the app's primary button (the board draws it secondary;
+#      its 186 width is W1); the run bar's existing controls and the state pill words (Shipped / Running… / Working, brief 2.5) are the app's (W2).
+#   the new dialogs are centred like the app's existing dialogs (only moved): Next-Carry 11px lower than drawn, Next-CarryMerged 5px higher,
+#      Next-Log 103px lower; their sizes and words are as drawn.
+#   the ⋯ "More for this run" sits at the end of the run bar's left group (only moved: (676,98) where drawn (1388,98); its menu opens under it,
+#      'Download the run log' at (482,140) where drawn (1195,143)) and shows on ended runs (not while one runs: Next-Started draws none).
+#   the Start-from note keeps only its first sentence: 'Pull request #42 isn’t merged yet.' / 'Pull request #42 is merged, so the new run starts
+#      from main.' (12.5px 574x20 at (433,628) / (433,612), the board's box relative to the dialog); the boards' endings 'Starting from it lets
+#      MACD build on RSI.' / ', where RSI already is.' are example words with no data behind them, so the board's note is "not found" by its
+#      words (Next-Carry, -CarryMerged ×1 each).
+#   the spec line names the team's first agent ("The product manager updates it…"; NextInfo.entry_agent) — matched, 13px.
+# TO FIX (new elements; measured on the Desktop render, the web render is the same 30px lower):
+#   1. layout — Next-CameAlong: "What came along from run #12" opens ABOVE its line (StartNext.tsx CameAlong: `bottom` = 8px above "See what
+#      came along"), so it spans y 23–615 where the board draws it y 237–828 at the right edge, under the Now bar and over the Activity rows:
+#      every item in it is 214px higher ("only moved" ×19; sizes and words at 0 drift). At 900px its top (23) runs under the Desktop's 30px
+#      title strip, and in a window under ~877px tall its top leaves the screen (no max-height or scroll). Needs a placement rule (the anchor
+#      in CameAlong + .lv-came); the lead rules.
+#   2. not found in app — Next-Started / -CameAlong, the Product manager's card line 'From spec v3 of run #12' (11px 126x15 at (76,370)): the
+#      contract says "the run view's canvas card for the entry agent reads 'From spec v3 of run #12' until the run has a spec of its own" — not
+#      built: the running card shows the agent's live activity ("Updating spec v3 for MACD", the Now bar's words) and no field in the contract
+#      carries the card's line (the graph's `carried` shows only on a carried-over step). Needs a field and markup.
+#   3. not found in app — Next-Started / -CameAlong, the waiting Reviewer's card line 'Knows the INDICATORS rule' (11px 147x15 at (782,346)): the
+#      app's line is M2's "Starts after the Engineer"; no field says which carried memory an agent knows. Needs a field (or the lead rules the
+#      words are an example).
+#   4. not found in app — Next-Finished, -Carry, -CarryMerged, -More, -Log, the 11:03:30 Run line 'Saved 3 new memories from this run · review
+#      them in Toolkit' (13px) and its link 'Review' (12/500 41x19 at (1379,723)): the server sends no Activity line for the memories a run saved
+#      (activity.py; neither activity.md nor start-from-run.md names one), so the fixtures leave it out (m2.txt's rule for the Quiet line) — ×3
+#      per board ('11:03:30', the words, 'Review'). Not in M10's contract; the lead rules where it belongs.
+# waivers W1–W3: as m2.txt — W1 the design-system Button's 8px icon gap on existing buttons: 'Open pull request #42' 178→186 (M2's Done
+#   summary; the lead's ruling above) and 'Jump to live' 115→123; W2 the run bar is the app's: '22m 38s' 12.5→14px (the run bar's time pairs
+#   with the Done summary's 14px stat); W3 the canvas cards' existing parts: 'Product manager' 600→500 (the card title pairs with the Activity
+#   filter: the app fits the whole graph), 'Ship' 10.5→12.5px, 500→600 (the Ship node pairs with the Activity's Ship line).
+# waiver W14 (new; pairing, an existing element) Next-Started / -CameAlong [ctl] 'Approval gate' 500→600, 30→20 high, 117→84 wide: the
+#   Activity filter lists a gate only once the run reaches it (M2, ActivityPanel: "a gate only once the run reaches it"), so the board's filter
+#   button pairs with the Now bar chip's name 'Approval gate' (12.5/600, as drawn there); the filter's Engineer / Reviewer sit 119px left.
+# note (layout, only moved) the run bar is the app's (W2: the team name at (728,100) / (803,100) where drawn (146,100) / (163,100), the bell at
+#   the left of the toolbar (M2), 'From run #12' at (685,104) after the run banner where drawn (570,104) after 'run #14'); the canvas fits the
+#   whole graph, so the cards' words sit elsewhere (m2.txt); the Activity shows the last six steps (M2), where Next-Finished / -More draw four
+#   under 'Show 27 earlier steps' and Next-Carry / -CarryMerged / -Log draw four without it, 34px higher — the boards' last lines sit 66–133px
+#   higher than the app's (×11); the Now bar's chips are M2's (Next-Started: 17px left of drawn; the gate's line reads "Starts after the Product
+#   manager", M2's waiting line, where the board writes 'Will ask you to approve the spec' — "not found" by its words); the dialogs and the ⋯
+#   (rulings); the came-along popover (TO FIX 1).
+# note (copy, server words) the boards' Ship line 'Opened pull request #42 from branch tvashtr/run-12' is the fixture's (the server writes
+#   "Pushed branch tvashtr/run-12 and opened pull request #42", activity.py); run #14's 'Working on branch tvashtr/run-14, from pull request #42'
+#   is the board's (the contract: "then the run's own start line as today" — today "Started on <repo>, branch <ref>"); 'Updating the spec for
+#   MACD' is an open step in the fixture (kind command, running) so it shows "live · 2 s" bold, as drawn (the server's open lines are commands;
+#   m8.txt's lanes note); the decision "The reviewer’s rule: every indicator is registered on INDICATORS" is capitalised in Next-CameAlong and
+#   lower case mid-line in Next-Carry ('Spec approved · the reviewer’s rule: …') — one decision, matched case-insensitively; "About 180 KB" is the
+#   size of the fixture's log text (the dialog measures what it loaded).
+# note (not measured) the boards' Activity icons for read lines (an eye; a memory glyph) and run #14's second line (▷) are the app's plain
+#   waiting dot (M2's LineIcon); the board's run-#12 summary icon (a pull request) is the app's done check (M2).
+# Not found in app, by rule: the run bar (W2: 'Back to the team', 'Done' / 'Running', 'Add an RSI indicator' / 'Add a MACD indicator', 'run #12'
+#   / 'run #14', '$1.12 of $5.00' / '$0.01 of $5.00', '0m 12s', 'Stop run' ×2 — the app's Cancel run); the Done summary's one-line '3 rounds ·
+#   22m 38s · $1.12 · 41 tests passing' (M2's stat columns); the cards (m2.txt's list: '3 rounds' ×2, 'Spec written', 'Grok plan · this Mac', 'Spec
+#   v3', '20m', 'Spec approval' — the app's gate reads "PRD approval" —, 'Approved by you', 'Tests pass', '41 tests passed', '2m', 'Round 3 ·
+#   approved', '1m'; Next-Started: 'Round 1 of 3', '● Updating the spec' — the card's brief-2.5 "Working…" —, 'Grok plan · this Mac', 'Spec
+#   approval'); 'Show 27 earlier steps' (the app reads 25, M2); the Start-from notes' second sentences (ruling); 'Will ask you to approve the
+#   spec' (M2's waiting line). Each web render's 'Tvashtr — the living canvas' and 'Tvashtr Desktop' are not found there by rule.
+# Not found in app (new, real): TO FIX 2, 3, 4 above. Nothing drawn for M10 was built beyond the boards.
+Next-Finished desktop: matched 46/69 design items · 5 with size/type drift · 22 only moved · 23 not found in app — covered: W1×2, W2×1, W3×2
+Next-Finished web: matched 44/69 design items · 5 with size/type drift · 22 only moved · 25 not found in app — covered: W1×2, W2×1, W3×2
+Next-Carry desktop: matched 67/90 design items · 5 with size/type drift · 23 only moved · 23 not found in app — covered: W1×2, W2×1, W3×2
+Next-Carry web: matched 65/90 design items · 5 with size/type drift · 23 only moved · 25 not found in app — covered: W1×2, W2×1, W3×2
+Next-CarryMerged desktop: matched 68/91 design items · 5 with size/type drift · 22 only moved · 23 not found in app — covered: W1×2, W2×1, W3×2
+Next-CarryMerged web: matched 66/91 design items · 5 with size/type drift · 22 only moved · 25 not found in app — covered: W1×2, W2×1, W3×2
+Next-Started desktop: matched 61/76 design items · 2 with size/type drift · 22 only moved · 15 not found in app — covered: W1×1, W14×1
+Next-Started web: matched 59/76 design items · 2 with size/type drift · 22 only moved · 17 not found in app — covered: W1×1, W14×1
+Next-CameAlong desktop: matched 80/95 design items · 2 with size/type drift · 41 only moved · 15 not found in app — covered: W1×1, W14×1 — TO FIX 1 (19 of the only moved)
+Next-CameAlong web: matched 78/95 design items · 2 with size/type drift · 41 only moved · 17 not found in app — covered: W1×1, W14×1 — TO FIX 1 (19 of the only moved)
+Next-More desktop: matched 47/70 design items · 5 with size/type drift · 23 only moved · 23 not found in app — covered: W1×2, W2×1, W3×2
+Next-More web: matched 45/70 design items · 5 with size/type drift · 23 only moved · 25 not found in app — covered: W1×2, W2×1, W3×2
+Next-Log desktop: matched 57/79 design items · 5 with size/type drift · 35 only moved · 22 not found in app — covered: W1×2, W2×1, W3×2
+Next-Log web: matched 55/79 design items · 5 with size/type drift · 35 only moved · 24 not found in app — covered: W1×2, W2×1, W3×2
+# (before 4911213: Next-Finished / -Carry / -CarryMerged / -Log 6 drift — 'Start the next run from this' 207→215 wide —, Next-More 7 — also
+#   'Download the run log' 32→34 high; both new, both fixed.)
+# Renders: 7 design shots (fonts-ok) + 14 app board shots (7 boards × web + Desktop); 12 kept inventory shots (the 6 below on main 0407f36, Vite
+#   :5342, and the same 6 on m10-parity, Vite :5341) + 5 re-shots of earlier run-view kept scenarios on m10-parity.
+
+# Kept elements (brief §2.2): INVENTORY=1 shoot-app.mjs, start-from.mjs's kept-m10-* scenarios (the same file copied into a main 0407f36 worktree),
+#   shot on main 0407f36 (before M10) and on m10-parity (after): kept-m10-done.txt (run #12's Done view: the run bar, the Done summary, the
+#   Activity), kept-m10-running.txt (run #14 running: the run bar, the Now bar, the Activity), kept-m10-activity.txt (run #12's Activity with every
+#   step shown — each line's Show output / Show files / Read notes / Open spec / View change / Open on GitHub):
+kept-m10-done: web 28/28, desktop 28/28 kept items present — none missing (after: 30 each, added "button: More for this run", "button: Start the next run from this")
+kept-m10-running: web 27/27, desktop 27/27 kept items present — none missing (after: 29 each, added "button: See what came along", "link: From run #12")
+kept-m10-activity: web 30/30, desktop 30/30 kept items present — none missing (after: 32 each, added "button: More for this run", "button: Start the next run from this")
+# and the earlier run-view records still hold on m10-parity: kept-runview-web 13/13, -desktop 13/13, kept-runview-drawer-web 27/27 (a running run:
+#   no ⋯); kept-ma-runview-stopped-web 29/29, -desktop 29/29 (an ended run: adds "button: More for this run").

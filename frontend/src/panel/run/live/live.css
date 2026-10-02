@@ -976,6 +976,11 @@
   color: var(--ink-500);
 }
 
+/* ---- M10: the run bar's ⋯ (Next-More): its menu's rows are the board's 32px ---- */
+.lv-more .ds-menu__item {
+  line-height: normal;
+}
+
 /* ---- M10: "Download the run log" (Next-Log) ---- */
 .lv-log__format {
   display: flex;

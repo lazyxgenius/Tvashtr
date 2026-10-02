@@ -1,0 +1,65 @@
+# Kept-elements inventory — m10-running (the run view of run #14, running (the Product manager at work, 5 steps): the run bar (Running…, Cancel run, the bell, the run banner, Documents), the Now bar, the canvas, the Activity panel), captured on main 0407f36 (before M10) with scripts/design-parity/shoot-app.mjs INVENTORY=1
+# Scenarios: scripts/design-parity/scenarios/start-from.mjs (kept-m10-running-web / -desktop: run #14 "Add a MACD indicator" as Next-Started draws it — `number` 14, `started_from` run #12, its 5 Activity lines), the same scenario file shot on
+#   main 0407f36 (Vite :5342) and on m10-parity (Vite :5341), the clock frozen at the boards' moment. After the change every line must be present (superset).
+
+## kept-m10-running-desktop
+button: Account
+button: All
+button: Approval gate Waiting Starts after the Product manager
+button: Back to teams
+button: Cancel run
+button: Documents 0
+button: Engineer
+button: Engineer Waiting Starts after your approval
+button: Fit View
+button: Hide activity
+button: Jump to live
+button: Notifications
+button: Product manager
+button: Product manager Working Updating spec v3 for MACD 2 s ago
+button: Reviewer
+button: Reviewer Waiting Starts after the Engineer
+button: Running…
+button: Ship Not yet
+button: Zoom In
+button: Zoom Out
+button: anthropic/claude-sonnet-4
+button: xai/grok-4.7
+header: 
+main: 
+section: Activity
+section: Now
+toolbar: Team
+
+## kept-m10-running-web
+button: Account
+button: All
+button: Approval gate Waiting Starts after the Product manager
+button: Back to teams
+button: Cancel run
+button: Documents 0
+button: Engineer
+button: Engineer Waiting Starts after your approval
+button: Fit View
+button: Hide activity
+button: Jump to live
+button: Notifications
+button: Product manager
+button: Product manager Working Updating spec v3 for MACD 2 s ago
+button: Reviewer
+button: Reviewer Waiting Starts after the Engineer
+button: Running…
+button: Ship Not yet
+button: Zoom In
+button: Zoom Out
+button: anthropic/claude-sonnet-4
+button: xai/grok-4.7
+header: 
+main: 
+section: Activity
+section: Now
+toolbar: Team
+
+# After M10 (m10-parity, the same scenario):
+kept-m10-running: web 27/27, desktop 27/27 kept items present — none missing (after: 29 each, added "button: See what came along", "link: From run #12")
+# Web and Desktop inventories are equal, before and after.
