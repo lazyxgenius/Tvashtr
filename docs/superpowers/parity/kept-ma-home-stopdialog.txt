@@ -1,0 +1,149 @@
+# Kept-elements inventory — ma-home-stopdialog (Home › Running now › Docs team's Stop: the Stop this run? dialog open (HmF-Stop-2 / Prob-StopDialog)), captured on main 849b32d (before MA) with scripts/design-parity/shoot-app.mjs INVENTORY=1
+# Scenarios: scripts/design-parity/scenarios/runs-resume.mjs (kept-ma-home-stopdialog; each -web / -desktop), the same scenario shot on main 849b32d
+#   (Vite :5302) and on ma-parity = fix/ma-audit 089c4fb (Vite :5301). After the change every line must still be present (superset).
+
+## kept-ma-home-stopdialog-desktop
+button: Account
+button: Add CSV export to reports
+button: Add MACD to the registry
+button: Add an RSI indicator with tests
+button: All runs
+button: Claude and Grok nodes run on this computer — keep Tvashtr Desktop open until the run finishes.
+button: Domains
+button: Engines
+button: Fix
+button: Fix the flaky login test
+button: Home 4
+button: I Indicator sprint team
+button: Keep running
+button: More actions for Bugfix squad
+button: More actions for Docs team
+button: More actions for Full feature squad
+button: More actions for Indicator sprint team
+button: More actions for Landing page team
+button: More for 2 new memories to review
+button: More for Approve the spec
+button: More for Indicator sprint team can’t run on the website
+button: More for Run failed
+button: New team
+button: Open
+button: Options
+button: Retry
+button: Review
+button: Run
+button: Search teams, runs and actions
+button: Sort: Last active
+button: Stop
+button: Stop run
+button: Toolkit
+button: View run
+button: Write the API reference for /runs
+button: lazyxgenius/trade_mcp · main
+header: 
+heading: Good morning, Lazyx.
+heading: Needs you
+heading: Recent runs
+heading: Running now
+heading: Spend
+heading: Stop this run?
+heading: Teams
+input[text]: Search teams
+link: $6.19 spent this week
+link: 1 run in progress
+link: 4 things need you
+link: PR #39
+link: PR #42
+link: Show more
+main: 
+nav: Dashboard
+section: Needs you
+section: Recent runs
+section: Running now
+section: Spend
+section: Start a run
+section: Teams
+tab: All 5
+tab: Grid
+tab: List
+tab: Needs you 2
+tab: Not run yet 1
+tab: Running 1
+textarea: What should the team build? For example: Add an RSI indicator with tests
+
+## kept-ma-home-stopdialog-web
+button: Account
+button: Add CSV export to reports
+button: Add MACD to the registry
+button: Add an RSI indicator with tests
+button: All runs
+button: Domains
+button: Engines
+button: Fix
+button: Fix the flaky login test
+button: Home 4
+button: I Indicator sprint team
+button: Keep running
+button: Launch
+button: More actions for Bugfix squad
+button: More actions for Docs team
+button: More actions for Full feature squad
+button: More actions for Indicator sprint team
+button: More actions for Landing page team
+button: More for 2 new memories to review
+button: More for Approve the spec
+button: More for Indicator sprint team can’t run on the website
+button: More for Run failed
+button: New team
+button: Open
+button: Options
+button: Retry
+button: Review
+button: Run
+button: Search teams, runs and actions
+button: Sort: Last active
+button: Stop
+button: Stop run
+button: Toolkit
+button: View run
+button: Write the API reference for /runs
+button: lazyxgenius/trade_mcp · main
+header: 
+heading: Good morning, Lazyx.
+heading: Needs you
+heading: Recent runs
+heading: Running now
+heading: Spend
+heading: Stop this run?
+heading: Teams
+input[text]: Search teams
+link: $6.19 spent this week
+link: 1 run in progress
+link: 4 things need you
+link: Fix
+link: PR #39
+link: PR #42
+link: Show more
+main: 
+nav: Dashboard
+section: Needs you
+section: Recent runs
+section: Running now
+section: Spend
+section: Start a run
+section: Teams
+tab: All 5
+tab: Grid
+tab: List
+tab: Needs you 2
+tab: Not run yet 1
+tab: Running 1
+textarea: What should the team build? For example: Add an RSI indicator with tests
+
+# After MA (re-shot on ma-parity 089c4fb):
+#   kept-ma-home-stopdialog-desktop: before 66, after 66 — none missing
+#   kept-ma-home-stopdialog-web: before 67, after 67 — none missing
+#   The one ruled copy change (R19), the dialog's last sentence — not an inventory line (the dialog's body is text):
+#     before: "Docs team stops now and the run is marked Stopped. Anything already pushed stays on its branch. You can’t resume a stopped run."
+#     after:  "Docs team stops now and the run is marked Stopped. Anything already pushed stays on its branch. You can resume it later from the step it stopped at."
+#   (The nav's Engines / Toolkit badges and My agents need /api/engines/usage, /api/toolkit/summary and /api/my-agents, which
+#   home-fixtures.mjs doesn't serve — the same on both sides, as kept-home.txt.)

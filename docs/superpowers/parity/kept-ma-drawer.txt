@@ -1,0 +1,510 @@
+# Kept-elements inventory — ma-drawer (the team canvas with the Reviewer's drawer open on each of its six tabs: Setup, Skills & tools, Memory, Runs, Tests, Docs), captured on main 849b32d (before MA) with scripts/design-parity/shoot-app.mjs INVENTORY=1
+# Scenarios: scripts/design-parity/scenarios/agent-tests.mjs (kept-ma-drawer-setup, kept-ma-drawer-skills, kept-ma-drawer-memory, kept-ma-drawer-runs, kept-ma-drawer-tests, kept-ma-drawer-docs; each -web / -desktop), the same scenario shot on main 849b32d
+#   (Vite :5302) and on ma-parity = fix/ma-audit 089c4fb (Vite :5301). After the change every line must still be present (superset).
+
+## kept-ma-drawer-setup-desktop
+aside: Reviewer settings
+button: ADVANCED Backup model: none · Output format: none
+button: Account
+button: Add
+button: Add to canvas
+button: Back to teams
+button: Can edit files
+button: Choose
+button: Close panel
+button: Documents 0
+button: Fit View
+button: Focus mode
+button: History
+button: More actions
+button: Open full editor
+button: Read-only
+button: Remove spec
+button: Run this team
+button: Save
+button: See the last run
+button: Set this node’s model
+button: Show all
+button: Team file
+button: Templates
+button: Update instructions
+button: Version history
+button: X grok-4.7
+button: Zoom In
+button: Zoom Out
+footer: 
+header: 
+heading: ACCESS & DOCUMENTS
+heading: Instructions
+heading: MODEL
+heading: Reviewer
+main: 
+section: Access & documents
+section: Instructions
+section: Model
+tab: Docs
+tab: Memory 3
+tab: Runs
+tab: Setup
+tab: Skills & tools 4
+tab: Tests 6
+textarea: You are the Reviewer on a software team. The engineer’s build is in your current
+toolbar: Team
+
+## kept-ma-drawer-setup-web
+aside: Reviewer settings
+button: ADVANCED Backup model: none · Output format: none
+button: Account
+button: Add
+button: Add to canvas
+button: Back to teams
+button: Can edit files
+button: Choose
+button: Close panel
+button: Documents 0
+button: Fit View
+button: Focus mode
+button: History
+button: More actions
+button: Open full editor
+button: Read-only
+button: Remove spec
+button: Run this team
+button: Save
+button: See the last run
+button: Set this node’s model
+button: Show all
+button: Team file
+button: Templates
+button: Update instructions
+button: Version history
+button: X grok-4.7
+button: Zoom In
+button: Zoom Out
+footer: 
+header: 
+heading: ACCESS & DOCUMENTS
+heading: Instructions
+heading: MODEL
+heading: Reviewer
+main: 
+section: Access & documents
+section: Instructions
+section: Model
+tab: Docs
+tab: Memory 3
+tab: Runs
+tab: Setup
+tab: Skills & tools 4
+tab: Tests 6
+textarea: You are the Reviewer on a software team. The engineer’s build is in your current
+toolbar: Team
+
+## kept-ma-drawer-skills-desktop
+aside: Reviewer settings
+button: Account
+button: Add skill
+button: Add to canvas
+button: Add tool
+button: Agent decides
+button: Always on
+button: Back to teams
+button: Close panel
+button: Connect an app
+button: Documents 0
+button: Fit View
+button: Focus mode
+button: More actions
+button: More actions for fetch
+button: More actions for github
+button: More actions for house-style
+button: More actions for pytest-review
+button: Run this team
+button: Save
+button: See the last run
+button: Set this node’s model
+button: Team file
+button: Version history
+button: Zoom In
+button: Zoom Out
+footer: 
+header: 
+heading: Connectors 0
+heading: Reviewer
+heading: Skills 2
+heading: Tools 2
+link: Open Connectors
+main: 
+tab: Docs
+tab: Memory 3
+tab: Runs
+tab: Setup
+tab: Skills & tools 4
+tab: Tests 6
+toolbar: Team
+
+## kept-ma-drawer-skills-web
+aside: Reviewer settings
+button: Account
+button: Add skill
+button: Add to canvas
+button: Add tool
+button: Agent decides
+button: Always on
+button: Back to teams
+button: Close panel
+button: Connect an app
+button: Documents 0
+button: Fit View
+button: Focus mode
+button: More actions
+button: More actions for fetch
+button: More actions for github
+button: More actions for house-style
+button: More actions for pytest-review
+button: Run this team
+button: Save
+button: See the last run
+button: Set this node’s model
+button: Team file
+button: Version history
+button: Zoom In
+button: Zoom Out
+footer: 
+header: 
+heading: Connectors 0
+heading: Reviewer
+heading: Skills 2
+heading: Tools 2
+link: Open Connectors
+main: 
+tab: Docs
+tab: Memory 3
+tab: Runs
+tab: Setup
+tab: Skills & tools 4
+tab: Tests 6
+toolbar: Team
+
+## kept-ma-drawer-memory-desktop
+aside: Reviewer settings
+button: Account
+button: Add to canvas
+button: Back to teams
+button: Close panel
+button: Delete
+button: Discard
+button: Documents 0
+button: Edit
+button: File access
+button: Fit View
+button: Focus mode
+button: Keep
+button: More actions
+button: Pin
+button: Run this team
+button: Save
+button: See the last run
+button: Set this node’s model
+button: Team file
+button: Version history
+button: Zoom In
+button: Zoom Out
+footer: 
+header: 
+heading: LAZYXGENIUS/TRADE_MCP · 2
+heading: Reviewer
+heading: WAITING FOR YOUR REVIEW · 1
+link: Open Memory shelf
+main: 
+tab: Docs
+tab: Memory 3
+tab: Runs
+tab: Setup
+tab: Skills & tools 4
+tab: Tests 6
+toolbar: Team
+
+## kept-ma-drawer-memory-web
+aside: Reviewer settings
+button: Account
+button: Add to canvas
+button: Back to teams
+button: Close panel
+button: Delete
+button: Discard
+button: Documents 0
+button: Edit
+button: File access
+button: Fit View
+button: Focus mode
+button: Keep
+button: More actions
+button: Pin
+button: Run this team
+button: Save
+button: See the last run
+button: Set this node’s model
+button: Team file
+button: Version history
+button: Zoom In
+button: Zoom Out
+footer: 
+header: 
+heading: LAZYXGENIUS/TRADE_MCP · 2
+heading: Reviewer
+heading: WAITING FOR YOUR REVIEW · 1
+link: Open Memory shelf
+main: 
+tab: Docs
+tab: Memory 3
+tab: Runs
+tab: Setup
+tab: Skills & tools 4
+tab: Tests 6
+toolbar: Team
+
+## kept-ma-drawer-runs-desktop
+aside: Reviewer settings
+button: Account
+button: Add to canvas
+button: Back to teams
+button: Close panel
+button: Documents 0
+button: Fit View
+button: Focus mode
+button: More actions
+button: More for round 1
+button: More for round 2
+button: More for round 3
+button: Round 1 Changes requested 37m ago
+button: Round 2 Changes requested 36m ago
+button: Run this team
+button: Save
+button: See the last run
+button: Set this node’s model
+button: Team file
+button: Version history
+button: Zoom In
+button: Zoom Out
+footer: 
+header: 
+heading: Reviewer
+main: 
+section: Last run
+tab: Docs
+tab: Memory 3
+tab: Runs
+tab: Setup
+tab: Skills & tools 4
+tab: Tests 6
+toolbar: Team
+
+## kept-ma-drawer-runs-web
+aside: Reviewer settings
+button: Account
+button: Add to canvas
+button: Back to teams
+button: Close panel
+button: Documents 0
+button: Fit View
+button: Focus mode
+button: More actions
+button: More for round 1
+button: More for round 2
+button: More for round 3
+button: Round 1 Changes requested 37m ago
+button: Round 2 Changes requested 36m ago
+button: Run this team
+button: Save
+button: See the last run
+button: Set this node’s model
+button: Team file
+button: Version history
+button: Zoom In
+button: Zoom Out
+footer: 
+header: 
+heading: Reviewer
+main: 
+section: Last run
+tab: Docs
+tab: Memory 3
+tab: Runs
+tab: Setup
+tab: Skills & tools 4
+tab: Tests 6
+toolbar: Team
+
+## kept-ma-drawer-tests-desktop
+aside: Reviewer settings
+button: Account
+button: Add tests from a file
+button: Add to canvas
+button: Approves a clean RSI change Passed
+button: Back to teams
+button: Catches an unregistered indicator Passed
+button: Close panel
+button: Documents 0
+button: Doesn’t approve when tests fail Passed
+button: Fit View
+button: Flags a missing test file Passed
+button: Focus mode
+button: More actions
+button: More for Approves a clean RSI change
+button: More for Catches an unregistered indicator
+button: More for Doesn’t approve when tests fail
+button: More for Flags a missing test file
+button: More for Names the file to fix
+button: More for Says why the tests fail
+button: Names the file to fix Failed
+button: New test
+button: Run all 6
+button: Run this team
+button: Says why the tests fail Passed
+button: See the last run
+button: Set this node’s model
+button: Team file
+button: Version history
+button: Zoom In
+button: Zoom Out
+footer: 
+header: 
+heading: Reviewer
+main: 
+tab: Docs
+tab: Memory 3
+tab: Runs
+tab: Setup
+tab: Skills & tools 4
+tab: Tests 6
+toolbar: Team
+
+## kept-ma-drawer-tests-web
+aside: Reviewer settings
+button: Account
+button: Add tests from a file
+button: Add to canvas
+button: Approves a clean RSI change Passed
+button: Back to teams
+button: Catches an unregistered indicator Passed
+button: Close panel
+button: Documents 0
+button: Doesn’t approve when tests fail Passed
+button: Fit View
+button: Flags a missing test file Passed
+button: Focus mode
+button: More actions
+button: More for Approves a clean RSI change
+button: More for Catches an unregistered indicator
+button: More for Doesn’t approve when tests fail
+button: More for Flags a missing test file
+button: More for Names the file to fix
+button: More for Says why the tests fail
+button: Names the file to fix Failed
+button: New test
+button: Run all 6
+button: Run this team
+button: Says why the tests fail Passed
+button: See the last run
+button: Set this node’s model
+button: Team file
+button: Version history
+button: Zoom In
+button: Zoom Out
+footer: 
+header: 
+heading: Reviewer
+main: 
+tab: Docs
+tab: Memory 3
+tab: Runs
+tab: Setup
+tab: Skills & tools 4
+tab: Tests 6
+toolbar: Team
+
+## kept-ma-drawer-docs-desktop
+aside: Reviewer settings
+button: Account
+button: Add to canvas
+button: Back to teams
+button: Change
+button: Close panel
+button: Documents 0
+button: Fit View
+button: Focus mode
+button: More actions
+button: Run this team
+button: Save
+button: See all documents in this run
+button: See the last run
+button: Set in Setup
+button: Set this node’s model
+button: Team file
+button: Version history
+button: Zoom In
+button: Zoom Out
+footer: 
+header: 
+heading: Reviewer
+main: 
+tab: Docs
+tab: Memory 3
+tab: Runs
+tab: Setup
+tab: Skills & tools 4
+tab: Tests 6
+toolbar: Team
+
+## kept-ma-drawer-docs-web
+aside: Reviewer settings
+button: Account
+button: Add to canvas
+button: Back to teams
+button: Change
+button: Close panel
+button: Documents 0
+button: Fit View
+button: Focus mode
+button: More actions
+button: Run this team
+button: Save
+button: See all documents in this run
+button: See the last run
+button: Set in Setup
+button: Set this node’s model
+button: Team file
+button: Version history
+button: Zoom In
+button: Zoom Out
+footer: 
+header: 
+heading: Reviewer
+main: 
+tab: Docs
+tab: Memory 3
+tab: Runs
+tab: Setup
+tab: Skills & tools 4
+tab: Tests 6
+toolbar: Team
+
+# After MA (re-shot on ma-parity 089c4fb):
+#   kept-ma-drawer-setup-desktop: before 47, after 47 — none missing
+#   kept-ma-drawer-setup-web: before 47, after 47 — none missing
+#   kept-ma-drawer-skills-desktop: before 41, after 41 — none missing
+#   kept-ma-drawer-skills-web: before 41, after 41 — none missing
+#   kept-ma-drawer-memory-desktop: before 37, after 37 — none missing
+#   kept-ma-drawer-memory-web: before 37, after 37 — none missing
+#   kept-ma-drawer-runs-desktop: before 34, after 34 — none missing
+#   kept-ma-drawer-runs-web: before 34, after 34 — none missing
+#   kept-ma-drawer-tests-desktop: before 42, after 42 — none missing
+#   kept-ma-drawer-tests-web: before 42, after 42 — none missing
+#   kept-ma-drawer-docs-desktop: before 31, after 31 — none missing
+#   kept-ma-drawer-docs-web: before 31, after 31 — none missing
+#   R18 is layout only: the six tabs keep their names, counts and order (Setup, Skills & tools 4, Memory 3, Runs, Tests 6, Docs);
+#   before MA the row scrolled sideways, after it all six sit inside the 384px drawer (ma.txt).
+#   Also re-shot on ma-parity: kept-m7-teamcanvas-* (kept-m7-teamcanvas.txt, 46 lines each) and kept-teamcanvas-* (kept-teamcanvas.txt,
+#   11 each) — none missing; the run view's drawer keeps its five tabs (kept-runview.txt kept-runview-drawer-web 27/27 present;
+#   kept-m7-runview-runs.txt 46/46 present, web and Desktop).
