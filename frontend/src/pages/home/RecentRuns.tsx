@@ -222,7 +222,7 @@ export function RecentRuns() {
                       <>
                         <span>{r.team?.name ?? "Run"}</span>
                         <VersionTag number={r.team_version_number} />
-                        <span>· {formatRelativeTime(r.created_at)}</span>
+                        <span className="hm-recent__age">· {formatRelativeTime(r.created_at)}</span>
                       </>
                     ) : (
                       `${r.team?.name ?? "Run"} · ${formatRelativeTime(r.created_at)}`

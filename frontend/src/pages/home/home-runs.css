@@ -890,6 +890,10 @@
   margin: 0 4px;
   vertical-align: 1px;
 }
+/* "· 26m ago" stays together when a long name and the tag wrap (only rows with a version). */
+.hm-recent__age {
+  white-space: nowrap;
+}
 .hm-recent__status {
   font-size: 11.5px;
   color: var(--ink-500);
