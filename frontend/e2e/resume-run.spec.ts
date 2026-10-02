@@ -20,6 +20,7 @@ const KEY_ENV: Record<string, string> = {
   nvidia_nim: "NVIDIA_BUILD_API_KEY",
 };
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g;
+const uuids = (url: string): string[] => url.match(UUID) ?? [];
 
 async function runStatus(api: APIRequestContext, runId: string): Promise<string> {
   const res = await api.get(`/api/runs/${runId}`);
@@ -89,8 +90,8 @@ test("resume-run: a failed run picks up from Engineer, round 1 and ships", async
 
   // The resumed run opens: "Resumed from #n", the carried steps, the PM Carried over.
   await expect(page.getByText(/^Resumed from #\d+$/)).toBeVisible({ timeout: 60_000 });
-  await expect.poll(() => (page.url().match(UUID) ?? []).includes(runId) === false).toBeTruthy();
-  const ids = page.url().match(UUID) ?? [];
+  await expect.poll(() => uuids(page.url()).includes(runId)).toBe(false);
+  const ids = uuids(page.url());
   const newRunId = ids[ids.length - 1];
   expect(newRunId && newRunId !== runId, "the view moved to the new run").toBeTruthy();
   console.log(`[resume-run-e2e] resumed run_id = ${newRunId}`);
