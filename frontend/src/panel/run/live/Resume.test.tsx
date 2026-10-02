@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { ResumeInfo, ResumePoint } from "../../../lib/api/resume";
 import { ApiDetailError } from "../../../lib/api/runs";
+import { pushOverlay, removeOverlay } from "../../../lib/overlayStack";
 import { ResumeConfirm, ResumedFrom, ResumePick } from "./Resume";
 
 const T = (h: number, m: number, s = 0) => new Date(2026, 9, 2, h, m, s).toISOString();
@@ -127,7 +128,6 @@ describe("ResumePick (Prob-Pick)", () => {
     expect(screen.getByRole("complementary", { name: "Resume this run" })).toBeInTheDocument();
     expect(screen.getByText("Uses the same team setup as this run")).toBeInTheDocument();
   });
-
   it("lists steps carried from an earlier run (no step of this run) once each, never resumable", () => {
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
     const carried = (node_id: string, title: string) =>
@@ -159,6 +159,19 @@ describe("ResumePick (Prob-Pick)", () => {
     // No React key warning for the carried steps (they have no invocation id).
     expect(err.mock.calls.flat().join(" ")).not.toMatch(/key/);
     err.mockRestore();
+  });
+
+  it("takes focus on its Close, and Escape closes it unless a dialog is on top", () => {
+    const onClose = vi.fn();
+    render(<ResumePick info={info()} onPick={vi.fn()} onClose={onClose} />);
+    const panel = screen.getByRole("complementary", { name: "Resume run #12" });
+    expect(within(panel).getByRole("button", { name: "Close" })).toHaveFocus();
+    const dialog = pushOverlay();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(onClose).not.toHaveBeenCalled();
+    removeOverlay(dialog);
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -12,13 +12,14 @@ import {
   ShieldCheck,
   X,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { Button, IconButton } from "../../../design-system/components";
 import type { ResumedFrom as ResumedFromRun } from "../../../lib/api/activity";
 import type { ResumeInfo, ResumePoint } from "../../../lib/api/resume";
 import { routeToHash } from "../../../lib/nav";
+import { isTopOverlay, pushOverlay, removeOverlay } from "../../../lib/overlayStack";
 import { useModalDialog } from "../../../lib/useModalDialog";
 import { money } from "../../../pages/home/homeFormat";
 import { aboutMinutes, clock } from "./liveFormat";
@@ -69,6 +70,28 @@ export function ResumePick({
   onClose: () => void;
 }) {
   const title = info.number != null ? `Resume run #${info.number}` : "Resume this run";
+  const close = useRef<HTMLButtonElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  // Opening it takes focus (on Close), closing gives it back; Escape closes it unless a dialog on
+  // top of it (its confirm) owns the keyboard.
+  useEffect(() => {
+    const before = document.activeElement as HTMLElement | null;
+    close.current?.focus();
+    const token = pushOverlay();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isTopOverlay(token)) {
+        e.preventDefault();
+        onCloseRef.current();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      removeOverlay(token);
+      if (before?.isConnected) before.focus();
+    };
+  }, []);
   return (
     <aside className="lv-pick" aria-label={title}>
       <header className="lv-pick__head">
@@ -81,7 +104,7 @@ export function ResumePick({
             Pick where to start again. Everything before that step is kept.
           </div>
         </div>
-        <IconButton size="sm" aria-label="Close" title="Close" onClick={onClose}>
+        <IconButton ref={close} size="sm" aria-label="Close" title="Close" onClick={onClose}>
           <X size={16} strokeWidth={1.6} aria-hidden />
         </IconButton>
       </header>
