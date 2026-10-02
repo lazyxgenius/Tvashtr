@@ -7,7 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { History, Layers, Lock, Maximize2 } from "lucide-react";
+import { History, Info, Layers, Lock, Maximize2, UserRound } from "lucide-react";
 
 import { Button, IconButton } from "../../design-system/components";
 import { ChangedDot } from "../ChangedDot";
@@ -35,6 +35,7 @@ export function InstructionsCard({
   templates,
   chooser,
   history,
+  basedOn,
   focusEditor = false,
   readOnly = false,
 }: {
@@ -51,6 +52,8 @@ export function InstructionsCard({
   chooser?: ReactNode;
   /** M5: the History toggle (Ver-AgentHistory), tinted while the instruction history shows. */
   history?: { open: boolean; onToggle: () => void };
+  /** M6 (Agents-Use): made from a saved agent — "Based on <b>Strict reviewer v2</b>" + Detach. */
+  basedOn?: { label: string; onDetach?: () => void };
   /** Put the caret in the editor when it takes the chooser's place ("Start from scratch"). */
   focusEditor?: boolean;
   readOnly?: boolean;
@@ -126,6 +129,25 @@ export function InstructionsCard({
           )}
         </div>
       </div>
+      {basedOn && (
+        <>
+          <div className="nd-based">
+            <UserRound size={13} strokeWidth={1.6} aria-hidden />
+            <span>
+              Based on <b>{basedOn.label}</b> · from My agents
+            </span>
+            {basedOn.onDetach && (
+              <button type="button" className="nd-based__detach" onClick={basedOn.onDetach}>
+                Detach
+              </button>
+            )}
+          </div>
+          <div className="nd-runtime nd-runtime--note">
+            <Info size={12} strokeWidth={1.6} aria-hidden />
+            Its memory and routes stay with this team
+          </div>
+        </>
+      )}
       <div className="nd-runtime">
         <Lock size={12} strokeWidth={1.8} aria-hidden />
         {banner}

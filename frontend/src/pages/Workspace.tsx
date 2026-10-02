@@ -27,6 +27,7 @@ import { Shell } from "./shell/Shell";
 import { SkillEditorPage } from "./skills/SkillEditorPage";
 import { SkillsPage } from "./skills/SkillsPage";
 import { SecretsPage } from "./secrets/SecretsPage";
+import { MyAgentsPage } from "./agents/MyAgentsPage";
 import { ShortcutsDialog } from "./shell/ShortcutsDialog";
 import { ToolDetailPage } from "./tools/ToolDetailPage";
 import { ToolsPage } from "./tools/ToolsPage";
@@ -228,6 +229,8 @@ function WorkspacePage({ route, user }: { route: Route; user: AuthUser }) {
       return <MemoryPage tab={route.tab} pick={route.pick === true} />;
     case "secrets":
       return <SecretsPage />;
+    case "agents":
+      return <MyAgentsPage />;
     default:
       return null;
   }

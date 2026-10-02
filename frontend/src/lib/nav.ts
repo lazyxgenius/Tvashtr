@@ -15,6 +15,7 @@
  *   (a bare #/toolkit is Connectors, Toolkit's first page)
  *   #/toolkit/tools · #/toolkit/tools/browse · #/toolkit/tools/<id>
  *   #/toolkit/skills · #/toolkit/skills/presets · #/toolkit/skills/new · #/toolkit/skills/<id>
+ *   #/toolkit/agents (M6: My agents)
  *   #/toolkit/memory (the page picks Inbox or Active) · #/toolkit/memory/inbox|active|archive
  *   #/toolkit/secrets
  *   #/teams/<teamId>?node=<id>&tab=<tab>&focus=1
@@ -75,6 +76,8 @@ export type Route =
   | { page: "skills"; view: "mine" | "presets" }
   // `skillId` is "new" for the new-skill editor.
   | { page: "skill"; skillId: string }
+  // M6: Toolkit › My agents.
+  | { page: "agents" }
   // `pick`: the bare `#/toolkit/memory` (the nav's Memory link). The page opens the Inbox when
   // memories wait there, otherwise Active (MEM-4); an address that names a tab keeps it.
   | { page: "memory"; tab: MemoryTab; pick?: true }
@@ -202,6 +205,7 @@ export function parseRoute(hash: string): Route {
         };
       }
       if (b === "secrets") return { page: "secrets" };
+      if (b === "agents") return { page: "agents" };
       // Connectors is Toolkit's first page: the bare address and an unknown child land there.
       return { page: "connectors", view: "connected" };
     case "setup":
@@ -293,6 +297,8 @@ export function routeToHash(route: Route): string {
       return route.pick ? "#/toolkit/memory" : `#/toolkit/memory/${route.tab}`;
     case "secrets":
       return "#/toolkit/secrets";
+    case "agents":
+      return "#/toolkit/agents";
     case "setup":
       return `#/setup/${route.step}`;
     case "welcome":

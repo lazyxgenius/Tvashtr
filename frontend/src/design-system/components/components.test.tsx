@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -121,6 +121,32 @@ describe("Menu", () => {
     await userEvent.click(screen.getByRole("menuitem", { name: "Remove from Toolkit" }));
     expect(onRemove).toHaveBeenCalledOnce();
     expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("shows section headings (not items) and an item's end meta (M6 Agents-Menu)", async () => {
+    render(
+      <Menu
+        label="Templates"
+        items={[
+          { heading: "Built-in" },
+          { key: "rev", label: "Reviewer", end: "in use", onSelect: vi.fn() },
+          "separator",
+          { heading: "My agents" },
+          { key: "sr", label: "Strict reviewer", end: "v2 · 2 teams", onSelect: vi.fn() },
+        ]}
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Templates" }));
+    const menu = screen.getByRole("menu");
+    expect(screen.getAllByRole("menuitem").map((m) => m.textContent)).toEqual([
+      "Reviewerin use",
+      "Strict reviewerv2 · 2 teams",
+    ]);
+    expect(within(menu).getByText("Built-in")).toHaveClass("ds-menu__heading");
+    expect(within(menu).getByText("My agents")).toHaveClass("ds-menu__heading");
+    expect(within(menu).getByText("v2 · 2 teams")).toHaveClass("ds-menu__end");
+    // The first item (not the heading) takes the focus.
+    expect(screen.getByRole("menuitem", { name: /^Reviewer/ })).toHaveFocus();
   });
 
   it("closes on Escape", async () => {

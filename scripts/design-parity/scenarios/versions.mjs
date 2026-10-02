@@ -18,7 +18,7 @@ import { boardRoutes, RUN_ID } from "./runs-fixtures.mjs";
 import { pair as runPair } from "./runs-live.mjs";
 
 const SEEN = 'sessionStorage.setItem("tvashtr.desktopDisclosureSeen", "1");';
-const canvasReady = async (page) => {
+export const canvasReady = async (page) => {
   await page.locator(".react-flow__node").first().waitFor();
   await page.waitForTimeout(300);
 };
@@ -32,7 +32,7 @@ const aboveTitleStrip = (page) =>
   });
 
 /** A board as a website render and a Desktop render (runs-live.mjs's `pair`). */
-function pair(
+export function pair(
   board,
   {
     desktopBoard = true,
@@ -70,7 +70,7 @@ function pair(
 
 // ---- The boards' canvas: Product manager → Spec approval → Engineer ⇄ Reviewer (3 rounds) → Ship ----
 // The Reviewer's instructions are the boards' (Ver-AgentHistory's drawer, Ver-AgentCompare's diff).
-const BOARD_PROMPT = [
+export const BOARD_PROMPT = [
   "You are the Reviewer on a software team. The engineer’s build is in your current working directory. Review it — do NOT improve it.",
   "",
   "Do these steps in order:",
@@ -361,7 +361,7 @@ const HISTORY = {
 };
 
 /** The canvas page's API for the team, with its versions. */
-function teamRoutes(desktop, changes = 0) {
+export function teamRoutes(desktop, changes = 0) {
   const base = desktop
     ? panelRoutes({ keys: [], subs: ["claude", "grok"] })
     : panelRoutes();

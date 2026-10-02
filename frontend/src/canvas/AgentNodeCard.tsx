@@ -24,6 +24,7 @@ import { AgentDomainsLine, QueryDomainCardBody } from "../pages/domains/QueryDom
 import { AuthoringContext } from "./authoringContext";
 import { docLabel } from "../panel/docs/agentDocs";
 import type { GateConfig, NodeConfig, TerminalConfig } from "../lib/api";
+import { basedOnOf } from "../lib/api/myAgents";
 import { nodeDescription, nodeTitle } from "../lib/nodeNames";
 import type { GateState, NodeStatus, TerminalState } from "../lib/status";
 
@@ -274,6 +275,8 @@ function AgentCard({ nodeId, data: d }: { nodeId: string; data: AgentNodeData })
   const isReadOnly = !editsAllowedOf(d);
   // M4: what an import left this agent to fix (File-Imported).
   const fixes = useContext(AuthoringContext).fixChips?.get(nodeId);
+  // M6 (Agents-Use): made from a saved agent.
+  const basedOn = basedOnOf(d.config);
 
   return (
     <div
@@ -296,6 +299,11 @@ function AgentCard({ nodeId, data: d }: { nodeId: string; data: AgentNodeData })
       </div>
       <AgentDomainsLine toolConfig={d.toolConfig} />
       <div className="rf-node__meta">
+        {basedOn && (
+          <span className="rf-node__based">
+            {basedOn.name} v{basedOn.version}
+          </span>
+        )}
         <span className={`rf-node__cap${isReadOnly ? " rf-node__cap--thinker" : ""}`}>
           {capabilityLabel(d)}
         </span>

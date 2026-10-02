@@ -50,6 +50,7 @@ describe("parseRoute / routeToHash", () => {
     // The bare address (the nav's Memory link): the page picks Inbox or Active (MEM-4).
     ["#/toolkit/memory", { page: "memory", tab: "inbox", pick: true }],
     ["#/toolkit/secrets", { page: "secrets" }],
+    ["#/toolkit/agents", { page: "agents" }],
     ["#/teams/t1", { page: "team", teamId: "t1" }],
     ["#/teams/t1/runs/r1", { page: "team", teamId: "t1", runId: "r1" }],
     // M3: Home's Resume opens the run view with "Resume run #n" open.

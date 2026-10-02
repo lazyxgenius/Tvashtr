@@ -19,7 +19,7 @@ import { RoutingStatus } from "./RoutingStatus";
 import { SettingSection } from "./SettingRow";
 import { runtimeBanner } from "./setupCopy";
 import { TemplateChooser } from "./TemplateChooser";
-import { TemplatesMenu } from "./TemplatesMenu";
+import { type MyAgentsMenu, TemplatesMenu } from "./TemplatesMenu";
 import { useNodeTemplates } from "./useNodeTemplates";
 
 /**
@@ -52,6 +52,8 @@ export function SetupTab({
   onPreview,
   sub,
   history,
+  myAgents,
+  basedOn,
   readOnly = false,
 }: {
   layout?: "drawer" | "focus";
@@ -82,6 +84,10 @@ export function SetupTab({
   /** M5: the drawer's Instructions › History (authoring): the team, its latest version, and
    *  "Use this text". */
   history?: { teamId: string; version?: number; onUse: (text: string, number: number) => void };
+  /** M6: the Templates menu's "My agents" (Agents-Menu). */
+  myAgents?: MyAgentsMenu;
+  /** M6: the Instructions card's based-on banner (Agents-Use). */
+  basedOn?: { label: string; onDetach?: () => void };
   readOnly?: boolean;
 }) {
   const { draft, set, update } = api;
@@ -178,7 +184,12 @@ export function SetupTab({
     controls
   );
   const templatesMenu = (
-    <TemplatesMenu templates={templates} onPick={onPickTemplate} onCompare={onCompareTemplates} />
+    <TemplatesMenu
+      templates={templates}
+      onPick={onPickTemplate}
+      onCompare={onCompareTemplates}
+      myAgents={myAgents}
+    />
   );
 
   if (layout === "focus") {
@@ -247,6 +258,7 @@ export function SetupTab({
           ) : undefined
         }
         banner={banner}
+        basedOn={basedOn}
         routing={routingStatus}
         onOpenFullEditor={onOpenFullEditor}
         history={

@@ -33,6 +33,8 @@ export interface NavBadges {
   connectorsToFix?: number;
   tools?: number;
   skills?: number;
+  /** Toolkit › My agents: the saved agents (M6). */
+  myAgents?: number;
   /** Toolkit › Memory: memories waiting in the Inbox ("N new"). */
   memoryInbox?: number;
   /** Toolkit › Secrets: referenced secrets with no value ("N missing"). */
