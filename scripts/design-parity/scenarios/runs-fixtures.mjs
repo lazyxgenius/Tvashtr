@@ -803,6 +803,75 @@ function boardOf(board) {
         safe: "your approved spec (v2) and the Engineer’s round 1 changes are saved",
       },
     },
+    // MA (R19): run #12 as Prob-Failed draws it, but you stopped it in round 2 (status
+    // "cancelled"): a neutral pinned callout whose one button is Resume from that step.
+    "Prob-Stopped": {
+      now: "11:00:05",
+      status: "cancelled",
+      elapsed: 1083,
+      cost: 0.84,
+      liveState: "stopped",
+      agents: {
+        "n-pm": done("Wrote the spec (v2)", "10:44:05"),
+        "n-prd": GATE_DONE,
+        "n-eng": {
+          state: "stopped",
+          activity: "You stopped it in round 2",
+          at: "10:59:05",
+          iteration: 2,
+        },
+        "n-rev": { ...REV_R1, at: "10:51:05", state: "waiting" },
+      },
+      lines: withEarlier(
+        27,
+        [
+          L(
+            "10:56:31",
+            "Engineer",
+            "edited",
+            "Edited core/indicators.py",
+            "neutral",
+            { file: "core/indicators.py", added: 48, removed: 3 },
+            2,
+          ),
+          L(
+            "10:56:42",
+            "Engineer",
+            "tests",
+            "Ran pytest tests/test_indicators.py · 3 passed",
+            "neutral",
+            { passed: 3, failed: 0 },
+            2,
+          ),
+          L("10:57:03", "Engineer", "message", "Asked the model for the next step", "neutral", {}, 2),
+          L("10:57:05", "Engineer", "stopped", "Stopped by you", "neutral", {}, 2),
+          L(
+            "10:59:05",
+            "Run",
+            "done",
+            "Stopped. Nothing shipped. Everything finished before round 2 is saved.",
+            "neutral",
+            { elapsed_s: 1083, cost_usd: 0.84 },
+          ),
+        ],
+        [...round2, s.asked1, s.retry1, s.retry2, s.backup, s.edit3, s.asked2],
+      ),
+      total: 27,
+      // The API's shape for a stopped run (R19): body "Nothing was shipped."; the app adds
+      // "Safe: …" and "Next: resume from …" as for a failed run.
+      pinned: {
+        kind: "stopped",
+        node_id: "n-eng",
+        label: "Engineer",
+        title: "You stopped this run at Engineer, round 2",
+        body: "Nothing was shipped.",
+        task_id: null,
+        backup_model: null,
+        gate_kind: null,
+        resume: { invocation_id: 105, label: "Engineer, round 2" },
+        safe: "your approved spec (v2) and the Engineer’s round 1 changes are saved",
+      },
+    },
     "Live-Done": {
       now: "11:04:00",
       status: "completed",
@@ -947,6 +1016,7 @@ function boardGraph(name) {
     "Live-Quiet",
     "Prob-Stalled",
     "Prob-Failed",
+    "Prob-Stopped",
   ].includes(board);
   const doneRun = board === "Live-Done";
   const needs = board === "Live-NeedsYou";
@@ -1021,7 +1091,13 @@ export function boardRoutes(board, { asked = true } = {}) {
     ...runRow(b.status),
     status: b.status,
     status_group:
-      b.status === "running" ? "running" : b.status === "awaiting_human" ? "needs_you" : b.status,
+      b.status === "running"
+        ? "running"
+        : b.status === "awaiting_human"
+          ? "needs_you"
+          : b.status === "cancelled"
+            ? "stopped"
+            : b.status,
     created_at: before(b.now, b.elapsed),
     updated_at: clockAt(b.now),
     cost_total_usd: b.cost,
@@ -1030,11 +1106,12 @@ export function boardRoutes(board, { asked = true } = {}) {
     pr_url: b.summary?.pr_url ?? null,
     ship_branch: b.summary ? "tvashtr/run-12" : null,
   };
-  const terminal = ["completed", "failed"].includes(b.status);
+  const terminal = ["completed", "failed", "cancelled"].includes(b.status);
+  const WORKFLOW = { completed: "SUCCESS", failed: "ERROR", cancelled: "CANCELLED" };
   return runRoutes("working", {
     [`GET /api/runs/${RUN_ID}`]: {
       run_id: RUN_ID,
-      workflow_status: terminal ? (b.status === "completed" ? "SUCCESS" : "ERROR") : "PENDING",
+      workflow_status: terminal ? WORKFLOW[b.status] : "PENDING",
       run: row,
       costs: [],
     },

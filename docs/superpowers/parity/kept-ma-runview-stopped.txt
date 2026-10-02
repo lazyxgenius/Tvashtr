@@ -1,0 +1,72 @@
+# Kept-elements inventory — ma-runview-stopped (the run view of run #12, stopped at Engineer, round 2 (status cancelled), Activity open), captured on main 849b32d (before MA) with scripts/design-parity/shoot-app.mjs INVENTORY=1
+# Scenarios: scripts/design-parity/scenarios/runs-resume.mjs (kept-ma-runview-stopped; each -web / -desktop), the same scenario shot on main 849b32d
+#   (Vite :5302) and on ma-parity = fix/ma-audit 089c4fb (Vite :5301). After the change every line must still be present (superset).
+
+## kept-ma-runview-stopped-desktop
+button: Account
+button: All
+button: Approval gate
+button: Approval gate Done You approved · 10:43 16m ago
+button: Back to teams
+button: Documents 0
+button: Edit this team
+button: Engineer
+button: Engineer Stopped You stopped it in round 2 1m ago
+button: Fit View
+button: Hide activity
+button: Jump to live
+button: Notifications
+button: Product manager
+button: Product manager Done Wrote the spec (v2) 16m ago
+button: Reviewer
+button: Reviewer Not reached
+button: Ship Not yet
+button: Show 21 earlier steps
+button: View change
+button: Zoom In
+button: Zoom Out
+button: anthropic/claude-sonnet-4
+button: xai/grok-4.7
+header: 
+main: 
+section: Activity
+section: Now
+toolbar: Team
+
+## kept-ma-runview-stopped-web
+button: Account
+button: All
+button: Approval gate
+button: Approval gate Done You approved · 10:43 16m ago
+button: Back to teams
+button: Documents 0
+button: Edit this team
+button: Engineer
+button: Engineer Stopped You stopped it in round 2 1m ago
+button: Fit View
+button: Hide activity
+button: Jump to live
+button: Notifications
+button: Product manager
+button: Product manager Done Wrote the spec (v2) 16m ago
+button: Reviewer
+button: Reviewer Not reached
+button: Ship Not yet
+button: Show 21 earlier steps
+button: View change
+button: Zoom In
+button: Zoom Out
+button: anthropic/claude-sonnet-4
+button: xai/grok-4.7
+header: 
+main: 
+section: Activity
+section: Now
+toolbar: Team
+
+# After MA (re-shot on ma-parity 089c4fb):
+#   kept-ma-runview-stopped-desktop: before 29, after 30 — none missing; added button: Resume from Engineer, round 2
+#   kept-ma-runview-stopped-web: before 29, after 30 — none missing; added button: Resume from Engineer, round 2
+#   Both sides get the same API reply (runs-fixtures.mjs Prob-Stopped, with R19's pinned kind "stopped"): main shows it as an unknown
+#   kind (a red box, title and body, no button — before MA the server sent no pinned for a cancelled run, which shows no box:
+#   the same inventory, the callout has no landmark, heading or control); MA adds its one button.

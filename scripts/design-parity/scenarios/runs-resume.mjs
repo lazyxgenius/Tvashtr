@@ -2,8 +2,19 @@
 // Live-Home, Prob-HomeFailed). Each board renders as a website and a Desktop render (runs-live.mjs's
 // `pair`); every state is reached through the UI: the callouts' Resume, the pick panel's Resume
 // from here, Home's `?resume=1`.
-import { homeRoutes, scrollMain } from "./home-fixtures.mjs";
-import { boardRoutes, resumedPath, resumedRoutes, RESUMED_NOW, runPath } from "./runs-fixtures.mjs";
+// MA (R19) — Prob-Stopped (run #12 stopped at Engineer, round 2: the neutral callout and its Resume)
+// and Prob-StopDialog (the main canvas's HmF-Stop-2: Home › Running now › Docs team's Stop, the
+// dialog's new last line). `kept-ma-*` capture the kept-elements inventories of those two screens.
+import { homeRoutes, morning, scrollMain, tap } from "./home-fixtures.mjs";
+import {
+  boardNow,
+  boardRoutes,
+  frozenAt,
+  resumedPath,
+  resumedRoutes,
+  RESUMED_NOW,
+  runPath,
+} from "./runs-fixtures.mjs";
 import { activityReady, at, HOME_INBOX, HOME_NOW, HOME_RUNS, MORNING, pair } from "./runs-live.mjs";
 
 /** The dialog the steps opened is up. */
@@ -46,6 +57,34 @@ const home = (items) =>
     "GET /api/inbox": { count: items.length, items },
     "GET /api/runs": { runs: HOME_RUNS, next_cursor: null },
   });
+// MA: Prob-StopDialog is HmF-Stop-2 (home-runs.mjs's stop-2): the second Running now card's Stop.
+const STOP_DIALOG = {
+  desktopBoard: false,
+  path: "/#/home",
+  routes: homeRoutes(),
+  init: morning,
+  now: HOME_NOW,
+  steps: async (page) => {
+    await scrollMain(330)(page);
+    await tap(page, page.getByRole("button", { name: "Stop" }).nth(1));
+    await page.getByRole("alertdialog", { name: "Stop this run?" }).waitFor();
+  },
+};
+const SEEN = 'sessionStorage.setItem("tvashtr.desktopDisclosureSeen", "1");';
+/** A screen's kept-elements inventory, website and Desktop (run with INVENTORY=1). */
+const kept = (name, { path, routes, init, steps }) => [
+  { name: `${name}-web`, path, routes, init, steps, settle: 900 },
+  {
+    name: `${name}-desktop`,
+    path,
+    routes,
+    desktop: true,
+    init: `${SEEN}${init}`,
+    steps,
+    settle: 900,
+  },
+];
+
 const HOME = {
   desktopBoard: false,
   path: "/#/home",
@@ -91,4 +130,14 @@ export default [
   }),
   ...pair("Live-Home", { ...HOME, routes: home(HOME_INBOX) }),
   ...pair("Prob-HomeFailed", { ...HOME, routes: home([...HOME_INBOX, FAILED_ITEM]) }),
+  // MA: the stopped run's view, and Home with the Stop dialog (HmF-Stop-2's moment).
+  ...pair("Prob-Stopped", { routes: boardRoutes("Prob-Stopped"), steps: activityReady }),
+  ...pair("Prob-StopDialog", STOP_DIALOG),
+  ...kept("kept-ma-runview-stopped", {
+    path: runPath(),
+    routes: boardRoutes("Prob-Stopped"),
+    init: frozenAt(boardNow("Prob-Stopped")),
+    steps: activityReady,
+  }),
+  ...kept("kept-ma-home-stopdialog", STOP_DIALOG),
 ];

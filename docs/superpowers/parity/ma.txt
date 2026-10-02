@@ -1,0 +1,121 @@
+# MA — Audit fixes (R18 the six-tab drawer row, R19 resume a stopped run): parity record, branch ma-parity (= fix/ma-audit
+#   089c4fb), 2026-10-02.
+# Design: the Claude Design "Tvashtr Runs" canvas export (page "Problems and resume"): Prob-Stopped (MA · A stopped run: resume
+#   from the step it stopped at — built from Prob-Failed) and Prob-StopDialog (MA · Stop this run? You can resume it later — the
+#   main canvas's HmF-Stop-2 with the dialog's new last line; the two boards differ in that one sentence); the "Quality" canvas
+#   export (page "Agent tests · 7"): the Test-* boards that draw the team drawer's six-tab row (`tabsT`) — Test-Empty, -List,
+#   -Running, -Results, -Worse, -Stopped, -Queued, -RowMenu, -NoAI. Shot with shoot-design.mjs at 1440x900, FONT_CACHE_DIR
+#   …/scratchpad/font-cache: 11 design shots, 11 fonts-ok (plus Prob-Failed for the callout frame check below).
+# App: Vite :5301 on the ma-parity worktree (its own cacheDir), no backend. scripts/design-parity/scenarios/runs-resume.mjs gains
+#   Prob-Stopped and Prob-StopDialog (runs-live.mjs's `pair`, 4 app shots) and the kept-ma-* inventories; runs-fixtures.mjs gains
+#   the Prob-Stopped board: run #12 as Prob-Failed draws it a minute after it ended, status "cancelled" (status_group "stopped",
+#   workflow CANCELLED, the Engineer's round 2 left running → "stopped"), the board's last five Activity lines, and the API's R19
+#   pinned {kind "stopped", node_id n-eng, label Engineer, title "You stopped this run at Engineer, round 2", body "Nothing was
+#   shipped.", task_id null, backup_model null, gate_kind null, resume {105, "Engineer, round 2"}, safe "your approved spec (v2)
+#   and the Engineer’s round 1 changes are saved"}. Prob-StopDialog is home-runs.mjs's stop-2 moment (homeRoutes(), the morning
+#   clock, Home scrolled 330px, Running now's second card's Stop — Docs team). agent-tests.mjs (M7's) shoots the Test-* boards
+#   unchanged (18 app shots) and gains the kept-ma-drawer-* inventories.
+# States are reached through the UI: the run's address with the Activity open (Prob-Stopped); Home › Running now › Docs team › Stop
+#   (Prob-StopDialog); the drawer's ?tab=tests and each board's watched test run (M7's steps).
+# Which render is the comparison: Prob-Stopped and the Test-* boards are drawn in Desktop (the 30px title strip): the Desktop render
+#   is the comparison and the web render is framed 30px down; Prob-StopDialog is a website board (as HmF-Stop-2): the web render is
+#   the comparison and the Desktop render is framed 30px up (scenarios/panel-shell.mjs's convention, as m2.txt / m3.txt).
+# GATE: MET — every new MA element is at 0 size/type drift.
+#   R19 Prob-Stopped (web and Desktop measure the same): the stopped callout's box is drawn neutral exactly — 1400 wide, radius
+#   12px, 1px line-400 border rgb(210,206,190), surface-card fill rgb(253,252,250); the glyph is the board's square (11x11, ink-600
+#   rgb(87,84,76), stroke-width 1.6); the title "You stopped this run at Engineer, round 2" 14/600 ink-900 (22.4px line); the text
+#   "Nothing was shipped. Safe: … Next: resume from Engineer, round 2. Tvashtr skips the work that is done, so you don’t pay for it
+#   again." 13/400 ink-700 (20.15px line), word for word, with "Safe:" / "Next:" bold; one primary button "Resume from Engineer,
+#   round 2" 235x32, 13/500, coral rgb(217,119,87), its icon flush (as drawn); no other button.
+#   R19 Prob-StopDialog: the dialog's sentence "… You can resume it later from the step it stopped at." 13.5/400, ink-600, 20.925px
+#   line, 500x63 (three lines, wrapping as drawn), in the 546x200 dialog; title, Keep running and Stop run match (0 drift).
+#   R18 the six tabs, on every Test-* render (web and Desktop), box for box against the board (x,y w×h; 13.5/500 each):
+#     with a Tests count (Test-List, -Running, -Results, -Worse, -Stopped, -Queued, -RowMenu):
+#       Setup (1075,295) 38×28 · Skills & tools4 (1129,279) 50×60, its label 34×48 on three lines · Memory3 (1194,295) 69×28 ·
+#       Runs (1279,295) 32×28 · Tests6 (1328,295) 50×28 · Docs (1394,295) 33×28 — each equal to the board's to the pixel;
+#     with none (Test-Empty, -NoAI: "Tests" uncounted): Setup (1075,287) 38×28 · Skills & tools4 (1129,279) 60×44, its label 44×32
+#       on two lines · Memory3 (1205,287) 69×28 · Runs (1290,287) 32×28 · Tests (1338,287) 35×28 · Docs (1389,287) 33×28 — equal.
+#     The row is the drawer's 383px inner width (1057–1440, the board's too); the six boxes span 1075–1427, none clipped
+#     (scrollWidth = clientWidth), all inside the drawer. M7's recorded deviation (m7.txt W1's [ctl] 'Skills & tools4' 44/60→28
+#     high, 50/60→97 wide: the row scrolled sideways with every label on one line) is gone: no tab drifts on any board, and
+#     the Test-* boards' "only moved" drop by 19–24 (m7.txt's lines: the content under the row now sits where drawn).
+#   Every drift item below is an existing element or chrome the app governs (brief 2.2/2.3), each covered by a waiver; each
+#   render line ends "— covered: <id>×<n>", one per drift item (0 uncovered).
+# built (fix/ma-audit, not in this sweep): 4a1ea56 R19 (ActivityPanel's stopped callout, live.css .lv-pin__box--neutral,
+#   StopRunDialog's last line) and the R18 commits merged at 580fd88 (NodeTabs.tsx, panel.css).
+# waivers W1–W4: as m2.txt (Prob-Stopped: W1 'Jump to live' 115→123 wide, the design-system Button's 8px icon gap; W2 'Stopped'
+#   12→11.5px, the board's run-bar badge pairs with the Now bar's state word — the run bar is the app's toolbar + RunBanner, which
+#   reads "Cancelled"; W3 'Round 2' 10→10.5px 400→500, the card's existing "round 2" label).
+# waiver W7: as m5.txt ('Read-only' 10→12px 400→500 — the board's Reviewer card chip pairs with the drawer header's existing
+#   Read-only badge; the app's card reads "Edits off"). Every Test-* render (m7.txt counted it under its own W1).
+# waiver W10: as m5.txt ([ctl] 'Fix' 12.5→13px 600→500 20→32 high, Prob-StopDialog Desktop: the web board's composer link
+#   "Website needs 2 keys · Fix" pairs with the Desktop Home's own Fix button; the comparison render, web, has no drift).
+# waiver W12 (= m7.txt's W3, Test-NoAI) 'No tests yet' 14.5/600 Inter → the app's 20px Newsreader (the board draws a compact empty
+#   state behind the dialog that contradicts Test-Empty, which governs); 'Changes requested' / 'Approved' 13→10px (the board draws
+#   the check values as text, the app as inputs per Test-AddCheck, so the words pair with the canvas cards' chips).
+# waiver: app governs (brief 2.2/2.3) — the callout's frame (not a measured drift item; recorded so nothing is silently waived):
+#   the stopped box is the existing pinned callout (.lv-pin__box) with a neutral tone, and keeps that callout's frame: padding
+#   12px 14px where the boards draw 14px 16px, and a 14px glyph frame where the boards draw 18px — so the box is 113 high (board
+#   117) and the title, text and button start at x 61 (board 67). The app's Prob-Failed callout measures the same (113 high,
+#   12px 14px, title at x 61 vs the board's 67) since M2, so this is the shared frame, not R19's. The square inside the glyph is
+#   the board's size (11x11); in the 14px frame its stroke renders 0.9px where the 18px board frame renders 1.2px.
+# note (copy, server words) the Engineer's Now bar line and card line are one `activity` string (m2.txt's note): the fixture carries
+#   the Now bar's "You stopped it in round 2", so the card's 'Stopped by you in round 2' is "not found". The board's Activity lines
+#   ("Stopped by you", "Stopped. Nothing shipped. Everything finished before round 2 is saved.") are the fixture's, mirroring the
+#   board; the server's run line for a stopped run is "Stopped. Nothing shipped." (activity.py) — same element and size.
+# note (layout, only moved) the callout and the lines under it sit 66px lower than drawn (the app's Activity panel is 340px, m2.txt's
+#   layout note); the dialog is centred in the window (447,350) where HmF-Stop-2 / Prob-StopDialog draw it at (470,260) — the
+#   existing ConfirmDialog's placement.
+# not found, by rule: Prob-Stopped's run bar and canvas chrome as m2.txt's "not found" note ('Back to the team', 'Add an RSI
+#   indicator', 'run #12', '18m 03s', '$0.84 of $5.00', 'More for this run'; the cards' 'Spec written', 'Grok plan · this Mac',
+#   'Spec v2 · 1 page', '16m', 'Spec approval', 'Approved by you', 'Round 1 · asked for 2 fixes', '8m', 'Round 2 of 3'), the Now
+#   bar's never-reached Reviewer line 'Round 1 · changes requested' / '9m ago' and its gate '15m ago' (the app shows "Not reached"
+#   with no line, and "16m ago"), Ship's 'Nothing shipped' (reads "Not yet", m2.txt), 'Edited +48 −3' / 'Ran · 3 passed' /
+#   'pytest tests/test_indicators.py' (separate spans in the app); Prob-StopDialog's nav badges 'Engines 2 to fix' / 'Toolkit 1
+#   missing' (the scenario serves no /api/engines/usage or /api/toolkit/summary, as m2.txt's Live-Home), the composer's team picker
+#   'TIndicator sprint team' and Desktop's 'Website needs 2 keys' (the Desktop composer has no website keys line); the Test-*
+#   boards' list is m7.txt's ('Compare' / 'More for this team': M8 / not built, brief 2.4; the canvas cards' and edges' words).
+# Not found in app: none of the new elements — no "not found" item to build.
+Prob-Stopped web: matched 61/86 design items · 3 with size/type drift · 49 only moved · 25 not found in app — covered: W1×1, W2×1, W3×1
+Prob-Stopped desktop: matched 63/86 design items · 3 with size/type drift · 49 only moved · 23 not found in app — covered: W1×1, W2×1, W3×1
+Prob-StopDialog web: matched 129/134 design items · 0 with size/type drift · 6 only moved · 5 not found in app
+Prob-StopDialog desktop: matched 128/134 design items · 1 with size/type drift · 6 only moved · 6 not found in app — covered: W10×1
+Test-Empty web: matched 53/67 design items · 1 with size/type drift · 10 only moved · 14 not found in app — covered: W7×1
+Test-Empty desktop: matched 55/67 design items · 1 with size/type drift · 10 only moved · 12 not found in app — covered: W7×1
+Test-List web: matched 69/83 design items · 1 with size/type drift · 24 only moved · 14 not found in app — covered: W7×1
+Test-List desktop: matched 71/83 design items · 1 with size/type drift · 24 only moved · 12 not found in app — covered: W7×1
+Test-Running web: matched 67/81 design items · 1 with size/type drift · 24 only moved · 14 not found in app — covered: W7×1
+Test-Running desktop: matched 69/81 design items · 1 with size/type drift · 24 only moved · 12 not found in app — covered: W7×1
+Test-Results web: matched 70/84 design items · 1 with size/type drift · 24 only moved · 14 not found in app — covered: W7×1
+Test-Results desktop: matched 72/84 design items · 1 with size/type drift · 24 only moved · 12 not found in app — covered: W7×1
+Test-Worse web: matched 68/83 design items · 1 with size/type drift · 19 only moved · 15 not found in app — covered: W7×1
+Test-Worse desktop: matched 70/83 design items · 1 with size/type drift · 19 only moved · 13 not found in app — covered: W7×1
+Test-Stopped web: matched 69/83 design items · 1 with size/type drift · 24 only moved · 14 not found in app — covered: W7×1
+Test-Stopped desktop: matched 71/83 design items · 1 with size/type drift · 24 only moved · 12 not found in app — covered: W7×1
+Test-Queued web: matched 64/78 design items · 1 with size/type drift · 21 only moved · 14 not found in app — covered: W7×1
+Test-Queued desktop: matched 66/78 design items · 1 with size/type drift · 21 only moved · 12 not found in app — covered: W7×1
+Test-RowMenu web: matched 73/92 design items · 1 with size/type drift · 26 only moved · 19 not found in app — covered: W7×1
+Test-RowMenu desktop: matched 75/92 design items · 1 with size/type drift · 26 only moved · 17 not found in app — covered: W7×1
+Test-NoAI web: matched 81/98 design items · 4 with size/type drift · 11 only moved · 17 not found in app — covered: W7×1, W12×3
+Test-NoAI desktop: matched 83/98 design items · 4 with size/type drift · 11 only moved · 15 not found in app — covered: W7×1, W12×3
+# Renders: 11 design shots (fonts-ok) + 22 app board shots (11 boards × web + Desktop); 32 kept-ma inventory shots (the 16 below
+#   on main 849b32d, Vite :5302, and on ma-parity, Vite :5301) + 9 shots of earlier kept scenarios (kept-m7-teamcanvas web/Desktop
+#   on both, kept-teamcanvas web/Desktop, kept-runview-drawer-web, kept-m7-runview-runs web/Desktop on ma-parity).
+
+# Kept elements (brief §2.2): INVENTORY=1 shoot-app.mjs, each scenario shot on main 849b32d (before MA) and on ma-parity (after):
+#   kept-ma-drawer.txt (agent-tests.mjs kept-ma-drawer-<tab>: the Reviewer's drawer on Setup / Skills & tools / Memory / Runs /
+#   Tests / Docs), kept-ma-runview-stopped.txt (runs-resume.mjs: run #12 stopped), kept-ma-home-stopdialog.txt (runs-resume.mjs:
+#   Home with the Stop dialog open). Every before line is present after:
+kept-ma-drawer-setup: web 47/47, desktop 47/47 kept items present — none missing
+kept-ma-drawer-skills: web 41/41, desktop 41/41 kept items present — none missing
+kept-ma-drawer-memory: web 37/37, desktop 37/37 kept items present — none missing
+kept-ma-drawer-runs: web 34/34, desktop 34/34 kept items present — none missing
+kept-ma-drawer-tests: web 42/42, desktop 42/42 kept items present — none missing
+kept-ma-drawer-docs: web 31/31, desktop 31/31 kept items present — none missing
+kept-ma-runview-stopped: web 29/29, desktop 29/29 kept items present — none missing (after: 30, added "button: Resume from Engineer, round 2")
+kept-ma-home-stopdialog: web 67/67, desktop 66/66 kept items present — none missing
+# the one ruled copy change (R19): the Stop dialog's last sentence "You can’t resume a stopped run." → "You can resume it later from
+#   the step it stopped at." (the dialog body is text, not an inventory line; read from the page before and after).
+# and the earlier records still hold on ma-parity: kept-m7-teamcanvas-web 46/46, -desktop 46/46; kept-teamcanvas-web 11/11,
+#   -desktop 11/11; kept-runview-drawer-web 27/27 (the run view's drawer keeps its five tabs); kept-m7-runview-runs-web 46/46,
+#   -desktop 46/46.
