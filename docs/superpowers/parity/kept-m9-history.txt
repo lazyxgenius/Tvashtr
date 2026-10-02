@@ -1,0 +1,74 @@
+# Kept-elements inventory — m9-history (the team canvas with History open: the toolbar, the Versions / Runs switch, each version's What changed and Restore, Show 3 older versions, Close), captured on main 699e453 (before M9) with scripts/design-parity/shoot-app.mjs INVENTORY=1
+# Scenarios: scripts/design-parity/scenarios/task-sets.mjs (kept-m9-history-web / -desktop: versions.mjs's teamRoutes with Set-Checked's versions —
+#   v1 … v8, v8's and v7's set checks on Indicators, the tests pills; the chip opens History), the same scenario file shot on main 699e453 (Vite :5322)
+#   and on m09-parity (Vite :5321). After the change every line must still be present (superset).
+
+## kept-m9-history-desktop
+aside: History
+button: Account
+button: Add to canvas
+button: Back to teams
+button: Close
+button: Compare
+button: Documents 0
+button: Fit View
+button: Restore v4
+button: Restore v5
+button: Restore v6
+button: Restore v7
+button: Run this team
+button: Runs
+button: Set this node’s model
+button: Show 3 older versions
+button: Team file
+button: Version history
+button: Versions
+button: What changed in v4
+button: What changed in v5
+button: What changed in v6
+button: What changed in v7
+button: What changed in v8
+button: Zoom In
+button: Zoom Out
+footer:
+header:
+main:
+toolbar: Team
+
+## kept-m9-history-web
+aside: History
+button: Account
+button: Add to canvas
+button: Back to teams
+button: Close
+button: Compare
+button: Documents 0
+button: Fit View
+button: Restore v4
+button: Restore v5
+button: Restore v6
+button: Restore v7
+button: Run this team
+button: Runs
+button: Set this node’s model
+button: Show 3 older versions
+button: Team file
+button: Version history
+button: Versions
+button: What changed in v4
+button: What changed in v5
+button: What changed in v6
+button: What changed in v7
+button: What changed in v8
+button: Zoom In
+button: Zoom Out
+footer:
+header:
+main:
+toolbar: Team
+
+# After M9 (m09-parity, the same scenario):
+kept-m9-history: web 30/30, desktop 30/30 kept items present — none missing (after: 30 each, nothing added: M9's check pills and the "v8 passed
+#   both checks" callout are text, not inventory roles; Set-CheckedWorse's callout adds a "Restore v7", the same line as v7's row button)
+# Also re-shot on m09-parity: kept-m7-history-* (kept-m7-history.txt) 29/29 web and Desktop, kept-m7-teamcanvas-* 46/46, kept-m8-teamcanvas-* 14/14 —
+#   none missing (each adds only the toolbar's "button: Compare", and kept-m7-teamcanvas MA's "tab: Tests 6", as recorded before M9).

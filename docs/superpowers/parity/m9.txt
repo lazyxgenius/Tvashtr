@@ -1,0 +1,165 @@
+# M9 — Task sets and a check before saving: parity record, branch m09-parity (= feat/m09-task-sets 72354bb + fde0564), 2026-10-03.
+# Design: the Claude Design "Quality" canvas export: the M9 boards Set-List, Set-Edit, Set-Results, Set-SaveCheck, Set-Checked, Set-Empty,
+#   Set-StartSet, Set-Running, Set-AddRecent, Set-RowMenu, Set-DeleteConfirm, Set-CheckedWorse, and the M8 boards that gain M9 content —
+#   Cmp-Start (the "One task | A task set" switch, the Task sets tab and its count) and Cmp-Results ("One task is a small sample · Compare on
+#   Indicators"). Shot with shoot-design.mjs at 1440x900, FONT_CACHE_DIR …/scratchpad/font-cache: 14 design shots, 14 fonts-ok.
+# App: Vite :5321 on the m09-parity worktree (its own cacheDir), no backend. scripts/design-parity/scenarios/task-sets.mjs answers the contract's
+#   shapes (docs/superpowers/plans/api/task-sets.md, api/compare.md) with the boards' data: GET /api/teams/t-ind/task-sets — Indicators (Add an RSI
+#   indicator · pytest -q tests/test_indicators.py -k rsi, Add a MACD indicator · pytest -q -k macd, Add Bollinger bands · pytest -q -k bollinger, Add an
+#   ATR indicator · pytest -q -k atr, Fix the EMA warm-up · pytest -q -k ema_warmup, each from main; last used v6 vs v7 2 days ago, "v7 better on 4 of
+#   5"; about $5.60 and 40 min) and Bugfixes (Fix the flaky login test, Stop double-counting fees, Handle an empty price list; not used yet; its checks
+#   and estimate are not drawn); Set-Empty: none. GET /api/teams/t-ind/compare is compare.mjs's Cmp-Start answer plus task_sets. GET /api/recent-tasks
+#   (Set-AddRecent): Add a stochastic oscillator 2d ago, Add an RSI indicator, Add VWAP to the indicators list 2d ago, Fix the EMA warm-up, Retry the
+#   price feed on a timeout 5d ago. GET /api/compares/cmp-set: Set-Running — running 12m 05s / $3.10, started 6, runs_waiting 4, the board's five rows
+#   (RSI: A Working · Engineer · round 2, B ✓ 2 rounds $0.92; MACD: A ✗ 3 rounds $1.21 "signal line missing", B Working · Engineer · round 2;
+#   Bollinger: A Working · Reviewer · round 1, B Working · Engineer · round 1; ATR, EMA: both waiting); Set-Results — finished 6 minutes ago, $11.30 in
+#   all, the four cards with bare a / b and tone good (Hidden checks passed 3 of 5 → 5 of 5 "2 more tasks really work", Rounds per task 3.4 → 2.2
+#   "about 1 fewer round", Cost $6.10 → $5.20 "$0.90 less in all", Retries and stalls 3 → 0 "steadier runs"), the board's ✓/✗ rows, rounds, costs and
+#   notes ("stalled, then resumed"), badges v7 better ×4 / v7 costs more, Restore v6. GET /api/compares/cmp-1 (Cmp-Results) is compare.mjs's with
+#   results.sample {Indicators, 5}. The canvas boards use versions.mjs's teamRoutes: Set-SaveCheck — 2 changes since v7, tests {6, the board's sub
+#   "You changed the Reviewer’s instructions and the Engineer’s model.", option "Run the Reviewer’s 6 tests", $0.40 · 4 min} and check_sets
+#   [Indicators, 5, $5.60 · 40 min]; Set-Checked / -CheckedWorse — v1 … v8, v8 saved 8 minutes ago with the note "Engineer on GPT-4.1; Reviewer names
+#   files", Tests 6 of 6 / 5 of 6 / 4 of 6 on v8 / v7 / v6, v8's check on Indicators against v7 (5 of 5, −$0.70; worse: 3 of 5, +$0.40, against_passed
+#   5) and v7's against v6 (5 of 5, no cost difference).
+# States are reached through the UI: #/teams/t-ind/compare (Cmp-Start); its "A task set" (Set-StartSet); its Task sets tab (Set-List, Set-Empty) ›
+#   Indicators' ⋯ (Set-RowMenu) › Delete (Set-DeleteConfirm), › Edit (Set-Edit) › Add from recent tasks › two ticked (Set-AddRecent); the compare's
+#   address /compare/cmp-set (Set-Running, Set-Results) and /compare/cmp-1 (Cmp-Results); the canvas's Save as v8 with the note typed (Set-SaveCheck);
+#   the version chip › History (Set-Checked, Set-CheckedWorse) and History scrolled to the check's callout (Set-Checked-callout,
+#   Set-CheckedWorse-callout: the panel lists 5 versions where the boards draw 3, so the callout starts below the fold — two shots per board, as
+#   m5.txt's Ver-AgentHistory-list). The clock stands still at compare.mjs's moment, 10:34:26, so the ages read as drawn.
+# Which render is the comparison: every board is drawn in Desktop (the 30px title strip): the Desktop render is the comparison and the web render is
+#   framed 30px down (m7.txt / m8.txt's convention). Both renders are recorded below; each web render's 2 extra "not found" are by rule (below).
+# GATE: size/type MET — every new M9 element is at 0 size/type drift on every render (web and Desktop); NOT CLEAN — 4 items are reported below for the
+#   lead (TO FIX 1–4: Set-SaveCheck redraws M7's Save-as dialog, the 3 drift items there are M7's existing elements; History's sub words; "Checks
+#   finished …" not built; v7's pill tone) and 1 kept line is relabelled (kept-m9-saveas: "Save and run tests" → "Save and check", the board's word)
+#   for a ruling; none is waived. Every other drift item is covered (W11, W13).
+#   At 0 drift, box for box where measured (Desktop; x,y w×h): the tab 'Task sets' 14/500 with its count 2 (Set-List … Cmp-Results), uncounted on
+#   Set-Empty; Set-List: the 26px Newsreader 'Task sets' 640x42, the 14px lede 640x43, New task set 134x40 14/500 (1274,256), the cards (33…709,
+#   731…1407): name 16/600, '5 tasks · each has a hidden check' 12px, ⋯ 32x32 (659,339), the tasks 13px 640x21 each, the 12.5px 'Last used: v6 vs v7 ·
+#   2 days ago · v7 better on 4 of 5' / 'Not used yet', Compare on this set 165x32 13/500 (primary on the last-used set), Edit 64x32 13/500 — every one
+#   1px higher than drawn (the bar's title line, m8.txt's note), nothing else moved; Set-Empty: 'No task sets yet' 20px Newsreader 125x32 (658,430),
+#   its 13.5px line 480x42, New task set 134x40 primary (653,528); Set-RowMenu: Edit / Delete 32 high 13/400, Delete #8f3b2f, 15px icons, the open ⋯
+#   tinted coral; Set-DeleteConfirm: 'Delete Indicators?' 22px Newsreader 500x35, the 13.5px sentence 500x42, Keep it / Delete set 13/500; Set-Edit:
+#   'Edit task set' 22px, Name 14/500 + its 774x44 16px input, 'Tasks (5)' 11.5/600, Add from recent tasks 150x20 / Add a task 81x20 12.5/500, the
+#   column heads 11.5/600 at x 379 / 687 / 789, Remove × 32x32 ×5, What a hidden check is 14/600 + its 13px text, the 12.5px foot 'Comparing two
+#   versions on this set: about $5.60 and 40 min', Cancel 80x40, Save set 105x40 14/500 — and the rows' fields (inputs, measured by probe against the
+#   board's text): Task 294 wide 13/400 Inter at x 380, Starts from 90 wide 12px IBM Plex Mono at x 686, Hidden check 270x26 11.5px mono chip at x
+#   788 (surface-sunk, radius 6, padding 4px 8px), the 11.5px mono row numbers, the 774x246 list (board 774x247); Set-AddRecent: the popover 430 wide
+#   at x 582, 'Recent tasks on this team' 11.5/600 428x36, the labels 14px, 2d ago / In the set / 5d ago 12px, Add 2 76x32 13/500; Cmp-Start /
+#   Set-StartSet: One task 87x30 (984,417) / A task set 93x30 (1073,417) 12.5/500 — the board's boxes exactly — and everything under RUN THEM ON at its
+#   drawn place (Cmp-Start: 0 only moved; m8.txt had 13), the Task set select 900x44 16px (270,490), the tasks list 12.5px with the 10px ring
+#   (136/147/135/140/144 x20 at x 270/424/589/742/900, as drawn), 'About $5.60 on your keys · about 40 min · 5 tasks × 2 versions' 13px with $5.60
+#   13/600, Start compare 143x40; Set-Running: 'v6 and v7 on Indicators' 24px, Running 79x22, '12m 05s · $3.10 so far' 12.5px mono, Stop compare
+#   127x32, '6 of 10 runs started · 4 waiting for a free slot' 13px 1376x21, the table's heads 11.5/600 and every cell's words at the board's x 51 /
+#   307 / 793 (13px, Engineer / Reviewer 600, costs 12px mono, notes 12px), 44px rows, the 15px ✓/✗; Set-Results: the 26px headline, the 13px sub,
+#   Finished 80x22, the four cards 301 wide (labels 11.5/600, 'v6 3 of 5' 13px mono, 'v7 5 of 5' 20/600 mono, notes 12px), the badges 110x18 10px at x
+#   1279, 'Click any result to open that run. v7 is your current version.' 13px, Restore v6 120x40 / Done 69x40; Cmp-Results: 'One task is a small
+#   sample' 14/600 1316x22 at x 77, 'Run the Indicators task set (5 tasks) before you rely on this.' 13px, Compare on Indicators 181x32 13/500 (77,730);
+#   Set-SaveCheck: 'Check it right after saving' 11.5/600, 'Compare v8 with v7 on Indicators' 14px 315x20, '5 tasks · about 40 min · about $5.60 ·
+#   nothing ships' 13px 315x19, 'About $6.00 for both checks' 12.5px 169x20, Save and check 154x40 14/500; Set-Checked / -CheckedWorse: the pills 11px
+#   ('Indicators: 5 of 5, $0.70 less than v7' 218x20, 'Indicators: 3 of 5, $0.40 more than v7' 226x20 amber, 'Indicators: 5 of 5' 118x20), the
+#   callout (-callout shots) at x 1086: 'v8 passed both checks' / 'v8 did worse on Indicators' 14/600 319x22, its 13px text 319x40 ('All 6 tests pass,
+#   and it did as well as v7 on Indicators for $0.70 less.' / '3 of 5 hidden checks passed (v7: 5 of 5). Restore v7 to go back.'), Restore v7 106x32
+#   13/500 — the board's exact boxes.
+# built in this sweep (fde0564, CSS / markup on new M9 elements only; vitest / tsc / eslint / prettier green): the switch's 12.5px (.cmp-start__seg);
+#   the boards' 10px ring for task bullets (TaskDot, both lists; was a 6px lucide Circle: the words sat 4px left); the set table's columns (the 240px
+#   and 110px columns plus their padding: A / B text was at x 273 / 785, drawn 307 / 793), rows 44 (were 45–46: the cell's inline-flex sat on the
+#   baseline), 15px ✓/✗, the badge a 110x18 block (was a 56x14 inline pill right-aligned); the set menu's 32px rows (were 34), Delete #8f3b2f (was the
+#   DS red-500), 15px icons, the open ⋯ tinted; the recent popover 8px under its link (was 4px); 18px icons in the three callouts
+#   (were 16: their words sat 2px left); Add N's 14px plus.
+# TO FIX (for the lead; measured on the Desktop render, the web render is the same 30px lower):
+#   1. Set-SaveCheck redraws M7's Save-as dialog (existing elements, not changed here): the board's dialog is 580 wide (app 560: the note input
+#      514 where drawn 534 — 1 drift item), offers the tests as a checkbox "Run the Reviewer’s 6 tests" with the line "About 4 min · about $0.40 on
+#      your keys" (app: M7's radio pair "<option>" / "Just save" and the line "… Results show next to v8 in History."), puts "Just save" in the
+#      footer as a ghost button 98x40 14/500 in place of Cancel (app: M7's radio label 63x20 14/400 and Cancel — 2 drift items), and replaces M7's
+#      note "If v8 does worse, restore v7 from History in one click." with a callout "v8 is saved straight away" (14/600 474x22) / "The checks run
+#      after it. Their results show next to v8 in History, and if v8 does worse you can restore v7 in one click." (13px) — "not found" ×3. M9's own
+#      parts (the eyebrow, the compare checkbox and its line, the footnote, Save and check) are at 0 drift. Test-SaveNudge (M7) draws the radio
+#      dialog; the lead rules which governs when both tests and a set are offered.
+#   2. Set-Checked / -CheckedWorse: History's sub reads "Every save is a version. Check results sit next to the version they checked." (12.5px, 2
+#      lines) on the boards; the app keeps M5's "Every save is a version. Nothing is ever deleted." (Ver-History's words): the boards disagree; the
+#      list sits 18px higher than drawn. Not changed (an existing element's words; the lead rules).
+#   3. Set-Checked / -CheckedWorse: 'Checks finished 2 minutes ago' (12px, the footer's left line) — not found in app: not built; the versions
+#      listing's `check` has no time it finished (contract), and the footer keeps M5's line. Needs a field and markup.
+#   4. Set-Checked: v7's pill "Indicators: 5 of 5" is drawn neutral (as "Tests 5 of 6"); the app tones every finished all-pass check good
+#      (CheckPill: passed === total → cv-tpill--good), so it renders green. The board tones only the newest check (v8 good / amber). A rule, not
+#      a size (0 drift); not changed here.
+# Not built, by rule (not drift): 'More for this team' (the toolbar ⋯, every canvas board — as m5.txt / m7.txt / m8.txt); 'Compare the code'
+#   (Cmp-Results — as m8.txt).
+# waiver: app governs (brief 2.2/2.3) — the canvas header and the compare page's bar (as m8.txt); the team canvas behind Set-SaveCheck /
+#   Set-Checked (versions.mjs's canvas: its cards' and edges' words 'Grok plan · this Mac', '2 skills', 'Spec approval', 'Gate · asks you', '4
+#   skills', 'GitHub', 'Read-only', 'Up to 3 rounds' are "not found" and the cards "only moved", as m7.txt's Set-Checked); the toolbar's Compare
+#   at (1052,98) where drawn (1071,98) (m8.txt's note). The web renders' 'Tvashtr — the living canvas' and 'Tvashtr Desktop' are not found there
+#   by rule.
+# waiver W11: as m5.txt — Set-CheckedWorse (as opened) [ctl] 'Restore v7' 106→73 wide: the callout is below the fold there, so the board's
+#   callout button pairs with v7's row button, named "Restore v7"; the callout's Restore v7 measures 106x32 at (1086,781) in the -callout shot (the board's 106x32).
+# waiver W13 (new): Set-AddRecent [txt] 'Add an RSI indicator' / 'Fix the EMA warm-up' 13→14px: the dialog's task fields are inputs named by
+#   their label ("Task"), so the board's row text (13px, behind the popover) pairs with the popover's 14px checkbox label of the same words ("In
+#   the set"); the fields measure as drawn (Set-Edit's probe above), and so do the popover's labels (14px, the board's).
+# note (layout, only moved) Set-Edit / Set-AddRecent: the board's row words pair with the card list behind the dialog ("only moved" ×5 / ×3) and
+#   their 'main' / checks are "not found" ×10 by name — the fields are inputs (probed above, at the board's boxes); the recent rows are 35 high
+#   where drawn 37 (the DS Checkbox's box is 20px in the app, 22 in the board's bundle — every Checkbox, e.g. Approve gates automatically sits 2px
+#   left since M8; app governs), so "Add 2" sits 12px higher; the row menu's frame is the DS Menu's (180 wide as drawn; 5px padding and radius 10,
+#   so its rows are 168 wide, where the bundle draws 6px / 12 / 166; it opens 2px higher). Set-Running / Set-Results: the 6 "only moved" are the first column's th / td cell boxes (x 33,
+#   the board's text x 51 after the 18px padding) — as m8.txt's results table; Cmp-Results' 19 are m8.txt's (its "One task is a small sample"
+#   callout is now where drawn: the foot is no longer 56px higher, it is 2px off). Set-DeleteConfirm: the dialog is centred (470,383) where drawn (493,283) — the
+#   existing ConfirmDialog's placement (m8.txt / ma.txt). Set-SaveCheck: the dialog is 560x467 at (440,217) where drawn 580 wide at (430,205)
+#   (TO FIX 1), so its words sit 8–13px off. Set-Checked: History lists 5 versions with each row's runs pill and What changed / Restore (M5, not
+#   drawn), so the check pill wraps to its own line (+30 for the rows under it) and the callout is below the fold ('5 of 8 versions' where the
+#   board reads '3 of 9' — v8 is the newest of 8; not found by its words). 'Edit task set' is 2px left (VersionDialog's head, M5).
+# note (copy, server words) Set-SaveCheck's sub and tests option are the board's words in the fixture; the server writes "Save and run the
+#   Reviewer’s 6 tests" and names only the agents that have tests ("You changed the Reviewer’s Instructions. The Reviewer has 6 tests.",
+#   agent_tests.py) — same element and size.
+# Not found in app (a new element, real): 'Checks finished 2 minutes ago' (TO FIX 3). The Set-SaveCheck callout and its line (TO FIX 1) replace an
+#   existing element. Everything else not found is by rule or by name, above.
+Set-List desktop: matched 41/41 design items · 0 with size/type drift · 0 only moved · 0 not found in app
+Set-List web: matched 39/41 design items · 0 with size/type drift · 0 only moved · 2 not found in app
+Set-Edit desktop: matched 68/78 design items · 0 with size/type drift · 5 only moved · 10 not found in app
+Set-Edit web: matched 66/78 design items · 0 with size/type drift · 5 only moved · 12 not found in app
+Set-Results desktop: matched 72/72 design items · 0 with size/type drift · 6 only moved · 0 not found in app
+Set-Results web: matched 70/72 design items · 0 with size/type drift · 6 only moved · 2 not found in app
+Set-SaveCheck desktop: matched 41/53 design items · 3 with size/type drift · 20 only moved · 12 not found in app — TO FIX 1×3
+Set-SaveCheck web: matched 39/53 design items · 3 with size/type drift · 20 only moved · 14 not found in app — TO FIX 1×3
+Set-Checked desktop: matched 47/60 design items · 0 with size/type drift · 28 only moved · 13 not found in app
+Set-Checked web: matched 45/60 design items · 0 with size/type drift · 28 only moved · 15 not found in app
+Set-Checked-callout desktop: matched 47/60 design items · 0 with size/type drift · 31 only moved · 13 not found in app
+Set-Checked-callout web: matched 45/60 design items · 0 with size/type drift · 31 only moved · 15 not found in app
+Set-Empty desktop: matched 21/21 design items · 0 with size/type drift · 0 only moved · 0 not found in app
+Set-Empty web: matched 19/21 design items · 0 with size/type drift · 0 only moved · 2 not found in app
+Set-StartSet desktop: matched 37/40 design items · 0 with size/type drift · 0 only moved · 3 not found in app
+Set-StartSet web: matched 35/40 design items · 0 with size/type drift · 0 only moved · 5 not found in app
+Set-Running desktop: matched 42/42 design items · 0 with size/type drift · 6 only moved · 0 not found in app
+Set-Running web: matched 40/42 design items · 0 with size/type drift · 6 only moved · 2 not found in app
+Set-AddRecent desktop: matched 81/91 design items · 2 with size/type drift · 3 only moved · 10 not found in app — covered: W13×2
+Set-AddRecent web: matched 79/91 design items · 2 with size/type drift · 3 only moved · 12 not found in app — covered: W13×2
+Set-RowMenu desktop: matched 43/43 design items · 0 with size/type drift · 0 only moved · 0 not found in app
+Set-RowMenu web: matched 41/43 design items · 0 with size/type drift · 0 only moved · 2 not found in app
+Set-DeleteConfirm desktop: matched 47/47 design items · 0 with size/type drift · 6 only moved · 0 not found in app
+Set-DeleteConfirm web: matched 45/47 design items · 0 with size/type drift · 6 only moved · 2 not found in app
+Set-CheckedWorse desktop: matched 49/62 design items · 1 with size/type drift · 29 only moved · 13 not found in app — covered: W11×1
+Set-CheckedWorse web: matched 47/62 design items · 1 with size/type drift · 29 only moved · 15 not found in app — covered: W11×1
+Set-CheckedWorse-callout desktop: matched 49/62 design items · 0 with size/type drift · 33 only moved · 13 not found in app
+Set-CheckedWorse-callout web: matched 47/62 design items · 0 with size/type drift · 33 only moved · 15 not found in app
+Cmp-Start desktop: matched 33/35 design items · 0 with size/type drift · 0 only moved · 2 not found in app
+Cmp-Start web: matched 31/35 design items · 0 with size/type drift · 0 only moved · 4 not found in app
+Cmp-Results desktop: matched 52/53 design items · 0 with size/type drift · 19 only moved · 1 not found in app
+Cmp-Results web: matched 50/53 design items · 0 with size/type drift · 19 only moved · 3 not found in app
+# (m8.txt's Cmp-Start: 29/35, 13 only moved, 6 not found; Cmp-Results: 46/53, 27 only moved, 7 not found — the Task sets tab, the switch and the
+#   small-sample callout now match. Cmp-Start / Set-StartSet's 2–3 desktop "not found" are the Selects, measured by their labels "Version A" /
+#   "Version B" / "Task set" — boxes as drawn, as m8.txt.)
+# Renders: 14 design shots (fonts-ok) + 32 app board shots (16 shots × web + Desktop: the 14 boards and the two -callout shots); 20 kept
+#   inventory shots (the 10 below on main 699e453, Vite :5322, and the same 10 on m09-parity, Vite :5321) + 6 re-shots of earlier kept scenarios on m09-parity.
+
+# Kept elements (brief §2.2): INVENTORY=1 shoot-app.mjs, task-sets.mjs's kept-m9-* scenarios (the same file copied into a main 699e453 worktree),
+#   shot on main 699e453 (before M9) and on m09-parity (after): kept-m9-compare.txt (the Compare tab's start form with the team's sets, and a
+#   one-task compare's results), kept-m9-history.txt (History open, v8 checked), kept-m9-saveas.txt (Save as v8 with tests and a set; and the
+#   same with M9's compare unticked):
+kept-m9-compare-start: web 13/13, desktop 13/13 kept items present — none missing (after: 16, added "radio: One task", "radio: A task set", "tab: Task sets 2")
+kept-m9-compare-results: web 11/11, desktop 11/11 kept items present — none missing (after: 13, added "button: Compare on Indicators", "tab: Task sets 2")
+kept-m9-history: web 30/30, desktop 30/30 kept items present — none missing
+kept-m9-saveas: web 22/23, desktop 22/23 kept items present — MISSING "button: Save and run tests" (after: 23, added "button: Save and check")
+kept-m9-saveas-nocheck: web 23/23, desktop 23/23 kept items present — none missing
+# kept-m9-saveas: the one missing line is the primary relabelled, not removed — with a set the dialog opens with the compare ticked and the
+#   primary reads "Save and check" (Set-SaveCheck's word); unticked it reads "Save and run tests" again (-nocheck, 23/23). Reported for a ruling.
+# and the earlier records still hold on m09-parity: kept-m8-teamcanvas-web 14/14, -desktop 14/14; kept-m7-history-web 29/29, -desktop 29/29;
+#   kept-m7-teamcanvas-web 46/46, -desktop 46/46 (each adds only "button: Compare"; kept-m7-teamcanvas also MA's "tab: Tests 6").

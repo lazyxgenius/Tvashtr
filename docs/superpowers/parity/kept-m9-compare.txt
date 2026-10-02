@@ -1,0 +1,65 @@
+# Kept-elements inventory — m9-compare (the Compare page's Compare tab: the start form, and a one-task compare's results page — the bar, the tabs, the pickers, the task, Start compare; the results' Open run, Restore v6, Done), captured on main 699e453 (before M9) with scripts/design-parity/shoot-app.mjs INVENTORY=1
+# Scenarios: scripts/design-parity/scenarios/task-sets.mjs (kept-m9-compare-start-web / -desktop: compare.mjs's Cmp-Start routes, the team with its
+#   two task sets; kept-m9-compare-results-web / -desktop: compare.mjs's Cmp-Results compare cmp-1 with M9's "sample"), the same scenario file shot on
+#   main 699e453 (Vite :5322) and on m09-parity (Vite :5321). After the change every line must still be present (superset).
+
+## kept-m9-compare-start-desktop
+button: 1 change
+button: Account
+button: Back to the canvas
+button: Start compare
+header:
+heading: Compare versions
+heading: Run the same task on two versions
+input[text]: Task
+main:
+select: Version A
+select: Version B
+tab: Compare
+tab: Versions
+
+## kept-m9-compare-start-web
+button: 1 change
+button: Account
+button: Back to the canvas
+button: Start compare
+header:
+heading: Compare versions
+heading: Run the same task on two versions
+input[text]: Task
+main:
+select: Version A
+select: Version B
+tab: Compare
+tab: Versions
+
+## kept-m9-compare-results-desktop
+button: Account
+button: Back to the canvas
+button: Done
+button: Open run
+button: Restore v6
+header:
+heading: Compare versions
+heading: v7 did better on this task
+main:
+tab: Compare
+tab: Versions
+
+## kept-m9-compare-results-web
+button: Account
+button: Back to the canvas
+button: Done
+button: Open run
+button: Restore v6
+header:
+heading: Compare versions
+heading: v7 did better on this task
+main:
+tab: Compare
+tab: Versions
+
+# After M9 (m09-parity, the same scenario):
+kept-m9-compare-start: web 13/13, desktop 13/13 kept items present — none missing (after: 16 each, added "radio: One task", "radio: A task set", "tab: Task sets 2")
+kept-m9-compare-results: web 11/11, desktop 11/11 kept items present — none missing (after: 13 each, added "button: Compare on Indicators", "tab: Task sets 2")
+# Web and Desktop inventories are equal, before and after.

@@ -1,0 +1,65 @@
+# Kept-elements inventory — m9-saveas (the Save as v8 dialog over the team canvas: the note, M7's "Save and run the Reviewer’s 6 tests" / "Just save", Cancel, the primary, Close), captured on main 699e453 (before M9) with scripts/design-parity/shoot-app.mjs INVENTORY=1
+# Scenarios: scripts/design-parity/scenarios/task-sets.mjs (kept-m9-saveas-web / -desktop: Set-SaveCheck's canvas — 2 changes since v7, the Reviewer's
+#   6 tests, the team's Indicators set — with the toolbar's Save as v8 clicked; kept-m9-saveas-nocheck-web / -desktop: the same with M9's "Compare v8 with
+#   v7 on Indicators" unticked — on main there is no such box, so it is the first state again), the same scenario file shot on main 699e453 (Vite :5322)
+#   and on m09-parity (Vite :5321). After the change every line must still be present (superset).
+
+## kept-m9-saveas-desktop
+button: Account
+button: Add to canvas
+button: Back to teams
+button: Cancel
+button: Close
+button: Compare
+button: Documents 0
+button: Fit View
+button: Run this team
+button: Save and run tests
+button: Save as v8
+button: Set this node’s model
+button: Team file
+button: Version history
+button: Zoom In
+button: Zoom Out
+dialog: Save as v8
+footer:
+header:
+heading: Save as v8
+input[text]: What changed (optional)
+main:
+toolbar: Team
+
+## kept-m9-saveas-web
+button: Account
+button: Add to canvas
+button: Back to teams
+button: Cancel
+button: Close
+button: Compare
+button: Documents 0
+button: Fit View
+button: Run this team
+button: Save and run tests
+button: Save as v8
+button: Set this node’s model
+button: Team file
+button: Version history
+button: Zoom In
+button: Zoom Out
+dialog: Save as v8
+footer:
+header:
+heading: Save as v8
+input[text]: What changed (optional)
+main:
+toolbar: Team
+
+# (kept-m9-saveas-nocheck-web / -desktop on main: the same 23 lines as above.)
+
+# After M9 (m09-parity, the same scenario):
+kept-m9-saveas: web 22/23, desktop 22/23 kept items present — MISSING "button: Save and run tests" (after: 23 each, added "button: Save and check")
+kept-m9-saveas-nocheck: web 23/23, desktop 23/23 kept items present — none missing (after: 23 each, nothing added)
+# The one missing line is the dialog's primary button relabelled, not removed: with a task set the dialog opens with M9's compare ticked and the
+#   primary reads "Save and check" (Set-SaveCheck draws exactly that); unticking the compare brings back "Save and run tests" (the -nocheck shots, 23/23).
+#   Reported to the lead as the one kept-line change for a ruling (it is the board's word, the same element).
+# The radios, M9's checkbox and the eyebrow are not inventory lines (the inputs are visually hidden; the words are text).
