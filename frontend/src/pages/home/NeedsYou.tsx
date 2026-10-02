@@ -3,6 +3,7 @@ import {
   CircleCheck,
   History,
   KeyRound,
+  RotateCcw,
   ShieldCheck,
   TriangleAlert,
   Wallet,
@@ -69,6 +70,21 @@ function inAnHour(): string {
 
 function openRun(teamId: string | null | undefined, runId: string) {
   if (teamId) navigate({ page: "team", teamId, runId });
+}
+
+/** M3: a failed or stalled run's Resume — its run view with "Resume run #12" open. */
+function ResumeButton({ teamId, runId }: { teamId: string; runId: string }) {
+  return (
+    <Button
+      variant="secondary"
+      size="sm"
+      className="cv-btn-flush"
+      onClick={() => navigate({ page: "team", teamId, runId, resume: true })}
+    >
+      <RotateCcw size={14} strokeWidth={1.6} aria-hidden />
+      <span>Resume</span>
+    </Button>
+  );
 }
 
 function Row({
@@ -350,6 +366,7 @@ export function NeedsYou() {
             meta={`${item.team?.name ?? "A run"} · “${item.run.idea}” · ${formatRelativeTime(when)} · ${reason}`}
             actions={
               <>
+                {teamId && item.resume && <ResumeButton teamId={teamId} runId={item.run.id} />}
                 <Button variant="secondary" size="sm" onClick={() => openRun(teamId, item.run.id)}>
                   View run
                 </Button>
@@ -374,7 +391,7 @@ export function NeedsYou() {
         );
       }
       case "run_stalled": {
-        // Live-Home: Resume arrives with M3, so only View run for now (no dead buttons).
+        // Live-Home: Resume (M3) when the server offers it, then View run.
         const teamId = item.team?.id ?? item.run.library_team_id;
         const since = durationShort(item.live.last_event_at ?? item.since);
         return (
@@ -386,6 +403,7 @@ export function NeedsYou() {
             meta={`${item.team?.name ?? "A run"} · “${item.run.idea}” · no update for ${since} · ${item.node.label}`}
             actions={
               <>
+                {teamId && item.resume && <ResumeButton teamId={teamId} runId={item.run.id} />}
                 <Button variant="ghost" size="sm" onClick={() => openRun(teamId, item.run.id)}>
                   View run
                 </Button>
