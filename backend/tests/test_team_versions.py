@@ -89,6 +89,7 @@ def test_a_team_gets_v1_its_current_state_the_first_time_anything_asks(client):
         "runs": 0,
         "source": "first",
         "restored_from": None,
+        "tests": None,  # M7: no agent of it has been tested on v1
     }
     # Asking again makes no second v1.
     assert _versions(client, team)["total"] == 1
