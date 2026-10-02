@@ -1,0 +1,95 @@
+# M4 — Team file: parity record, branch feat/m04-fe (from feat/m04-team-file 1d83fc5), 2026-10-02.
+# Design: the Claude Design "Tvashtr Team Setup" canvas export (canvas.json v3, page "Team file · 4"), shot with
+#   shoot-design.mjs at 1440x900: File-Panel, File-NewMenu, File-Check, File-CheckError (added for M4), File-Imported —
+#   5 design shots, 5 fonts-ok.
+# App: scripts/design-parity/scenarios/teamfile.mjs (10 app shots, website + Desktop, runs-live.mjs's `pair` convention)
+#   on panel-fixtures' nodes laid out as the boards' canvas (Product manager → Spec approval → Engineer ⇄ Reviewer, up to
+#   3 rounds → Ship) and home-fixtures' Home, answering the contract's shapes (docs/superpowers/plans/api/team-file.md):
+#   File-Panel's `GET /api/teams/t-ind/file?format=yaml` is the board's 48-line file (lines 1–41 as the board prints
+#   them, 42–48 the layout block below the fold), `needs` github + GITHUB_TOKEN; File-Check's `POST
+#   /api/teams/import-check` is the board's five checks (`code` on the models and chart-render rows, `fixes` 2, `name`
+#   "Indicator sprint team (copy)", 48 lines); File-CheckError's is `ok: false` with `{line: 12, message: "`agents`
+#   should be a list of agents."}`; File-Imported's tab session holds what `POST /api/teams/import` returned (the two
+#   fixes on the Engineer, `connector:github` sign_in and `tool:chart-render` open_toolkit, and the note).
+# States are reached through the UI: the toolbar's Team file (File-Panel); Home's T → New team with the pointer on
+#   "Import a team file" (File-NewMenu); New team › Import a team file's picker given the board's file (setInputFiles) →
+#   the check dialog (File-Check, File-CheckError); the new team's address with the import's session entry, as Import
+#   leaves it (File-Imported: the toast, the card, the chips).
+# Which render is the comparison: File-Panel and File-Imported are drawn in Desktop (the 30px title strip "Tvashtr — the
+#   living canvas"): the Desktop render is the comparison and the web render is framed 30px down; File-NewMenu,
+#   File-Check and File-CheckError are website boards (Home, no title strip): the web render is the comparison and the
+#   Desktop render is framed 30px up (m2.txt / m3.txt's convention). Both renders of every board are recorded below.
+# skipped: Main — the milestone map ("Map · all eleven milestones"), not an app screen.
+# GATE: MET — every new M4 element is at 0 size/type drift: the toolbar's Team file (tint while open, ghost after the
+#   import), the Team file panel (title 19px, description 12.5px, the filename 12px code, the YAML / JSON switch at
+#   12.5px, the numbered code view 11.5px code with its 26px number column, "48 lines" 11.5px, "No secrets or sign-ins
+#   inside" 14/600 + 13px, the footer note 12px, Copy / Download sm), New team's "Import a team file" row (306x32, 13px,
+#   ".yaml or .json" 11.5px — the board's menu row), the check dialog (title 22px, sub 13px, the file chip 12.5px code +
+#   12px, Choose another 12.5/500, Team name, WHAT WE CHECKED 11.5/600, each check 13/500 + 12.5px with its names in
+#   11.5px code, the footer 12.5px, Cancel / Import as a new team md), the error block (13.5/600, 13px with `agents` in
+#   code, 12.5px; "Can’t be read · 48 lines" 12px; "Nothing changed"), the "2 things to fix before shipping" card (13.5/600,
+#   rows 12.5px with chart-render in code, Sign in sm with the GitHub mark, Open Toolkit ghost sm, the note 12px), the
+#   Engineer's chips "Needs GitHub" / "1 tool missing" (10px) and the toast's "Open the file". Every drift item is W4
+#   (m2.txt) or W6 below — existing Home elements the File-* Home boards draw approximately. Each render line ends
+#   "— covered: <id>×<n>", one per drift item (0 uncovered).
+# built in this sweep (frontend/, vitest + tsc + eslint --max-warnings 0 + prettier green):
+#   dd90dd5 api-client: the contract's three calls and types; a 422 with the file's error throws TeamFileRefused.
+#   33eaa13 Home: New team keeps its dialog (name, starting points, Create team) and gains "Import a team file · .yaml or
+#     .json" beside the starting points (not one of them), which opens the file picker; the check dialog (the server's
+#     checks, names set in code style from `code` and backticks), Choose another, Import → a NEW team, its fixes kept in
+#     this tab's session under the new team's id, then its canvas; a 422 on Import shows the file's error in the dialog.
+#   56a9715 canvas: Team file in the header (authoring only) and its panel (YAML / JSON as the server renders them, read
+#     only, Copy, Download under the server's filename, the no-secrets note naming `needs.secrets`); the imported team's
+#     toast (once), "things to fix" card (Sign in → the GitHub App install / Toolkit › Connectors, Open Toolkit → the
+#     fix's Toolkit page, Open Engines → Engines) with Hide, and its cards' chips with the amber ring.
+# waiver W4: as m2.txt (the dashboard chrome: '⌘K' height 18→22, the header search's kbd).
+# waiver W6 (app governs, brief 2.2/2.3 — Home's composer, File-NewMenu / File-Check / File-CheckError) the Home boards
+#   draw the composer and "Your teams" approximately; the app keeps its Home (kept-home.txt): 'What should the team
+#   build?' 14.5→16px (the composer's existing textarea placeholder), 'lazyxgenius/trade_mcp' 13px Inter 270x36 →
+#   12.5px IBM Plex Mono 158x20 (the board's repo picker pairs with the composer's existing repo label), 'Indicator sprint
+#   team' 14/600 → 13/500 (the board's "Your teams" card title pairs with the composer's existing team picker: the app's
+#   Home shows Needs you / Running now where the board draws Your teams).
+# note (later milestones, not built here — brief §4 M4 and §2.4): the version pill ('Version history', 'v7 · saved 2m
+#   ago', 'v1 · imported just now') is M5; 'Compare' is M8; 'More for this team' has no board drawing its menu (no dead
+#   buttons). Their words are dropped from M4's copy: the file chip reads "48 lines" (board "Version 7 · 48 lines"), the
+#   panel's footer "Read-only · matches the canvas" (board "…, v7"), the toast "Imported as a new team" (board "· version
+#   1"). The fixture's line 1 "· version 7 · saved 2 minutes ago" and line 3 "version: 7" are the board's own file text;
+#   the server renders the file (a real one starts `tvashtr_team: 1`) and the app shows it as is.
+# note (File-NewMenu, additive) the app's New team opens its existing dialog, not the board's menu: "Import a team file ·
+#   .yaml or .json" is added to that dialog at the board's row size; 'Describe your idea' / 'Supervisor proposes' is not
+#   built (no milestone builds it), 'From a template' / '4 built-in' are the dialog's existing Starting point cards and
+#   'Start a new team' the menu's heading (the dialog keeps its "New team" title) — all "not found" by design.
+# note (Hide) the brief asks that the card can be hidden; no board draws the control: an IconButton "Hide" (✕) at the
+#   card's top-right corner, out of the flow, so the card's layout is the board's. The chips stay after Hide.
+# note (canvas, existing elements) the cards' existing chips ('Grok plan · this Mac', '2 skills', '4 skills', 'GitHub',
+#   'Read-only'), the gate's 'Spec approval' / 'Gate · asks you' (the app's gate card shows its own title and "Gate") and
+#   the loop label 'Up to 3 rounds' (the app labels the edge "changes requested") are drawn differently by the boards —
+#   the app governs them ("not found"); the app fits the five cards into the canvas beside the 420px panel, so the card
+#   text is "only moved". The Home boards' nav badges, header summary, budget and "Your teams" cards are the existing
+#   Home's ("not found"; kept-home.txt holds what the app has there). The web renders of the Desktop boards have no
+#   'Tvashtr — the living canvas' strip or 'Tvashtr Desktop' chip (the website's chrome), hence their two more "not found".
+# note (layout) the panel docks on the canvas's right at 420px (≤1280px it floats over the canvas, as the agent drawer
+#   does) and never beside the agent drawer (opening it closes the drawer through its unsaved guard; selecting an agent
+#   closes it); the code view is 418px and scrolls; the card sits 20px / 76px from the canvas's top-left under the +
+#   button; the check dialog is 640px, 60px from the top.
+File-Panel web: matched 104/122 design items · 0 with size/type drift · 10 only moved · 18 not found in app
+File-Panel desktop: matched 106/122 design items · 0 with size/type drift · 10 only moved · 16 not found in app
+File-NewMenu web: matched 27/53 design items · 4 with size/type drift · 3 only moved · 26 not found in app — covered: W4×1, W6×3
+File-NewMenu desktop: matched 27/53 design items · 4 with size/type drift · 3 only moved · 26 not found in app — covered: W4×1, W6×3
+File-Check web: matched 51/73 design items · 4 with size/type drift · 1 only moved · 22 not found in app — covered: W4×1, W6×3
+File-Check desktop: matched 51/73 design items · 4 with size/type drift · 1 only moved · 22 not found in app — covered: W4×1, W6×3
+File-CheckError web: matched 40/61 design items · 4 with size/type drift · 1 only moved · 21 not found in app — covered: W4×1, W6×3
+File-CheckError desktop: matched 40/61 design items · 4 with size/type drift · 1 only moved · 21 not found in app — covered: W4×1, W6×3
+File-Imported web: matched 30/45 design items · 0 with size/type drift · 12 only moved · 15 not found in app
+File-Imported desktop: matched 32/45 design items · 0 with size/type drift · 12 only moved · 13 not found in app
+
+# Kept elements (brief §2.2): kept-teamcanvas.txt (new, captured at 1d83fc5 before any M4 change with teamfile.mjs's
+#   kept-teamcanvas-*) and kept-home.txt (home-kept.mjs, as M2/M3); INVENTORY=1 shoot-app.mjs after the change — every
+#   listed item is still present (the team canvas adds "button: Team file"; Home's inventory is unchanged):
+kept-home-desktop: 63/63 kept items present
+kept-home-web: 64/64 kept items present
+kept-teamcanvas-desktop: 11/11 kept items present
+kept-teamcanvas-web: 11/11 kept items present
+# and with the M4 states on screen: File-Panel-web / -desktop and File-Imported-web / -desktop have every kept-teamcanvas
+#   item (plus Team file); File-NewMenu-web, File-Check-web and File-CheckError-web have all 64 kept-home-web items (the
+#   dialogs open over Home). App.teamFile.test.tsx asserts the kept toolbar and canvas controls render beside Team file.
