@@ -240,97 +240,123 @@ export function StartedFrom({
  */
 export function CameAlong({ runId }: { runId: string }) {
   const [at, setAt] = useState<number | null>(null);
-  const open = at !== null;
+  return (
+    <>
+      <CameAlongButton open={at !== null} onOpen={setAt} />
+      {at !== null && <CameAlongPopover runId={runId} at={at} onClose={() => setAt(null)} />}
+    </>
+  );
+}
+
+/** The Activity line's "See what came along"; `onOpen` gets the popover's top (8px below the
+ *  run's canvas). */
+export function CameAlongButton({
+  open,
+  onOpen,
+}: {
+  open: boolean;
+  onOpen: (top: number) => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="lv-linkbtn lv-linkbtn--accent"
+      aria-haspopup="dialog"
+      aria-expanded={open}
+      onClick={(e) => {
+        const canvas = document.querySelector(".cv-canvas") ?? e.currentTarget;
+        onOpen(Math.max(8, canvas.getBoundingClientRect().top + 8));
+      }}
+    >
+      See what came along
+    </button>
+  );
+}
+
+/** The popover itself, owned by whoever keeps it open (the Activity panel keeps it open while
+ *  its line scrolls out of the last few). */
+export function CameAlongPopover({
+  runId,
+  at,
+  onClose,
+}: {
+  runId: string;
+  at: number;
+  onClose: () => void;
+}) {
   const pop = useRef<HTMLDivElement>(null);
-  const close = () => setAt(null);
-  useDismiss(open, close, pop);
-  const carry = useLoaded(open ? runId : null, () => getCarry(runId));
+  const close = onClose;
+  useDismiss(true, close, pop);
+  const carry = useLoaded(runId, () => getCarry(runId));
   const c = carry.value;
   const n = c?.from.number;
   const run = n != null ? `run #${n}` : "an earlier run";
-  return (
-    <>
-      <button
-        type="button"
-        className="lv-linkbtn lv-linkbtn--accent"
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        onClick={(e) => {
-          const canvas = document.querySelector(".cv-canvas") ?? e.currentTarget;
-          setAt(Math.max(8, canvas.getBoundingClientRect().top + 8));
-        }}
-      >
-        See what came along
-      </button>
-      {open &&
-        carry.state !== "loading" &&
-        createPortal(
-          <div
-            ref={pop}
-            role="dialog"
-            aria-label={`What came along from ${run}`}
-            className="lv-came"
-            style={{ top: at, maxHeight: `calc(100vh - ${at + 16}px)` }}
-          >
-            <div className="lv-came__head">
-              <span className="lv-came__title">What came along from {run}</span>
-              <IconButton size="sm" aria-label="Close" title="Close" onClick={close}>
-                <X size={16} strokeWidth={1.6} aria-hidden />
-              </IconButton>
-            </div>
-            {!c ? (
-              <LoadState
-                state="error"
-                loading=""
-                error="Couldn’t load what came along."
-                onRetry={carry.retry}
-              />
-            ) : (
-              <>
-                {c.spec && (
-                  <Part title="The final spec">
-                    <div className="lv-came__item">
-                      Spec{c.spec.version != null ? ` v${c.spec.version}` : ""} · became this run’s
-                      starting spec
-                    </div>
-                  </Part>
-                )}
-                {c.decisions.length > 0 && (
-                  <Part title={`Your decisions (${c.decisions.length})`}>
-                    {c.decisions.map((d, i) => (
-                      <div key={i} className="lv-came__item">
-                        {decisionText(d)}
-                      </div>
-                    ))}
-                  </Part>
-                )}
-                {c.memories.length > 0 && (
-                  <Part title={`What the agents learned (${memoriesCount(c.memories.length)})`}>
-                    {c.memories.map((m) => (
-                      <div key={m.id} className="lv-came__item">
-                        {m.content}
-                      </div>
-                    ))}
-                  </Part>
-                )}
-                {c.summaries.length > 0 && (
-                  <Part title="A short summary from each agent">
-                    {c.summaries.map((s, i) => (
-                      <div key={i} className="lv-came__item">
-                        <span className="lv-came__agent">{s.agent}</span> · {s.text}
-                      </div>
-                    ))}
-                  </Part>
-                )}
-                <div className="lv-came__foot">
-                  Left behind: the agents’ full conversations. They stay with {run}.
+  if (carry.state === "loading") return null;
+  return createPortal(
+    <div
+      ref={pop}
+      role="dialog"
+      aria-label={`What came along from ${run}`}
+      className="lv-came"
+      style={{ top: at, maxHeight: `calc(100vh - ${at + 16}px)` }}
+    >
+      <div className="lv-came__head">
+        <span className="lv-came__title">What came along from {run}</span>
+        <IconButton size="sm" aria-label="Close" title="Close" onClick={close}>
+          <X size={16} strokeWidth={1.6} aria-hidden />
+        </IconButton>
+      </div>
+      {!c ? (
+        <LoadState
+          state="error"
+          loading=""
+          error="Couldn’t load what came along."
+          onRetry={carry.retry}
+        />
+      ) : (
+        <>
+          {c.spec && (
+            <Part title="The final spec">
+              <div className="lv-came__item">
+                Spec{c.spec.version != null ? ` v${c.spec.version}` : ""} · became this run’s
+                starting spec
+              </div>
+            </Part>
+          )}
+          {c.decisions.length > 0 && (
+            <Part title={`Your decisions (${c.decisions.length})`}>
+              {c.decisions.map((d, i) => (
+                <div key={i} className="lv-came__item">
+                  {decisionText(d)}
                 </div>
-              </>
-            )}
-          </div>,
-          document.body,
-        )}
-    </>
+              ))}
+            </Part>
+          )}
+          {c.memories.length > 0 && (
+            <Part title={`What the agents learned (${memoriesCount(c.memories.length)})`}>
+              {c.memories.map((m) => (
+                <div key={m.id} className="lv-came__item">
+                  {m.content}
+                </div>
+              ))}
+            </Part>
+          )}
+          {c.summaries.length > 0 && (
+            <Part title="A short summary from each agent">
+              {c.summaries.map((s, i) => (
+                <div key={i} className="lv-came__item">
+                  <span className="lv-came__agent">{s.agent}</span> · {s.text}
+                </div>
+              ))}
+            </Part>
+          )}
+          <div className="lv-came__foot">
+            Left behind: the agents’ full conversations. They stay with {run}.
+          </div>
+        </>
+      )}
+    </div>,
+    document.body,
   );
 }
 

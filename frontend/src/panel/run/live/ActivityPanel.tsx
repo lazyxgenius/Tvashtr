@@ -8,7 +8,7 @@ import { Button, IconButton } from "../../../design-system/components";
 import type { ActivityLine, PinnedCallout, RunActivity } from "../../../lib/api/activity";
 import { navigate } from "../../../lib/nav";
 import { clock, currentLineIds, duration } from "./liveFormat";
-import { CameAlong } from "./StartNext";
+import { CameAlongButton, CameAlongPopover } from "./StartNext";
 import { StateGlyph } from "./StateGlyph";
 
 /** What the panel's buttons do — the run view wires each to an existing action. */
@@ -104,13 +104,14 @@ function Line({
   current,
   now,
   actions,
-  runId,
+  came,
 }: {
   line: ActivityLine;
   current: boolean;
   now: number;
   actions: ActivityActions;
-  runId: string;
+  /** "See what came along": the panel keeps its popover (it outlives this line's place). */
+  came: { open: boolean; onOpen: (top: number) => void };
 }) {
   const [open, setOpen] = useState(false);
   const r = line.refs;
@@ -124,7 +125,7 @@ function Line({
       line.from_run.number != null ? `from run #${line.from_run.number}` : "from an earlier run";
   } else if (line.came_along) {
     // M10: "Started from run #12 · brought …" (Next-Started).
-    extra = <CameAlong runId={runId} />;
+    extra = <CameAlongButton open={came.open} onOpen={came.onOpen} />;
   } else if (line.review_memories) {
     // M10: "Saved 3 new memories from this run · review them in Toolkit" (Next-Finished).
     extra = (
@@ -444,6 +445,8 @@ export function ActivityPanel({
         a.live_state !== "waiting" ||
         activity.lines.some((l) => l.node_id === a.node_id)),
   );
+  // M10: "What came along" stays open while its line scrolls out of the last few.
+  const [cameAt, setCameAt] = useState<number | null>(null);
   const current = currentLineIds(activity.lines);
   const lines = filter ? activity.lines.filter((l) => l.node_id === filter) : activity.lines;
   const hiddenCount = earlier ? 0 : Math.max(0, lines.length - SHOWN);
@@ -554,11 +557,14 @@ export function ActivityPanel({
                 current={current.has(l.id)}
                 now={now}
                 actions={actions}
-                runId={activity.run_id}
+                came={{ open: cameAt !== null, onOpen: setCameAt }}
               />
             ))}
           </ol>
         </>
+      )}
+      {cameAt !== null && (
+        <CameAlongPopover runId={activity.run_id} at={cameAt} onClose={() => setCameAt(null)} />
       )}
     </section>
   );

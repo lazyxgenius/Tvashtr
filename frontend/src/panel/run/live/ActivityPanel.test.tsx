@@ -748,6 +748,53 @@ describe("ActivityPanel — M10 a run started from another (Next-Started)", () =
   });
 });
 
+describe("ActivityPanel — M10 what came along stays open as the run goes on", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("the popover stays open when its line drops out of the last six", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              from: { run_id: "r-12", number: 12 },
+              spec: { version: 3 },
+              decisions: [],
+              memories: [],
+              summaries: [],
+            }),
+          ),
+        ),
+      ),
+    );
+    const from = line("run:from", {
+      node_id: null,
+      label: "Run",
+      kind: "started",
+      text: "Started from run #12 · brought spec v3",
+      came_along: true,
+      at: T(11, 10, 2),
+    });
+    const more = (n: number) =>
+      Array.from({ length: n }, (_, k) => line(`pm:${k}`, { at: T(11, 10, 3 + k) }));
+    const props = (lines: ActivityLine[]) => ({
+      activity: activity({ run_id: "r-14", lines, total: lines.length }),
+      now: NOW,
+      actions: actions(),
+    });
+    const { rerender } = render(<ActivityPanel {...props([from, ...more(5)])} />);
+    fireEvent.click(screen.getByRole("button", { name: "See what came along" }));
+    expect(
+      await screen.findByRole("dialog", { name: "What came along from run #12" }),
+    ).toBeVisible();
+    // The PM adds a step: the Started-from line is now the 7th from the end, hidden.
+    rerender(<ActivityPanel {...props([from, ...more(6)])} />);
+    expect(screen.queryByText("Started from run #12 · brought spec v3")).toBeNull();
+    expect(screen.getByRole("dialog", { name: "What came along from run #12" })).toBeVisible();
+  });
+});
+
 describe("ActivityPanel — M10 the memories a run saved (Next-Finished)", () => {
   it("the line names how many and Review opens Toolkit › Memory › Inbox", () => {
     const saved = line("run:memories", {
