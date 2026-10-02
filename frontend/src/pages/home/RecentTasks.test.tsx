@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { RecentTask } from "../../lib/api/myAgents";
@@ -10,6 +10,7 @@ import {
   renderHome,
   resetHomeState,
 } from "./homeTestUtils";
+import { requestComposerPrefill } from "./homeData";
 
 // M6 Agents-Recent: Home's composer shows Recent tasks as you type (≥ 2 characters); ↑ ↓ choose,
 // Enter uses the chosen one (task + its team), Esc closes it until the next keystroke. Every
@@ -51,7 +52,13 @@ function setup(reply: unknown = { tasks: TASKS }) {
 }
 const ideaBox = () =>
   screen.findByRole<HTMLTextAreaElement>("textbox", { name: "What should the team build?" });
-const type = (box: HTMLElement, value: string) => fireEvent.change(box, { target: { value } });
+// A person types into the focused box.
+const type = (box: HTMLElement, value: string) => {
+  if (document.activeElement !== box) act(() => box.focus());
+  fireEvent.change(box, { target: { value } });
+};
+const list = () => screen.queryByRole("listbox", { name: "Recent tasks" });
+const pause = (ms = 250) => act(() => new Promise((r) => setTimeout(r, ms)));
 const recentCalls = (calls: Call[]) => calls.filter((c) => c.path.startsWith("/api/recent-tasks"));
 
 describe("Home composer — Recent tasks (Agents-Recent)", () => {
@@ -155,5 +162,79 @@ describe("Home composer — Recent tasks (Agents-Recent)", () => {
     expect(within(composer).getByRole("button", { name: /Docs team/ })).toBeVisible();
     expect(within(composer).getByRole("button", { name: /Launch/ })).toBeInTheDocument();
     expect(within(composer).getByRole("button", { name: /Options/ })).toBeInTheDocument();
+  });
+});
+
+// The review's fixes (M6): the list only while the box has focus after a real keystroke, IME,
+// stale rows, the live region.
+describe("Home composer — Recent tasks, focus and typing", () => {
+  it("closes when the idea box loses focus (Tab, a click elsewhere) and comes back on focus", async () => {
+    setup();
+    const box = await ideaBox();
+    type(box, "Add a");
+    await screen.findByRole("listbox", { name: "Recent tasks" });
+    act(() => box.blur());
+    expect(list()).toBeNull();
+    expect(box).toHaveAttribute("aria-expanded", "false");
+    act(() => box.focus());
+    expect(list()).not.toBeNull();
+  });
+
+  it("doesn't open when Retry / Run again fills the idea (no keystroke), nor ask for tasks", async () => {
+    const calls = setup();
+    const box = await ideaBox();
+    act(() => requestComposerPrefill({ teamId: "t-ind", idea: "Add an RSI indicator" }));
+    await waitFor(() => expect(box).toHaveValue("Add an RSI indicator"));
+    act(() => box.focus());
+    await pause();
+    expect(list()).toBeNull();
+    expect(recentCalls(calls)).toHaveLength(0);
+    // The next real keystroke opens it.
+    type(box, "Add a");
+    expect(await screen.findByRole("listbox", { name: "Recent tasks" })).toBeInTheDocument();
+  });
+
+  it("leaves keys alone while an IME is composing", async () => {
+    setup();
+    const box = await ideaBox();
+    type(box, "Add a");
+    await screen.findByRole("listbox", { name: "Recent tasks" });
+    expect(fireEvent.keyDown(box, { key: "ArrowDown", isComposing: true })).toBe(true);
+    expect(fireEvent.keyDown(box, { key: "Enter", keyCode: 229 })).toBe(true);
+    expect(box).not.toHaveAttribute("aria-activedescendant");
+    expect(box).toHaveValue("Add a");
+  });
+
+  it("shows no stale rows for new text; the chosen row resets with the text and on mouse leave", async () => {
+    setup();
+    const box = await ideaBox();
+    type(box, "Add a");
+    const shown = await screen.findByRole("listbox", { name: "Recent tasks" });
+    fireEvent.keyDown(box, { key: "ArrowDown" });
+    expect(box).toHaveAttribute("aria-activedescendant");
+    // New text: the old answer isn't shown while the new one is on its way.
+    type(box, "Add an");
+    expect(list()).toBeNull();
+    const again = await screen.findByRole("listbox", { name: "Recent tasks" });
+    expect(box).not.toHaveAttribute("aria-activedescendant");
+    const rows = within(again).getAllByRole("option");
+    fireEvent.mouseEnter(rows[1]);
+    expect(rows[1]).toHaveAttribute("aria-selected", "true");
+    fireEvent.mouseLeave(again);
+    expect(rows[1]).toHaveAttribute("aria-selected", "false");
+    expect(shown).not.toBeInTheDocument();
+  });
+
+  it("says when the list opens, in a polite live region; ↑ ↓ are the textarea's while it's shut", async () => {
+    setup();
+    const box = await ideaBox();
+    expect(fireEvent.keyDown(box, { key: "ArrowDown" })).toBe(true);
+    type(box, "Add a");
+    await screen.findByRole("listbox", { name: "Recent tasks" });
+    const live = screen.getByText("4 recent tasks — use the arrow keys to choose");
+    expect(live).toHaveAttribute("aria-live", "polite");
+    fireEvent.keyDown(box, { key: "Escape" });
+    expect(live).toBeEmptyDOMElement();
+    expect(fireEvent.keyDown(box, { key: "ArrowUp" })).toBe(true);
   });
 });

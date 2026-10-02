@@ -17,9 +17,27 @@ function Match({ text, q }: { text: string; q: string }) {
 
 /** The listbox under the idea box (Agents-Recent). */
 export function RecentTasksList({ recent, query }: { recent: RecentTasksApi; query: string }) {
-  if (!recent.open) return null;
+  const n = recent.tasks.length;
   return (
-    <div id={recent.listId} role="listbox" aria-label="Recent tasks" className="hm-rtask">
+    <>
+      {/* Says when the list opens (the list itself is announced through the box's ARIA). */}
+      <span className="hm-sr-only" role="status" aria-live="polite">
+        {recent.open ? `${n} recent task${n === 1 ? "" : "s"} — use the arrow keys to choose` : ""}
+      </span>
+      {recent.open && <List recent={recent} query={query} />}
+    </>
+  );
+}
+
+function List({ recent, query }: { recent: RecentTasksApi; query: string }) {
+  return (
+    <div
+      id={recent.listId}
+      role="listbox"
+      aria-label="Recent tasks"
+      className="hm-rtask"
+      onMouseLeave={() => recent.setActive(-1)}
+    >
       <div className="hm-rtask__head" role="presentation">
         <span className="hm-rtask__eyebrow">Recent tasks</span>
         <span>Picking one fills in the task and its team</span>

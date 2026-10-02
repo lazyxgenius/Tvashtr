@@ -305,11 +305,21 @@ export function Composer() {
   }, [baseRef, branches, branchesTruncated, target]);
   const budgetErr = budgetError(budget);
 
+  // ---- M6: Recent tasks as you type (Agents-Recent): a pick fills the task and its team ----
+  const recent = useRecentTasks(idea, (t) => {
+    pickTeamForRun(t.team.id);
+    setIdea(t.task);
+    setIdeaError(false);
+    setProblem(null);
+    setRetryOf(null);
+  });
+
   // ---- prefill (Retry / Start again) ----
   useComposerPrefillHandler((p: ComposerPrefill) => {
     if (p.teamId) pickTeamForRun(p.teamId);
     else focusIdea();
     setIdea(p.idea);
+    recent.reset();
     setIdeaError(false);
     setProblem(null);
     setRetryOf(
@@ -351,15 +361,6 @@ export function Composer() {
       setBudget(money(p.budget));
     }
     window.setTimeout(() => focusIdea(), 0);
-  });
-
-  // ---- M6: Recent tasks as you type (Agents-Recent): a pick fills the task and its team ----
-  const recent = useRecentTasks(idea, (t) => {
-    pickTeamForRun(t.team.id);
-    setIdea(t.task);
-    setIdeaError(false);
-    setProblem(null);
-    setRetryOf(null);
   });
 
   // ---- keys ----
@@ -464,6 +465,7 @@ export function Composer() {
         },
       });
       setIdea("");
+      recent.reset();
       setRetryOf(null);
       // After a retry the composer goes back to the team it had (HmF-Retry-4).
       if (retryOf?.backTo && retryOf.backTo !== teamId) pickTeamForRun(retryOf.backTo);
@@ -543,6 +545,7 @@ export function Composer() {
             value={idea}
             onChange={(e) => {
               setIdea(e.target.value);
+              recent.onTyped();
               if (ideaError) setIdeaError(false);
               if (!e.target.value.trim() && retryOf) setRetryOf(null);
             }}
