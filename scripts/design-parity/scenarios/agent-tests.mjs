@@ -362,6 +362,7 @@ function canvas(
     chip = CHIP.passed,
     chips = {},
     versions = {},
+    rev = {},
     extra = {},
   } = {},
 ) {
@@ -374,7 +375,9 @@ function canvas(
     [graphKey]: {
       ...base[graphKey],
       nodes: base[graphKey].nodes.map((n) =>
-        n.id in all ? { ...n, tests: all[n.id] } : n,
+        n.id in all
+          ? { ...n, tests: all[n.id], ...(n.id === "n-rev" ? rev : {}) }
+          : n,
       ),
     },
     [versionsKey]: {
@@ -450,6 +453,40 @@ const board = (
       await then?.(page);
     },
   });
+// ---- MA (Test-TabsTight): two-digit counts tighten the six-tab row ----
+// The Reviewer with 12 skills & tools (10 skills + its 2 MCP servers) and 15 memories (14 kept + 1
+// waiting); Tests 6 as Test-List.
+const TIGHT_SKILLS = Array.from({ length: 10 }, (_, i) => ({
+  type: "inline",
+  name: `skill-${i + 1}`,
+  content: "# Skill",
+  mode: "always",
+}));
+const memo = (i, status = "active") => ({
+  id: `m-${i}`,
+  content: `Note ${i}`,
+  polarity: "require",
+  repo_key: "lazyxgenius/trade_mcp",
+  node_id: "n-rev",
+  tier: "node",
+  pinned: false,
+  status,
+  confirmation_count: 1,
+  source_run_id: "r-rsi",
+  source_invocation_id: 1,
+  embedding_dim: null,
+  valid_from: null,
+  invalid_at: null,
+  created_at: ago(DAY * 3),
+  updated_at: ago(DAY * 3),
+});
+const TIGHT_MEMORIES = (req) => {
+  const q = new URL(req.url()).searchParams;
+  if (q.get("node_id") !== "n-rev") return { json: { memories: [] } };
+  return q.get("status") === "pending_review"
+    ? { json: { memories: [memo(15, "pending_review")] } }
+    : { json: { memories: Array.from({ length: 14 }, (_, i) => memo(i + 1)) } };
+};
 const listed = async (page) => {
   await drawer(page).getByText("6 tests").waitFor();
   await settle(page);
@@ -670,6 +707,16 @@ export default [
     then: newTest,
   }),
   ...board("Test-List", { then: listed }),
+  ...board("Test-TabsTight", {
+    rev: { skills: TIGHT_SKILLS },
+    extra: { "GET /api/memories": TIGHT_MEMORIES },
+    then: async (p) => {
+      await listed(p);
+      await drawer(p)
+        .getByRole("tab", { name: /Memory\s*15/ })
+        .waitFor();
+    },
+  }),
   ...board("Test-Running", {
     tests: view(RUNNING),
     chip: CHIP.testing,

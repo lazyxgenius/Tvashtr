@@ -119,3 +119,17 @@ kept-ma-home-stopdialog: web 67/67, desktop 66/66 kept items present — none mi
 # and the earlier records still hold on ma-parity: kept-m7-teamcanvas-web 46/46, -desktop 46/46; kept-teamcanvas-web 11/11,
 #   -desktop 11/11; kept-runview-drawer-web 27/27 (the run view's drawer keeps its five tabs); kept-m7-runview-runs-web 46/46,
 #   -desktop 46/46.
+
+# Test-TabsTight (review fix dbcc4b8, on ma-parity2 = fix/ma-audit e9f9903, 2026-10-02): a two-digit count gives the six-tab row
+#   `nd-tabs--tight` (NodeTabs.tsx; panel.css `.nd-tabs--tight .ds-tabs { padding: 0 14px; gap: 8px; }`). Board: Quality ›
+#   Test-TabsTight (MA · Six tabs with two-digit counts — Test-List with Skills & tools 12, Memory 15, Tests 6 and the tight row),
+#   1 design shot, fonts-ok. App: agent-tests.mjs's Test-TabsTight (Test-List's moment; the Reviewer with 10 skills + its 2 MCP
+#   servers = 12, and 14 kept + 1 waiting memories = 15), Vite :5301 on ma-parity2, 2 app shots (web, Desktop).
+# GATE: MET — the tight row's six tabs match the board box for box (x,y w×h; 13.5/500 each; web and Desktop the same):
+#   Setup (1071,287) 38×28 · Skills & tools12 (1117,279) 88×44, its label 68×32 on two lines · Memory15 (1213,287) 74×28 ·
+#   Runs (1295,287) 32×28 · Tests6 (1335,287) 50×28 · Docs (1393,287) 33×28 — each equal to the board's to the pixel. The row is
+#   the drawer's 383px inner width (1057–1440, as the board's); the boxes span 1071–1426, none clipped, all inside the drawer.
+#   The one drift item is W7 (as m5.txt: the board's card chip 'Read-only' → the drawer header's badge). Test-List re-shot on
+#   ma-parity2 is unchanged (single-digit counts keep the loose row; the line above).
+Test-TabsTight web: matched 71/85 design items · 1 with size/type drift · 24 only moved · 14 not found in app — covered: W7×1
+Test-TabsTight desktop: matched 73/85 design items · 1 with size/type drift · 24 only moved · 12 not found in app — covered: W7×1
