@@ -48,7 +48,7 @@ from tvashtr.config import get_settings
 from tvashtr.control_plane import team_run, workspace_reaper
 from tvashtr.control_plane.teams import build_two_node_team
 from tvashtr.db import session_scope
-from tvashtr.models import Run, RunArtifact
+from tvashtr.models import Compare, Run, RunArtifact
 
 TERMINAL_STATUSES = ("completed", "failed", "rejected", "cancelled", "over_budget")
 
@@ -742,3 +742,45 @@ def test_the_reaper_and_the_executor_spell_the_run_directory_the_same_way(monkey
     run_id = str(uuid.uuid4())
 
     assert workspace_reaper.workspace_dir_for_run(run_id) == str(root / run_id)
+
+
+def test_a_compare_runs_greenfield_workspace_is_reaped_once_it_has_ended(
+    client, monkeypatch, tmp_path
+):
+    """M8 review finding: a greenfield workspace is spared until ``ship_step`` persists its diff,
+    and a compare run never ships — so its workspace was kept forever. A compare run's work lives
+    in its M3 checkpoints (what the compare's results read); once it has ended (after its M9
+    hidden check) the directory goes. A live one, and an ordinary greenfield run, are still
+    spared."""
+    root = _use_tmp_workspace_root(monkeypatch, tmp_path)
+    with session_scope() as session:
+        team = session.get(Run, uuid.UUID(_make_run("completed"))).team_graph_id
+        cmp = Compare(
+            owner_id=auth_user_id(),
+            team_graph_id=team,
+            version_a=1,
+            version_b=2,
+            task="t",
+            status="finished",
+        )
+        session.add(cmp)
+        session.flush()
+        cid = cmp.id
+    done, live, plain = (
+        _make_run(s, repo_path=None) for s in ("completed", "running", "completed")
+    )
+    with session_scope() as session:
+        for run_id in (done, live):
+            session.get(Run, uuid.UUID(run_id)).pair_id = cid
+    for run_id in (done, live, plain):
+        _seed_workspace(root, run_id)
+
+    for run_id in (done, live, plain):
+        team_run._run_end_teardown(run_id)
+    assert not (root / done).exists()
+    assert (root / live).is_dir() and (root / plain).is_dir()
+
+    with session_scope() as session:
+        session.get(Run, uuid.UUID(live)).status = "failed"
+    assert workspace_reaper.sweep_orphaned_workspaces() == 1
+    assert not (root / live).exists() and (root / plain).is_dir()
