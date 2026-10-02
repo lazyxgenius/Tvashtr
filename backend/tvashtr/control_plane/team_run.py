@@ -528,12 +528,15 @@ def load_graph_step(run_id: str) -> dict:
     }
 
 
-@DBOS.step()
-def load_resume_step(run_id: str) -> dict:
+def load_resume_state(run_id: str) -> dict:
     """M3 (R8): where a resumed run's walk starts — the chosen step's node (in this run's own copy
     of the graph), the rounds already run per node, the reviewer's notes it carries and its copied
-    spec document. Called only for a resumed run (``graph["resumed"]``), so no other run gains a
-    step. Ids and words only: the workspace diff is read by :func:`checkpoints.restore`."""
+    spec document. Called only for a resumed run (``graph["resumed"]``).
+
+    Deliberately a PLAIN call, not a ``@DBOS.step``: it reads the run's seed checkpoint, written
+    once by Resume and never changed, so a replay reads the same — and in DBOS 2.x every step also
+    registers a workflow, so a new step would change the application version and strand the runs in
+    flight at a deploy. Ids and words only: the diff is read by :func:`checkpoints.restore`."""
     from tvashtr.control_plane import resume  # lazy: resume → node_history → team_run
 
     return resume.seed_state(run_id)
@@ -2540,7 +2543,7 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
     # M3 (R8): a resumed run starts at the chosen step with what it carries. ``start_id`` stays the
     # graph's root, so the entry node is still the one that owns the spec.
     if graph.get("resumed"):
-        carried = load_resume_step(run_id)
+        carried = load_resume_state(run_id)
         current = carried["start_node_id"]
         iters_by_node = dict(carried["iters_by_node"])
         reviewer_feedback = carried["reviewer_feedback"]
