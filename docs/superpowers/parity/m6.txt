@@ -44,7 +44,7 @@
 #   fafd7eb canvas: the card's blue based-on chip.
 #   f004bab home: Recent tasks in the composer (combobox ARIA, ↑ ↓ Enter Esc, every composer control kept).
 #   784419e toolkit: the My agents nav leaf + page, the cards with Update (Undo), ⋯ Rename / Delete, Use in a team.
-#   (this commit) the Templates menu hangs from the card tools' right edge (since M5 History and Open full editor sit right
+#   1363e0e fixes: the Templates menu hangs from the card tools' right edge (since M5 History and Open full editor sit right
 #     of Templates, the old "5px past the button" put its left part outside the drawer); Recent tasks' classes renamed
 #     (hm-rtask: hm-recent is Recent runs'); the ⋯ menu's 32px rows; the scenario.
 # waiver W1 (app governs, brief 2.2/2.3 — the drawer's existing parts; Agents-Save / -Menu / -Use / -More) 'Read-only'
