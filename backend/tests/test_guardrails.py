@@ -589,3 +589,29 @@ def test_mask_secrets_masks_keys_tokens_and_env_dumps_but_keeps_names():
     assert mask_secrets("nothing secret: PATH=/usr/bin, pytest -q") == (
         "nothing secret: PATH=/usr/bin, pytest -q"
     )
+
+
+def test_mask_secrets_masks_stripe_jwt_url_passwords_gitlab_hf_and_password_colon():
+    """M4 security review: shapes the team file (and the run view) must not show."""
+    from tvashtr.control_plane.guardrails import mask_secrets
+
+    stripe = "sk_" + "live_" + "51HfAbCdEfGhIjKlMnOpQrStUv"
+    jwt = (
+        "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0."
+        "dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U"
+    )
+    glpat = "glpat-" + "AbCdEfGhIjKlMnOpQrSt"
+    hf = "hf_" + "AbCdEfGhIjKlMnOpQrStUvWxYz012345"
+    assert mask_secrets(f"pay with {stripe} now") == "pay with •••• now"
+    assert mask_secrets(f"jwt {jwt}") == "jwt ••••"
+    assert mask_secrets("DATABASE_URL=postgres://app:S3cr3tPw@db/prod") == (
+        "DATABASE_URL=postgres://app:••••@db/prod"
+    )
+    assert mask_secrets("clone https://bot:hunter2@git.example.com/o/r") == (
+        "clone https://bot:••••@git.example.com/o/r"
+    )
+    assert mask_secrets(f"token {glpat} and {hf}") == "token •••• and ••••"
+    assert mask_secrets("password: hunter2hunter2") == "password: ••••"
+    assert mask_secrets("see https://example.com/a:b and user@example.com") == (
+        "see https://example.com/a:b and user@example.com"
+    )

@@ -3500,7 +3500,10 @@ def import_team_file(
         raise HTTPException(
             status_code=422, detail={"error": {"line": exc.line, "message": exc.message}}
         ) from exc
-    name = (body.name if body.name is not None else team_file.suggested_name(data)).strip()
+    # One line, always (a line break in a name never reaches the file's header).
+    name = " ".join(
+        (body.name if body.name is not None else team_file.suggested_name(data)).split()
+    )
     if not name:
         raise HTTPException(status_code=422, detail="the team needs a name")
     with db.session_scope() as session:

@@ -130,6 +130,14 @@ _MASK_PATTERNS: tuple[re.Pattern[str], ...] = (
     *(pattern for _name, pattern in _SECRET_PATTERNS),
     re.compile(r"(?i)\bauthorization\s*:\s*(?:bearer|basic|token)?\s*([^\s'\"]+)"),
     re.compile(r"(?i)\b\w*(?:_key|_token|_secret|password)=(\"[^\"]*\"|'[^']*'|[^\s'\"]+)"),
+    # M4 (the team file): Stripe live/test keys, JWTs, a URL's userinfo password, GitLab and
+    # Hugging Face tokens, and a ``password: …`` line.
+    re.compile(r"\b[rs]k_(?:live|test)_[A-Za-z0-9]{16,}"),
+    re.compile(r"\beyJ[\w-]{8,}\.[\w-]{8,}\.[\w-]{8,}"),
+    re.compile(r"\b[a-z][a-z0-9+.-]*://[^/\s:@]+:([^@\s/]+)@"),
+    re.compile(r"\bglpat-[\w-]{20,}"),
+    re.compile(r"\bhf_[A-Za-z0-9]{30,}"),
+    re.compile(r"(?i)\bpassw(?:or)?d\s*:\s*(\S+)"),
 )
 
 

@@ -23,6 +23,7 @@ from tvashtr.control_plane.credentials import held_provider_slugs, provider_for_
 from tvashtr.control_plane.graph_validity import validate_graph
 from tvashtr.control_plane.guardrails import GUARDRAIL_GATE_KINDS, mask_secrets
 from tvashtr.control_plane.run_failure import node_label
+from tvashtr.control_plane.run_views import MAX_RUN_BUDGET_USD
 from tvashtr.control_plane.toolkit import owner_secret_names, secret_refs
 from tvashtr.models import (
     AgentNode,
@@ -132,8 +133,14 @@ def file_name(team_name: str, fmt: str) -> str:
     return f"{_slug(team_name)}.{fmt}"
 
 
-def _strip_userinfo(url: str) -> str:
-    return re.sub(r"^([a-z][a-z0-9+.-]*://)[^/@]*@", r"\1", url or "", flags=re.I)
+_GITHUB_REPO = re.compile(r"github\.com[/:]([\w.-]+)/([\w.-]+?)(?:\.git)?(?:[/?#]|$)", re.I)
+
+
+def _github_repo(url: object) -> str | None:
+    """A repo skill's source as ``https://github.com/<owner>/<repo>`` — never its userinfo, query or
+    fragment — or None when it isn't a GitHub repo (the Toolkit only takes GitHub sources)."""
+    match = _GITHUB_REPO.search(url) if isinstance(url, str) else None
+    return f"https://github.com/{match[1]}/{match[2]}" if match else None
 
 
 def _team_defaults(session, team: TeamGraph) -> tuple[float | None, str | None]:
@@ -263,13 +270,15 @@ def export_team(session, team: TeamGraph) -> dict:
             agent["skills"] = skill_list
         tc = n.tool_config if isinstance(n.tool_config, dict) else {}
         tv = tc.get("tvashtr") if isinstance(tc.get("tvashtr"), dict) else {}
+        servers = tc.get("mcpServers") if isinstance(tc.get("mcpServers"), dict) else {}
+        states = tv.get("servers") if isinstance(tv.get("servers"), dict) else {}
         tool_names: list[str] = []
-        for ref in tv.get("library") or []:
+        for ref in tv.get("library") if isinstance(tv.get("library"), list) else []:
             name = tools.get(_as_uuid(ref))
             if name:
                 tool_names.append(name)
                 secrets.update(secret_refs(tool_configs.get(name)))
-        for name, server in (tc.get("mcpServers") or {}).items():
+        for name, server in servers.items():
             if name not in tool_names:
                 tool_names.append(name)
             secrets.update(secret_refs(server))
@@ -277,13 +286,13 @@ def export_team(session, team: TeamGraph) -> dict:
             agent["tools"] = tool_names
         off = sorted(
             name
-            for name, state in (tv.get("servers") or {}).items()
+            for name, state in states.items()
             if isinstance(state, dict) and state.get("enabled") is False
         )
         if off:
             agent["tools_off"] = off
         grants = []
-        for grant in tv.get("connectors") or []:
+        for grant in tv.get("connectors") if isinstance(tv.get("connectors"), list) else []:
             key = connections.get(_as_uuid(grant.get("id") if isinstance(grant, dict) else None))
             if key:
                 entry = {"connector": key}
@@ -355,7 +364,18 @@ def export_team(session, team: TeamGraph) -> dict:
         ids[n.id]: [round((n.position or {}).get("x", 0)), round((n.position or {}).get("y", 0))]
         for n in nodes
     }
-    return data
+    return _masked(data)
+
+
+def _masked(value):
+    """Every string the file holds through ``mask_secrets`` — the last pass before it leaves."""
+    if isinstance(value, str):
+        return mask_secrets(value)
+    if isinstance(value, list):
+        return [_masked(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _masked(v) for k, v in value.items()}
+    return value
 
 
 def _as_uuid(value: object) -> uuid.UUID | None:
@@ -385,7 +405,10 @@ def _export_skills(entries: object, library: dict) -> list:
                 }
             )
         elif kind == "repo":
-            item = {"repo": _strip_userinfo(entry.get("url") or "")}
+            repo = _github_repo(entry.get("url"))
+            if repo is None:
+                continue
+            item = {"repo": repo}
             for key in ("ref", "filter"):
                 if entry.get(key):
                     item[key] = entry[key]
@@ -443,7 +466,8 @@ def to_yaml(data: dict, *, made: datetime | None = None) -> str:
     """The board's layout: a header comment, top-level fields, agents as blocks (instructions as a
     literal block), gates / ends / routes one flow mapping per line, needs with their notes."""
     made = made or datetime.now(UTC)
-    out = [f"# Tvashtr team file · {data['name']} · made {made:%Y-%m-%d}"]
+    title = " ".join(str(data["name"]).split())  # a line break in a name never makes a new key
+    out = [f"# Tvashtr team file · {title} · made {made:%Y-%m-%d}"]
     for key in ("tvashtr_team", "name", "budget_usd", "repo"):
         if key in data:
             out.append(f"{key}: {_scalar(data[key])}")
@@ -500,13 +524,69 @@ def to_json(data: dict) -> str:
 # ---------------------------------------------------------------------------------- reading
 
 
+MAX_ITEMS = 200
+MAX_LOOP_LIMIT = 50
+_GATE_KINDS = frozenset(
+    {"approval", "gate_approval", "prd_approval", "ship_approval", "review_escalation"}
+)
+_ROUTE_TYPES = ("work", "review", "escalation")
+_ON_NO_ANSWER = ("continue", "stop")
+
+
+def _events_and_keys(content: str) -> None:
+    """Refuse what a team file never needs before anything expands: anchors / aliases (a few
+    hundred bytes of aliases can expand to gigabytes) and a key given twice in one set of fields."""
+    for event in yaml.parse(content, Loader=yaml.SafeLoader):
+        if isinstance(event, yaml.AliasEvent) or getattr(event, "anchor", None):
+            raise FileError(
+                event.start_mark.line + 1,
+                "anchors and aliases (&name, *name) aren’t allowed in a team file.",
+            )
+
+
+def _check_keys(node) -> None:
+    if isinstance(node, yaml.MappingNode):
+        seen: set = set()
+        for key, value in node.value:
+            if not isinstance(key, yaml.ScalarNode):
+                raise FileError(key.start_mark.line + 1, "a field’s name should be a word.")
+            if key.value in seen:
+                raise FileError(key.start_mark.line + 1, f"`{key.value}` appears twice.")
+            seen.add(key.value)
+            _check_keys(value)
+    elif isinstance(node, yaml.SequenceNode):
+        for value in node.value:
+            _check_keys(value)
+
+
+def _plain(value, path, at) -> None:
+    """Only text, numbers, true / false, lists and sets of fields (no dates, binary, NaN)."""
+    if isinstance(value, dict):
+        for key, inner in value.items():
+            if not isinstance(key, str):
+                raise FileError(at(*path, str(key)), "a field’s name should be a word.")
+            _plain(inner, (*path, key), at)
+    elif isinstance(value, list):
+        for i, inner in enumerate(value):
+            _plain(inner, (*path, i), at)
+    elif isinstance(value, float):
+        if value != value or value in (float("inf"), float("-inf")):
+            raise FileError(at(*path), "numbers should be finite.")
+    elif value is not None and not isinstance(value, (str, int, bool)):
+        raise FileError(
+            at(*path), "only text, numbers, true / false, lists and fields are allowed here."
+        )
+
+
 def parse(content: str) -> tuple[dict, list[str]]:
     """``(data, unknown)``: the checked file and the paths of the fields left out. Raises
     :class:`FileError` naming the line of the first problem."""
     if len(content.encode()) > MAX_BYTES:
         raise FileError(1, "the file is too big for a team file (over 512 KB).")
     try:
+        _events_and_keys(content)
         root = yaml.compose(content, Loader=yaml.SafeLoader)
+        _check_keys(root)
         data = yaml.safe_load(content)
     except yaml.MarkedYAMLError as exc:
         mark = exc.problem_mark or exc.context_mark
@@ -516,7 +596,9 @@ def parse(content: str) -> tuple[dict, list[str]]:
         ) from exc
     except yaml.YAMLError as exc:
         raise FileError(1, "this isn’t valid YAML or JSON.") from exc
-    lines = _line_map(root)
+    except RecursionError as exc:
+        raise FileError(1, "the file is nested too deeply.") from exc
+    lines = _line_map(root) if root is not None else {}
 
     def at(*path) -> int:
         while path and path not in lines:
@@ -525,6 +607,10 @@ def parse(content: str) -> tuple[dict, list[str]]:
 
     if not isinstance(data, dict):
         raise FileError(1, "a team file is a set of fields (`tvashtr_team`, `name`, `agents`, …).")
+    try:
+        _plain(data, (), at)
+    except RecursionError as exc:
+        raise FileError(1, "the file is nested too deeply.") from exc
     if data.get("tvashtr_team") != FORMAT:
         if "tvashtr_team" not in data:
             raise FileError(1, "this isn’t a Tvashtr team file (it has no `tvashtr_team: 1`).")
@@ -533,13 +619,29 @@ def parse(content: str) -> tuple[dict, list[str]]:
             f"this file is format {data['tvashtr_team']!r}; this Tvashtr reads 1.",
         )
     unknown = [k for k in data if k not in _TOP_KEYS]
-    name = data.get("name")
-    if not isinstance(name, str) or not name.strip():
-        raise FileError(at("name"), "`name` should be the team’s name.")
-    if "budget_usd" in data and not (
-        isinstance(data["budget_usd"], (int, float)) and data["budget_usd"] > 0
-    ):
-        raise FileError(at("budget_usd"), "`budget_usd` should be a number of dollars.")
+
+    def text(value, where, what: str, *, limit: int = 200, required: bool = True) -> None:
+        if value is None and not required:
+            return
+        if not isinstance(value, str) or (required and not value.strip()) or len(value) > limit:
+            raise FileError(at(*where), what)
+
+    def words(value, where, what: str) -> None:
+        if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+            raise FileError(at(*where), what)
+
+    text(data.get("name"), ("name",), "`name` should be the team’s name.")
+    if "budget_usd" in data:
+        budget = data["budget_usd"]
+        if (
+            isinstance(budget, bool)
+            or not isinstance(budget, (int, float))
+            or not 0 < budget <= float(MAX_RUN_BUDGET_USD)
+        ):
+            raise FileError(
+                at("budget_usd"),
+                f"`budget_usd` should be dollars, more than 0 and at most {MAX_RUN_BUDGET_USD}.",
+            )
     if "repo" in data and not (
         isinstance(data["repo"], str) and re.fullmatch(r"[\w.-]+/[\w.-]+", data["repo"])
     ):
@@ -547,67 +649,210 @@ def parse(content: str) -> tuple[dict, list[str]]:
     agents = data.get("agents")
     if not isinstance(agents, list) or not agents:
         raise FileError(at("agents"), "`agents` should be a list of agents.")
+    for section in ("gates", "ends", "routes"):
+        if not isinstance(data.get(section, []), list):
+            raise FileError(at(section), f"`{section}` should be a list.")
+    if len(agents) + len(data.get("gates") or []) + len(data.get("ends") or []) > MAX_ITEMS:
+        raise FileError(
+            at("agents"), f"a team file holds at most {MAX_ITEMS} agents, gates and ends."
+        )
     ids: set[str] = set()
 
     def take(item_id, where) -> None:
-        if not isinstance(item_id, str) or not item_id:
-            raise FileError(at(*where), "each item needs an `id`.")
+        if not isinstance(item_id, str) or not re.fullmatch(r"[\w.-]{1,60}", item_id):
+            raise FileError(at(*where), "each item needs an `id` (letters, digits, - or _).")
         if item_id in ids:
             raise FileError(at(*where, "id"), f"the id `{item_id}` is used twice.")
         ids.add(item_id)
 
     for i, agent in enumerate(agents):
+        where = ("agents", i)
         if not isinstance(agent, dict):
-            raise FileError(
-                at("agents", i), "each agent is a set of fields (`id`, `name`, `model`, …)."
-            )
-        take(agent.get("id"), ("agents", i))
+            raise FileError(at(*where), "each agent is a set of fields (`id`, `name`, `model`, …).")
+        take(agent.get("id"), where)
         unknown += [f"agents[{i}].{k}" for k in agent if k not in _AGENT_KEYS]
+        text(
+            agent.get("name"),
+            (*where, "name"),
+            "`name` should be the agent’s name.",
+            limit=60,
+            required=False,
+        )
+        text(
+            agent.get("based_on"),
+            (*where, "based_on"),
+            "`based_on` should be built-in/<role> or custom/<role>.",
+            limit=80,
+            required=False,
+        )
         kind = agent.get("kind") or _DEFAULT_KIND.get(_role(agent), "worker")
-        if kind not in _KIND_OF:
-            raise FileError(
-                at("agents", i, "kind"), "`kind` should be thinker, worker or query-domain."
+        if not isinstance(kind, str) or kind not in _KIND_OF:
+            raise FileError(at(*where, "kind"), "`kind` should be thinker, worker or query-domain.")
+        if kind != "query-domain":
+            text(
+                agent.get("model"), (*where, "model"), f"the agent `{agent['id']}` needs a `model`."
             )
-        if kind != "query-domain" and not isinstance(agent.get("model"), str):
-            raise FileError(at("agents", i), f"the agent `{agent['id']}` needs a `model`.")
+        else:
+            text(
+                agent.get("model"), (*where, "model"), "`model` should be a model.", required=False
+            )
+        text(
+            agent.get("backup_model"),
+            (*where, "backup_model"),
+            "`backup_model` should be a model.",
+            required=False,
+        )
         if agent.get("file_access", "can-edit") not in ("can-edit", "read-only"):
             raise FileError(
-                at("agents", i, "file_access"), "`file_access` should be can-edit or read-only."
+                at(*where, "file_access"), "`file_access` should be can-edit or read-only."
             )
-        for key in ("skills", "tools", "tools_off", "connectors", "reads"):
-            if key in agent and not isinstance(agent[key], list):
-                raise FileError(at("agents", i, key), f"`{key}` should be a list.")
-        if "instructions" in agent and not isinstance(agent["instructions"], str):
-            raise FileError(at("agents", i, "instructions"), "`instructions` should be text.")
-    for section, keys in (("gates", _GATE_KEYS), ("ends", _END_KEYS)):
-        items = data.get(section, [])
-        if not isinstance(items, list):
-            raise FileError(at(section), f"`{section}` should be a list.")
-        for i, item in enumerate(items):
-            if not isinstance(item, dict):
-                raise FileError(at(section, i), f"each item of `{section}` is a set of fields.")
-            take(item.get("id"), (section, i))
-            unknown += [f"{section}[{i}].{k}" for k in item if k not in keys]
-            if section == "ends" and item.get("kind") not in ("ship", "stop"):
-                raise FileError(at(section, i, "kind"), "an end’s `kind` should be ship or stop.")
-    routes = data.get("routes", [])
-    if not isinstance(routes, list):
-        raise FileError(at("routes"), "`routes` should be a list.")
-    for i, route in enumerate(routes):
+        for key in ("tools", "tools_off", "reads"):
+            if key in agent:
+                words(agent[key], (*where, key), f"`{key}` should be a list of names.")
+        for j, skill in enumerate(agent.get("skills") or []):
+            if isinstance(skill, str):
+                continue
+            ok = (
+                isinstance(skill, dict)
+                and all(
+                    isinstance(skill.get(k), str)
+                    for k in ("name", "repo", "inline", "ref", "filter", "mode")
+                    if k in skill
+                )
+                and ("name" in skill or "repo" in skill)
+            )
+            if not ok or ("triggers" in skill and not isinstance(skill["triggers"], list)):
+                raise FileError(
+                    at(*where, "skills", j), "a skill is a name, or {name, inline} / {repo, ref}."
+                )
+        if "skills" in agent and not isinstance(agent["skills"], list):
+            raise FileError(at(*where, "skills"), "`skills` should be a list.")
+        for j, grant in enumerate(agent.get("connectors") or []):
+            key = grant.get("connector") if isinstance(grant, dict) else grant
+            access = grant.get("access", "read") if isinstance(grant, dict) else "read"
+            if not isinstance(key, str) or access not in ("read", "write"):
+                raise FileError(
+                    at(*where, "connectors", j),
+                    "a connector is {connector: <name>, access?: write}.",
+                )
+        if "connectors" in agent and not isinstance(agent["connectors"], list):
+            raise FileError(at(*where, "connectors"), "`connectors` should be a list.")
+        domains = agent.get("domains")
+        if domains is not None and domains != "all":
+            words(
+                domains, (*where, "domains"), "`domains` should be all, or a list of Domain names."
+            )
+        text(
+            agent.get("writes"),
+            (*where, "writes"),
+            "`writes` should be a document name.",
+            limit=80,
+            required=False,
+        )
+        text(
+            agent.get("description"),
+            (*where, "description"),
+            "`description` should be text.",
+            limit=120,
+            required=False,
+        )
+        text(
+            agent.get("domain"),
+            (*where, "domain"),
+            "`domain` should be a Domain name.",
+            required=False,
+        )
+        for key in ("remember", "images", "reads_spec", "pass_to_spec"):
+            if key in agent and not isinstance(agent[key], bool):
+                raise FileError(at(*where, key), f"`{key}` should be true or false.")
+        budget = agent.get("context_budget")
+        if budget is not None and (
+            isinstance(budget, bool) or not isinstance(budget, int) or not 0 < budget <= 2_000_000
+        ):
+            raise FileError(
+                at(*where, "context_budget"), "`context_budget` should be a number of tokens."
+            )
+        if "output_format" in agent and not isinstance(agent["output_format"], dict):
+            raise FileError(
+                at(*where, "output_format"), "`output_format` should be a set of fields."
+            )
+        if agent.get("on_no_answer", "continue") not in _ON_NO_ANSWER:
+            raise FileError(
+                at(*where, "on_no_answer"), "`on_no_answer` should be continue or stop."
+            )
+        text(
+            agent.get("instructions"),
+            (*where, "instructions"),
+            "`instructions` should be text.",
+            limit=100_000,
+            required=False,
+        )
+    for i, gate in enumerate(data.get("gates") or []):
+        where = ("gates", i)
+        if not isinstance(gate, dict):
+            raise FileError(at(*where), "each item of `gates` is a set of fields.")
+        take(gate.get("id"), where)
+        unknown += [f"gates[{i}].{k}" for k in gate if k not in _GATE_KEYS]
+        if "checks" in gate and gate["checks"] not in GUARDRAIL_GATE_KINDS:
+            raise FileError(at(*where, "checks"), "`checks` isn’t a check Tvashtr knows.")
+        if "kind" in gate and gate["kind"] not in _GATE_KINDS:
+            raise FileError(at(*where, "kind"), "`kind` isn’t a gate Tvashtr knows.")
+        for key in ("title", "description", "output_file"):
+            text(
+                gate.get(key), (*where, key), f"`{key}` should be text.", limit=500, required=False
+            )
+        if "forbidden_paths" in gate:
+            words(
+                gate["forbidden_paths"],
+                (*where, "forbidden_paths"),
+                "`forbidden_paths` should be a list of paths.",
+            )
+        if "schema" in gate and not isinstance(gate["schema"], dict):
+            raise FileError(at(*where, "schema"), "`schema` should be a set of fields.")
+    for i, end in enumerate(data.get("ends") or []):
+        where = ("ends", i)
+        if not isinstance(end, dict):
+            raise FileError(at(*where), "each item of `ends` is a set of fields.")
+        take(end.get("id"), where)
+        unknown += [f"ends[{i}].{k}" for k in end if k not in _END_KEYS]
+        if end.get("kind") not in ("ship", "stop"):
+            raise FileError(at(*where, "kind"), "an end’s `kind` should be ship or stop.")
+    for i, route in enumerate(data.get("routes") or []):
+        where = ("routes", i)
         if not isinstance(route, dict):
-            raise FileError(at("routes", i), "each route is {from, to, when?, loop_limit?}.")
+            raise FileError(at(*where), "each route is {from, to, when?, loop_limit?}.")
         unknown += [f"routes[{i}].{k}" for k in route if k not in _ROUTE_KEYS]
         for end in ("from", "to"):
-            if route.get(end) not in ids:
+            if not isinstance(route.get(end), str) or route[end] not in ids:
                 raise FileError(
-                    at("routes", i, end),
+                    at(*where, end),
                     f"the route’s `{end}` names `{route.get(end)}`, which isn’t in the file.",
                 )
+        text(
+            route.get("when"),
+            (*where, "when"),
+            "`when` should be a word, like approved.",
+            limit=60,
+            required=False,
+        )
         limit = route.get("loop_limit")
-        if limit is not None and not (isinstance(limit, int) and limit >= 1):
+        if limit is not None and (
+            isinstance(limit, bool)
+            or not isinstance(limit, int)
+            or not 1 <= limit <= MAX_LOOP_LIMIT
+        ):
             raise FileError(
-                at("routes", i, "loop_limit"), "`loop_limit` should be a whole number from 1."
+                at(*where, "loop_limit"),
+                f"`loop_limit` should be a whole number from 1 to {MAX_LOOP_LIMIT}.",
             )
+        if route.get("type", "work") not in _ROUTE_TYPES:
+            raise FileError(at(*where, "type"), "`type` should be work, review or escalation.")
+    needs = data.get("needs", {})
+    if not isinstance(needs, dict):
+        raise FileError(at("needs"), "`needs` should be {connectors: [...], secrets: [...]}.")
+    for key in ("connectors", "secrets"):
+        if key in needs:
+            words(needs[key], ("needs", key), f"`needs.{key}` should be a list of names.")
     layout = data.get("layout", {})
     if not isinstance(layout, dict):
         raise FileError(at("layout"), "`layout` should map each id to [x, y].")
@@ -617,7 +862,10 @@ def parse(content: str) -> tuple[dict, list[str]]:
         elif not (
             isinstance(pos, list)
             and len(pos) == 2
-            and all(isinstance(v, (int, float)) for v in pos)
+            and all(
+                isinstance(v, (int, float)) and not isinstance(v, bool) and abs(v) <= 1_000_000
+                for v in pos
+            )
         ):
             raise FileError(at("layout", key), f"the layout of `{key}` should be [x, y].")
     return data, unknown
@@ -742,7 +990,9 @@ def check(session, owner_id: uuid.UUID, data: dict, unknown: list[str]) -> list[
             "code": [],
         }
     )
-    problems = validate_graph(*_graph_dicts(data), set())["errors"]
+    problems = validate_graph(
+        *_graph_dicts(data, have["domains"]), {str(d) for d in have["domains"].values()}
+    )["errors"]
     if problems:
         first = problems[0]
         rows.append(
@@ -904,6 +1154,68 @@ def check(session, owner_id: uuid.UUID, data: dict, unknown: list[str]) -> list[
                         "agents": [agent.get("name") or agent["id"]],
                     }
                 )
+    # What the import will use of yours: it binds by name, so say so.
+    uses: dict[str, dict] = {}
+    for agent in agents:
+        who = agent.get("name") or agent["id"]
+        for grant in agent.get("connectors") or []:
+            key = grant.get("connector") if isinstance(grant, dict) else grant
+            connection = have["connections"].get(key)
+            if connection is not None and connection[1] == "connected":
+                row = uses.setdefault(
+                    f"uses:connector:{key}",
+                    {
+                        "label": _connector_label(key),
+                        "who": [],
+                        "write": False,
+                        "kind": "connector",
+                    },
+                )
+                row["who"].append(who)
+                row["write"] |= isinstance(grant, dict) and grant.get("access") == "write"
+        for name in agent.get("tools") or []:
+            if name in have["tools"]:
+                uses.setdefault(f"uses:tool:{name}", {"label": name, "who": [], "kind": "tool"})[
+                    "who"
+                ].append(who)
+        if agent.get("domains") == "all" and have["domains"]:
+            uses.setdefault("uses:domains", {"label": "", "who": [], "kind": "domains"})[
+                "who"
+            ].append(who)
+        for entry in agent.get("skills") or []:
+            if isinstance(entry, dict) and "repo" in entry and _github_repo(entry["repo"]) is None:
+                rows.append(
+                    {
+                        "key": f"repo:{entry['repo']}",
+                        "tone": "warn",
+                        "title": "A skill source isn’t a GitHub repo, so it’s left out",
+                        "detail": f"{_who([who])} listed it; the Toolkit only takes GitHub repos.",
+                        "code": [],
+                    }
+                )
+    for key, use in uses.items():
+        if use["kind"] == "connector":
+            title = f"{_who(use['who'])} will use your {use['label']}"
+            detail = "Read-only." + (
+                " The file asks it to change things there; allow that on the agent if you want it."
+                if use["write"]
+                else ""
+            )
+        elif use["kind"] == "tool":
+            title = f"{_who(use['who'])} will use your Toolkit tool {use['label']}"
+            detail = "With your own settings and secrets."
+        else:
+            title = f"{_who(use['who'])} can ask every Domain you have"
+            detail = "Pick fewer on the agent if you want."
+        rows.append(
+            {
+                "key": key,
+                "tone": "ok",
+                "title": title,
+                "detail": detail,
+                "code": [use["label"]] if use["kind"] == "tool" else [],
+            }
+        )
     # Secrets: named, never inside.
     secrets = [s for s in needs.get("secrets") or [] if isinstance(s, str)]
     lacking = [s for s in secrets if s not in have["secrets"]]
@@ -968,7 +1280,7 @@ def _connector_label(key: str) -> str:
     return (entry or {}).get("name") or key
 
 
-def _graph_dicts(data: dict) -> tuple[list[dict], list[dict]]:
+def _graph_dicts(data: dict, domains: dict | None = None) -> tuple[list[dict], list[dict]]:
     """The file as ``validate_graph``'s node / edge dicts (``graph_validity.graph_dicts``' shape,
     with the file's ids)."""
     nodes = []
@@ -978,7 +1290,7 @@ def _graph_dicts(data: dict) -> tuple[list[dict], list[dict]]:
             {
                 "id": agent["id"],
                 "kind": kind,
-                "config": _agent_config(agent, {}),
+                "config": _agent_config(agent, domains or {}),
                 "model": agent.get("model"),
                 "prompt": agent.get("instructions"),
             }
@@ -1093,8 +1405,17 @@ def create(
         return {"x": x, "y": y}
 
     k = 0
+    targeted = {r["to"] for r in data.get("routes") or []}
     for agent in data["agents"]:
         kind = _KIND_OF[agent.get("kind") or _DEFAULT_KIND.get(_role(agent), "worker")]
+        # A thinker reads only unless the file says otherwise; the entry agent (no route into it)
+        # writes the spec everyone reads, so it is always read-only (the canvas refuses otherwise).
+        default_access = "read-only" if kind == "completion" else "can-edit"
+        edits = (
+            kind != "domain_query"
+            and agent["id"] in targeted
+            and agent.get("file_access", default_access) == "can-edit"
+        )
         node = AgentNode(
             team_graph_id=team.id,
             role_name=_role(agent),
@@ -1108,9 +1429,7 @@ def create(
             config=_agent_config(agent, have["domains"]),
             tool_config=_tool_config(agent, have),
             skills=_skills(agent, have),
-            edits_allowed=agent.get("file_access", "can-edit") == "can-edit"
-            if kind != "domain_query"
-            else False,
+            edits_allowed=edits,
         )
         session.add(node)
         session.flush()
@@ -1209,10 +1528,9 @@ def _tool_config(agent: dict, have: dict) -> dict | None:
         key = grant.get("connector") if isinstance(grant, dict) else grant
         connection = have["connections"].get(key)
         if connection is not None:
-            entry: dict = {"id": str(connection[0])}
-            if isinstance(grant, dict) and grant.get("access") == "write":
-                entry["access"] = "write"
-            connectors.append(entry)
+            # Read-only, always: a shared file never gets to change things in your accounts; the
+            # check says when the file asked for more, and the agent's panel can allow it.
+            connectors.append({"id": str(connection[0])})
     tv: dict = {}
     if library:
         tv["library"] = library
@@ -1254,7 +1572,10 @@ def _skills(agent: dict, have: dict) -> list | None:
                 }
             )
         elif "repo" in entry:
-            item = {"type": "repo", "url": entry["repo"]}
+            repo = _github_repo(entry["repo"])
+            if repo is None:
+                continue  # the Toolkit only takes GitHub sources; the check says it's left out
+            item = {"type": "repo", "url": repo}
             for key in ("ref", "filter"):
                 if entry.get(key):
                     item[key] = entry[key]

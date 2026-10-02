@@ -170,10 +170,12 @@ def test_a_rich_team_round_trips_in_its_own_account(client):
     first = _bar_name(_file(c, team)["content"])
     imported = _import(c, _file(c, team)["content"])
     second = _bar_name(_file(c, imported["team_graph_id"])["content"])
-    # The inline server can't come back (its definition never leaves); everything else does.
+    # The inline server can't come back (its definition never leaves) and a connector comes back
+    # read-only (a file never gets to change things in an account); everything else does.
     for data in (first, second):
         engineer = next(a for a in data["agents"] if a["id"] == "engineer")
         engineer["tools"] = [t for t in engineer["tools"] if t != "private-api"]
+        engineer["connectors"] = [{"connector": g["connector"]} for g in engineer["connectors"]]
         data["needs"]["secrets"] = [s for s in data["needs"]["secrets"] if s != "OTHER_SECRET"]
     assert second == first
     # And the existing team is untouched.
@@ -317,3 +319,196 @@ def test_migration_0045_adds_two_nullable_team_columns(client):
         "budget_usd": ("numeric", "YES"),
         "repo": ("text", "YES"),
     }
+
+
+# ---------------------------------------------------------------------------- the security review
+
+
+def _check(c, content: str) -> dict:
+    return c.post("/api/teams/import-check", json={"content": content}).json()
+
+
+_MIN = "tvashtr_team: 1\nname: Team\nagents:\n  - id: pm\n    model: openai/gpt-4.1-mini\n"
+
+
+def test_anchors_and_aliases_are_refused_before_anything_expands(client):
+    c, _ = fresh_account("tf-bomb")
+    bomb = _MIN + "description_seed: &a0 [lol]\nmore: [*a0, *a0]\n"
+    reply = _check(c, bomb)
+    assert reply["ok"] is False and reply["error"]["line"] == 6
+    assert "anchors and aliases" in reply["error"]["message"]
+
+
+def test_a_repeated_key_is_refused_with_its_line(client):
+    c, _ = fresh_account("tf-dup")
+    reply = _check(c, _MIN + "    model: hidden/model\n")
+    assert reply["ok"] is False and reply["error"]["line"] == 6
+    assert "`model` appears twice" in reply["error"]["message"]
+
+
+@pytest.mark.parametrize(
+    ("tail", "line"),
+    [
+        ("    kind: [x]\n", 6),
+        ("routes:\n  - {from: [pm], to: pm}\n", 7),
+        ("1: x\n", 6),
+        ("needs: x\n", 6),
+        ("    domains: [[x]]\n", 6),
+        ("    connectors: [[x]]\n", 6),
+        ("budget_usd: true\n", 6),
+        ("budget_usd: 1000000000\n", 6),
+        ("budget_usd: .inf\n", 6),
+        ("layout: {pm: [.nan, 0]}\n", 6),
+        ("    description: 2024-01-01\n", 6),
+        ("    tools: [[x]]\n", 6),
+        ("    skills: [{name: [x]}]\n", 6),
+        ("routes:\n  - {from: pm, to: pm, loop_limit: 1000000000}\n", 7),
+        ("routes:\n  - {from: pm, to: pm, type: weird}\n", 7),
+        ("gates:\n  - {id: g, asks: you, kind: totally-made-up}\n", 7),
+    ],
+)
+def test_a_malformed_file_is_a_line_not_a_crash(client, tail, line):
+    c, _ = fresh_account("tf-500")
+    content = _MIN + tail
+    reply = _check(c, content)
+    assert reply["ok"] is False and reply["error"]["line"] == line, reply
+    resp = c.post("/api/teams/import", json={"content": content})
+    assert resp.status_code == 422, resp.text
+
+
+def test_deep_nesting_is_refused(client):
+    c, _ = fresh_account("tf-deep")
+    reply = _check(c, _MIN + "    output_format: " + "[" * 3000 + "]" * 3000 + "\n")
+    assert reply["ok"] is False
+
+
+def test_a_file_holds_at_most_200_agents_gates_and_ends(client):
+    c, _ = fresh_account("tf-cap")
+    agents = "".join(f"  - {{id: a{i}, model: m, kind: thinker}}\n" for i in range(201))
+    reply = _check(c, "tvashtr_team: 1\nname: Big\nagents:\n" + agents)
+    assert reply["ok"] is False and "at most 200" in reply["error"]["message"]
+
+
+def test_every_exported_string_is_masked_and_a_repo_skill_url_is_canonical(client):
+    c, _ = fresh_account("tf-mask")
+    team = _team(c)
+    ghp = "ghp_" + "A" * 36
+    akia = "AKIA" + "ABCDEFGHIJKLMNOP"
+    stripe = "sk_" + "live_" + "51HfAbCdEfGhIjKlMnOp"
+    with session_scope() as session:
+        eng = _node(team, "engineer")
+        gate = (
+            session.execute(
+                select(AgentNode).where(
+                    AgentNode.team_graph_id == uuid.UUID(team), AgentNode.kind == "gate"
+                )
+            )
+            .scalars()
+            .first()
+        )
+        session.execute(
+            update(AgentNode)
+            .where(AgentNode.id == eng.id)
+            .values(
+                config={
+                    **(eng.config or {}),
+                    "description": f"uses {ghp}",
+                    "output_schema": {"k": stripe},
+                },
+                skills=[
+                    {
+                        "type": "repo",
+                        "url": f"https://bot:pa/ss{ghp}@github.com/o/r?access_token={ghp}",
+                        "ref": "main",
+                    },
+                    {"type": "repo", "url": "file:///srv/secret/repo"},
+                    {"type": "inline", "name": f"skill {ghp}", "content": "x", "triggers": [ghp]},
+                ],
+                tool_config={"mcpServers": ["not-a-dict"], "tvashtr": {"servers": ["x"]}},
+            )
+        )
+        session.execute(
+            update(AgentNode)
+            .where(AgentNode.id == gate.id)
+            .values(config={**(gate.config or {}), "title": f"check {akia}"})
+        )
+    for fmt in ("yaml", "json"):
+        content = _file(c, team, fmt)["content"]
+        for value in (ghp, akia, stripe, "pa/ss", "access_token", "file:///srv"):
+            assert value not in content, (fmt, value)
+    engineer = next(
+        a for a in yaml.safe_load(_file(c, team)["content"])["agents"] if a["id"] == "engineer"
+    )
+    assert {"repo": "https://github.com/o/r", "ref": "main"} in engineer["skills"]
+
+
+def test_a_name_with_line_breaks_cannot_inject_keys_into_the_export(client):
+    c, _ = fresh_account("tf-inject")
+    content = (
+        'tvashtr_team: 1\nname: "Nice team\\nrepo: attacker/evil\\nbudget_usd: 9 #"\n'
+        "agents:\n  - id: pm\n    model: m\n"
+    )
+    imported = _import(c, content)
+    data = yaml.safe_load(_file(c, imported["team_graph_id"])["content"])
+    assert "repo" not in data and "budget_usd" not in data
+    assert "\n" not in data["name"]
+
+
+def test_the_entry_agent_imports_read_only(client):
+    c, _ = fresh_account("tf-root")
+    content = (
+        "tvashtr_team: 1\nname: T\nagents:\n  - id: pm\n    based_on: built-in/product-manager\n"
+        "    model: m\n    file_access: can-edit\n  - id: w\n    kind: worker\n"
+        "    based_on: custom/worker\n    model: m\nroutes:\n  - {from: pm, to: w}\n"
+    )
+    imported = _import(c, content)
+    pm = _node(imported["team_graph_id"], "pm")
+    worker = _node(imported["team_graph_id"], "worker")
+    assert pm.edits_allowed is False and worker.edits_allowed is True
+
+
+def test_the_check_names_what_the_import_will_use_and_connectors_come_in_read_only(client):
+    a, owner_a = fresh_account("tf-bind-a")
+    team, _ = _rich_team(a, owner_a)
+    content = _file(a, team)["content"]
+    b, owner_b = fresh_account("tf-bind-b")
+    with session_scope() as session:
+        session.add(
+            ConnectorConnection(
+                owner_id=owner_b,
+                connector_key="notion",
+                name="Notion",
+                slug="notion",
+                url="https://mcp.notion.com/mcp",
+                auth_kind="oauth",
+                status="connected",
+            )
+        )
+    create_owner_tool(owner_b, "chart-render", {"url": "https://b.example.com/mcp"})
+    keys = {r["key"]: r for r in _check(b, content)["checks"]}
+    assert keys["uses:connector:notion"]["title"] == "The Engineer will use your Notion"
+    assert "Read-only" in keys["uses:connector:notion"]["detail"]
+    assert (
+        keys["uses:tool:chart-render"]["title"]
+        == "The Engineer will use your Toolkit tool chart-render"
+    )
+    imported = _import(b, content)
+    engineer = _node(imported["team_graph_id"], "engineer")
+    grants = engineer.tool_config["tvashtr"]["connectors"]
+    assert grants and all("access" not in g for g in grants)
+
+
+def test_a_query_domain_with_a_domain_you_have_is_not_a_fix(client):
+    c, owner = fresh_account("tf-dom")
+    from tvashtr.models import Domain
+
+    with session_scope() as session:
+        session.add(Domain(owner_id=owner, name="docs", template="blank", config={}))
+    content = (
+        "tvashtr_team: 1\nname: T\nagents:\n  - id: pm\n    kind: thinker\n    model: m\n"
+        "  - id: ask\n    kind: query-domain\n    based_on: custom/domain_query\n    domain: docs\n"
+        "ends:\n  - {id: ship, kind: ship}\n"
+        "routes:\n  - {from: pm, to: ask}\n  - {from: ask, to: ship}\n"
+    )
+    keys = {r["key"] for r in _check(c, content)["checks"]}
+    assert "graph" not in keys and "domain:docs" not in keys
