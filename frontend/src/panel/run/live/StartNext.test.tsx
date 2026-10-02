@@ -259,18 +259,20 @@ describe("CameAlong (Next-CameAlong)", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  it("opens over the top of the Activity panel, 8px down, and scrolls when the window is short", async () => {
+  it("opens over the run's canvas, 8px below its top, and scrolls when the window is short", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(() => Promise.resolve(new Response(JSON.stringify(SNAPSHOT)))),
     );
     render(
-      <section aria-label="Activity">
-        <CameAlong runId="run-14" />
-      </section>,
+      <>
+        <div className="cv-canvas" data-testid="canvas" />
+        <section aria-label="Activity">
+          <CameAlong runId="run-14" />
+        </section>
+      </>,
     );
-    const section = screen.getByRole("region", { name: "Activity" });
-    section.getBoundingClientRect = () => ({ top: 228 }) as DOMRect;
+    screen.getByTestId("canvas").getBoundingClientRect = () => ({ top: 228 }) as DOMRect;
     fireEvent.click(screen.getByRole("button", { name: "See what came along" }));
     const pop = await screen.findByRole("dialog", { name: "What came along from run #12" });
     expect(pop.style.top).toBe("236px");

@@ -235,8 +235,8 @@ export function StartedFrom({
 
 /**
  * The Activity's "See what came along" (Next-CameAlong): what the run started from brought, read
- * from its carry snapshot. As drawn, it opens over the top of the Activity panel, 8px down (the
- * Activity list scrolls, so it is not inside), and scrolls itself when the window is short.
+ * from its carry snapshot. As drawn, it opens on the right over the run's canvas, 8px below its top
+ * (the Activity list scrolls, so it is not inside), and scrolls itself when the window is short.
  */
 export function CameAlong({ runId }: { runId: string }) {
   const [at, setAt] = useState<number | null>(null);
@@ -256,8 +256,8 @@ export function CameAlong({ runId }: { runId: string }) {
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={(e) => {
-          const panel = e.currentTarget.closest("section") ?? e.currentTarget;
-          setAt(Math.max(8, panel.getBoundingClientRect().top + 8));
+          const canvas = document.querySelector(".cv-canvas") ?? e.currentTarget;
+          setAt(Math.max(8, canvas.getBoundingClientRect().top + 8));
         }}
       >
         See what came along

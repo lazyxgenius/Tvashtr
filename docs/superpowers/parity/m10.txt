@@ -23,9 +23,9 @@
 #   The clock stands still at the boards' moments: 11:04:00 (run #12, Live-Done's) and 11:10:14 (run #14: "2 s ago", "live · 2 s").
 # Which render is the comparison: every board is drawn in Desktop (the 30px title strip): the Desktop render is the comparison and the web render is
 #   framed 30px down (m7.txt / m8.txt / m9.txt's convention). Both renders are recorded below; each web render's 2 extra "not found" are by rule.
-# GATE: size/type MET — every new M10 element is at 0 size/type drift on every render (web and Desktop) after this sweep's two fixes (4911213);
-#   every other drift item is an existing element covered by a waiver (W1–W3 from m2.txt, W14 below). NOT CLEAN — 1 layout item on a new element
-#   (TO FIX 1: where "What came along" opens) and 3 real "not found in app" (TO FIX 2–4) are reported for the lead; none is waived.
+# GATE: size/type MET — every new M10 element is at 0 size/type drift on every render (web and Desktop) after this sweep's two fixes (4911213)
+#   and the lead's (92ee927 + the popover anchor); every other drift item is an existing element covered by a waiver (W1–W3 from m2.txt,
+#   W14 below). The helper's TO FIX 1–4 are RULED (LEAD RULINGS below): 1 built, 2 server text, 3 waived (app governs), 4 built.
 #   At 0 drift, box for box where measured (Desktop; x,y w×h): Next-Finished / -More: Start the next run from this 207x32 13/500 at (1213,158) —
 #   the board's box —, its tip 400x129 at (1020,214) with 'Start the next feature where this one ended' 12.5/600 368x19 at (1036,228) and the
 #   12.5px text, as drawn; the ⋯ More for this run 32x32; Download the run log 13/400 220x32 (drawn 218x32; the DS Menu's 5px padding, m9.txt's
@@ -59,7 +59,18 @@
 #      MACD build on RSI.' / ', where RSI already is.' are example words with no data behind them, so the board's note is "not found" by its
 #      words (Next-Carry, -CarryMerged ×1 each).
 #   the spec line names the team's first agent ("The product manager updates it…"; NextInfo.entry_agent) — matched, 13px.
-# TO FIX (new elements; measured on the Desktop render, the web render is the same 30px lower):
+# LEAD RULINGS (feat/m10-start-from-run, after m10-parity; the boards and app re-shot on Vite :5343, the counts below are the re-shoot):
+#   1 → BUILT: "What came along" opens on the right over the run's canvas, 8px below the canvas's top, with a max-height and its own
+#      scroll (StartNext.tsx CameAlong; test "opens over the run's canvas…"). Every item in it now matches, 0 drift; it sits 22px higher
+#      than drawn (only moved: the board's Now bar is taller than the app's).
+#   2 → SERVER TEXT: the cards read the node's `live.activity` (M2's rule). The backend sets the entry agent's to "From spec v3 of run #12"
+#      until it has an Activity line of its own; at the boards' moment the PM already has lines, so the fixture (as the server) gives its
+#      newest one. Not a missing element.
+#   3 → WAIVER (app governs, brief 2.2): a waiting agent's card keeps M2's existing words ("Starts after the Engineer"); the board's
+#      "Knows the INDICATORS rule" would replace them and no data says which memory an agent knows.
+#   4 → BUILT: the backend sends the run's "Saved N new memories from this run · review them in Toolkit" line (`review_memories`); the
+#      page adds "Review" → Toolkit › Memory › Inbox (ActivityPanel test). The fixture now carries it: matched on the five Done boards.
+# TO FIX as the helper reported them (measured on the Desktop render, the web render is the same 30px lower):
 #   1. layout — Next-CameAlong: "What came along from run #12" opens ABOVE its line (StartNext.tsx CameAlong: `bottom` = 8px above "See what
 #      came along"), so it spans y 23–615 where the board draws it y 237–828 at the right edge, under the Now bar and over the Activity rows:
 #      every item in it is 214px higher ("only moved" ×19; sizes and words at 0 drift). At 900px its top (23) runs under the Desktop's 30px
@@ -106,21 +117,21 @@
 #   approved', '1m'; Next-Started: 'Round 1 of 3', '● Updating the spec' — the card's brief-2.5 "Working…" —, 'Grok plan · this Mac', 'Spec
 #   approval'); 'Show 27 earlier steps' (the app reads 25, M2); the Start-from notes' second sentences (ruling); 'Will ask you to approve the
 #   spec' (M2's waiting line). Each web render's 'Tvashtr — the living canvas' and 'Tvashtr Desktop' are not found there by rule.
-# Not found in app (new, real): TO FIX 2, 3, 4 above. Nothing drawn for M10 was built beyond the boards.
-Next-Finished desktop: matched 46/69 design items · 5 with size/type drift · 22 only moved · 23 not found in app — covered: W1×2, W2×1, W3×2
-Next-Finished web: matched 44/69 design items · 5 with size/type drift · 22 only moved · 25 not found in app — covered: W1×2, W2×1, W3×2
-Next-Carry desktop: matched 67/90 design items · 5 with size/type drift · 23 only moved · 23 not found in app — covered: W1×2, W2×1, W3×2
-Next-Carry web: matched 65/90 design items · 5 with size/type drift · 23 only moved · 25 not found in app — covered: W1×2, W2×1, W3×2
-Next-CarryMerged desktop: matched 68/91 design items · 5 with size/type drift · 22 only moved · 23 not found in app — covered: W1×2, W2×1, W3×2
-Next-CarryMerged web: matched 66/91 design items · 5 with size/type drift · 22 only moved · 25 not found in app — covered: W1×2, W2×1, W3×2
+# Not found in app (new, real): none after the rulings (2 is the server's text, 3 waived, 4 built). Nothing beyond the boards was built.
+Next-Finished desktop: matched 49/69 design items · 5 with size/type drift · 25 only moved · 20 not found in app — covered: W1×2, W2×1, W3×2   (re-shot after the lead's rulings)
+Next-Finished web: matched 47/69 design items · 5 with size/type drift · 25 only moved · 22 not found in app — covered: W1×2, W2×1, W3×2   (re-shot after the lead's rulings)
+Next-Carry desktop: matched 70/90 design items · 5 with size/type drift · 26 only moved · 20 not found in app — covered: W1×2, W2×1, W3×2   (re-shot after the lead's rulings)
+Next-Carry web: matched 68/90 design items · 5 with size/type drift · 26 only moved · 22 not found in app — covered: W1×2, W2×1, W3×2   (re-shot after the lead's rulings)
+Next-CarryMerged desktop: matched 71/91 design items · 5 with size/type drift · 25 only moved · 20 not found in app — covered: W1×2, W2×1, W3×2   (re-shot after the lead's rulings)
+Next-CarryMerged web: matched 69/91 design items · 5 with size/type drift · 25 only moved · 22 not found in app — covered: W1×2, W2×1, W3×2   (re-shot after the lead's rulings)
 Next-Started desktop: matched 61/76 design items · 2 with size/type drift · 22 only moved · 15 not found in app — covered: W1×1, W14×1
 Next-Started web: matched 59/76 design items · 2 with size/type drift · 22 only moved · 17 not found in app — covered: W1×1, W14×1
-Next-CameAlong desktop: matched 80/95 design items · 2 with size/type drift · 41 only moved · 15 not found in app — covered: W1×1, W14×1 — TO FIX 1 (19 of the only moved)
-Next-CameAlong web: matched 78/95 design items · 2 with size/type drift · 41 only moved · 17 not found in app — covered: W1×1, W14×1 — TO FIX 1 (19 of the only moved)
-Next-More desktop: matched 47/70 design items · 5 with size/type drift · 23 only moved · 23 not found in app — covered: W1×2, W2×1, W3×2
-Next-More web: matched 45/70 design items · 5 with size/type drift · 23 only moved · 25 not found in app — covered: W1×2, W2×1, W3×2
-Next-Log desktop: matched 57/79 design items · 5 with size/type drift · 35 only moved · 22 not found in app — covered: W1×2, W2×1, W3×2
-Next-Log web: matched 55/79 design items · 5 with size/type drift · 35 only moved · 24 not found in app — covered: W1×2, W2×1, W3×2
+Next-CameAlong desktop: matched 80/95 design items · 2 with size/type drift · 41 only moved · 15 not found in app — covered: W1×1, W14×1   (re-shot after the lead's rulings)
+Next-CameAlong web: matched 78/95 design items · 2 with size/type drift · 41 only moved · 17 not found in app — covered: W1×1, W14×1   (re-shot after the lead's rulings)
+Next-More desktop: matched 50/70 design items · 5 with size/type drift · 26 only moved · 20 not found in app — covered: W1×2, W2×1, W3×2   (re-shot after the lead's rulings)
+Next-More web: matched 48/70 design items · 5 with size/type drift · 26 only moved · 22 not found in app — covered: W1×2, W2×1, W3×2   (re-shot after the lead's rulings)
+Next-Log desktop: matched 60/79 design items · 5 with size/type drift · 38 only moved · 19 not found in app — covered: W1×2, W2×1, W3×2   (re-shot after the lead's rulings)
+Next-Log web: matched 58/79 design items · 5 with size/type drift · 38 only moved · 21 not found in app — covered: W1×2, W2×1, W3×2   (re-shot after the lead's rulings)
 # (before 4911213: Next-Finished / -Carry / -CarryMerged / -Log 6 drift — 'Start the next run from this' 207→215 wide —, Next-More 7 — also
 #   'Download the run log' 32→34 high; both new, both fixed.)
 # Renders: 7 design shots (fonts-ok) + 14 app board shots (7 boards × web + Desktop); 12 kept inventory shots (the 6 below on main 0407f36, Vite

@@ -33,9 +33,24 @@ function doneActivity() {
   return {
     ...a,
     number: 12,
-    lines: a.lines.map((l) =>
-      l.kind === "pr" ? { ...l, text: "Opened pull request #42 from branch tvashtr/run-12" } : l,
-    ),
+    lines: [
+      ...a.lines.map((l) =>
+        l.kind === "pr" ? { ...l, text: "Opened pull request #42 from branch tvashtr/run-12" } : l,
+      ),
+      // The run's saved memories, as the server sends the line (Next-Finished's 11:03:30).
+      {
+        id: "run:memories",
+        at: at("11:03:30"),
+        node_id: null,
+        label: "Run",
+        iteration: null,
+        kind: "memories",
+        text: "Saved 3 new memories from this run · review them in Toolkit",
+        tone: "neutral",
+        refs: {},
+        review_memories: true,
+      },
+    ].sort((x, y) => x.at.localeCompare(y.at)),
   };
 }
 
