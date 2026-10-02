@@ -84,7 +84,8 @@ const BASE: Compare = {
   cost_usd: 3.1,
   created_at: ago(12),
   ended_at: null,
-  waiting: 4,
+  waiting: null,
+  runs_waiting: 4,
   sides: [
     {
       label: "A",
@@ -140,7 +141,8 @@ const SET_RESULTS: Compare = {
   status: "finished",
   cost_usd: 11.3,
   ended_at: ago(6),
-  waiting: 0,
+  waiting: null,
+  runs_waiting: 0,
   started: 10,
   items: [
     {
@@ -178,10 +180,25 @@ const SET_RESULTS: Compare = {
         a: "3 of 5",
         b: "5 of 5",
         note: "2 more tasks really work",
+        tone: "good",
       },
-      { key: "rounds", label: "Rounds per task", a: "3.4", b: "2.2", note: "about 1 fewer round" },
-      { key: "cost", label: "Cost", a: "$6.10", b: "$5.20", note: "$0.90 less in all" },
-      { key: "retries", label: "Retries and stalls", a: "3", b: "0", note: "steadier runs" },
+      {
+        key: "rounds",
+        label: "Rounds per task",
+        a: "3.4",
+        b: "2.2",
+        note: "about 1 fewer round",
+        tone: "good",
+      },
+      {
+        key: "cost",
+        label: "Cost",
+        a: "$6.10",
+        b: "$5.20",
+        note: "$0.90 more in all",
+        tone: "warn",
+      },
+      { key: "retries", label: "Retries and stalls", a: "3", b: "3", note: "same", tone: null },
     ],
   },
 };
@@ -692,7 +709,15 @@ describe("A set compare (Set-Running, Set-Results)", () => {
     expect(checks).toHaveTextContent("2 more tasks really work");
     for (const label of ["Rounds per task", "Cost", "Retries and stalls"])
       expect(screen.getByRole("group", { name: label })).toBeInTheDocument();
-    expect(screen.getByRole("group", { name: "Cost" })).toHaveTextContent("$0.90 less in all");
+    expect(screen.getByRole("group", { name: "Cost" })).toHaveTextContent("$0.90 more in all");
+    // The note's colour follows its tone: better green, worse amber, neither plain.
+    expect(within(checks).getByText("2 more tasks really work")).toHaveClass(
+      "cmp-card__note--good",
+    );
+    expect(screen.getByText("$0.90 more in all")).toHaveClass("cmp-card__note--warn");
+    expect(screen.getByText("same", { selector: ".cmp-card__note" }).className).toBe(
+      "cmp-card__note",
+    );
 
     const table = screen.getByRole("table", { name: "Results" });
     const rsi = within(table).getByRole("row", { name: /^Add an RSI indicator/ });

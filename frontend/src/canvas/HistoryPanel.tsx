@@ -303,7 +303,12 @@ function CheckCallout({
   if (c.worse) {
     // "(v7: 5 of 5)": the version it ran against, from its own check on the same set.
     const was = versions.find((r) => r.number === c.against)?.check;
-    const before = was && was.set === c.set && was.status === "finished" ? was : null;
+    const before =
+      c.against_passed != null
+        ? { passed: c.against_passed, total: c.total }
+        : was && was.set === c.set && was.status === "finished"
+          ? was
+          : null;
     return (
       <div className="cv-check cv-check--worse">
         <TriangleAlert size={16} strokeWidth={1.6} aria-hidden />

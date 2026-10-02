@@ -94,7 +94,7 @@ function Running({ c, teamId, onStopped }: { c: Compare; teamId: string; onStopp
   const going = c.status === "waiting" || c.status === "running";
   const v = (label: "A" | "B") => c.sides.find((s) => s.label === label)?.version;
   const set = c.set ?? null;
-  const waiting = typeof c.waiting === "number" ? c.waiting : 0;
+  const waiting = c.runs_waiting ?? 0;
   const stop = () => {
     setBusy(true);
     setError(null);
@@ -219,7 +219,7 @@ function Now({ current }: { current: NonNullable<CompareSide["current"]> }) {
 }
 
 function Lane({ side, c, teamId }: { side: CompareSide; c: Compare; teamId: string }) {
-  const queued = side.status === "waiting" && typeof c.waiting === "object" ? c.waiting : null;
+  const queued = side.status === "waiting" ? c.waiting : null;
   const [look, variant] = queued
     ? ["Waiting for a free slot", "warning" as const]
     : SIDE_LOOK[side.status];
@@ -608,7 +608,9 @@ function SetResults({
                   v{v("B")} {k.b}
                 </span>
               </div>
-              <span className="cmp-card__note">{k.note}</span>
+              <span className={`cmp-card__note${k.tone ? ` cmp-card__note--${k.tone}` : ""}`}>
+                {k.note}
+              </span>
             </div>
           ))}
         </div>

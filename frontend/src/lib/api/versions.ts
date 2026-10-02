@@ -31,6 +31,8 @@ export interface VersionCheck {
   total: number;
   /** The version it ran against. */
   against: number;
+  /** How many of the set's hidden checks the version it ran against passed in this compare. */
+  against_passed?: number | null;
   cost_delta_usd: number | null;
   status: "running" | "finished";
   worse: boolean;

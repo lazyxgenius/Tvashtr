@@ -405,6 +405,17 @@ describe("App — M9 History's set check (Set-Checked, Set-CheckedWorse)", () =>
     expect(await screen.findByRole("dialog", { name: "Restore v7?" })).toBeInTheDocument();
   });
 
+  it("did worse: the callout reads the score of the version it ran against from the check itself", async () => {
+    // v7 has no check of its own on the set: the compare's own A side gives "(v7: 4 of 5)".
+    summary = checked(check({ passed: 3, worse: true, against_passed: 4 }));
+    renderApp();
+    const panel = await openHistory();
+    const callout = within(panel).getByText("v8 did worse on Indicators").closest("div.cv-check")!;
+    expect(callout).toHaveTextContent(
+      "3 of 5 hidden checks passed (v7: 4 of 5). Restore v7 to go back.",
+    );
+  });
+
   it("while it runs: checking…, no callout, and History reads the versions again", async () => {
     summary = checked(check({ status: "running", passed: 0 }));
     renderApp();

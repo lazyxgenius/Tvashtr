@@ -904,7 +904,13 @@
 }
 .cmp-card__note {
   font-size: 12px;
+  color: var(--ink-500);
+}
+.cmp-card__note--good {
   color: #52613e;
+}
+.cmp-card__note--warn {
+  color: #7a5423;
 }
 
 /* ---- "One task is a small sample" (Cmp-Results) ---- */

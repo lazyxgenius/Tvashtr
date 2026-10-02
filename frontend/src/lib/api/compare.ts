@@ -93,6 +93,8 @@ export interface SetCard {
   b: string;
   /** "2 more tasks really work", "$0.90 less in all". */
   note: string;
+  /** The note's colour: better (good), worse (warn) or neither. */
+  tone?: "good" | "warn" | null;
 }
 
 /** M9: one side of one task in a set compare (a cell of its table). */
@@ -125,17 +127,16 @@ export interface Compare {
   cost_usd: number;
   created_at: string;
   ended_at: string | null;
-  /**
-   * Waiting for a free slot: the owner's run slots in use. M9, a set compare: the number of its
-   * runs still waiting for a slot.
-   */
-  waiting: { in_use: number; limit: number } | number | null;
+  /** Waiting for a free slot: the owner's run slots in use. */
+  waiting: { in_use: number; limit: number } | null;
   sides: CompareSide[];
   results: CompareResults | null;
   /** M9: set for a compare on a task set (its table replaces the two lanes). */
   set?: { id: string; name: string; count: number } | null;
   /** M9, a set compare: runs started so far (of 2 × count). */
   started?: number;
+  /** M9, a set compare: its runs still waiting for a slot. */
+  runs_waiting?: number;
   items?: SetItem[];
 }
 
