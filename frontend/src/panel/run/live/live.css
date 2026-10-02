@@ -480,3 +480,363 @@
   line-height: 1.5;
   color: var(--ink-500);
 }
+
+/* ---- M3: Resume from here (Runs › Prob-*) ---- */
+/* A line carried from the run this one resumed (Prob-Resumed): muted, "from run #12". */
+.lv-line--carried {
+  opacity: 0.55;
+}
+
+/* The run bar's "Resumed from #12": a link to that run. */
+.lv-resumed {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--coral-100);
+  color: var(--coral-700);
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+/* The run view with "Resume run #12" open: the panel takes the right edge from under the Now bar
+   to the bottom; the canvas and Activity share the rest (Prob-Pick). */
+.lv-split {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.lv-split__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---- "Resume run #12" (Prob-Pick) ---- */
+.lv-pick {
+  position: relative;
+  width: 384px;
+  flex: none;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-card);
+  border-left: 1px solid var(--border-hairline);
+  box-shadow: var(--shadow-drawer);
+  font-family: var(--font-ui);
+  color: var(--text-primary);
+}
+.lv-pick__head {
+  flex: none;
+  padding: 18px 20px 14px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border-bottom: 1px solid var(--line-200);
+}
+.lv-pick__icon {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  box-sizing: border-box;
+  border-radius: 8px;
+  background: var(--panel-300);
+  border: 1px solid var(--border-hairline);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-700);
+}
+.lv-pick__titles {
+  flex: 1;
+  min-width: 0;
+}
+.lv-pick__title {
+  font-family: var(--font-display);
+  font-size: 19px;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+.lv-pick__sub {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink-500);
+  margin-top: 3px;
+}
+.lv-pick__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 20px;
+}
+.lv-pick__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.lv-pick__step {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--border-hairline);
+  border-radius: 12px;
+  background: var(--surface-card);
+}
+.lv-pick__step--suggested {
+  border-color: var(--coral-200);
+  background: #fbf0ea;
+}
+.lv-pick__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.lv-pick__sq {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--panel-300);
+  color: var(--ink-700);
+}
+.lv-pick__sq--ok {
+  background: var(--sage-100);
+  color: #52613e;
+}
+.lv-pick__sq--danger {
+  background: var(--red-100);
+  color: #8f3b2f;
+}
+.lv-pick__what {
+  flex: 1;
+  min-width: 0;
+}
+.lv-pick__name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-900);
+}
+.lv-pick__text {
+  font-size: 12.5px;
+  color: var(--ink-600);
+}
+.lv-pick__chip {
+  font-size: 10px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  white-space: nowrap;
+  background: var(--sage-100);
+  color: #52613e;
+}
+.lv-pick__chip--suggested {
+  background: var(--coral-100);
+  color: var(--coral-700);
+}
+.lv-pick__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.lv-pick__meta {
+  font-family: var(--font-code);
+  font-size: 11px;
+  color: var(--ink-500);
+}
+.lv-pick__note {
+  margin: 14px 0 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink-600);
+}
+.lv-pick__bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--border-hairline);
+  background: var(--surface-card);
+}
+.lv-pick__bar-note {
+  font-size: 12px;
+  color: var(--ink-500);
+}
+
+/* ---- the confirm dialog (Prob-Confirm / Prob-ConfirmStalled) ---- */
+.lv-confirm {
+  position: fixed;
+  z-index: 71;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 640px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 32px);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-card);
+  border: 1px solid var(--border-hairline);
+  border-radius: 16px;
+  box-shadow: var(--shadow-pop);
+  overflow: hidden;
+  font-family: var(--font-ui);
+  color: var(--text-primary);
+}
+.lv-confirm__head {
+  flex: none;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 20px 22px 14px;
+}
+.lv-confirm__icon {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  box-sizing: border-box;
+  border-radius: 10px;
+  background: var(--panel-300);
+  border: 1px solid var(--border-hairline);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-700);
+}
+.lv-confirm__titles {
+  flex: 1;
+  min-width: 0;
+}
+.lv-confirm__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 400;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+.lv-confirm__sub {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-600);
+  margin-top: 4px;
+}
+.lv-confirm__body {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 4px 22px 18px;
+  overflow-y: auto;
+}
+.lv-confirm__cols {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.lv-confirm__card {
+  box-sizing: border-box;
+  padding: 14px 16px;
+  border: 1px solid var(--border-hairline);
+  border-radius: 12px;
+  background: var(--surface-card);
+}
+.lv-confirm__eyebrow {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-500);
+}
+.lv-confirm__list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.lv-confirm__list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-800);
+}
+.lv-confirm__mark {
+  flex: none;
+  display: inline-flex;
+  margin-top: 2px;
+}
+.lv-confirm__skips {
+  box-sizing: border-box;
+  display: flex;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: #f3f6ee;
+  border: 1px solid #c9d3b8;
+}
+.lv-confirm__skips .lv-confirm__mark {
+  margin-top: 1px;
+}
+.lv-confirm__skips-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.lv-confirm__skips-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-900);
+}
+.lv-confirm__skips-sub {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--ink-700);
+}
+.lv-confirm__note {
+  font-size: 12.5px;
+  color: var(--ink-600);
+}
+.lv-confirm__error {
+  font-size: 12.5px;
+  color: #8f3b2f;
+}
+.lv-confirm__foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 22px;
+  border-top: 1px solid var(--line-200);
+  background: var(--surface-page);
+}
+.lv-confirm__foot-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--ink-500);
+}
+.lv-confirm__actions {
+  display: flex;
+  gap: 8px;
+}

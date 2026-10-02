@@ -1,6 +1,6 @@
 import "./live.css";
 
-import { ArrowDown, Check, ChevronUp, FileText, RefreshCw, Square } from "lucide-react";
+import { ArrowDown, Check, ChevronUp, FileText, RefreshCw, RotateCcw, Square } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { StopRunDialog } from "../../../components/StopRunDialog";
@@ -21,6 +21,9 @@ export interface ActivityActions {
   onSwitchBackup: (nodeId: string) => Promise<unknown>;
   onStop: () => void;
   onRetryFromStart: () => void;
+  /** M3: open the Resume confirm for a step, or ("pick") the "Resume run #12" panel; rejects with
+   *  why Resume isn't offered. Absent: no Resume buttons. */
+  onResume?: (at: number | "pick") => Promise<unknown>;
 }
 
 /** The steps shown before "Show N earlier steps" (the boards show the last six). */
@@ -36,6 +39,7 @@ const KIND_ICON: Record<string, "ok" | "warn" | "danger" | "live" | "idle"> = {
   error: "danger",
   done: "ok",
   pr: "ok",
+  resumed: "live",
 };
 
 function iconTone(l: ActivityLine): string {
@@ -49,13 +53,21 @@ function iconTone(l: ActivityLine): string {
 const since = (iso: string, now: number) =>
   duration((now - Date.parse(iso)) / 1000).replace(/^(\d+)s$/, "$1 s");
 
-/** A line's small square icon, in its tone. */
+/** A line's small square icon, in its tone (M3: a carried step's arrow, the Resumed line's). */
 export function LineIcon({ line }: { line: ActivityLine }) {
+  const state =
+    line.kind === "carried"
+      ? "carried_over"
+      : line.kind === "resumed"
+        ? "retrying"
+        : line.tone === "ok"
+          ? "done"
+          : line.refs.running
+            ? "running_command"
+            : "waiting";
   return (
     <span className={`lv-line__icon lv-line__icon--${iconTone(line)}`}>
-      <StateGlyph
-        state={line.tone === "ok" ? "done" : line.refs.running ? "running_command" : "waiting"}
-      />
+      <StateGlyph state={state} />
     </span>
   );
 }
@@ -102,7 +114,11 @@ function Line({
   // The server sends a list (an older one sent a string).
   const reasons = Array.isArray(r.reasons) ? r.reasons : r.reasons ? [r.reasons] : [];
   let extra: React.ReactNode = null;
-  if (line.kind === "edited" && r.file) {
+  if (line.from_run) {
+    // M3: a step carried from the run this one resumed (Prob-Resumed).
+    extra =
+      line.from_run.number != null ? `from run #${line.from_run.number}` : "from an earlier run";
+  } else if (line.kind === "edited" && r.file) {
     if (line.node_id) {
       extra = (
         <button
@@ -172,11 +188,11 @@ function Line({
             .filter(Boolean)
             .join("\n");
   return (
-    <li className="lv-line">
+    <li className={`lv-line${line.from_run ? " lv-line--carried" : ""}`}>
       <span className="lv-line__time">{clock(line.at)}</span>
       <LineIcon line={line} />
       <span className="lv-line__who">{line.label}</span>
-      <span className={`lv-line__what${current ? " lv-now-line" : ""}`}>
+      <span className={`lv-line__what${current || line.kind === "resumed" ? " lv-now-line" : ""}`}>
         <LineWhat line={line} />
       </span>
       <span className="lv-line__extra">{extra}</span>
@@ -197,15 +213,33 @@ function Pinned({
   teamName: string | undefined;
 }) {
   const [askStop, setAskStop] = useState(false);
-  const [switchError, setSwitchError] = useState<string | null>(null);
-  const switchNow = async (nodeId: string) => {
-    setSwitchError(null);
+  const [error, setError] = useState<string | null>(null);
+  /** A callout action that may refuse: its reason shows under the buttons. */
+  const attempt = async (act: () => Promise<unknown>) => {
+    setError(null);
     try {
-      await actions.onSwitchBackup(nodeId);
+      await act();
     } catch (e) {
-      setSwitchError(e instanceof Error ? e.message : String(e));
+      setError(e instanceof Error ? e.message : String(e));
     }
   };
+  const switchNow = (nodeId: string) => attempt(() => actions.onSwitchBackup(nodeId));
+  // M3: Resume shows only when the server offers it and the view can open it.
+  const { onResume } = actions;
+  const resume = onResume ? (pin.resume ?? null) : null;
+  const resumeButton = (label: string, at: number | "pick") =>
+    onResume && (
+      <Button
+        variant="primary"
+        size="sm"
+        className="cv-btn-flush"
+        disabled={busy}
+        onClick={() => void attempt(() => onResume(at))}
+      >
+        <RotateCcw size={14} strokeWidth={2} aria-hidden />
+        <span>{label}</span>
+      </Button>
+    );
   const tone =
     pin.kind === "gate"
       ? ""
@@ -224,7 +258,26 @@ function Pinned({
         </span>
         <div className="lv-pin__body">
           <div className="lv-pin__title">{pin.title}</div>
-          <div className="lv-pin__text">{pin.body}</div>
+          <div className="lv-pin__text">
+            {pin.body}
+            {/* M3: what is saved, and where Resume picks up (Prob-Stalled / Prob-Failed). */}
+            {pin.safe &&
+              (pin.kind === "failed" ? (
+                <>
+                  {" "}
+                  <b>Safe:</b> {pin.safe}.
+                </>
+              ) : (
+                ` ${pin.safe[0].toUpperCase()}${pin.safe.slice(1)}.`
+              ))}
+            {pin.kind === "failed" && resume && (
+              <>
+                {" "}
+                <b>Next:</b> resume from {resume.label}. Tvashtr skips the work that is done, so you
+                don’t pay for it again.
+              </>
+            )}
+          </div>
           <div className="lv-pin__actions">
             {pin.kind === "gate" && pin.task_id != null && (
               <>
@@ -276,6 +329,9 @@ function Pinned({
                 </Button>
               </>
             )}
+            {pin.kind === "stalled" &&
+              resume &&
+              resumeButton("Resume from the last finished step", "pick")}
             {pin.kind === "stalled" && (
               <Button
                 variant="secondary"
@@ -287,6 +343,9 @@ function Pinned({
                 Stop run
               </Button>
             )}
+            {pin.kind === "failed" &&
+              resume &&
+              resumeButton(`Resume from ${resume.label}`, resume.invocation_id)}
             {pin.kind === "failed" && (
               <Button
                 variant="secondary"
@@ -298,9 +357,9 @@ function Pinned({
               </Button>
             )}
           </div>
-          {switchError && (
+          {error && (
             <div className="lv-pin__error" role="status">
-              {switchError}
+              {error}
             </div>
           )}
         </div>

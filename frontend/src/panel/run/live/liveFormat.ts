@@ -80,6 +80,12 @@ export function duration(totalSeconds: number): string {
   return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, "0")}m`;
 }
 
+/** "about 8 minutes" — how long carried work took (Prob-Confirm). */
+export function aboutMinutes(seconds: number): string {
+  const m = Math.max(1, Math.round(seconds / 60));
+  return `about ${m} ${m === 1 ? "minute" : "minutes"}`;
+}
+
 /** "10:43:10" — a line's local clock time. */
 export function clock(iso: string): string {
   const d = new Date(iso);

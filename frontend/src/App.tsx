@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CanvasHeader } from "./canvas/CanvasHeader";
 import { CanvasToolbar } from "./canvas/CanvasToolbar";
 import { RunBlockedBanner } from "./canvas/RunBlockedBanner";
@@ -22,8 +22,11 @@ import { ActivityPanel, type ActivityActions } from "./panel/run/live/ActivityPa
 import { DoneSummary } from "./panel/run/live/DoneSummary";
 import { NotifyBell } from "./panel/run/live/NotifyBell";
 import { NowBar } from "./panel/run/live/NowBar";
+import { ResumeConfirm, ResumedFrom, ResumePick } from "./panel/run/live/Resume";
+import { useResume } from "./panel/run/live/useResume";
 import { useRunActivity } from "./panel/run/live/useRunActivity";
 import { switchToBackup } from "./lib/api/activity";
+import { resumeRun } from "./lib/api/resume";
 import type { LeaveGuard } from "./panel/useUnsavedGuard";
 import {
   acknowledgeTask,
@@ -102,6 +105,10 @@ interface AppProps {
   /** Write the viewer's place back to the address (null: closed); `push` when it opens. Without it
    * the viewer keeps its own state. */
   onDocRoute?: (next: DocRoute | null, opts: { push: boolean }) => void;
+  /** M3: open the run view with its "Resume run #n" panel (`?resume=1`, Home's Resume). */
+  resume?: boolean;
+  /** The panel opened (or Resume isn't offered): drop `?resume=1` from the address. */
+  onResumeOpened?: () => void;
 }
 
 /** The open document, the version shown (none: the latest) and the one it's compared with. */
@@ -131,6 +138,8 @@ export default function App({
   onNodeRoute,
   doc: routeDoc,
   onDocRoute,
+  resume: routeResume,
+  onResumeOpened,
 }: AppProps = {}) {
   const [runId, setRunId] = useState<string | null>(initialRunId ?? null);
   const [graph, setGraph] = useState<GraphData | null>(null);
@@ -237,6 +246,19 @@ export default function App({
   // the existing live run view takes over (graph/run/tasks polled as before).
   const authoring = runId === null;
   const terminal = isRunTerminal(run, workflowStatus);
+
+  // M3: Resume from here — the "Resume run #12" panel and the confirm dialog. Home's Resume opens
+  // the run view with the panel open (`?resume=1`), once.
+  const resumeFlow = useResume(authoring ? null : runId);
+  const openResume = resumeFlow.open;
+  const resumeRequested = useRef(routeResume === true);
+  useEffect(() => {
+    if (!resumeRequested.current) return;
+    resumeRequested.current = false;
+    void openResume("pick")
+      .catch(() => undefined)
+      .finally(() => onResumeOpened?.());
+  }, [openResume, onResumeOpened]);
 
   // Load BYOK + subscription coverage while authoring so Run can gate on missing providers.
   useEffect(() => {
@@ -818,7 +840,37 @@ export default function App({
           prefill: retryPrefill(run, run.library_team_id ?? currentTeamId),
         });
     },
+    onResume: openResume,
   };
+  // M3: "Resume run" starts the new run and opens it (its own run view, on the same team).
+  const startResumed = async (invocationId: number) => {
+    if (!runId) return;
+    const started = await resumeRun(runId, invocationId);
+    if (teamOfRun) navigate({ page: "team", teamId: teamOfRun, runId: started.run_id });
+  };
+  const resumedFrom = run?.resumed_from ?? activity?.resumed_from ?? null;
+  const confirmPoint = resumeFlow.confirm;
+  const pickInfo = !authoring && resumeFlow.pick ? resumeFlow.info : null;
+  const withPick = (canvas: ReactNode, below: ReactNode) =>
+    pickInfo ? (
+      <div className="lv-split">
+        <div className="lv-split__main">
+          {canvas}
+          {below}
+        </div>
+        <ResumePick
+          info={pickInfo}
+          roleOf={(nodeId) => graph?.nodes.find((n) => n.id === nodeId)?.role_name}
+          onPick={resumeFlow.choose}
+          onClose={resumeFlow.closePick}
+        />
+      </div>
+    ) : (
+      <>
+        {canvas}
+        {below}
+      </>
+    );
 
   return (
     <>
@@ -858,6 +910,7 @@ export default function App({
             <NotifyBell />
             {inFlight && <CancelRunButton onCancel={() => void handleCancel()} disabled={acting} />}
             <RunBanner runId={runId} run={run} workflowStatus={workflowStatus} costs={costs} />
+            {resumedFrom && teamOfRun && <ResumedFrom from={resumedFrom} teamId={teamOfRun} />}
           </>
         )}
         {error && <span className="cv-error">{error}</span>}
@@ -884,159 +937,171 @@ export default function App({
           />
         ))}
 
-      <main className="cv-main">
-        {docsOpen && docsDrawer && (
-          <DocumentsDrawer
-            runs={teamRuns}
-            runId={docsDrawer.runId}
-            tick={roundsTick}
-            onPickRun={(id) => setDocsDrawer({ runId: id })}
-            agentCount={agentCount}
-            onOpenDoc={(doc) => openDoc(doc.id)}
-            onClose={() => setDocsDrawer(null)}
-          />
-        )}
-        {/* Part A: no author-mode team rail — the canvas is full-width while authoring (the team
-            library lives on the Dashboard). A left panel appears ONLY during a run (the tasks drawer). */}
-        {!authoring && (
-          <TasksDrawer
-            blockers={pendingBlockers}
-            nudges={pendingNudges}
-            onResolve={(taskId, decision) => void handleResolve(taskId, decision)}
-            onAcknowledge={(taskId) => void handleAcknowledge(taskId)}
-            onFocusNode={setFocusNodeId}
-            busy={acting}
-          />
-        )}
-        <div className="cv-canvas">
-          <TeamCanvas
-            blockedNodes={blockedNodes}
-            blockedReason={error ?? ""}
-            graph={authoring ? teamAsGraph : graph}
-            run={run}
-            workflowStatus={workflowStatus}
-            tasks={authoring ? EMPTY_TASKS : tasks}
-            focusNodeId={focusNodeId}
-            panelOpen={docsOpen ? "docs" : nodeDrawerOpen}
-            onSelectNode={(id) => {
-              if (id) setDocsDrawer(null);
-              setSelectedNodeId(id);
-            }}
-            editable={authoring}
-            teamNodes={teamGraph?.nodes ?? []}
-            validity={validity}
-            onAddNode={(body) => void handleAddNode(body)}
-            onAddDownstream={(fromId, body) => void handleAddDownstream(fromId, body)}
-            onCreateEdge={(c, source, target) => void handleCreateEdge(c, source, target)}
-            onDeleteNodes={(ids) => void handleDeleteNodes(ids)}
-            onDeleteEdges={(ids) => void handleDeleteEdges(ids)}
-            onMoveNode={handleMoveNode}
-            onSelectNodeId={handleSelectNodeId}
-            ringKey={ringKey}
-            onOpenModel={handleOpenModel}
-            busy={editBusy}
-            selectedNodeId={selectedNodeId}
-            docChips={docChips}
-            onOpenDoc={openChipDoc}
-          />
-          {runBlock && (
-            <RunBlockedBanner
-              block={runBlock}
-              onOpenEngines={openEngines}
-              onMakeThinker={makeThinker}
+      {/* M3: with "Resume run #12" open, the canvas and Activity share the left; the panel takes
+          the right edge (Prob-Pick). */}
+      {withPick(
+        <main className="cv-main">
+          {docsOpen && docsDrawer && (
+            <DocumentsDrawer
+              runs={teamRuns}
+              runId={docsDrawer.runId}
+              tick={roundsTick}
+              onPickRun={(id) => setDocsDrawer({ runId: id })}
+              agentCount={agentCount}
+              onOpenDoc={(doc) => openDoc(doc.id)}
+              onClose={() => setDocsDrawer(null)}
             />
           )}
-        </div>
-        {authoring
-          ? selectedTeamNode &&
-            currentTeamId && (
-              <NodeEditor
-                key={selectedTeamNode.id}
-                teamId={currentTeamId}
-                node={selectedTeamNode}
-                nodes={teamGraph?.nodes ?? []}
-                edges={teamGraph?.edges ?? []}
-                isEntry={selectedTeamNode.id === startNodeId}
-                cover={credentialGate}
-                tab={place.tab}
-                onTabChange={(tab) => setPlace({ ...place, tab })}
-                focus={place.focus}
-                onFocusChange={(focus) => setPlace({ ...place, focus })}
-                onClose={() => handleSelectNodeId(null)}
-                onSaved={() => loadTeam(currentTeamId)}
-                guardRef={leaveGuardRef}
-                onDelete={() => handleDeleteNodes([selectedTeamNode.id])}
-                catalogue={config?.provider_catalogue}
-                onOpenEngines={
-                  onBackToDashboard
-                    ? (tab) =>
-                        guardLeave(() =>
-                          tab === "overview"
-                            ? onBackToDashboard("engines")
-                            : navigate({ page: "engines", tab }),
-                        )
-                    : undefined
-                }
-                onOpenToolkit={(route) => guardLeave(() => navigate(route))}
-                onCardPreview={(config) => previewCard(selectedTeamNode.id, config)}
-                onOpenDocuments={(docsRunId) => openDocuments(docsRunId)}
-                onOpenDoc={openDoc}
-                onOpenRun={(openRunId) =>
-                  guardLeave(() =>
-                    navigate({ page: "team", teamId: currentTeamId, runId: openRunId }),
-                  )
-                }
-                onProviderAdded={(provider) =>
-                  setCredentialGate((gate) =>
-                    gate ? { ...gate, byok: new Set([...gate.byok, provider]) } : gate,
-                  )
-                }
-              />
-            )
-          : selectedRunNode &&
-            graph && (
-              <RunNodeDrawer
-                key={
-                  runTool?.node === selectedRunNode.id
-                    ? `${selectedRunNode.id}:${runTool.n}`
-                    : selectedRunNode.id
-                }
-                initialTool={runTool?.node === selectedRunNode.id ? runTool.tool : undefined}
-                activityLines={activity?.lines.filter((l) => l.node_id === selectedRunNode.id)}
-                node={selectedRunNode}
-                nodes={graph.nodes}
-                edges={graph.edges}
-                isEntry={!graph.edges.some((e) => e.target_node_id === selectedRunNode.id)}
-                runId={runId}
-                run={run}
-                workflowStatus={workflowStatus}
-                tab={place.tab}
-                onTabChange={(tab) => setPlace({ ...place, tab })}
-                onClose={() => setSelectedNodeId(null)}
-                onOpenDoc={openRunDoc}
-                onEditOnTeam={editOnTeam(selectedRunNode)}
-                offTeam={offTeam(selectedRunNode)}
+          {/* Part A: no author-mode team rail — the canvas is full-width while authoring (the team
+            library lives on the Dashboard). A left panel appears ONLY during a run (the tasks drawer). */}
+          {!authoring && (
+            <TasksDrawer
+              blockers={pendingBlockers}
+              nudges={pendingNudges}
+              onResolve={(taskId, decision) => void handleResolve(taskId, decision)}
+              onAcknowledge={(taskId) => void handleAcknowledge(taskId)}
+              onFocusNode={setFocusNodeId}
+              busy={acting}
+            />
+          )}
+          <div className="cv-canvas">
+            <TeamCanvas
+              blockedNodes={blockedNodes}
+              blockedReason={error ?? ""}
+              graph={authoring ? teamAsGraph : graph}
+              run={run}
+              workflowStatus={workflowStatus}
+              tasks={authoring ? EMPTY_TASKS : tasks}
+              focusNodeId={focusNodeId}
+              panelOpen={docsOpen ? "docs" : nodeDrawerOpen}
+              onSelectNode={(id) => {
+                if (id) setDocsDrawer(null);
+                setSelectedNodeId(id);
+              }}
+              editable={authoring}
+              teamNodes={teamGraph?.nodes ?? []}
+              validity={validity}
+              onAddNode={(body) => void handleAddNode(body)}
+              onAddDownstream={(fromId, body) => void handleAddDownstream(fromId, body)}
+              onCreateEdge={(c, source, target) => void handleCreateEdge(c, source, target)}
+              onDeleteNodes={(ids) => void handleDeleteNodes(ids)}
+              onDeleteEdges={(ids) => void handleDeleteEdges(ids)}
+              onMoveNode={handleMoveNode}
+              onSelectNodeId={handleSelectNodeId}
+              ringKey={ringKey}
+              onOpenModel={handleOpenModel}
+              busy={editBusy}
+              selectedNodeId={selectedNodeId}
+              docChips={docChips}
+              onOpenDoc={openChipDoc}
+            />
+            {runBlock && (
+              <RunBlockedBanner
+                block={runBlock}
+                onOpenEngines={openEngines}
+                onMakeThinker={makeThinker}
               />
             )}
-        {/* Over a focus view, the viewer mounts after it (once the team is in), so the viewer is
+          </div>
+          {authoring
+            ? selectedTeamNode &&
+              currentTeamId && (
+                <NodeEditor
+                  key={selectedTeamNode.id}
+                  teamId={currentTeamId}
+                  node={selectedTeamNode}
+                  nodes={teamGraph?.nodes ?? []}
+                  edges={teamGraph?.edges ?? []}
+                  isEntry={selectedTeamNode.id === startNodeId}
+                  cover={credentialGate}
+                  tab={place.tab}
+                  onTabChange={(tab) => setPlace({ ...place, tab })}
+                  focus={place.focus}
+                  onFocusChange={(focus) => setPlace({ ...place, focus })}
+                  onClose={() => handleSelectNodeId(null)}
+                  onSaved={() => loadTeam(currentTeamId)}
+                  guardRef={leaveGuardRef}
+                  onDelete={() => handleDeleteNodes([selectedTeamNode.id])}
+                  catalogue={config?.provider_catalogue}
+                  onOpenEngines={
+                    onBackToDashboard
+                      ? (tab) =>
+                          guardLeave(() =>
+                            tab === "overview"
+                              ? onBackToDashboard("engines")
+                              : navigate({ page: "engines", tab }),
+                          )
+                      : undefined
+                  }
+                  onOpenToolkit={(route) => guardLeave(() => navigate(route))}
+                  onCardPreview={(config) => previewCard(selectedTeamNode.id, config)}
+                  onOpenDocuments={(docsRunId) => openDocuments(docsRunId)}
+                  onOpenDoc={openDoc}
+                  onOpenRun={(openRunId) =>
+                    guardLeave(() =>
+                      navigate({ page: "team", teamId: currentTeamId, runId: openRunId }),
+                    )
+                  }
+                  onProviderAdded={(provider) =>
+                    setCredentialGate((gate) =>
+                      gate ? { ...gate, byok: new Set([...gate.byok, provider]) } : gate,
+                    )
+                  }
+                />
+              )
+            : selectedRunNode &&
+              graph && (
+                <RunNodeDrawer
+                  key={
+                    runTool?.node === selectedRunNode.id
+                      ? `${selectedRunNode.id}:${runTool.n}`
+                      : selectedRunNode.id
+                  }
+                  initialTool={runTool?.node === selectedRunNode.id ? runTool.tool : undefined}
+                  activityLines={activity?.lines.filter((l) => l.node_id === selectedRunNode.id)}
+                  node={selectedRunNode}
+                  nodes={graph.nodes}
+                  edges={graph.edges}
+                  isEntry={!graph.edges.some((e) => e.target_node_id === selectedRunNode.id)}
+                  runId={runId}
+                  run={run}
+                  workflowStatus={workflowStatus}
+                  tab={place.tab}
+                  onTabChange={(tab) => setPlace({ ...place, tab })}
+                  onClose={() => setSelectedNodeId(null)}
+                  onOpenDoc={openRunDoc}
+                  onEditOnTeam={editOnTeam(selectedRunNode)}
+                  offTeam={offTeam(selectedRunNode)}
+                />
+              )}
+          {/* Over a focus view, the viewer mounts after it (once the team is in), so the viewer is
             the top overlay that owns Escape and Tab — a reload on the address included. */}
-        {docRoute && !(authoring && selectedNodeId && place.focus && !teamGraph) && (
-          <DocumentViewer
-            docId={docRoute.id}
-            place={{ version: docRoute.version, compare: docRoute.compare }}
-            runs={teamRuns.value}
-            onPlace={(id, p) => setDocRoute({ id, ...p })}
-            onClose={() => setDocRoute(null)}
-            guardRef={docGuardRef}
+          {docRoute && !(authoring && selectedNodeId && place.focus && !teamGraph) && (
+            <DocumentViewer
+              docId={docRoute.id}
+              place={{ version: docRoute.version, compare: docRoute.compare }}
+              runs={teamRuns.value}
+              onPlace={(id, p) => setDocRoute({ id, ...p })}
+              onClose={() => setDocRoute(null)}
+              guardRef={docGuardRef}
+            />
+          )}
+        </main>,
+        !authoring && activity && (
+          <ActivityPanel
+            activity={activity}
+            actions={liveActions}
+            busy={acting}
+            teamName={teamGraph?.name}
           />
-        )}
-      </main>
-      {!authoring && activity && (
-        <ActivityPanel
-          activity={activity}
-          actions={liveActions}
-          busy={acting}
-          teamName={teamGraph?.name}
+        ),
+      )}
+      {resumeFlow.info && confirmPoint && (
+        <ResumeConfirm
+          info={resumeFlow.info}
+          point={confirmPoint}
+          onResume={() => startResumed(confirmPoint.invocation_id)}
+          onCancel={resumeFlow.closeConfirm}
         />
       )}
     </>

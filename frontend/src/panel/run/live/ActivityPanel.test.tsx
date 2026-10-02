@@ -467,3 +467,129 @@ describe("ActivityPanel", () => {
     expect(screen.queryByRole("button", { name: "Review the spec" })).toBeNull();
   });
 });
+
+describe("ActivityPanel — M3 Resume from here", () => {
+  const FAILED: PinnedCallout = {
+    kind: "failed",
+    node_id: "n-eng",
+    label: "Engineer",
+    title: "Engineer failed: the model didn’t answer after 3 tries",
+    body: "Impact: nothing was shipped.",
+    task_id: null,
+    backup_model: null,
+    resume: { invocation_id: 105, label: "Engineer, round 2" },
+    safe: "your approved spec (v2) and the Engineer’s round 1 changes are saved",
+  };
+
+  it("the Failed callout: Resume from <step> beside Retry, with the Safe / Next copy (Prob-Failed)", () => {
+    const a = { ...actions(), onResume: vi.fn(() => Promise.resolve()) };
+    render(<ActivityPanel activity={activity({ pinned: FAILED })} now={NOW} actions={a} />);
+    const callout = screen.getByRole("status");
+    expect(callout).toHaveTextContent(
+      "Impact: nothing was shipped. Safe: your approved spec (v2) and the Engineer’s round 1 changes are saved. Next: resume from Engineer, round 2. Tvashtr skips the work that is done, so you don’t pay for it again.",
+    );
+    const buttons = within(callout).getAllByRole("button");
+    expect(buttons.map((b) => b.textContent)).toEqual([
+      "Resume from Engineer, round 2",
+      "Retry from the start",
+    ]);
+    fireEvent.click(buttons[0]);
+    expect(a.onResume).toHaveBeenCalledWith(105);
+  });
+
+  it("the Stalled callout: Resume from the last finished step opens the pick, before Stop run", () => {
+    const a = { ...actions(), onResume: vi.fn(() => Promise.resolve()) };
+    render(
+      <ActivityPanel
+        activity={activity({
+          pinned: {
+            ...STALLED,
+            resume: { invocation_id: 104, label: "Engineer, round 2" },
+            safe: "the spec, your approval and the round 1 changes are saved",
+          },
+        })}
+        now={NOW}
+        actions={a}
+      />,
+    );
+    const callout = screen.getByRole("status");
+    expect(callout).toHaveTextContent(
+      "No update for 6 minutes. The spec, your approval and the round 1 changes are saved.",
+    );
+    const buttons = within(callout).getAllByRole("button");
+    expect(buttons.map((b) => b.textContent)).toEqual([
+      "Resume from the last finished step",
+      "Stop run",
+    ]);
+    fireEvent.click(buttons[0]);
+    expect(a.onResume).toHaveBeenCalledWith("pick");
+  });
+
+  it("no Resume button without the server's resume (an older server, a folder run)", () => {
+    const a = { ...actions(), onResume: vi.fn(() => Promise.resolve()) };
+    render(
+      <ActivityPanel
+        activity={activity({ pinned: { ...FAILED, resume: null, safe: null } })}
+        now={NOW}
+        actions={a}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: /Resume/ })).toBeNull();
+    expect(screen.getByRole("status")).not.toHaveTextContent(/Safe:|Next:/);
+  });
+
+  it("shows why Resume isn't offered when it refuses", async () => {
+    const a = {
+      ...actions(),
+      onResume: vi.fn(() => Promise.reject(new Error("The run finished"))),
+    };
+    render(<ActivityPanel activity={activity({ pinned: FAILED })} now={NOW} actions={a} />);
+    fireEvent.click(screen.getByRole("button", { name: "Resume from Engineer, round 2" }));
+    expect(await screen.findByText("The run finished")).toBeInTheDocument();
+  });
+
+  it("a resumed run: carried lines muted with 'from run #12', then the Resumed line (Prob-Resumed)", () => {
+    const lines: ActivityLine[] = [
+      line("c:1:a", {
+        node_id: "n-pm",
+        label: "Product manager",
+        kind: "carried",
+        text: "Wrote the spec (v2)",
+        from_run: { run_id: "r-12", number: 12 },
+        at: T(10, 42, 5),
+      }),
+      line("c:1:b", {
+        kind: "carried",
+        text: "Round 1 · edited 2 files",
+        from_run: { run_id: "r-12", number: 12 },
+        at: T(10, 46, 12),
+      }),
+      line("run:resumed", {
+        node_id: null,
+        label: "Run",
+        kind: "resumed",
+        text: "Resumed from run #12 at Engineer, round 2",
+        from_run: null,
+        at: T(11, 2, 14),
+      }),
+      line("own", { text: "Read the reviewer’s notes from round 1", at: T(11, 2, 20) }),
+    ];
+    render(
+      <ActivityPanel
+        activity={activity({ lines, total: 4, number: 13 })}
+        now={NOW}
+        actions={actions()}
+      />,
+    );
+    const carried = screen.getByText("Round 1 · edited 2 files").closest("li");
+    expect(carried).toHaveClass("lv-line--carried");
+    expect(carried).toHaveTextContent("from run #12");
+    expect(screen.getAllByText("from run #12")).toHaveLength(2);
+    const resumed = screen.getByText("Resumed from run #12 at Engineer, round 2");
+    expect(resumed).toHaveClass("lv-now-line");
+    expect(resumed.closest("li")).not.toHaveClass("lv-line--carried");
+    expect(
+      screen.getByText("Read the reviewer’s notes from round 1").closest("li"),
+    ).not.toHaveClass("lv-line--carried");
+  });
+});
