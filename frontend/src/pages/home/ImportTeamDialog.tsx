@@ -220,7 +220,7 @@ function ImportBody({ file, onClose }: { file: File; onClose: () => void }) {
               </div>
             )}
             {(checkFailed || importError) && (
-              <div className="hm-newteam__alert" role="alert">
+              <div className="hm-newteam__alert hm-import__alert" role="alert">
                 <CircleAlert size={14} strokeWidth={1.6} aria-hidden />
                 {importError ?? CHECK_FAILED}
               </div>

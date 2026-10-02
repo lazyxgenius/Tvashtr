@@ -1,5 +1,5 @@
 // M4 — the team file (Team Setup › File-Panel, File-NewMenu, File-Check, File-CheckError,
-// File-Imported). `kept-teamcanvas-*` capture the kept-elements inventory of the team canvas
+// File-Imported, and File-Fixes / File-Checking added for the states built beside them). `kept-teamcanvas-*` capture the kept-elements inventory of the team canvas
 // (authoring) before M4 (brief §2.2), website and Desktop. Each board renders as a website and a
 // Desktop render (runs-live.mjs's `pair` convention): File-Panel and File-Imported are drawn in
 // Desktop (the 30px title strip), so the Desktop render is the comparison and the web render is
@@ -17,12 +17,26 @@ const canvasReady = async (page) => {
 const NO_RUNS = { [`GET /api/teams/${TEAM_ID}/runs`]: { runs: [] } };
 
 const underTitleStrip = (page) =>
-  page.addStyleTag({ content: "body { padding-top: 30px; box-sizing: border-box; }" });
+  page.addStyleTag({
+    content: "body { padding-top: 30px; box-sizing: border-box; }",
+  });
 const aboveTitleStrip = (page) =>
-  page.addStyleTag({ content: "html { height: calc(100% + 30px); margin-top: -30px; }" });
+  page.addStyleTag({
+    content: "html { height: calc(100% + 30px); margin-top: -30px; }",
+  });
 
 /** A board as a website render and a Desktop render (runs-live.mjs's `pair`). */
-function pair(board, { desktopBoard = true, path, routes, desktopRoutes = routes, steps, init = "" }) {
+function pair(
+  board,
+  {
+    desktopBoard = true,
+    path,
+    routes,
+    desktopRoutes = routes,
+    steps,
+    init = "",
+  },
+) {
   const frame = (f) => async (p) => {
     await f(p);
     await steps?.(p);
@@ -49,10 +63,16 @@ function pair(board, { desktopBoard = true, path, routes, desktopRoutes = routes
 }
 
 // ---- The boards' canvas: Product manager → Spec approval → Engineer ⇄ Reviewer (3 rounds) → Ship ----
-const at = (key, x, y, extra = {}) => ({ ...NODES[key], position: { x, y }, ...extra });
+const at = (key, x, y, extra = {}) => ({
+  ...NODES[key],
+  position: { x, y },
+  ...extra,
+});
 const BOARD_NODES = [
   at("pm", 36, 60),
-  at("prd", 250, 100, { config: { ...NODES.prd.config, title: "Spec approval" } }),
+  at("prd", 250, 100, {
+    config: { ...NODES.prd.config, title: "Spec approval" },
+  }),
   at("eng", 424, 60),
   at("rev", 660, 60),
   at("ship", 890, 92),
@@ -74,17 +94,25 @@ const BOARD_EDGES = [
 
 /** The canvas page's API for one team (the boards' five nodes). */
 function teamRoutes(teamId, name, desktop) {
-  const base = desktop ? panelRoutes({ keys: [], subs: ["claude", "grok"] }) : panelRoutes();
+  const base = desktop
+    ? panelRoutes({ keys: [], subs: ["claude", "grok"] })
+    : panelRoutes();
   return {
     ...base,
-    "GET /api/teams": { teams: [{ team_graph_id: teamId, name, node_count: 5, last_run: null }] },
+    "GET /api/teams": {
+      teams: [{ team_graph_id: teamId, name, node_count: 5, last_run: null }],
+    },
     [`GET /api/teams/${teamId}/graph`]: {
       team_graph_id: teamId,
       name,
       nodes: BOARD_NODES,
       edges: BOARD_EDGES,
     },
-    [`GET /api/teams/${teamId}/validate`]: { errors: [], warnings: [], runnable: true },
+    [`GET /api/teams/${teamId}/validate`]: {
+      errors: [],
+      warnings: [],
+      runnable: true,
+    },
     [`GET /api/teams/${teamId}/runs`]: { runs: [] },
     [`GET /api/teams/${teamId}/file?format=yaml`]: FILE_YAML,
     [`GET /api/teams/${teamId}/file?format=json`]: FILE_JSON,
@@ -151,7 +179,13 @@ const FILE_YAML = {
   needs: NEEDS,
 };
 const JSON_TEXT = JSON.stringify(
-  { tvashtr_team: 1, name: TEAM_NAME, budget_usd: 5, repo: "lazyxgenius/trade_mcp", needs: NEEDS },
+  {
+    tvashtr_team: 1,
+    name: TEAM_NAME,
+    budget_usd: 5,
+    repo: "lazyxgenius/trade_mcp",
+    needs: NEEDS,
+  },
   null,
   2,
 );
@@ -196,7 +230,8 @@ const CHECK = {
       key: "tool:chart-render",
       tone: "warn",
       title: "The tool chart-render isn’t in your Toolkit",
-      detail: "The Engineer runs without it until you add it or remove it from the team.",
+      detail:
+        "The Engineer runs without it until you add it or remove it from the team.",
       code: ["chart-render"],
     },
     {
@@ -257,6 +292,45 @@ const NOTICE = {
   toast: true,
 };
 const IMPORTED = `sessionStorage.setItem("tvashtr.teamImport.${COPY_ID}", ${JSON.stringify(JSON.stringify(NOTICE))});`;
+
+// File-Fixes: four fixes (a model key and a Domain too: the note is the no-key one), the Engineer's
+// three chips, then Copy in the Team file panel (closed again) leaves its toast.
+const NOTICE_MORE = {
+  fixes: [
+    ...NOTICE.fixes,
+    {
+      key: "model:anthropic",
+      text: "Add a key for anthropic, or pick another model",
+      action: "open_engines",
+      target: "anthropic",
+      node_ids: ["n-eng"],
+    },
+    {
+      key: "domain:docs",
+      text: "Pick a Domain for Ask the docs",
+      action: "open_domains",
+      target: "docs",
+      node_ids: [],
+    },
+  ],
+  note: "The team can’t run until each model has a key here, or you pick another model.",
+  toast: false,
+};
+const IMPORTED_MORE = `sessionStorage.setItem("tvashtr.teamImport.${COPY_ID}", ${JSON.stringify(JSON.stringify(NOTICE_MORE))});`;
+
+/** File-Checking: the dialog while the check is out, and when it couldn't be made. */
+const importChecking = (shown) => async (page) => {
+  await page.keyboard.press("t");
+  await page.waitForSelector('[role="dialog"][aria-label="New team"]');
+  await page.getByTestId("import-team-input").setInputFiles({
+    name: "indicator-sprint-team.yaml",
+    mimeType: "text/yaml",
+    buffer: Buffer.from(YAML),
+  });
+  await page.getByRole("dialog", { name: "Import a team file" }).waitFor();
+  await page.getByText(shown).waitFor();
+  await page.waitForTimeout(200);
+};
 
 const HOME = {
   desktopBoard: false,
@@ -324,4 +398,49 @@ export default [
       await page.getByText("Imported as a new team").waitFor();
     },
   }),
+  ...pair("File-Fixes", {
+    path: `/#/teams/${COPY_ID}`,
+    routes: teamRoutes(COPY_ID, COPY_NAME, false),
+    desktopRoutes: teamRoutes(COPY_ID, COPY_NAME, true),
+    init: IMPORTED_MORE,
+    steps: async (page) => {
+      await canvasReady(page);
+      await page
+        .context()
+        .grantPermissions(["clipboard-read", "clipboard-write"]);
+      await page.getByRole("button", { name: "Team file" }).click();
+      await page.getByText("48 lines").waitFor();
+      await page.getByRole("button", { name: "Copy" }).click();
+      await page.getByText("Copied indicator-sprint-team.yaml").waitFor();
+      await page
+        .getByRole("complementary", { name: "Team file" })
+        .getByRole("button", { name: "Close" })
+        .click();
+      await page.getByText("4 things to fix before shipping").waitFor();
+    },
+  }),
+  // The check still out (the route never answers), then a check that couldn't be made (a 500).
+  ...pair("File-Checking", {
+    ...HOME,
+    routes: homeRoutes({
+      "POST /api/teams/import-check": () => new Promise(() => {}),
+    }),
+    steps: importChecking("Checking…"),
+  }).map((s) => ({
+    ...s,
+    name: s.name.replace("File-Checking", "File-Checking-pending"),
+  })),
+  ...pair("File-Checking", {
+    ...HOME,
+    routes: homeRoutes({
+      "POST /api/teams/import-check": () => ({
+        status: 500,
+        json: { detail: "boom" },
+      }),
+    }),
+    steps: importChecking("Couldn’t check the file — is the backend running?"),
+  }).map((s) => ({
+    ...s,
+    name: s.name.replace("File-Checking", "File-Checking-failed"),
+  })),
 ];

@@ -93,3 +93,20 @@ kept-teamcanvas-web: 11/11 kept items present
 # and with the M4 states on screen: File-Panel-web / -desktop and File-Imported-web / -desktop have every kept-teamcanvas
 #   item (plus Team file); File-NewMenu-web, File-Check-web and File-CheckError-web have all 64 kept-home-web items (the
 #   dialogs open over Home). App.teamFile.test.tsx asserts the kept toolbar and canvas controls render beside Team file.
+
+# Added boards (drawn after the helper built these states — recorded as a deviation in the handover): File-Fixes
+#   ("M4 · More things to fix, Hide, and Copied": the card with four fixes — a model key → Open Engines, a Domain → Open
+#   Domains — its ✕ Hide, the Engineer's "Needs a model key" chip, the Team file panel's "Copied <file>" toast) and
+#   File-Checking ("M4 · Import: checking, and a check that failed": the file chip's "Checking…" and the alert). Design
+#   shots from the canvas export (version 7: File-Fixes’ note became the no-key one), fonts-ok. File-Checking draws two moments in one board: the app is shot in
+#   each — '-pending' (the check never answers: "Checking…") and '-failed' (a 500: the alert, the chip then reads "48
+#   lines") — so each render's "not found" includes the other moment's line. Fixed in this sweep: the dialog's alert
+#   was New team's (13px, bordered); the board's is 12.5px, unbordered (hm-import__alert).
+File-Fixes web: matched 38/52 design items · 0 with size/type drift · 14 only moved · 14 not found in app
+File-Fixes desktop: matched 40/52 design items · 0 with size/type drift · 14 only moved · 12 not found in app
+File-Checking-pending web: matched 35/57 design items · 4 with size/type drift · 5 only moved · 22 not found in app — covered: W4×1, W6×3
+File-Checking-pending desktop: matched 35/57 design items · 4 with size/type drift · 5 only moved · 22 not found in app — covered: W4×1, W6×3
+File-Checking-failed web: matched 35/57 design items · 4 with size/type drift · 1 only moved · 22 not found in app — covered: W4×1, W6×3
+File-Checking-failed desktop: matched 35/57 design items · 4 with size/type drift · 1 only moved · 22 not found in app — covered: W4×1, W6×3
+# File-Fixes "not found": the M5/M8 header items (Version history, v1 · imported just now, Compare, More for this team —
+#   §2.4) and the existing cards' chips / gate label / loop label (the app governs, as File-Imported above).
