@@ -11,6 +11,7 @@ Pure git (stdlib + ``subprocess``), openhands-free, so ``team_run`` may import i
 
 import os
 import re
+import shutil
 import subprocess
 import tempfile
 
@@ -57,17 +58,28 @@ def branch_start(ws: str) -> str:
 
 def capture(ws: str) -> dict:
     """``{"base_sha", "diff": bytes | None, "too_large": bool}`` for the workspace as it is now.
-    Uses a throwaway index, so the workspace's own index (what the ship stages) is untouched."""
-    from tvashtr.control_plane.shipping import _ship_excludes
+    Works on a copy of the workspace's index (its stat data keeps a big repo fast, and a committed
+    file the ``.gitignore`` matches stays tracked), so the real index — what the ship stages — is
+    untouched. Leaves out a step's own files (REPORT.md, the verdict, SPEC.md) and keeps the
+    agents' remember captures (``TVASHTR_REMEMBER.jsonl``), which a resumed run still ingests."""
+    from tvashtr.control_plane.shipping import _REMEMBER_FILE, _ship_excludes
 
     if not os.path.isdir(ws):
         raise CheckpointError(f"no workspace at {ws}")
     base = branch_start(ws)
     with tempfile.TemporaryDirectory() as tmp:
-        env = {"GIT_INDEX_FILE": os.path.join(tmp, "index")}
-        # Start from the base's tree so a tracked file that is also ignored isn't read as deleted.
-        _git(ws, "read-tree", base, env=env)
-        _git(ws, "add", "-A", "--", ".", *_ship_excludes(ws), env=env)
+        index = os.path.join(tmp, "index")
+        env = {"GIT_INDEX_FILE": index}
+        real = _git(ws, "rev-parse", "--git-path", "index").stdout.strip()
+        real = real if os.path.isabs(real) else os.path.join(ws, real)
+        if os.path.exists(real):
+            shutil.copyfile(real, index)
+        else:
+            _git(ws, "read-tree", "HEAD", env=env)
+        excludes = [e for e in _ship_excludes(ws) if not e.endswith(_REMEMBER_FILE)]
+        _git(ws, "add", "-A", "--", ".", *excludes, env=env)
+        if os.path.isfile(os.path.join(ws, _REMEMBER_FILE)):
+            _git(ws, "add", "-f", "--", _REMEMBER_FILE, env=env)
         diff = _git(ws, "diff", "--cached", "--binary", base, env=env, text=False).stdout
     if len(diff) > MAX_DIFF_BYTES:
         return {"base_sha": base, "diff": None, "too_large": True}
@@ -80,31 +92,36 @@ _CREATED = re.compile(r"^ create mode \d+ (.+)$", re.MULTILINE)
 def apply(ws: str, diff: bytes, *, marker: str) -> bool:
     """Apply a checkpoint's diff to a freshly made workspace, once: ``marker`` (the checkpoint's
     id) is written into the work tree's git dir, so a replay of the run that finds it applied
-    leaves the workspace as it is. Returns whether it applied now."""
+    leaves the workspace as it is; a patch already in place (a crash before the stamp) is left too.
+    Returns whether it changed the workspace now."""
     git_dir = _git(ws, "rev-parse", "--absolute-git-dir").stdout.strip()
     stamp = os.path.join(git_dir, _MARKER)
     if os.path.exists(stamp):
         with open(stamp, encoding="utf-8") as f:
             if f.read().strip() == marker:
                 return False
+    applied = False
     if diff:
         with tempfile.NamedTemporaryFile(suffix=".patch", delete=False) as f:
             f.write(diff)
             patch = f.name
         try:
-            # A file the setup wrote again (a greenfield .gitignore) is replaced by the
-            # checkpoint's copy: the checkpoint is what the workspace held.
-            summary = _git(ws, "apply", "--summary", patch).stdout
-            for rel in _CREATED.findall(summary):
-                path = os.path.join(ws, rel)
-                if os.path.isfile(path) and _untracked(ws, rel):
-                    os.remove(path)
-            _git(ws, "apply", "--binary", "--whitespace=nowarn", patch)
+            # Already there (the process died between the patch and its stamp): leave it.
+            if _git(ws, "apply", "--reverse", "--check", patch, check=False).returncode != 0:
+                # A file the setup wrote again (a greenfield .gitignore) is replaced by the
+                # checkpoint's copy: the checkpoint is what the workspace held.
+                summary = _git(ws, "apply", "--summary", patch).stdout
+                for rel in _CREATED.findall(summary):
+                    path = os.path.join(ws, rel)
+                    if os.path.isfile(path) and _untracked(ws, rel):
+                        os.remove(path)
+                _git(ws, "apply", "--binary", "--whitespace=nowarn", patch)
+                applied = True
         finally:
             os.remove(patch)
     with open(stamp, "w", encoding="utf-8") as f:
         f.write(marker)
-    return True
+    return applied
 
 
 def _untracked(ws: str, rel: str) -> bool:

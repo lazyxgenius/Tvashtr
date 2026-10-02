@@ -71,12 +71,13 @@ def test_run_checkpoints_columns():
     assert _columns("run_checkpoints") == {
         "id": ("bigint", "NO"),
         "run_id": ("uuid", "NO"),
-        "invocation_id": ("bigint", "NO"),
+        "invocation_id": ("bigint", "YES"),
         "node_id": ("uuid", "NO"),
         "iteration": ("integer", "NO"),
         "base_sha": ("text", "NO"),
         "diff": ("bytea", "YES"),
         "too_large": ("boolean", "NO"),
+        "state": ("jsonb", "NO"),
         "created_at": ("timestamp with time zone", "NO"),
     }
 
@@ -99,6 +100,44 @@ def test_one_checkpoint_per_step_and_it_round_trips_bytes():
         assert row.diff == blob and row.too_large is False and row.created_at is not None
     with pytest.raises(IntegrityError), session_scope() as s:
         s.add(_checkpoint(run_id, inv_id, node))
+
+
+def test_a_run_has_at_most_one_seed_checkpoint():
+    run_id, _inv_id, node = _run_with_step()
+    with session_scope() as s:
+        s.add(_checkpoint(run_id, None, node, state={"iters_by_node": {node: 1}}))
+    with session_scope() as s:
+        seed = s.execute(
+            select(RunCheckpoint).where(
+                RunCheckpoint.run_id == uuid.UUID(run_id), RunCheckpoint.invocation_id.is_(None)
+            )
+        ).scalar_one()
+        assert seed.state == {"iters_by_node": {node: 1}}
+    with pytest.raises(IntegrityError), session_scope() as s:
+        s.add(_checkpoint(run_id, None, node))
+
+
+def _resumed_run(old: Run, status: str) -> Run:
+    rid = uuid.uuid4()
+    return Run(
+        id=rid,
+        team_graph_id=old.team_graph_id,
+        owner_id=old.owner_id,
+        idea=old.idea,
+        workflow_id=str(rid),
+        status=status,
+        resumed_from_run_id=old.id,
+    )
+
+
+def test_a_run_has_at_most_one_resumed_run_in_flight():
+    run_id, _inv_id, _node = _run_with_step()
+    with session_scope() as s:
+        old = s.get(Run, uuid.UUID(run_id))
+        s.add(_resumed_run(old, "failed"))
+        s.add(_resumed_run(old, "running"))
+    with pytest.raises(IntegrityError), session_scope() as s:
+        s.add(_resumed_run(s.get(Run, uuid.UUID(run_id)), "pending"))
 
 
 def test_deleting_a_run_deletes_its_checkpoints_and_unlinks_runs_resumed_from_it():

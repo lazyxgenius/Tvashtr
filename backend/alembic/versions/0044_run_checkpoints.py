@@ -1,11 +1,14 @@
 """run_checkpoints + runs.resumed_from_* — M3 Resume from here (ruling R8)
 
-* ``run_checkpoints``: one row per finished agent step — the run workspace's change against the
-  commit its branch started from (``diff``, binary git patch; NULL when over the size cap, then
-  ``too_large``), that commit (``base_sha``) and the step it follows (``invocation_id``, unique, so
-  writing it again is a no-op). Enough to rebuild the workspace with no old sandbox.
+* ``run_checkpoints``: one row per finished step — the run workspace's change against the commit
+  its branch started from (``diff``, binary git patch; NULL when over the size cap, then
+  ``too_large``), that commit (``base_sha``), the walk's own state after the step (``state``: rounds
+  per node, the reviewer's notes, the spec document) and the step (``invocation_id``, unique, so
+  writing it again is a no-op). A resumed run's SEED row (``invocation_id`` NULL, one per run) is
+  the carried state it starts from. Enough to rebuild the workspace with no old sandbox.
 * ``runs.resumed_from_run_id`` / ``runs.resumed_from_step``: a run made by Resume names the run it
-  picks up and the step of that run it starts again from (an ``agent_invocations`` id).
+  picks up and the step of that run it starts again from (an ``agent_invocations`` id). A partial
+  unique index lets a run have one resumed run in flight at a time (a double submit is refused).
 
 Additive: a fresh table and two nullable columns, no backfill. ``downgrade()`` drops them.
 Contract: ``docs/superpowers/plans/api/resume.md``.
@@ -18,6 +21,7 @@ Create Date: 2026-10-02
 from collections.abc import Sequence
 
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 from alembic import op
 
@@ -34,12 +38,18 @@ def upgrade() -> None:
         _T,
         sa.Column("id", sa.BigInteger(), sa.Identity(), primary_key=True),
         sa.Column("run_id", sa.Uuid(), nullable=False),
-        sa.Column("invocation_id", sa.BigInteger(), nullable=False),
+        sa.Column("invocation_id", sa.BigInteger(), nullable=True),
         sa.Column("node_id", sa.Uuid(), nullable=False),
         sa.Column("iteration", sa.Integer(), nullable=False),
         sa.Column("base_sha", sa.Text(), nullable=False),
         sa.Column("diff", sa.LargeBinary(), nullable=True),
         sa.Column("too_large", sa.Boolean(), server_default=sa.false(), nullable=False),
+        sa.Column(
+            "state",
+            postgresql.JSONB(astext_type=sa.Text()),
+            server_default=sa.text("'{}'::jsonb"),
+            nullable=False,
+        ),
         sa.Column(
             "created_at",
             sa.TIMESTAMP(timezone=True),
@@ -58,6 +68,13 @@ def upgrade() -> None:
         sa.UniqueConstraint("invocation_id", name=f"uq_{_T}_invocation_id"),
     )
     op.create_index(f"ix_{_T}_run_id", _T, ["run_id"])
+    op.create_index(
+        f"uq_{_T}_seed",
+        _T,
+        ["run_id"],
+        unique=True,
+        postgresql_where=sa.text("invocation_id IS NULL"),
+    )
     op.add_column("runs", sa.Column("resumed_from_run_id", sa.Uuid(), nullable=True))
     op.add_column("runs", sa.Column("resumed_from_step", sa.BigInteger(), nullable=True))
     op.create_foreign_key(
@@ -77,13 +94,22 @@ def upgrade() -> None:
         ondelete="SET NULL",
     )
     op.create_index("ix_runs_resumed_from_run_id", "runs", ["resumed_from_run_id"])
+    op.create_index(
+        "uq_runs_resumed_in_flight",
+        "runs",
+        ["resumed_from_run_id"],
+        unique=True,
+        postgresql_where=sa.text("status IN ('pending', 'running', 'awaiting_human')"),
+    )
 
 
 def downgrade() -> None:
+    op.drop_index("uq_runs_resumed_in_flight", table_name="runs")
     op.drop_index("ix_runs_resumed_from_run_id", table_name="runs")
     op.drop_constraint("fk_runs_resumed_from_step_agent_invocations", "runs", type_="foreignkey")
     op.drop_constraint("fk_runs_resumed_from_run_id_runs", "runs", type_="foreignkey")
     op.drop_column("runs", "resumed_from_step")
     op.drop_column("runs", "resumed_from_run_id")
+    op.drop_index(f"uq_{_T}_seed", table_name=_T)
     op.drop_index(f"ix_{_T}_run_id", table_name=_T)
     op.drop_table(_T)

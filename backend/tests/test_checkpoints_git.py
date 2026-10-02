@@ -67,10 +67,11 @@ def test_greenfield_round_trip(tmp_path):
 
     new = _greenfield(tmp_path / "new")
     checkpoints.apply(str(new), cp["diff"], marker="cp-1")
-    expected = {
-        k: v for k, v in _tree(ws).items() if k not in ("REPORT.md", "TVASHTR_REMEMBER.jsonl")
-    }
+    # REPORT.md is a step's own file (its content lives on as a document); the agents'
+    # remember captures ride along so a resumed run that ships still ingests them.
+    expected = {k: v for k, v in _tree(ws).items() if k != "REPORT.md"}
     assert _tree(new) == expected
+    assert (new / "TVASHTR_REMEMBER.jsonl").read_text() == "{}\n"
 
 
 def test_brownfield_round_trip_with_agent_commits_deletions_and_renames(tmp_path):
@@ -123,7 +124,7 @@ def test_a_worktree_with_no_changes_captures_an_empty_diff(tmp_path):
     assert cp["diff"] == b"" and cp["base_sha"] == _git(repo, "rev-parse", "HEAD").stdout.strip()
     new = tmp_path / "ws-new"
     add_worktree(str(repo), str(new), "run-y", cp["base_sha"])
-    assert checkpoints.apply(str(new), cp["diff"], marker="cp-4") is True
+    assert checkpoints.apply(str(new), cp["diff"], marker="cp-4") is False  # nothing to change
     assert _tree(new) == _tree(ws)
 
 
@@ -154,3 +155,33 @@ def test_capture_leaves_the_workspace_index_alone(tmp_path):
 def test_capture_of_a_missing_workspace_raises(tmp_path):
     with pytest.raises(checkpoints.CheckpointError):
         checkpoints.capture(str(tmp_path / "nope"))
+
+
+def test_a_committed_file_the_gitignore_ignores_is_kept(tmp_path):
+    repo = _init_repo(tmp_path / "repo", {"README.md": "# r\n", ".gitignore": "build/\n"})
+    ws = tmp_path / "ws"
+    add_worktree(str(repo), str(ws), "run-ign", "main")
+    (ws / "build").mkdir()
+    (ws / "build" / "out.js").write_text("compiled\n")
+    _git(ws, "add", "-f", "build/out.js")
+    _git(ws, "commit", "-qm", "agent force-adds a build output")
+    cp = checkpoints.capture(str(ws))
+    new = tmp_path / "ws-new"
+    add_worktree(str(repo), str(new), "run-ign2", cp["base_sha"])
+    checkpoints.apply(str(new), cp["diff"], marker="cp-6")
+    assert (new / "build" / "out.js").read_text() == "compiled\n"
+
+
+def test_apply_after_a_crash_between_the_patch_and_its_stamp_is_a_no_op(tmp_path):
+    ws = _greenfield(tmp_path / "old")
+    (ws / "a.txt").write_text("a\n")
+    (ws / ".gitignore").unlink()
+    cp = checkpoints.capture(str(ws))
+    new = tmp_path / "new"
+    new.mkdir()
+    init_workspace_repo(str(new))
+    patch = tmp_path / "p.patch"
+    patch.write_bytes(cp["diff"])
+    _git(new, "apply", "--binary", str(patch))  # applied, then the process died before the stamp
+    assert checkpoints.apply(str(new), cp["diff"], marker="cp-7") is False
+    assert (new / "a.txt").read_text() == "a\n"

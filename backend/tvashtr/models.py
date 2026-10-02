@@ -932,10 +932,13 @@ class McpSecret(Base):
 
 
 class RunCheckpoint(Base):
-    """M3 (migration ``0044``, ruling R8): the run's workspace after one finished agent step — its
-    change against the commit the run's branch started from (``diff``, a binary git patch; NULL and
-    ``too_large`` when over ``checkpoints.MAX_DIFF_BYTES``) and that commit (``base_sha``). One row
-    per step (``invocation_id`` unique), written once. Resume rebuilds a workspace from it."""
+    """M3 (migration ``0044``, ruling R8): the run's workspace after one finished step — its change
+    against the commit the run's branch started from (``diff``, a binary git patch; NULL and
+    ``too_large`` when over ``checkpoints.MAX_DIFF_BYTES``), that commit (``base_sha``) and the
+    walk's own state after the step (``state``: ``iters_by_node``, ``reviewer_feedback``,
+    ``pm_document_id``). One row per step (``invocation_id`` unique), written once. A resumed run's
+    SEED row has no step (``invocation_id`` NULL, one per run): the state it starts from, already in
+    its own node ids. Resume and a recovery rebuild the workspace from the newest row."""
 
     __tablename__ = "run_checkpoints"
 
@@ -955,6 +958,9 @@ class RunCheckpoint(Base):
     diff: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     too_large: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=false(), default=False
+    )
+    state: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb"), default=dict
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
