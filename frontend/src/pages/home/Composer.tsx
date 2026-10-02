@@ -38,6 +38,8 @@ import {
 } from "./homeData";
 import { SECTION_IDS, money } from "./homeFormat";
 import { PlayIcon } from "./homeIcons";
+import { RecentTasksList } from "./RecentTasks";
+import { useRecentTasks } from "./useRecentTasks";
 import "./home-runs.css";
 
 const LAST_TARGET_KEY = "tvashtr.home.lastTarget";
@@ -351,6 +353,15 @@ export function Composer() {
     window.setTimeout(() => focusIdea(), 0);
   });
 
+  // ---- M6: Recent tasks as you type (Agents-Recent): a pick fills the task and its team ----
+  const recent = useRecentTasks(idea, (t) => {
+    pickTeamForRun(t.team.id);
+    setIdea(t.task);
+    setIdeaError(false);
+    setProblem(null);
+    setRetryOf(null);
+  });
+
   // ---- keys ----
   const addKeys = (providers: string[]) => {
     if (!selected) return;
@@ -516,30 +527,35 @@ export function Composer() {
         <span id="hm-idea-label" className="hm-sr-only">
           What should the team build?
         </span>
-        <textarea
-          ref={ideaRef}
-          className={ideaError ? "hm-idea hm-idea--error" : "hm-idea"}
-          rows={1}
-          aria-labelledby="hm-idea-label"
-          aria-invalid={ideaError || undefined}
-          placeholder={
-            idea
-              ? undefined
-              : "What should the team build? For example: Add an RSI indicator with tests"
-          }
-          value={idea}
-          onChange={(e) => {
-            setIdea(e.target.value);
-            if (ideaError) setIdeaError(false);
-            if (!e.target.value.trim() && retryOf) setRetryOf(null);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-              e.preventDefault();
-              void launch();
+        <div className="hm-idea-wrap">
+          <textarea
+            ref={ideaRef}
+            className={ideaError ? "hm-idea hm-idea--error" : "hm-idea"}
+            rows={1}
+            aria-labelledby="hm-idea-label"
+            aria-invalid={ideaError || undefined}
+            {...recent.comboProps}
+            placeholder={
+              idea
+                ? undefined
+                : "What should the team build? For example: Add an RSI indicator with tests"
             }
-          }}
-        />
+            value={idea}
+            onChange={(e) => {
+              setIdea(e.target.value);
+              if (ideaError) setIdeaError(false);
+              if (!e.target.value.trim() && retryOf) setRetryOf(null);
+            }}
+            onKeyDown={(e) => {
+              if (recent.onKeyDown(e)) return;
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault();
+                void launch();
+              }
+            }}
+          />
+          <RecentTasksList recent={recent} query={idea} />
+        </div>
         {ideaError && (
           <div role="alert" className="hm-idea-error">
             <TriangleAlert size={13} strokeWidth={1.6} aria-hidden />
