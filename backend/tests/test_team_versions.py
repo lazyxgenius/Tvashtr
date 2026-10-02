@@ -411,7 +411,8 @@ def test_summaries_are_plain_words(rows, want):
 
 def test_no_node_column_is_left_out_of_a_version():
     """A new AgentNode column must be captured (and restored) or knowingly left out."""
-    left_out = {"team_graph_id", "created_at"}
+    # cloned_from_node_id: a run snapshot's link to its library node, not content.
+    left_out = {"team_graph_id", "created_at", "cloned_from_node_id"}
     captured = {
         "id",
         "role_name",
@@ -424,6 +425,199 @@ def test_no_node_column_is_left_out_of_a_version():
         "tool_config",
         "skills",
         "edits_allowed",
-        "cloned_from_node_id",
     }
     assert {c.name for c in AgentNode.__table__.columns} == captured | left_out
+
+
+# ------------------------------------------------------------------- the backend review
+
+
+def test_a_run_s_version_is_what_it_runs_even_when_an_edit_lands_during_the_launch(
+    client, monkeypatch
+):
+    """The run is recorded on the version of the snapshot it RUNS: an edit that commits after
+    the clone (while the pre-flight is out) stays a change since that version."""
+    monkeypatch.setattr(routers.DBOS, "start_workflow", lambda *a, **k: None)
+    team = library_team(client)
+    _versions(client, team)
+    eng = _node(client, team, "engineer")
+    real = routers._launch_preflight
+
+    def preflight(*a, **k):
+        with session_scope() as session:
+            session.get(AgentNode, uuid.UUID(eng["id"])).prompt = "Edited during the launch"
+        return real(*a, **k)
+
+    monkeypatch.setattr(routers, "_launch_preflight", preflight)
+    body = client.post("/api/runs", json={"idea": "x", "team_graph_id": team}).json()
+    assert body["team_version_number"] == 1 and body["version_saved"] is False
+    with session_scope() as session:
+        run = session.get(Run, uuid.UUID(body["run_id"]))
+        cloned = session.execute(
+            select(AgentNode).where(
+                AgentNode.team_graph_id == run.team_graph_id, AgentNode.role_name == "engineer"
+            )
+        ).scalar_one()
+        assert cloned.prompt == eng["prompt"]
+    assert _versions(client, team)["changes"] == 1  # the late edit is still a change since v1
+
+
+def test_a_run_whose_snapshot_differs_from_the_latest_version_saves_that_snapshot(
+    client, monkeypatch
+):
+    monkeypatch.setattr(routers.DBOS, "start_workflow", lambda *a, **k: None)
+    team = library_team(client)
+    _versions(client, team)
+    eng = _node(client, team, "engineer")
+    _patch(client, team, eng["id"], prompt="Before the launch")
+    real = routers._launch_preflight
+
+    def preflight(*a, **k):
+        with session_scope() as session:
+            session.get(AgentNode, uuid.UUID(eng["id"])).prompt = "After the clone"
+        return real(*a, **k)
+
+    monkeypatch.setattr(routers, "_launch_preflight", preflight)
+    body = client.post("/api/runs", json={"idea": "x", "team_graph_id": team}).json()
+    assert body["team_version_number"] == 2 and body["version_saved"] is True
+    with session_scope() as session:
+        team_row = session.get(TeamGraph, uuid.UUID(team))
+        v2 = versions._version(session, team_row, 2)
+        prompt = next(n for n in v2.graph["nodes"] if n["id"] == eng["id"])["prompt"]
+    assert prompt == "Before the launch"  # what the run runs, not the late edit
+    assert _versions(client, team)["changes"] == 1
+
+
+def _tool_node(client, team: str, tool_id: uuid.UUID, switch: str) -> str:
+    eng = _node(client, team, "engineer")
+    with session_scope() as session:
+        session.get(AgentNode, uuid.UUID(eng["id"])).tool_config = {
+            "tvashtr": {"library": [str(tool_id)], "servers": {switch: {"enabled": False}}}
+        }
+    return eng["id"]
+
+
+def test_a_toolkit_rename_is_not_a_change_and_restore_keeps_the_tool_switched_off(client):
+    from tvashtr.control_plane import tool_usage
+    from tvashtr.control_plane.node_library import create_owner_tool, update_owner_tool
+
+    owner = auth_user_id()
+    tid = create_owner_tool(owner, f"search-{uuid.uuid4().hex[:6]}", {"url": "https://s.test/mcp"})
+    team = library_team(client)
+    with session_scope() as session:
+        from tvashtr.models import ToolLibraryItem
+
+        name = session.get(ToolLibraryItem, tid).name
+    node_id = _tool_node(client, team, tid, name)
+    _versions(client, team)  # v1: the tool referenced, switched off
+    renamed = f"websearch-{uuid.uuid4().hex[:6]}"
+    assert update_owner_tool(owner, tid, renamed, {"url": "https://s.test/mcp"})
+    assert _versions(client, team)["changes"] == 0  # a Toolkit rename isn't a team change
+    eng = _node(client, team, "engineer")
+    _patch(client, team, eng["id"], model="openai/gpt-4.1")
+    _save(client, team)  # v2
+    assert client.post(f"/api/teams/{team}/versions/1/restore").status_code == 201
+    with session_scope() as session:
+        cfg = session.get(AgentNode, uuid.UUID(node_id)).tool_config
+    assert tool_usage.tool_effective(cfg, tid, renamed) is False  # still switched off
+    assert tool_usage.tool_switched_off(cfg, renamed)
+
+
+def test_restore_drops_what_no_longer_exists_and_never_widens_a_grant(client):
+    from tvashtr.models import ConnectorConnection
+
+    owner = auth_user_id()
+    team = library_team(client)
+    gone = uuid.uuid4()
+    with session_scope() as session:
+        conn = ConnectorConnection(
+            owner_id=owner,
+            connector_key="notion",
+            name="Notion",
+            slug=f"notion-{uuid.uuid4().hex[:6]}",
+            url="https://mcp.notion.com/mcp",
+            auth_kind="oauth",
+            status="connected",
+            access="write",
+        )
+        session.add(conn)
+        session.flush()
+        conn_id = conn.id
+    eng = _node(client, team, "engineer")
+    with session_scope() as session:
+        node = session.get(AgentNode, uuid.UUID(eng["id"]))
+        node.tool_config = {
+            "tvashtr": {
+                "library": [str(gone)],
+                "connectors": [{"id": str(conn_id), "access": "write"}, {"id": str(gone)}],
+            }
+        }
+        node.skills = [{"type": "library", "id": str(gone)}]
+    _versions(client, team)  # v1 holds the refs
+    _patch(client, team, eng["id"], model="openai/gpt-4.1")
+    _save(client, team)  # v2
+    with session_scope() as session:
+        session.get(ConnectorConnection, conn_id).access = "read"  # narrowed since
+    assert client.post(f"/api/teams/{team}/versions/1/restore").status_code == 201
+    with session_scope() as session:
+        node = session.get(AgentNode, uuid.UUID(eng["id"]))
+        meta = (node.tool_config or {}).get("tvashtr", {})
+        assert str(gone) not in meta.get("library", [])
+        assert meta.get("connectors") == [{"id": str(conn_id)}]
+        assert not node.skills
+
+
+def test_settings_that_mean_the_same_are_not_changes(client):
+    team = library_team(client)
+    _versions(client, team)
+    eng = _node(client, team, "engineer")
+    _patch(client, team, eng["id"], memory_remember_enabled=True)
+    _patch(client, team, eng["id"], memory_remember_enabled=False)
+    assert _versions(client, team)["changes"] == 0
+
+
+def test_one_kind_flip_is_not_three_changes(client):
+    team = library_team(client)
+    _versions(client, team)
+    rev = _node(client, team, "reviewer")
+    _patch(client, team, rev["id"], capability="thinker")
+    saved = _save(client, team)
+    fields = [r["field"] for r in client.get(f"/api/teams/{team}/versions/2").json()["changes"]]
+    assert "Settings" not in fields and fields.count("Type") == 1, (fields, saved)
+
+
+def test_a_name_summary_uses_the_names_people_see(client):
+    team = library_team(client)
+    eng = _node(client, team, "engineer")
+    _patch(client, team, eng["id"], title="Builder")
+    _versions(client, team)  # v1: "Builder"
+    with session_scope() as session:
+        node = session.get(AgentNode, uuid.UUID(eng["id"]))
+        node.config = {k: v for k, v in (node.config or {}).items() if k != "title"}
+    assert _save(client, team)["summary"] == "Renamed Builder to Engineer"
+
+
+def test_a_change_to_a_gate_is_never_called_the_same(client):
+    team = library_team(client, template="plan_review")
+    _versions(client, team)
+    gate = next(n for n in _graph(client, team)["nodes"] if n["kind"] == "gate")
+    _patch(client, team, gate["id"], title="Sign-off")
+    _save(client, team)
+    assert "gates" not in client.get(f"/api/teams/{team}/versions/2").json()["same"]
+
+
+@pytest.mark.parametrize("number", ["2147483648", "999999999999999999999", "9223372036854775808"])
+def test_a_version_number_beyond_any_version_is_404(client, number):
+    team = library_team(client)
+    _versions(client, team)
+    assert client.get(f"/api/teams/{team}/versions/{number}").status_code == 404
+    assert client.get(f"/api/teams/{team}/versions/{number}/restore").status_code == 404
+    assert client.post(f"/api/teams/{team}/versions/{number}/restore").status_code == 404
+
+
+def test_a_note_with_a_nul_is_kept_without_it(client):
+    team = library_team(client)
+    _versions(client, team)
+    eng = _node(client, team, "engineer")
+    _patch(client, team, eng["id"], model="openai/gpt-4.1")
+    assert _save(client, team, note="a\u0000b")["note"] == "ab"

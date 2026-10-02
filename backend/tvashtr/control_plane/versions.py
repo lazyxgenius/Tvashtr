@@ -21,29 +21,78 @@ from tvashtr.control_plane import team_file
 from tvashtr.control_plane.node_history import _run_number
 from tvashtr.control_plane.node_templates import NODE_TEMPLATES
 from tvashtr.control_plane.run_failure import node_label
-from tvashtr.models import AgentNode, Edge, Run, TeamGraph, TeamVersion
+from tvashtr.models import (
+    AgentNode,
+    ConnectorConnection,
+    Domain,
+    Edge,
+    Run,
+    SkillLibraryItem,
+    TeamGraph,
+    TeamVersion,
+    ToolLibraryItem,
+)
 
 NOTE_LIMIT = 200
 _BUILTIN_PROMPTS = {t["role_name"]: (t["title"], t["prompt"]) for t in NODE_TEMPLATES}
 # The node's config keys that have a field of their own in a change row; the rest are "Settings".
 _OWN_KEYS = ("title", "description", "fallback_model")
+# Settings whose ``false`` is what an unset one means.
+_OFF_BY_DEFAULT = ("memory_remember_enabled", "multimodal")
+
+
+def _settings(cfg: dict) -> dict:
+    """The node's other settings as they act: an empty value or an off-by-default ``false`` is
+    the same as none (toggling Remember on and off again is no change)."""
+    return {
+        k: v
+        for k, v in cfg.items()
+        if k not in _OWN_KEYS
+        and v not in (None, "", [], {})
+        and not (k in _OFF_BY_DEFAULT and v is False)
+    }
 
 
 # --------------------------------------------------------------------------------- the rows
 
 
-def capture(session, team: TeamGraph) -> dict:
+def capture(session, team: TeamGraph, *, snapshot_id: uuid.UUID | None = None) -> dict:
     """The team's content as plain JSON: its fields, every node by id (canvas order) and every
     edge. Positions ride along for Restore (a node that comes back goes where it was) but never
-    count as a change."""
+    count as a change. Each node notes the names its library tools have now (``tool_names``), so
+    a Toolkit rename is never a change and Restore can follow it.
+
+    ``snapshot_id``: read a run's snapshot instead (the clone ``POST /api/runs`` runs), its nodes
+    under the library ids they were cloned from — the version a run is recorded on is the content
+    it runs."""
+    source = snapshot_id or team.id
     nodes = (
-        session.execute(select(AgentNode).where(AgentNode.team_graph_id == team.id)).scalars().all()
+        session.execute(select(AgentNode).where(AgentNode.team_graph_id == source)).scalars().all()
     )
-    edges = session.execute(select(Edge).where(Edge.team_graph_id == team.id)).scalars().all()
+    edges = session.execute(select(Edge).where(Edge.team_graph_id == source)).scalars().all()
+    ids = {
+        n.id: str(n.cloned_from_node_id if snapshot_id and n.cloned_from_node_id else n.id)
+        for n in nodes
+    }
+    tools = dict(
+        session.execute(
+            select(ToolLibraryItem.id, ToolLibraryItem.name).where(
+                ToolLibraryItem.owner_id == team.owner_id
+            )
+        ).all()
+    )
 
     def where(n: AgentNode) -> tuple:
         pos = n.position if isinstance(n.position, dict) else {}
-        return (pos.get("x", 0) or 0, pos.get("y", 0) or 0, str(n.id))
+        return (pos.get("x", 0) or 0, pos.get("y", 0) or 0, ids[n.id])
+
+    def tool_names(tool_config) -> dict:
+        out = {}
+        for ref in _library(tool_config):
+            tid = _as_uuid(ref)
+            if tid in tools:
+                out[str(tid)] = tools[tid]
+        return out
 
     return {
         "team": {
@@ -53,7 +102,7 @@ def capture(session, team: TeamGraph) -> dict:
         },
         "nodes": [
             {
-                "id": str(n.id),
+                "id": ids[n.id],
                 "role_name": n.role_name,
                 "kind": n.kind,
                 "prompt": n.prompt,
@@ -62,25 +111,53 @@ def capture(session, team: TeamGraph) -> dict:
                 "position": deepcopy(n.position),
                 "config": deepcopy(n.config),
                 "tool_config": deepcopy(n.tool_config),
+                "tool_names": tool_names(n.tool_config),
                 "skills": deepcopy(n.skills),
                 "edits_allowed": n.edits_allowed,
-                "cloned_from_node_id": str(n.cloned_from_node_id)
-                if n.cloned_from_node_id
-                else None,
             }
             for n in sorted(nodes, key=where)
         ],
         "edges": [
             {
                 "id": str(e.id),
-                "source": str(e.source_node_id),
-                "target": str(e.target_node_id),
+                "source": ids.get(e.source_node_id, str(e.source_node_id)),
+                "target": ids.get(e.target_node_id, str(e.target_node_id)),
                 "edge_type": e.edge_type,
                 "conditions": deepcopy(e.conditions),
             }
             for e in edges
         ],
     }
+
+
+def _as_uuid(value) -> uuid.UUID | None:
+    try:
+        return uuid.UUID(str(value))
+    except ValueError:
+        return None
+
+
+def _meta(tool_config) -> dict:
+    meta = tool_config.get("tvashtr") if isinstance(tool_config, dict) else None
+    return meta if isinstance(meta, dict) else {}
+
+
+def _library(tool_config) -> list:
+    ids = _meta(tool_config).get("library")
+    return ids if isinstance(ids, list) else []
+
+
+def _tools_view(node: dict):
+    """``tool_config`` with each library tool's switch keyed by the tool's id, not its name: a
+    Toolkit rename moves the switch (``carry_tool_switch``) and is not a change of the team."""
+    cfg = deepcopy(node.get("tool_config"))
+    servers = _meta(cfg).get("servers")
+    if isinstance(servers, dict):
+        by_name = {name: tid for tid, name in (node.get("tool_names") or {}).items()}
+        cfg["tvashtr"]["servers"] = {
+            (f"library:{by_name[k]}" if k in by_name else k): v for k, v in servers.items()
+        }
+    return cfg or None
 
 
 def _label(node: dict) -> str:
@@ -134,7 +211,12 @@ def _text_lines(before: str | None, after: str | None, context: int = 1) -> tupl
 def _node_rows(before: dict, after: dict) -> list[dict]:
     """One row per changed field of one node (same id in both)."""
     label = _label(after)
-    base = {"node_id": after["id"], "agent": label, "role": after.get("role_name")}
+    base = {
+        "node_id": after["id"],
+        "agent": label,
+        "role": after.get("role_name"),
+        "gate": after.get("kind") == "gate",
+    }
     rows: list[dict] = []
 
     def value(field: str, key: str, old, new) -> None:
@@ -157,7 +239,9 @@ def _node_rows(before: dict, after: dict) -> list[dict]:
     cfg_b = after.get("config") if isinstance(after.get("config"), dict) else {}
     if (before.get("kind"), before.get("role_name")) != (after.get("kind"), after.get("role_name")):
         changed("Type", "type")
-    value("Name", "title", cfg_a.get("title"), cfg_b.get("title"))
+    if cfg_a.get("title") != cfg_b.get("title"):
+        # The names people see: an agent without a name of its own shows its role's.
+        value("Name", "title", _label(before), label)
     if (before.get("prompt") or "") != (after.get("prompt") or ""):
         lines, removed, added = _text_lines(before.get("prompt"), after.get("prompt"))
         rows.append(
@@ -187,12 +271,11 @@ def _node_rows(before: dict, after: dict) -> list[dict]:
         )
     if (before.get("skills") or None) != (after.get("skills") or None):
         changed("Skills", "skills")
-    if (before.get("tool_config") or None) != (after.get("tool_config") or None):
+    if _tools_view(before) != _tools_view(after):
         changed("Tools", "tool_config")
     value("Description", "description", cfg_a.get("description"), cfg_b.get("description"))
-    rest_a = {k: v for k, v in cfg_a.items() if k not in _OWN_KEYS}
-    rest_b = {k: v for k, v in cfg_b.items() if k not in _OWN_KEYS}
-    if rest_a != rest_b or before.get("engine") != after.get("engine"):
+    # (``engine`` follows the kind: the Type row says it.)
+    if _settings(cfg_a) != _settings(cfg_b):
         changed("Gate" if after.get("kind") == "gate" else "Settings", "config")
     return rows
 
@@ -283,7 +366,7 @@ def unchanged(rows: list[dict]) -> list[str]:
             touched.add("routes")
         elif r.get("field") == "Budget":
             touched.add("budget")
-        if r.get("field") == "Gate" or r.get("gate"):
+        if r.get("gate"):
             touched.add("gates")
     return [c for c in ("models", "routes", "gates", "budget") if c not in touched]
 
@@ -315,7 +398,7 @@ def _phrase(row: dict) -> str:
     if field == "File access":
         return f"{who}: file access changed to {row['after']}"
     if field == "Name":
-        return f"Renamed {row['before'] or 'an agent'} to {row['after']}"
+        return f"Renamed {row['before']} to {row['after']}"
     return f"{who}: {field.lower()} changed"
 
 
@@ -414,12 +497,14 @@ def save(
     *,
     source: str = "save",
     note: str | None = None,
+    content: dict | None = None,
 ) -> TeamVersion | None:
-    """Save the working copy as a new version; ``None`` when nothing changed."""
+    """Save the working copy (or ``content``, a run's snapshot) as a new version; ``None`` when
+    nothing changed."""
     ensure_first(session, team, author_id)
     _locked(session, team)
     top = latest(session, team)
-    now = capture(session, team)
+    now = content if content is not None else capture(session, team)
     rows = diff(top.graph, now)
     if not rows:
         return None
@@ -430,15 +515,20 @@ def save(
         author_id=author_id,
         source=source,
         summary_text=summary(rows),
-        note=(note or "").strip()[:NOTE_LIMIT] or None,
+        note=(note or "").replace("\x00", "").strip()[:NOTE_LIMIT] or None,
     )
 
 
-def for_run(session, team_id: uuid.UUID, author_id: uuid.UUID) -> tuple[int, bool]:
-    """Starting a run: ``(the version it runs on, whether this launch saved it)`` — changes since
-    the latest version are saved as a new one first, so every run has a version."""
+def for_run(
+    session, team_id: uuid.UUID, author_id: uuid.UUID, snapshot_id: uuid.UUID
+) -> tuple[int, bool]:
+    """Starting a run: ``(the version it runs on, whether this launch saved it)``. The version is
+    read from the run's own snapshot (``snapshot_id``, cloned before the pre-flight), so it is the
+    content the run runs; when that differs from the latest version it is saved as a new one —
+    every run has a version, and an edit made while the run launched stays a change since it."""
     team = session.get(TeamGraph, team_id)
-    saved = save(session, team, author_id, source="run")
+    content = capture(session, team, snapshot_id=snapshot_id)
+    saved = save(session, team, author_id, source="run", content=content)
     if saved is not None:
         return saved.number, True
     return latest(session, team).number, False
@@ -496,6 +586,7 @@ def _apply(session, team: TeamGraph, graph: dict) -> None:
     team.budget_usd = t.get("budget_usd")
     team.repo = t.get("repo")
     wanted = {n["id"]: n for n in graph.get("nodes") or []}
+    live = _live(session, team.owner_id)
     for edge in session.execute(select(Edge).where(Edge.team_graph_id == team.id)).scalars():
         session.delete(edge)
     session.flush()
@@ -522,8 +613,7 @@ def _apply(session, team: TeamGraph, graph: dict) -> None:
         node.model = row["model"]
         node.engine = row["engine"]
         node.config = deepcopy(row["config"])
-        node.tool_config = deepcopy(row["tool_config"])
-        node.skills = deepcopy(row["skills"])
+        node.tool_config, node.skills = _reconcile(row, live)
         node.edits_allowed = row["edits_allowed"]
     session.flush()
     session.add_all(
@@ -536,6 +626,90 @@ def _apply(session, team: TeamGraph, graph: dict) -> None:
         )
         for e in graph.get("edges") or []
     )
+
+
+def _live(session, owner_id) -> dict:
+    """What the owner's library holds now: tools by id (their names), skills, connections (their
+    access) and Domains."""
+    return {
+        "tools": dict(
+            session.execute(
+                select(ToolLibraryItem.id, ToolLibraryItem.name).where(
+                    ToolLibraryItem.owner_id == owner_id
+                )
+            ).all()
+        ),
+        "skills": set(
+            session.execute(
+                select(SkillLibraryItem.id).where(SkillLibraryItem.owner_id == owner_id)
+            ).scalars()
+        ),
+        "connections": dict(
+            session.execute(
+                select(ConnectorConnection.id, ConnectorConnection.access).where(
+                    ConnectorConnection.owner_id == owner_id
+                )
+            ).all()
+        ),
+        "domains": set(
+            session.execute(select(Domain.id).where(Domain.owner_id == owner_id)).scalars()
+        ),
+    }
+
+
+def _reconcile(row: dict, live: dict) -> tuple[dict | None, list | None]:
+    """A restored node's tools and skills as the library is NOW (as the Toolkit's own writes keep
+    them): a tool's switch follows its rename, a ref to something deleted goes, a connector grant
+    is never wider than its connection."""
+    cfg = deepcopy(row.get("tool_config"))
+    meta = _meta(cfg)
+    if meta:
+        if isinstance(meta.get("library"), list):
+            meta["library"] = [v for v in meta["library"] if _as_uuid(v) in live["tools"]]
+        servers = meta.get("servers")
+        inline = cfg.get("mcpServers") if isinstance(cfg.get("mcpServers"), dict) else {}
+        if isinstance(servers, dict):
+            by_name = {name: tid for tid, name in (row.get("tool_names") or {}).items()}
+            moved = {}
+            for name, switch in servers.items():
+                if name in by_name and name not in inline:
+                    current = live["tools"].get(_as_uuid(by_name[name]))
+                    if current is None:
+                        continue  # the tool is gone, so is its switch
+                    name = current
+                moved[name] = switch
+            meta["servers"] = moved
+        if isinstance(meta.get("connectors"), list):
+            grants = []
+            for grant in meta["connectors"]:
+                access = live["connections"].get(
+                    _as_uuid(grant.get("id")) if isinstance(grant, dict) else None
+                )
+                if access is None:
+                    continue
+                if grant.get("access") == "write" and access != "write":
+                    grant = {k: v for k, v in grant.items() if k != "access"}
+                grants.append(grant)
+            meta["connectors"] = grants
+        if isinstance(meta.get("domains"), list):
+            meta["domains"] = [d for d in meta["domains"] if _as_uuid(d) in live["domains"]]
+        for key in ("library", "servers", "connectors"):
+            if meta.get(key) in ([], {}):
+                meta.pop(key)
+        if not meta:
+            cfg.pop("tvashtr")
+    skills = deepcopy(row.get("skills"))
+    if isinstance(skills, list):
+        skills = [
+            e
+            for e in skills
+            if not (
+                isinstance(e, dict)
+                and e.get("type") == "library"
+                and _as_uuid(e.get("id")) not in live["skills"]
+            )
+        ] or None
+    return cfg or None, skills
 
 
 def _version(session, team: TeamGraph, number: int) -> TeamVersion | None:

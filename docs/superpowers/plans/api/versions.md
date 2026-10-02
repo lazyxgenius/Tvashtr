@@ -71,7 +71,7 @@ The row's line 2 is `note` when set, else `summary`. `author` is "you" for the c
 
 ## `POST /api/teams/{team_id}/versions` — Save as vN
 
-Body `{"note": "…"}` (optional, ≤200 chars). 201 → the new version (shape of a `versions[]` item).
+Body `{"note": "…"}` (`note` optional, ≤200 chars; a NUL character is dropped). 201 → the new version (shape of a `versions[]` item).
 409 `{"detail": "Nothing changed since v7."}` when there are no changes.
 
 ## `GET /api/teams/{team_id}/versions/{number}` — What changed in vN
@@ -98,7 +98,9 @@ Body `{"note": "…"}` (optional, ≤200 chars). 201 → the new version (shape 
  "draft_saved_as": null,        // 8 when the working copy's changes are saved as v8 first (then makes = 9)
  "changes": [ /* change rows: the working copy → v6 (what goes back) */ ]}
 ```
-409 `{"detail": "v7 is already the current version."}` when restoring the latest version with no changes.
+409 `{"detail": "v7 already matches v6."}` when the restore would change nothing (the working copy
+already equals v6 and has no changes of its own — restoring the current version with no changes,
+too). 404 for a number the team doesn't have (any number outside 1…2³¹−1 included).
 
 ## `POST /api/teams/{team_id}/versions/{number}/restore` → 201
 

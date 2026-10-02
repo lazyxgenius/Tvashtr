@@ -1322,7 +1322,9 @@ def create_run(
         # M5 (R3): a run of a library team starts on a version — its changes since the latest one
         # are saved as a new version first, so every run has a version.
         version_number, version_saved = (
-            versions.for_run(session, library_team_id, uuid.UUID(current_user.id))
+            versions.for_run(
+                session, library_team_id, uuid.UUID(current_user.id), uuid.UUID(team_graph_id)
+            )
             if library_team_id is not None
             else (None, False)
         )
@@ -3488,7 +3490,7 @@ def _version_number(number: str) -> int:
         n = int(number)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail="version not found") from exc
-    if n < 1:
+    if not 1 <= n <= 2**31 - 1:  # an INTEGER column: a bigger number is no version
         raise HTTPException(status_code=404, detail="version not found")
     return n
 
