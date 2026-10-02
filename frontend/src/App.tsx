@@ -5,6 +5,7 @@ import { ImportFixCard } from "./canvas/ImportFixCard";
 import { RunBlockedBanner } from "./canvas/RunBlockedBanner";
 import { TeamFilePanel } from "./canvas/TeamFilePanel";
 import { HistoryPanel } from "./canvas/HistoryPanel";
+import { SaveNudgeDialog } from "./canvas/SaveNudgeDialog";
 import { VersionChip } from "./canvas/VersionChip";
 import { getVersions, saveVersion, type TeamVersions } from "./lib/api/versions";
 import { ApiDetailError } from "./lib/api/runs";
@@ -127,6 +128,10 @@ interface AppProps {
   resume?: boolean;
   /** The panel opened (or Resume isn't offered): drop `?resume=1` from the address. */
   onResumeOpened?: () => void;
+  /** M7: open the drawer's New test dialog on this round (`?test_from=`, the run view's menu). */
+  testFrom?: number;
+  /** The New test dialog was asked for: drop `?test_from=` from the address. */
+  onTestFromOpened?: () => void;
 }
 
 /** The open document, the version shown (none: the latest) and the one it's compared with. */
@@ -158,6 +163,8 @@ export default function App({
   onDocRoute,
   resume: routeResume,
   onResumeOpened,
+  testFrom: routeTestFrom,
+  onTestFromOpened,
 }: AppProps = {}) {
   const [runId, setRunId] = useState<string | null>(initialRunId ?? null);
   const [graph, setGraph] = useState<GraphData | null>(null);
@@ -262,6 +269,8 @@ export default function App({
   const [historyOpen, setHistoryOpen] = useState(false);
   const [versionTick, setVersionTick] = useState(0);
   const [saveStep, setSaveStep] = useState<"posting" | "reloading" | null>(null);
+  // M7 (R6): Save as vN's dialog when a changed agent has tests (Test-SaveNudge).
+  const [saveNudge, setSaveNudge] = useState(false);
   const savedVersion = useRef(false);
   const chipRef = useRef<HTMLButtonElement>(null);
   // Credential preflight for Run (UX): null until the first successful providers load so we
@@ -829,28 +838,46 @@ export default function App({
   // A drawer draft isn't in the working copy until it's saved: Save as vN asks about it first.
   // Every outcome reloads the summary, and the button stays busy until it arrives; a 409 ("Nothing
   // changed since v7.") is a refresh, said plainly.
+  // M7 (R6): when a changed agent has tests, Save as vN asks first (a note, run its tests or just
+  // save); otherwise it saves at once, as in M5.
   const saveAsNext = () =>
     guardLeave(() => {
       if (!currentTeamId || saveStep) return;
-      setSaveStep("posting");
-      saveVersion(currentTeamId)
-        .then(
-          () => {
-            savedVersion.current = true;
-          },
-          (e: unknown) =>
-            toast(
-              e instanceof ApiDetailError && e.status === 409
-                ? { message: e.message }
-                : { message: e instanceof Error ? e.message : String(e), tone: "error" },
-            ),
-        )
-        .finally(() => {
-          if (!mountedRef.current) return;
-          setSaveStep("reloading");
-          reloadVersions();
-        });
+      if (shownVersions?.tests) setSaveNudge(true);
+      else postVersion();
     });
+  const postVersion = (body?: { note?: string; run_tests: boolean }) => {
+    if (!currentTeamId) return;
+    const teamOfSave = currentTeamId;
+    setSaveStep("posting");
+    saveVersion(teamOfSave, body)
+      .then(
+        () => {
+          savedVersion.current = true;
+          // The tests start after the save: the canvas chips read the graph again.
+          if (body?.run_tests && mountedRef.current) void loadTeam(teamOfSave);
+        },
+        (e: unknown) =>
+          toast(
+            e instanceof ApiDetailError && e.status === 409
+              ? { message: e.message }
+              : { message: e instanceof Error ? e.message : String(e), tone: "error" },
+          ),
+      )
+      .finally(() => {
+        if (!mountedRef.current) return;
+        setSaveStep("reloading");
+        reloadVersions();
+      });
+  };
+  // M7: while an agent's tests run, the graph is read every 2 s (R15) so its canvas chip
+  // ("● Testing 3 of 6") moves on; it stops once no agent is testing.
+  const testing = authoring && (teamGraph?.nodes ?? []).some((n) => n.tests?.running);
+  useEffect(() => {
+    if (!testing || !currentTeamId) return;
+    const t = window.setTimeout(() => void loadTeam(currentTeamId), 2000);
+    return () => window.clearTimeout(t);
+  }, [testing, teamGraph, currentTeamId, loadTeam]);
   // The reloaded summary is in (or failed): Save as vN is free again; after a save, focus goes back
   // to the chip (the button it was on is gone).
   const versionsLoading = versions.state === "loading";
@@ -962,6 +989,21 @@ export default function App({
     const origin = node.origin_node_id;
     return teamOfRun && origin && !offTeam(node)
       ? () => navigate({ page: "team", teamId: teamOfRun, node: origin })
+      : undefined;
+  };
+  // M7: the run view's round ⋯ › Make this a test — the team's agent on Tests, its New test dialog
+  // on that round.
+  const makeTestOnTeam = (node: GraphNode) => {
+    const origin = node.origin_node_id;
+    return teamOfRun && origin && !offTeam(node)
+      ? (invocationId: number) =>
+          navigate({
+            page: "team",
+            teamId: teamOfRun,
+            node: origin,
+            tab: "tests",
+            testFrom: invocationId,
+          })
       : undefined;
   };
 
@@ -1190,6 +1232,18 @@ export default function App({
               onClose={() => setFileOpen(false)}
             />
           )}
+          {saveNudge && shownVersions?.tests && (
+            <SaveNudgeDialog
+              current={shownVersions.current}
+              next={shownVersions.next}
+              tests={shownVersions.tests}
+              onClose={() => setSaveNudge(false)}
+              onSave={(body) => {
+                setSaveNudge(false);
+                postVersion(body);
+              }}
+            />
+          )}
           {historyPanelOpen && currentTeamId && (
             <HistoryPanel
               teamId={currentTeamId}
@@ -1221,6 +1275,8 @@ export default function App({
                   onClose={() => handleSelectNodeId(null)}
                   onSaved={() => loadTeam(currentTeamId)}
                   teamVersion={shownVersions?.current}
+                  testFrom={selectedTeamNode.id === routeNode ? routeTestFrom : undefined}
+                  onTestFromOpened={onTestFromOpened}
                   guardRef={leaveGuardRef}
                   onDelete={() => handleDeleteNodes([selectedTeamNode.id])}
                   catalogue={config?.provider_catalogue}
@@ -1272,6 +1328,7 @@ export default function App({
                   onClose={() => setSelectedNodeId(null)}
                   onOpenDoc={openRunDoc}
                   onEditOnTeam={editOnTeam(selectedRunNode)}
+                  onMakeTest={makeTestOnTeam(selectedRunNode)}
                   offTeam={offTeam(selectedRunNode)}
                 />
               )}

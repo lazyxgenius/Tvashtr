@@ -1,4 +1,4 @@
-import { ChevronDown, History, X } from "lucide-react";
+import { ChevronDown, FlaskConical, History, X } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
 import { Badge, Button, IconButton, Select } from "../design-system/components";
@@ -214,6 +214,15 @@ function VersionRow({
       <div className="cv-hist__sum">{row.note || row.summary}</div>
       <div className="cv-hist__l3">
         <span className="cv-pill">{runsPill(row.runs)}</span>
+        {/* M7 (R6, Set-Checked): how this version's tests went, next to it. */}
+        {row.tests && !row.tests.running && (
+          <span
+            className={`cv-tpill${row.tests.passed === row.tests.total ? " cv-tpill--good" : ""}`}
+          >
+            <FlaskConical size={12} strokeWidth={2} aria-hidden />
+            Tests {row.tests.passed} of {row.tests.total}
+          </span>
+        )}
         <span className="cv-hist__acts">
           <button
             type="button"

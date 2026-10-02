@@ -132,6 +132,8 @@ function nodeData(
       n.invocations?.[n.invocations.length - 1]?.outcome ??
       (n as Partial<TeamGraphNode>).last_run?.outcome,
     toolConfig: (n as Partial<TeamGraphNode>).tool_config,
+    // M7: the tests chip (authoring only; the run view's graph has none).
+    tests: (n as Partial<TeamGraphNode>).tests,
     live:
       n.live && n.status === "running"
         ? {

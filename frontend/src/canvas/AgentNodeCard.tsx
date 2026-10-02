@@ -23,7 +23,7 @@ import {
 import { AgentDomainsLine, QueryDomainCardBody } from "../pages/domains/QueryDomainCardBody";
 import { AuthoringContext } from "./authoringContext";
 import { docLabel } from "../panel/docs/agentDocs";
-import type { GateConfig, NodeConfig, TerminalConfig } from "../lib/api";
+import type { GateConfig, NodeConfig, TeamGraphNode, TerminalConfig } from "../lib/api";
 import { basedOnOf } from "../lib/api/myAgents";
 import { nodeDescription, nodeTitle } from "../lib/nodeNames";
 import type { GateState, NodeStatus, TerminalState } from "../lib/status";
@@ -68,7 +68,33 @@ export type AgentNodeData = {
   };
   /** M3 (run view): a step carried from the run this one resumed — "From run #12". */
   carried?: string | null;
+  /** M7 (authoring): the agent's tests — the chip "5 of 6 tests" / "● Testing 3 of 6". */
+  tests?: TeamGraphNode["tests"];
 };
+
+/** M7 Test-Chips: testing (coral), how the newest run went (sage; neutral when it was stopped), or
+ *  the count before any run (neutral). */
+function TestsChip({ tests }: { tests: AgentNodeData["tests"] }) {
+  if (!tests || tests.total <= 0) return null;
+  const { running, passed, ran } = tests;
+  if (running)
+    return (
+      <span className="rf-node__tests rf-node__tests--live">
+        ● Testing {Math.min(running.done + 1, running.total)} of {running.total}
+      </span>
+    );
+  if (ran != null)
+    return (
+      <span className={`rf-node__tests${tests.stopped ? "" : " rf-node__tests--good"}`}>
+        {passed ?? 0} of {ran} tests
+      </span>
+    );
+  return (
+    <span className="rf-node__tests">
+      {tests.total} {tests.total === 1 ? "test" : "tests"}
+    </span>
+  );
+}
 
 /** The authoring overlay classes for a node (P1.8d): a red ring for a blocking issue, a dim for an
  *  orphan warning. Empty in the run view (no flags set). */
@@ -324,6 +350,7 @@ function AgentCard({ nodeId, data: d }: { nodeId: string; data: AgentNodeData })
             {text}
           </span>
         ))}
+        <TestsChip tests={d.tests} />
       </div>
       {d.live?.activity && (
         <div className="rf-node__live">

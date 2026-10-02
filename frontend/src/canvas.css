@@ -1062,3 +1062,23 @@
   background: var(--amber-100);
   color: #7a5423;
 }
+
+/* ---- M7 Test-Chips: the agent’s tests — sage after a run (neutral when it was stopped), coral while testing,
+   neutral otherwise ---- */
+.rf-node__tests {
+  font-size: 10px;
+  line-height: 1.6;
+  padding: 1px 7px;
+  border-radius: 999px;
+  white-space: nowrap;
+  background: var(--panel-300);
+  color: var(--ink-500);
+}
+.rf-node__tests--good {
+  background: var(--sage-100);
+  color: #52613e;
+}
+.rf-node__tests--live {
+  background: var(--coral-100);
+  color: var(--coral-700);
+}

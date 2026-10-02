@@ -619,6 +619,22 @@
   color: var(--ink-600);
   white-space: nowrap;
 }
+/* M7 (Set-Checked): a version's tests — sage when all passed. */
+.cv-tpill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--panel-300);
+  color: var(--ink-500);
+  white-space: nowrap;
+}
+.cv-tpill--good {
+  background: var(--sage-100);
+  color: #52613e;
+}
 .cv-hist__acts {
   margin-left: auto;
   display: inline-flex;
