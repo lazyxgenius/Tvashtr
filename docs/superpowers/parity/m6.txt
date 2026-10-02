@@ -1,0 +1,108 @@
+# M6 — My agents and recent tasks: parity record, branch feat/m06-fe (from feat/m06-my-agents a7491df), 2026-10-02.
+# Design: the Claude Design "Tvashtr Team Setup" canvas export (page "agents"), shot with shoot-design.mjs at 1440x900:
+#   Agents-Save, Agents-Menu, Agents-Use, Agents-More, Agents-Library, Agents-Page, Agents-Rename, Agents-Delete,
+#   Agents-UseInTeam, Agents-Recent — 10 design shots, 10 fonts-ok.
+# App: scripts/design-parity/scenarios/agents.mjs (20 board shots + 2 kept shots, website + Desktop, versions.mjs's `pair`
+#   convention) answering the contract's shapes (docs/superpowers/plans/api/my-agents.md): the boards' canvas (versions.mjs's
+#   teamRoutes: Product manager → approval gate → Engineer ⇄ Reviewer → Ship, v7) with the Reviewer's drawer open, its 2
+#   skills + 1 tool and 3 notes; `GET /api/node-templates` the app's four built-ins; `GET /api/my-agents` Strict reviewer
+#   (v2, Built on Reviewer, xai/grok-4.7, 2 skills, read-only, updated yesterday, used in Indicator sprint team v2 and
+#   Bugfix squad v1, Bugfix squad behind) and Spec writer (v1, Built on Product manager, 1 skill, updated 4 days ago, used in
+#   Docs team v1 — Agents-Menu draws it with no team: "v1"; Agents-Save with no saved agent yet: "Saved as version 1");
+#   `POST …/nodes/n-rev/use-agent` flips the graph to the Reviewer based on Strict reviewer v2 (the board's strict text) and
+#   the version chip to "1 change since v7"; the Toolkit summary of Agents-Page's nav (Tools 3, Skills 3, Memory 2 new,
+#   Secrets 1 missing); `GET /api/teams` Docs team, Indicator sprint team, Bugfix squad; `GET /api/recent-tasks` the four
+#   tasks of Agents-Recent (#12 Done 2h, #14 running now, #11 Failed yesterday, #9 Stopped 4 days ago).
+# States are reached through the UI: the drawer's ⋯ More › Save as my agent with the board's name and words typed in
+#   (Agents-Save) and the ⋯ menu open (Agents-More); Templates open (Agents-Menu); Templates › Strict reviewer picked
+#   (Agents-Use: the toast up, the drawer scrolled back to the top as drawn); Toolkit › My agents (Agents-Library), its ⋯
+#   menu (Agents-Page), ⋯ › Rename / Delete (Agents-Rename, Agents-Delete), Use in a team (Agents-UseInTeam); Home with
+#   "Add a" typed and ↓ pressed (Agents-Recent: the first row chosen as drawn). The pointer is moved off the controls.
+# Which render is the comparison: Agents-Save, -Menu, -Use and -More are drawn in Desktop (the 30px title strip): the
+#   Desktop render is the comparison and the web render is framed 30px down; the Toolkit boards and Agents-Recent are website
+#   boards: the web render is the comparison and the Desktop render is framed 30px up. Both renders are recorded below.
+# GATE: MET — every new M6 element is at 0 size/type drift: the Save dialog (580px, 56px from the top, the 38px tile, title
+#   22px, sub 13px, Name / What it’s for, INCLUDED 11.5/600, each part's 14px title + 13px description, the Lock line
+#   12.5px, the footer's "Saved as version 1" 12.5px, Cancel ghost md, Save to My agents primary md); the Templates menu's
+#   Built-in / My agents headings 11.5/600 and the 11.5px metas (in use, v2 · 2 teams, v1, Toolkit); the drawer's blue
+#   "Strict reviewer v2" badge, the based-on banner 12px with its 600 name and the Detach link 12/500, the memory note
+#   11.5px; the canvas card's 10px chip; More › Save as my agent; the Toolkit nav's My agents leaf + count; the page's h1
+#   30px + lede 14px; each card (15/600 name, the 10px version pill, 13px purpose, 12px meta, 12px Used in, the 10px amber
+#   pill, Update 12/500, Use in a team secondary sm, the ⋯ icon button), the dashed hint 13px; the ⋯ menu (Rename, Delete,
+#   32px rows); Rename / Delete / Use in a team dialogs (titles, subs, fields, the Team select, the footer note, Save /
+#   Delete danger / Add to team); the Recent tasks listbox (RECENT TASKS 11.5/600, the 11.5px head note, the rows' 13.5px
+#   task with its 600 match, 12.5px team, the dotted badges, the 11px code run numbers, 11.5px ages, the Kbd footer).
+#   Every drift item below is an existing element (app governs, brief 2.2/2.3) or a board word with no counterpart, paired by
+#   the matcher with the same words elsewhere; each is covered by a waiver.
+# built in this sweep (frontend/, vitest + tsc + eslint --max-warnings 0 + prettier + build green):
+#   784f222 api-client: lib/api/myAgents.ts (list / save / rename / delete, use / undo / detach, update-team, use-in-team,
+#     recent tasks; basedOnOf) and lib/myAgentsFormat.ts (the boards' words).
+#   959931e ds: Menu section headings and an item's end meta (additive; aria-hidden meta keeps the item's name).
+#   32f3a7c panel: Templates › Built-in / My agents / Manage my agents (Compare kept); use at once with Undo (R4) through
+#     the unsaved guard; the based-on badge, banner, Detach and memory note (the run-time banner kept); More › Save as my
+#     agent and its dialog; the #/toolkit/agents route.
+#   fafd7eb canvas: the card's blue based-on chip.
+#   f004bab home: Recent tasks in the composer (combobox ARIA, ↑ ↓ Enter Esc, every composer control kept).
+#   784419e toolkit: the My agents nav leaf + page, the cards with Update (Undo), ⋯ Rename / Delete, Use in a team.
+#   (this commit) the Templates menu hangs from the card tools' right edge (since M5 History and Open full editor sit right
+#     of Templates, the old "5px past the button" put its left part outside the drawer); Recent tasks' classes renamed
+#     (hm-rtask: hm-recent is Recent runs'); the ⋯ menu's 32px rows; the scenario.
+# waiver W1 (app governs, brief 2.2/2.3 — the drawer's existing parts; Agents-Save / -Menu / -Use / -More) 'Read-only'
+#   10→12px 400→500 (the board's canvas-card chip, which the app's card reads "Edits off", pairs with the drawer header's
+#   Read-only badge) and [ctl] 'Read-only' 12.5→12px 30→22 high (the board's File access segment, below the fold in the
+#   app, pairs with the same badge); 'Model' 13→11.5px 400→600 (the board's field label pairs with the app's MODEL eyebrow).
+# waiver W2 (app governs — the existing Templates menu, Flow-Templates-1; Agents-Menu) every row is the menu's own row,
+#   250px wide (board 300) and 13px at line-height 1.6 = 37px high (board 32): the kept built-ins and the new rows
+#   (Strict reviewer, Spec writer, Manage my agents), which are the same row so the menu reads as one list; their text,
+#   icons, headings and metas are at 0 drift.
+# waiver W3 (app governs — the existing ⋯ More menu, PANEL-23 / Flow-More-1; Agents-More) 240px wide, 37px rows (Delete
+#   agent's two lines 56px): the new Save as my agent is the same row.
+# waiver W4 (app governs — the drawer toast, Flow-Templates-3; Agents-Use) 'Reviewer now uses Strict reviewer v2' and
+#   'Undo' 13→12.5px: the board draws a canvas toast; the app's Undo toasts live in the drawer (the templates' pattern).
+# waiver W5 (app governs — Toolkit's chrome; Agents-Library) the board's one Toolkit page with line tabs (h1 'Toolkit',
+#   'Skills 12' / 'Tools 5' / 'My agents 2', its lede) is the app's nav of sub-pages: the tab words pair with the nav leaves
+#   and the h1 "My agents" (Agents-Page draws the app's version, 38/38 at 0 drift); '⌘K' is the shell's search key.
+# waiver W6 (app governs — Home's chrome; Agents-Recent) '⌘K', the composer's repo picker 'lazyxgenius/trade_mcp' and the
+#   teams card 'Indicator sprint team'. Not found, by rule: 'Running' (brief §2.5's plain words: a running run reads
+#   "Working", lib/versionFormat runLook) and 'now' (versionAge's "just now").
+# not found, by rule: 'Researcher' (Agents-Menu: the app's built-ins are Product manager, Architect, Engineer, Reviewer);
+#   'Compare' and 'More for this team' (Desktop toolbar: M8 / not built, brief §2.4); the boards' canvas chips and shell
+#   words (W1); 'docs' (Agents-UseInTeam: the board's select value, the app's values are team ids).
+
+Agents-Save desktop: matched 80/97 design items · 3 with size/type drift · 14 only moved · 17 not found in app — covered: W1×3
+Agents-Save web: matched 78/97 design items · 3 with size/type drift · 14 only moved · 19 not found in app — covered: W1×3
+Agents-Menu desktop: matched 70/88 design items · 9 with size/type drift · 20 only moved · 18 not found in app — covered: W1×3, W2×6
+Agents-Menu web: matched 68/88 design items · 9 with size/type drift · 20 only moved · 20 not found in app — covered: W1×3, W2×6
+Agents-Use desktop: matched 66/82 design items · 5 with size/type drift · 37 only moved · 16 not found in app — covered: W1×3, W4×2
+Agents-Use web: matched 64/82 design items · 5 with size/type drift · 37 only moved · 18 not found in app — covered: W1×3, W4×2
+Agents-More desktop: matched 65/82 design items · 8 with size/type drift · 16 only moved · 17 not found in app — covered: W1×3, W3×5
+Agents-More web: matched 63/82 design items · 8 with size/type drift · 16 only moved · 19 not found in app — covered: W1×3, W3×5
+Agents-Library web: matched 29/44 design items · 5 with size/type drift · 20 only moved · 15 not found in app — covered: W5×5
+Agents-Library desktop: matched 29/44 design items · 5 with size/type drift · 20 only moved · 15 not found in app — covered: W5×5
+Agents-Page web: matched 38/38 design items · 0 with size/type drift · 7 only moved · 0 not found in app
+Agents-Page desktop: matched 38/38 design items · 0 with size/type drift · 7 only moved · 0 not found in app
+Agents-Rename web: matched 47/47 design items · 0 with size/type drift · 7 only moved · 0 not found in app
+Agents-Rename desktop: matched 47/47 design items · 0 with size/type drift · 7 only moved · 0 not found in app
+Agents-Delete web: matched 43/43 design items · 0 with size/type drift · 7 only moved · 0 not found in app
+Agents-Delete desktop: matched 43/43 design items · 0 with size/type drift · 7 only moved · 0 not found in app
+Agents-UseInTeam web: matched 45/46 design items · 0 with size/type drift · 7 only moved · 1 not found in app
+Agents-UseInTeam desktop: matched 45/46 design items · 0 with size/type drift · 7 only moved · 1 not found in app
+Agents-Recent web: matched 57/79 design items · 3 with size/type drift · 2 only moved · 22 not found in app — covered: W6×3
+Agents-Recent desktop: matched 57/79 design items · 3 with size/type drift · 2 only moved · 22 not found in app — covered: W6×3
+# (the Toolkit boards' 7 moved items: the app's nav has Connectors before Tools, so each leaf sits 37px lower)
+
+# Kept elements (brief §2.2): kept-toolkit.txt (new: Toolkit › Skills with the nav, captured before the nav change),
+#   kept-teamcanvas.txt (versions.mjs's and teamfile.mjs's kept-teamcanvas-*) and kept-home.txt (home-kept.mjs);
+#   INVENTORY=1 shoot-app.mjs after the change — every listed item is still present (Toolkit adds "button: My agents"):
+kept-toolkit-skills-web: 27/27 kept items present (added: My agents)
+kept-toolkit-skills-desktop: 27/27 kept items present (added: My agents)
+kept-teamcanvas-web: 11/11 kept items present
+kept-teamcanvas-desktop: 11/11 kept items present
+kept-home-web: 64/64 kept items present
+kept-home-desktop: 63/63 kept items present
+# and in tests: NodeEditor.test.tsx's More menu (Open in focus view, Rename, Open its documents, Delete agent — Save as my
+#   agent added before the separator) and Templates menu (the four built-ins + Compare templates in focus view);
+#   NodeEditor.myAgents.test.tsx the status / Read-only / model badges beside the based-on badge and the run-time banner
+#   below the based-on banner; RecentTasks.test.tsx the composer's controls with the list open; Shell.test.tsx every
+#   Toolkit leaf (Connectors, Tools, Skills, Memory, Secrets) around My agents; AgentNodeCard.basedOn.test.tsx the card's
+#   kept chips beside the new one.

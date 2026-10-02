@@ -1,0 +1,60 @@
+# Kept-elements inventory — Toolkit › Skills (the Toolkit nav), captured on feat/m06-fe at a7491df (main's Toolkit, before M6's nav change) with scripts/design-parity/shoot-app.mjs INVENTORY=1; scenarios: scripts/design-parity/scenarios/agents.mjs (kept-toolkit-skills-*).
+# After the change every line must still be present (superset).
+
+## kept-toolkit-skills-web
+button: Account
+button: Add from GitHub
+button: Connectors
+button: Domains
+button: Engines
+button: Home
+button: Memory
+button: More actions for house-style
+button: More actions for pytest-review
+button: More actions for security-checklist
+button: New skill
+button: Search teams, runs and actions
+button: Secrets
+button: Skills 3
+button: Toolkit
+button: Tools
+button: house-style
+button: pytest-review
+button: security-checklist
+header: 
+heading: Skills
+input[text]: Search skills
+main: 
+nav: Dashboard
+section: Your skills
+tab: Presets
+tab: Your skills 3
+
+## kept-toolkit-skills-desktop
+button: Account
+button: Add from GitHub
+button: Connectors
+button: Domains
+button: Engines
+button: Home
+button: Memory
+button: More actions for house-style
+button: More actions for pytest-review
+button: More actions for security-checklist
+button: New skill
+button: Search teams, runs and actions
+button: Secrets
+button: Skills 3
+button: Toolkit
+button: Tools
+button: house-style
+button: pytest-review
+button: security-checklist
+header: 
+heading: Skills
+input[text]: Search skills
+main: 
+nav: Dashboard
+section: Your skills
+tab: Presets
+tab: Your skills 3
