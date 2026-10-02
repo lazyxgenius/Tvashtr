@@ -73,6 +73,12 @@ describe("parseRoute / routeToHash", () => {
       "#/teams/t1/docs/d1?node=n1&tab=docs&focus=1",
       { page: "team", teamId: "t1", docId: "d1", node: "n1", tab: "docs", focus: true },
     ],
+    // M7: the Tests tab, and the run view's "Make this a test" (the New test dialog on a round).
+    ["#/teams/t1?node=n1&tab=tests", { page: "team", teamId: "t1", node: "n1", tab: "tests" }],
+    [
+      "#/teams/t1?node=n1&tab=tests&test_from=812",
+      { page: "team", teamId: "t1", node: "n1", tab: "tests", testFrom: 812 },
+    ],
   ];
 
   it.each(cases)("%s round-trips", (hash, route) => {
@@ -120,6 +126,21 @@ describe("parseRoute / routeToHash", () => {
 
   it("drops an unknown node tab and a non-numeric version", () => {
     expect(parseRoute("#/teams/t1?tab=bogus&v=x")).toEqual({ page: "team", teamId: "t1" });
+  });
+
+  it("M7: test_from needs an agent on the team canvas (not a run view, a number)", () => {
+    expect(parseRoute("#/teams/t1?test_from=812")).toEqual({ page: "team", teamId: "t1" });
+    expect(parseRoute("#/teams/t1/runs/r1?node=n1&test_from=812")).toEqual({
+      page: "team",
+      teamId: "t1",
+      runId: "r1",
+      node: "n1",
+    });
+    expect(parseRoute("#/teams/t1?node=n1&test_from=x")).toEqual({
+      page: "team",
+      teamId: "t1",
+      node: "n1",
+    });
   });
 
   it("encodes ids", () => {
