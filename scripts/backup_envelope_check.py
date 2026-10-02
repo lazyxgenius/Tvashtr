@@ -111,10 +111,12 @@ def main() -> int:
         _set_models(team)
         created = client.post("/api/runs", json={"team_graph_id": team})
         if created.status_code != 200:
-            print(f"[backup-envelope] FAILED: POST /api/runs -> {created.status_code} {created.text}")
+            print(f"[backup-envelope] FAILED: POST /api/runs -> {created.status_code}")
+            print(created.text)
             return 1
         run_id = created.json()["run_id"]
-        print(f"[backup-envelope] run {run_id}: Engineer on {PRIMARY} (never answers), backup {BACKUP}")
+        print(f"[backup-envelope] run {run_id}: Engineer on {PRIMARY} (never answers)")
+        print(f"[backup-envelope] its backup: {BACKUP}")
 
         started = time.time()
         engineer_started = switched_at = None
@@ -173,7 +175,9 @@ def main() -> int:
             "the step was never swept as stalled": (final.get("failure") or {}).get("code")
             != "stalled",
             "the run carried on to the end": final["status"] == "completed",
-            "the backup did the work": any(BACKUP.split("/", 1)[1] in (m or "") for m in models_billed),
+            "the backup did the work": any(
+                BACKUP.split("/", 1)[1] in (m or "") for m in models_billed
+            ),
         }
         for name, ok in checks.items():
             print(f"  [{'PASS' if ok else 'FAIL'}] {name}")
