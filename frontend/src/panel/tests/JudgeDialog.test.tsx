@@ -47,14 +47,14 @@ const row = (dialog: HTMLElement, n: number) =>
   within(dialog).getByRole("group", { name: `You: answer ${n}` });
 
 describe("JudgeDialog", () => {
-  it("the check, the answer it failed on first, ten at a time with Label more", async () => {
+  it("the check, the answer it failed on first, seven at a time with Label more", async () => {
     mockApi({ [`GET ${BASE}/answers`]: { answers: ANSWERS } });
     const { dialog, onUsed } = renderDialog();
     await flush();
     expect(dialog).toHaveTextContent("names the file and line for each problem");
     const list = within(dialog).getByRole("list", { name: "Saved answers" });
     const items = within(list).getAllByRole("listitem");
-    expect(items).toHaveLength(10);
+    expect(items).toHaveLength(7);
     expect(items[0]).toHaveTextContent(FAILED);
     // Listed once, first.
     expect(within(list).getAllByText(FAILED)).toHaveLength(1);

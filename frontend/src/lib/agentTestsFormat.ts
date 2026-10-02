@@ -134,6 +134,12 @@ export function sinceText(since: TestRun["since"]): { text: string; worse: boole
 /** The first check a replay didn't meet (an AI check that couldn't run is skipped, not failed). */
 export const firstUnmet = (checks: CheckResult[]) => checks.find((c) => c.met === false) ?? null;
 
+/** Test-Worse: "AI check: names the file and line · skipped — no AI checks left this month". */
+export function skippedText(check: CheckResult): string {
+  const why = check.reason?.trim();
+  return `${CHECK_LABEL[check.kind]}: ${check.value} · skipped${why ? ` — ${why.charAt(0).toLowerCase()}${why.slice(1).replace(/\.$/, "")}` : ""}`;
+}
+
 /** "The change" row: `core/indicators.py` +48 −3 · `tests/test_indicators.py` +31. */
 export const changeCount = (c: TestGets["change"][number]) =>
   `+${c.added}${c.removed ? ` −${c.removed}` : ""}`;

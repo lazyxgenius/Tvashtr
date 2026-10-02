@@ -160,6 +160,11 @@
 .nd-round__row > .ds-anchor {
   margin-block: -4px;
 }
+/* Its menu's rows are the board's 32px. */
+.nd-lastrun__end .ds-menu__item,
+.nd-round__row .ds-menu__item {
+  line-height: normal;
+}
 
 /* Empty (Panel-RunsEmpty; the Docs tab's "No documents yet"). */
 .nd-runs__empty {

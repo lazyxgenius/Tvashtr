@@ -143,10 +143,12 @@ describe("TestsTab", () => {
     expect(props.onCompare).toHaveBeenCalledWith(6);
     fireEvent.click(within(failed).getByRole("button", { name: "The AI check is wrong" }));
     expect(props.onJudge).toHaveBeenCalledWith(TESTS[5], 1, DONE_RUN.results[5].answer);
-    // A passed row opens too (its answer and Open this replay; no Compare).
+    // A passed row opens too: its answer, no actions (Test-Worse).
     fireEvent.click(toggle("Catches an unregistered indicator"));
-    expect(within(rows()[0]).getByRole("button", { name: "Open this replay" })).toBeVisible();
-    expect(within(rows()[0]).queryByText(/Compare with/)).not.toBeInTheDocument();
+    expect(
+      within(rows()[0]).getByText("Changes requested: register rsi on INDICATORS."),
+    ).toBeVisible();
+    expect(within(rows()[0]).queryByRole("button", { name: "Open this replay" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Run again" }));
     expect(props.onRunAll).toHaveBeenCalled();
   });
@@ -176,6 +178,34 @@ describe("TestsTab", () => {
       within(rows()[0]).getByText("It took more than 10 minutes, so it was stopped."),
     ).toBeInTheDocument();
     expect(within(rows()[0]).getByRole("button", { name: "Compare with v6" })).toBeVisible();
+  });
+
+  it("Test-Worse: a passed row's AI check that couldn't run reads skipped, not failed", () => {
+    const run = {
+      ...WORSE_RUN,
+      results: WORSE_RUN.results.map((r, i) =>
+        i === 2
+          ? {
+              ...r,
+              answer: "Changes requested: rsi() exceeds 100.",
+              checks: [
+                { kind: "must_say" as const, value: "Changes requested", met: true, reason: null },
+                {
+                  kind: "ai" as const,
+                  value: "names the file and line",
+                  met: null,
+                  reason: "No AI checks left this month",
+                },
+              ],
+            }
+          : r,
+      ),
+    };
+    renderTab(api(testsOf(run), { watched: "run7" }));
+    fireEvent.click(toggle("Says why the tests fail"));
+    expect(rows()[2]).toHaveTextContent(
+      "AI check: names the file and line · skipped — no AI checks left this month",
+    );
   });
 
   it("Test-Stopped: Stopped · 2 of 6 ran, the rest Stopped, Run again", () => {

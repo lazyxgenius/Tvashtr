@@ -41,12 +41,13 @@ export function SaveNudgeDialog({
           </Button>
           <Button
             variant="primary"
-            iconLeft={<Save size={14} strokeWidth={2} aria-hidden />}
+            className="cv-btn-flush"
             onClick={() =>
               onSave({ ...(note.trim() ? { note: note.trim() } : {}), run_tests: run })
             }
           >
-            {run ? "Save and run tests" : `Save as v${next}`}
+            <Save size={14} strokeWidth={2} aria-hidden />
+            <span>{run ? "Save and run tests" : `Save as v${next}`}</span>
           </Button>
         </>
       }

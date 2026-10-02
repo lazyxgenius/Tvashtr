@@ -1,6 +1,18 @@
 /* ---- M7: the agent drawer's Tests tab (Test-Empty / -List / -Running / -Results) and its
    dialogs (Test-New / -Upload / -Judge), measured from the boards ---- */
 
+/* An icon inside the button's label, flush with the text (the boards' Button children). */
+.tt-flush > span {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* The M7 menus' rows (a test's ⋯, Add a check): the boards' 32px rows. */
+.tt-row__more .ds-menu__item,
+.tt-section .ds-menu__item {
+  line-height: normal;
+}
+
 /* Small pills (the canvas-chip style). */
 .tt-pill {
   font-size: 10px;
@@ -324,6 +336,12 @@
   font-size: 12px;
   line-height: 1.5;
   color: var(--ink-600);
+}
+/* Test-Worse: a check that couldn't run (skipped, not failed). */
+.tt-detail__skip {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-500);
 }
 /* Test-Worse: a replay that didn't finish ("It took more than 10 minutes, so it was stopped."). */
 .tt-detail__error {
@@ -766,11 +784,14 @@
 .tt-callout--bad .lv-confirm__mark {
   color: #8f3b2f;
 }
-.tt-section > .ds-anchor {
-  align-self: flex-start;
-}
+/* "Add a check" spans the column (Test-New); its menu opens upward, inside the dialog's scroll. */
 .tt-link--add {
+  width: 100%;
   font-size: 12.5px;
+}
+.tt-section > .ds-anchor .ds-menu {
+  top: auto;
+  bottom: calc(100% + 4px);
 }
 .tt-callout--plain {
   background: var(--surface-sunk);

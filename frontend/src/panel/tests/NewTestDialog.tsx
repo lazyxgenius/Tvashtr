@@ -117,10 +117,11 @@ export function NewTestDialog({
             variant="primary"
             disabled={!canSave}
             loading={busy}
-            iconLeft={<Check size={14} strokeWidth={2} aria-hidden />}
+            className="tt-flush"
             onClick={() => void save()}
           >
-            Save test
+            <Check size={14} strokeWidth={2} aria-hidden />
+            <span>Save test</span>
           </Button>
         </>
       }

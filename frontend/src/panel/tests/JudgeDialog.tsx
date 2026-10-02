@@ -14,8 +14,8 @@ import { LoadState } from "../runs/RunsTab";
 import { useLoaded } from "../runs/useLoaded";
 import "./tests.css";
 
-/** The answers shown at first, and after each "Label more". */
-const PAGE = 10;
+/** The answers shown at first, and after each "Label more" (Test-Judge draws seven). */
+const PAGE = 7;
 /** Labels are sent this long after the last change (the latest answer wins). */
 const JUDGE_DEBOUNCE_MS = 400;
 
@@ -105,12 +105,9 @@ export function JudgeDialog({
               Label more
             </Button>
           )}
-          <Button
-            variant="primary"
-            iconLeft={<Check size={14} strokeWidth={2} aria-hidden />}
-            onClick={onUsed}
-          >
-            Use this check
+          <Button variant="primary" className="tt-flush" onClick={onUsed}>
+            <Check size={14} strokeWidth={2} aria-hidden />
+            <span>Use this check</span>
           </Button>
         </>
       }

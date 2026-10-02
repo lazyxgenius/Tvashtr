@@ -246,6 +246,14 @@ describe("NodeEditor — M7 round ⋯ on the Runs tab", () => {
     const { drawer, props } = renderEditor({ tab: "runs" });
     const last = await within(drawer).findByRole("region", { name: "Last run" });
     expect(within(drawer).getByText("Earlier rounds")).toBeInTheDocument();
+    // kept-m7-drawer-runs: the drawer's own controls and the earlier rounds' toggles stay.
+    for (const name of ["Close panel", "Focus mode", "More actions"])
+      expect(within(drawer).getByRole("button", { name })).toBeInTheDocument();
+    expect(within(drawer).getByTitle("See the last run")).toBeInTheDocument();
+    expect(within(drawer).getByRole("button", { name: /^Round 1/ })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
     fireEvent.click(within(last).getByRole("button", { name: "More for round 2" }));
     const menu = within(drawer).getByRole("menu", { name: "More for round 2" });
     expect(

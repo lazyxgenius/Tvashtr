@@ -102,10 +102,11 @@ export function UploadTestsDialog({
             variant="primary"
             disabled={n === 0 || checking || error !== null || noTask}
             loading={busy}
-            iconLeft={<Plus size={14} strokeWidth={2} aria-hidden />}
+            className="tt-flush"
             onClick={() => void add()}
           >
-            {n > 0 ? addTestsLabel(n) : "Add tests"}
+            <Plus size={14} strokeWidth={2} aria-hidden />
+            <span>{n > 0 ? addTestsLabel(n) : "Add tests"}</span>
           </Button>
         </>
       }

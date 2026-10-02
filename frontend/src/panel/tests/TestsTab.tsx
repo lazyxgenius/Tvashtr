@@ -25,6 +25,7 @@ import {
   runningSub,
   runningTitle,
   sinceText,
+  skippedText,
   stoppedTitle,
   TEST_FILE_ACCEPT,
   testsCount,
@@ -75,13 +76,9 @@ function TestsActions({
 }) {
   return (
     <>
-      <Button
-        variant="secondary"
-        size="sm"
-        iconLeft={<Plus size={14} strokeWidth={1.6} aria-hidden />}
-        onClick={onNewTest}
-      >
-        New test
+      <Button variant="secondary" size="sm" className="tt-flush" onClick={onNewTest}>
+        <Plus size={14} strokeWidth={1.6} aria-hidden />
+        <span>New test</span>
       </Button>
       <PickTestFile onPick={onPickFile}>
         {(open) => (
@@ -213,21 +210,15 @@ function TestsEmpty({
           A test replays only this agent on a saved input and checks what it says. You see pass or
           fail in about a minute, before you change the team.
         </p>
-        <Button
-          variant="primary"
-          iconLeft={<History size={14} strokeWidth={2} aria-hidden />}
-          onClick={onPickRound}
-        >
-          Pick a round from a run
+        <Button variant="primary" className="tt-flush" onClick={onPickRound}>
+          <History size={14} strokeWidth={2} aria-hidden />
+          <span>Pick a round from a run</span>
         </Button>
         <PickTestFile onPick={onPickFile}>
           {(open) => (
-            <Button
-              variant="secondary"
-              iconLeft={<Upload size={14} strokeWidth={1.6} aria-hidden />}
-              onClick={open}
-            >
-              Add tests from a file
+            <Button variant="secondary" className="tt-flush" onClick={open}>
+              <Upload size={14} strokeWidth={1.6} aria-hidden />
+              <span>Add tests from a file</span>
             </Button>
           )}
         </PickTestFile>
@@ -286,25 +277,15 @@ function TestsList({
   const [toggled, setToggled] = useState<Record<string, boolean>>({});
 
   const stop = (
-    <Button
-      variant="secondary"
-      size="sm"
-      loading={busy}
-      iconLeft={<Square size={14} strokeWidth={1.6} aria-hidden />}
-      onClick={onStop}
-    >
-      Stop
+    <Button variant="secondary" size="sm" loading={busy} className="tt-flush" onClick={onStop}>
+      <Square size={14} strokeWidth={1.6} aria-hidden />
+      <span>Stop</span>
     </Button>
   );
   const again = (
-    <Button
-      variant="secondary"
-      size="sm"
-      loading={busy}
-      iconLeft={<RefreshCw size={14} strokeWidth={1.6} aria-hidden />}
-      onClick={onRunAll}
-    >
-      Run again
+    <Button variant="secondary" size="sm" loading={busy} className="tt-flush" onClick={onRunAll}>
+      <RefreshCw size={14} strokeWidth={1.6} aria-hidden />
+      <span>Run again</span>
     </Button>
   );
   let title: ReactNode;
@@ -347,14 +328,9 @@ function TestsList({
     title = testsCount(list.length);
     sub = value?.last ?? null;
     action = (
-      <Button
-        variant="primary"
-        size="sm"
-        loading={busy}
-        iconLeft={<Play size={14} fill="currentColor" strokeWidth={0} aria-hidden />}
-        onClick={onRunAll}
-      >
-        Run all {list.length}
+      <Button variant="primary" size="sm" loading={busy} className="tt-flush" onClick={onRunAll}>
+        <Play size={14} fill="currentColor" strokeWidth={0} aria-hidden />
+        <span>Run all {list.length}</span>
       </Button>
     );
   }
@@ -517,12 +493,21 @@ function TestRow({
           {result?.error && <div className="tt-detail__error">{result.error}</div>}
           {result?.answer && <div className="tt-answer">{result.answer}</div>}
           {unmet?.reason && <div className="tt-detail__reason">{unmet.reason}</div>}
-          {result && finished && (
+          {result &&
+            finished &&
+            result.checks
+              .filter((c) => c.met === null)
+              .map((c, i) => (
+                <div key={i} className="tt-detail__skip">
+                  {skippedText(c)}
+                </div>
+              ))}
+          {result && failed && (
             <div className="tt-detail__acts">
               <Button variant="secondary" size="sm" onClick={() => onOpenReplay(result)}>
                 Open this replay
               </Button>
-              {failed && sinceVersion != null && onCompare && (
+              {sinceVersion != null && onCompare && (
                 <button type="button" className="tt-link" onClick={() => onCompare(sinceVersion)}>
                   Compare with v{sinceVersion}
                 </button>
