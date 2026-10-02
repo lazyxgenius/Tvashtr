@@ -25,7 +25,7 @@ from home_fixtures import (
 from sqlalchemy import select, text, update
 
 from tvashtr.config import get_settings
-from tvashtr.control_plane import compare, gates, live_state, team_run, versions
+from tvashtr.control_plane import compare, gates, live_state, run_views, team_run, versions
 from tvashtr.control_plane.shipping import init_workspace_repo
 from tvashtr.db import session_scope
 from tvashtr.engines.base import AgentRunResult
@@ -976,6 +976,45 @@ def test_one_side_failed(client):
     res2 = _results(client, cid2)["results"]
     assert res2["headline"] == "v2 finished; v1 failed on this task"
     assert res2["restore"] is None
+
+
+def test_a_queued_lane_draws_its_versions_strip_with_nothing_started(client):
+    """Cmp-Queued draws each lane's pipeline strip before any run exists: Home's chips
+    (``run_views._progress``) of a run on that version, every step not started."""
+    owner = auth_user_id()
+    team = _two_versions(client)
+    cid = _seed_compare(team, owner, status="waiting")
+    try:
+        sides = _results(client, cid)["sides"]
+        for side, number in zip(sides, (1, 2), strict=True):
+            assert side["run_id"] is None and side["status"] == "waiting"
+            with session_scope() as session:
+                lib = session.get(TeamGraph, uuid.UUID(team))
+                graph = versions._version(session, lib, number).graph
+                run = Run(
+                    id=uuid.uuid4(),
+                    team_graph_id=versions.run_snapshot(session, lib, graph),
+                    owner_id=owner,
+                    idea=TASK,
+                    workflow_id=str(uuid.uuid4()),
+                    status="cancelled",
+                )
+                session.add(run)
+                session.flush()
+                chips = run_views.run_extras(session, [run], include_progress=True)[run.id][
+                    "progress"
+                ]
+            origin = {c["node_id"]: c["origin_node_id"] for c in chips}
+            expected = [
+                {**c, "node_id": c["origin_node_id"], "loops_with": origin.get(c["loops_with"])}
+                for c in chips
+            ]
+            assert side["strip"] == expected
+            assert {c["state"] for c in side["strip"]} == {"idle"}
+            assert {"engineer", "reviewer"} <= {c["role_name"] for c in side["strip"]}
+            assert any(c["loops_with"] for c in side["strip"])  # Engineer ⇄ Reviewer
+    finally:
+        client.post(f"/api/compares/{cid}/stop")
 
 
 def test_a_running_compare_shows_each_lane(client):

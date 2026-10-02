@@ -557,10 +557,31 @@ def _lane(session, run: Run, extras: dict, live: dict) -> dict:
     }
 
 
+def _queued_strip(graph: dict) -> list[dict]:
+    """A lane with no run yet (Cmp-Queued): its version's steps as Home's chips
+    (``run_views._progress``'s shape and order), none started. Ids are the library node ids."""
+    nodes = {n["id"]: n for n in graph.get("nodes") or []}
+    order, loops = run_views.walk_order(list(nodes.values()), graph.get("edges") or [])
+    return [
+        {
+            "node_id": nid,
+            "origin_node_id": nid,
+            "role_name": nodes[nid]["role_name"],
+            "label": node_label(nodes[nid]["role_name"], nodes[nid]["kind"], nodes[nid]["config"]),
+            "kind": nodes[nid]["kind"],
+            "state": "idle",
+            "loops_with": loops.get(nid),
+            "carried": False,
+        }
+        for nid in order
+    ]
+
+
 def view(owner_id: uuid.UUID, compare_id: str) -> dict:
     with session_scope() as session:
         cmp = _require(session, owner_id, compare_id)
         runs = _refresh(session, cmp)
+        team = session.get(TeamGraph, cmp.team_graph_id)
         extras = run_views.run_extras(session, list(runs.values()), include_progress=True)
         live = run_views.live_costs(session, [r.workflow_id for r in runs.values()])
         sides, facts = [], {}
@@ -573,7 +594,7 @@ def view(owner_id: uuid.UUID, compare_id: str) -> dict:
                     "status": "waiting",
                     "elapsed_s": 0,
                     "cost_usd": 0.0,
-                    "strip": [],
+                    "strip": _queued_strip(versions._version(session, team, number).graph),
                     "current": None,
                     "lines": [],
                     "gate_task_id": None,

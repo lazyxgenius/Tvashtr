@@ -151,7 +151,9 @@ decide only between two sides in the same state.
 time "−15m" (within a minute: "same", no mark); tests "+1" / "same". Retries and stalls: fewer is better, no
 difference text. Files changed: never marked ("—" with no checkpoint). The agent-tests row is the agent with the
 most tests, from its newest finished test run on each version ("—" when none). A compare stopped while waiting
-has `results` with `rows: []`. `sides[].strip` is exactly Home's progress chips (`run_views._progress`).
+has `results` with `rows: []`. `sides[].strip` is exactly Home's progress chips (`run_views._progress`); a lane with
+no run yet (waiting, Cmp-Queued) gets its version's stored graph in that shape and order, ids the library node
+ids, every `state` `"idle"` (not started).
 `sides[].current`: a working step `{"label": "Engineer", "text": "round 3"}`, a gate waiting
 `{"label": "<gate>", "text": "waiting for you"}`, an ended run `{"label": "Approved" | "Finished" | "Failed" |
 "Stopped", "text": "in round N"}`.
