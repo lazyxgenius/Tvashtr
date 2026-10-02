@@ -78,7 +78,9 @@ def capture(ws: str) -> dict:
         real = _git(ws, "rev-parse", "--git-path", "index").stdout.strip()
         real = real if os.path.isabs(real) else os.path.join(ws, real)
         if os.path.exists(real):
-            shutil.copyfile(real, index)
+            # copy2 keeps the index's mtime: git re-reads an entry written in that same second
+            # ("racily clean"), so a same-size rewrite made then isn't taken as unchanged.
+            shutil.copy2(real, index)
         else:
             _git(ws, "read-tree", "HEAD", env=env)
         excludes = [e for e in _ship_excludes(ws) if not e.endswith(_REMEMBER_FILE)]

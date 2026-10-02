@@ -199,3 +199,30 @@ def test_the_remember_sidecar_is_carried_but_never_staged(tmp_path):
     checkpoints.apply(str(new), cp["diff"], marker="cp-8")
     assert (new / "TVASHTR_REMEMBER.jsonl").read_text() == "{}\n"
     assert "TVASHTR_REMEMBER.jsonl" not in _git(new, "diff", "--cached", "--name-only").stdout
+
+
+def test_a_same_size_rewrite_in_the_checkouts_second_is_captured(tmp_path):
+    """Git trusts a file's cached stat unless the entry is "racily clean" (written in the same
+    second as the index). The capture works on a COPY of the index: the copy must keep the index's
+    mtime, or a same-size rewrite made in that second looks unchanged and drops out of the diff."""
+    import os
+    import time
+
+    repo = _init_repo(tmp_path / "repo", {"img.bin": PNG})
+    ws = tmp_path / "ws"
+    add_worktree(str(repo), str(ws), "run-racy", "main")
+    _git(ws, "config", "core.trustctime", "false")  # pin the clock: only the mtime decides
+    entry = _git(ws, "ls-files", "--debug", "img.bin").stdout
+    mtime = int(entry.split("mtime:")[1].split(":")[0])
+    index = _git(ws, "rev-parse", "--git-path", "index").stdout.strip()
+    index = index if os.path.isabs(index) else os.path.join(ws, index)
+    (ws / "img.bin").write_bytes(PNG[::-1])  # same size, new content
+    os.utime(ws / "img.bin", (mtime, mtime))
+    os.utime(index, (mtime, mtime))  # the index was written in that same second
+    time.sleep(1.1)  # the capture happens a moment later, as a real one does
+
+    new = tmp_path / "ws-new"
+    cp = checkpoints.capture(str(ws))
+    add_worktree(str(repo), str(new), "run-racy-new", cp["base_sha"])
+    checkpoints.apply(str(new), cp["diff"], marker="cp-racy")
+    assert (new / "img.bin").read_bytes() == PNG[::-1]
