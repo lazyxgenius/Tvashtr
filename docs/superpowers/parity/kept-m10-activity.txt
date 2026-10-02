@@ -1,0 +1,71 @@
+# Kept-elements inventory — m10-activity (the run view of run #12, Done, with the Activity open on every step (Show 25 earlier steps clicked): each line's Show output / Show files / Read notes / Open spec / View change / Open on GitHub), captured on main 0407f36 (before M10) with scripts/design-parity/shoot-app.mjs INVENTORY=1
+# Scenarios: scripts/design-parity/scenarios/start-from.mjs (kept-m10-activity-web / -desktop: kept-m10-done's routes, then "Show 25 earlier steps"), the same scenario file shot on
+#   main 0407f36 (Vite :5342) and on m10-parity (Vite :5341), the clock frozen at the boards' moment. After the change every line must be present (superset).
+
+## kept-m10-activity-desktop
+button: Account
+button: All
+button: Approval gate
+button: Back to teams
+button: Documents 0
+button: Edit this team
+button: Engineer
+button: Fit View
+button: Hide activity
+button: Jump to live
+button: Notifications
+button: Open spec
+button: Product manager
+button: Read notes
+button: Reviewer
+button: Show files
+button: Show output
+button: View change
+button: Zoom In
+button: Zoom Out
+button: anthropic/claude-sonnet-4
+button: xai/grok-4.7
+header: 
+link: Open on GitHub
+link: Open pull request #42
+link: Opened PR →
+main: 
+section: Activity
+section: Run summary
+toolbar: Team
+
+## kept-m10-activity-web
+button: Account
+button: All
+button: Approval gate
+button: Back to teams
+button: Documents 0
+button: Edit this team
+button: Engineer
+button: Fit View
+button: Hide activity
+button: Jump to live
+button: Notifications
+button: Open spec
+button: Product manager
+button: Read notes
+button: Reviewer
+button: Show files
+button: Show output
+button: View change
+button: Zoom In
+button: Zoom Out
+button: anthropic/claude-sonnet-4
+button: xai/grok-4.7
+header: 
+link: Open on GitHub
+link: Open pull request #42
+link: Opened PR →
+main: 
+section: Activity
+section: Run summary
+toolbar: Team
+
+# After M10 (m10-parity, the same scenario):
+kept-m10-activity: web 30/30, desktop 30/30 kept items present — none missing (after: 32 each, added "button: More for this run", "button: Start the next run from this")
+# Web and Desktop inventories are equal, before and after.

@@ -1,0 +1,67 @@
+# Kept-elements inventory — m10-done (the run view of run #12, Done (status completed, pull request #42): the run bar, the Done summary (Open pull request #42), the canvas, the Activity panel with its filter and last six steps), captured on main 0407f36 (before M10) with scripts/design-parity/shoot-app.mjs INVENTORY=1
+# Scenarios: scripts/design-parity/scenarios/start-from.mjs (kept-m10-done-web / -desktop: runs-fixtures.mjs's Live-Done run #12 with the boards' Ship line, `number` 12 and M10's /next answer), the same scenario file shot on
+#   main 0407f36 (Vite :5342) and on m10-parity (Vite :5341), the clock frozen at the boards' moment. After the change every line must be present (superset).
+
+## kept-m10-done-desktop
+button: Account
+button: All
+button: Approval gate
+button: Back to teams
+button: Documents 0
+button: Edit this team
+button: Engineer
+button: Fit View
+button: Hide activity
+button: Jump to live
+button: Notifications
+button: Product manager
+button: Read notes
+button: Reviewer
+button: Show 25 earlier steps
+button: Show output
+button: Zoom In
+button: Zoom Out
+button: anthropic/claude-sonnet-4
+button: xai/grok-4.7
+header: 
+link: Open on GitHub
+link: Open pull request #42
+link: Opened PR →
+main: 
+section: Activity
+section: Run summary
+toolbar: Team
+
+## kept-m10-done-web
+button: Account
+button: All
+button: Approval gate
+button: Back to teams
+button: Documents 0
+button: Edit this team
+button: Engineer
+button: Fit View
+button: Hide activity
+button: Jump to live
+button: Notifications
+button: Product manager
+button: Read notes
+button: Reviewer
+button: Show 25 earlier steps
+button: Show output
+button: Zoom In
+button: Zoom Out
+button: anthropic/claude-sonnet-4
+button: xai/grok-4.7
+header: 
+link: Open on GitHub
+link: Open pull request #42
+link: Opened PR →
+main: 
+section: Activity
+section: Run summary
+toolbar: Team
+
+# After M10 (m10-parity, the same scenario):
+kept-m10-done: web 28/28, desktop 28/28 kept items present — none missing (after: 30 each, added "button: More for this run", "button: Start the next run from this")
+# Web and Desktop inventories are equal, before and after.
