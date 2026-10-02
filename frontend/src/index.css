@@ -269,6 +269,20 @@ html:has(.tv-titlebar) .ds-scrim {
   background: var(--amber-500);
 }
 
+/* M5: the version a run used — "v7" in blue (History › Runs, the run bar, Home › Recent runs). */
+.tv-vtag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--blue-100);
+  color: #3f6690;
+  white-space: nowrap;
+}
+
 /* Segmented control — shared pill toggle (node panel, launch, shelves). */
 .tv-seg {
   display: inline-flex;

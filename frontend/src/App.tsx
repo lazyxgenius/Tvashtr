@@ -4,6 +4,9 @@ import { CanvasToolbar } from "./canvas/CanvasToolbar";
 import { ImportFixCard } from "./canvas/ImportFixCard";
 import { RunBlockedBanner } from "./canvas/RunBlockedBanner";
 import { TeamFilePanel } from "./canvas/TeamFilePanel";
+import { HistoryPanel } from "./canvas/HistoryPanel";
+import { VersionChip } from "./canvas/VersionChip";
+import { getVersions, saveVersion } from "./lib/api/versions";
 import type { ImportFix } from "./lib/api/teams";
 import { isDesktopApp } from "./lib/desktopRepos";
 import {
@@ -253,6 +256,11 @@ export default function App({
   const [fileOpen, setFileOpen] = useState(false);
   const [imported, setImported] = useState(() => (teamId ? readImportNotice(teamId) : null));
   const [githubInstall, setGithubInstall] = useState(false);
+  // M5: History (from the header's version chip), the versions summary's reload tick (after Save as
+  // vN / Restore) and Save as vN on its way.
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [versionTick, setVersionTick] = useState(0);
+  const [savingVersion, setSavingVersion] = useState(false);
   // Credential preflight for Run (UX): null until the first successful providers load so we
   // don't flash-disable the CTA; once loaded, missing BYOK (and no Desktop subscription cover)
   // blocks launch and points at Engines.
@@ -527,6 +535,7 @@ export default function App({
       guardLeave(() => {
         if (id) setDocsDrawer(null);
         if (id) setFileOpen(false);
+        if (id) setHistoryOpen(false);
         setSelectedNodeId(id);
       });
     },
@@ -540,6 +549,7 @@ export default function App({
       const open = () => {
         setDocsDrawer(null);
         setFileOpen(false);
+        setHistoryOpen(false);
         setPlace({ node: nodeId, tab: "setup", focus: false });
       };
       if (nodeId === selectedNodeId) open();
@@ -785,7 +795,39 @@ export default function App({
   const openTeamFile = () =>
     guardLeave(() => {
       if (selectedNodeId !== null) setPlace({ node: null, tab: defaultTab, focus: false });
+      setHistoryOpen(false);
       setFileOpen(true);
+    });
+  // M5 (R3): the version chip reads the versions summary again whenever the canvas's graph changes
+  // (an edit, a drawer save) and after Save as vN / Restore. History shares the right edge with
+  // Team file and the agent drawer: one at a time, opened through the drawer's unsaved guard.
+  const versions = useLoaded(
+    authoring && currentTeamId
+      ? `${currentTeamId}:${graphRevision(teamGraph)}:${versionTick}`
+      : null,
+    () => getVersions(currentTeamId ?? ""),
+    { keep: true },
+  );
+  const historyPanelOpen = authoring && historyOpen && !nodeDrawerOpen;
+  const openHistory = () =>
+    guardLeave(() => {
+      if (selectedNodeId !== null) setPlace({ node: null, tab: defaultTab, focus: false });
+      setFileOpen(false);
+      setHistoryOpen(true);
+    });
+  const reloadVersions = () => setVersionTick((t) => t + 1);
+  // A drawer draft isn't in the working copy until it's saved: Save as vN asks about it first.
+  const saveAsNext = () =>
+    guardLeave(() => {
+      if (!currentTeamId) return;
+      setSavingVersion(true);
+      saveVersion(currentTeamId)
+        .then(reloadVersions, (e: unknown) =>
+          toast({ message: e instanceof Error ? e.message : String(e), tone: "error" }),
+        )
+        .finally(() => {
+          if (mountedRef.current) setSavingVersion(false);
+        });
     });
   const openTeamFileRef = useRef(openTeamFile);
   openTeamFileRef.current = openTeamFile;
@@ -967,6 +1009,17 @@ export default function App({
         }
         teamName={teamGraph?.name ?? ""}
         spend={spendLabel}
+        version={
+          authoring && currentTeamId && versions.value ? (
+            <VersionChip
+              versions={versions.value}
+              open={historyPanelOpen}
+              saving={savingVersion}
+              onToggle={() => (historyPanelOpen ? setHistoryOpen(false) : openHistory())}
+              onSave={saveAsNext}
+            />
+          ) : undefined
+        }
         file={
           authoring && currentTeamId
             ? {
@@ -1056,10 +1109,11 @@ export default function App({
               workflowStatus={workflowStatus}
               tasks={authoring ? EMPTY_TASKS : tasks}
               focusNodeId={focusNodeId}
-              panelOpen={docsOpen ? "docs" : nodeDrawerOpen || teamFileOpen}
+              panelOpen={docsOpen ? "docs" : nodeDrawerOpen || teamFileOpen || historyPanelOpen}
               onSelectNode={(id) => {
                 if (id) setDocsDrawer(null);
                 if (id) setFileOpen(false);
+                if (id) setHistoryOpen(false);
                 setSelectedNodeId(id);
               }}
               editable={authoring}
@@ -1104,6 +1158,19 @@ export default function App({
               onClose={() => setFileOpen(false)}
             />
           )}
+          {historyPanelOpen && currentTeamId && (
+            <HistoryPanel
+              teamId={currentTeamId}
+              versions={versions}
+              revision={graphRevision(teamGraph)}
+              guard={guardLeave}
+              onRestored={() => {
+                void loadTeam(currentTeamId);
+                reloadVersions();
+              }}
+              onClose={() => setHistoryOpen(false)}
+            />
+          )}
           {authoring
             ? selectedTeamNode &&
               currentTeamId && (
@@ -1121,6 +1188,7 @@ export default function App({
                   onFocusChange={(focus) => setPlace({ ...place, focus })}
                   onClose={() => handleSelectNodeId(null)}
                   onSaved={() => loadTeam(currentTeamId)}
+                  teamVersion={versions.value?.current}
                   guardRef={leaveGuardRef}
                   onDelete={() => handleDeleteNodes([selectedTeamNode.id])}
                   catalogue={config?.provider_catalogue}

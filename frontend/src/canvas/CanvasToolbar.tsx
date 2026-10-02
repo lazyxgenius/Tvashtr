@@ -30,6 +30,7 @@ export function CanvasToolbar({
   spend,
   docs,
   file,
+  version,
   children,
 }: {
   onBack?: () => void;
@@ -41,6 +42,8 @@ export function CanvasToolbar({
   docs?: { count: number | null; open: boolean; onToggle: () => void };
   /** M4: the "Team file" button (authoring), tinted while its panel is open. */
   file?: { open: boolean; onToggle: () => void };
+  /** M5: the version chip (and Save as vN), right after the team's name (authoring). */
+  version?: ReactNode;
   children?: ReactNode;
 }) {
   return (
@@ -71,6 +74,7 @@ export function CanvasToolbar({
         )}
         {children}
         {teamName && <span className="cv-team">{teamName}</span>}
+        {version}
         {docs && (
           <button
             type="button"

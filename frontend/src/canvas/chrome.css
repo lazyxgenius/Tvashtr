@@ -474,3 +474,384 @@
   font-size: 12px;
   color: var(--ink-500);
 }
+
+/* ---- M5: the header's version chip (Ver-History / Ver-Draft): 28px, right after the team name ---- */
+.cv-ver {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 28px;
+  box-sizing: border-box;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line-300);
+  background: var(--surface-card);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  color: var(--ink-600);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.cv-ver:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+/* History is open. */
+.cv-ver--open {
+  background: var(--coral-100);
+  border-color: var(--coral-200);
+}
+/* Changes since the latest version (the board's raw amber; it stays amber while History is open). */
+.cv-ver--draft {
+  background: #fbf5ea;
+  border-color: #e2c48f;
+}
+.cv-ver__icon {
+  display: inline-flex;
+  color: var(--ink-500);
+}
+.cv-ver__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--amber-500);
+}
+.cv-ver__num {
+  font-family: var(--font-code);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-900);
+}
+
+/* ---- M5: History (Ver-History / Ver-RunTag), in the Team file panel's shell ---- */
+.cv-hist__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 20px;
+}
+.cv-hist__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.cv-hist__count {
+  font-size: 12px;
+  color: var(--ink-500);
+}
+.cv-hist__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.cv-hist__ver {
+  position: relative;
+  padding: 0 0 18px 26px;
+}
+.cv-hist__line {
+  position: absolute;
+  left: 6px;
+  top: 18px;
+  bottom: -12px;
+  width: 2px;
+  background: var(--line-200);
+}
+.cv-hist__dot {
+  position: absolute;
+  left: 1px;
+  top: 6px;
+  width: 12px;
+  height: 12px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  background: var(--surface-card);
+  border: 2px solid var(--line-400);
+}
+.cv-hist__ver--now .cv-hist__dot {
+  background: var(--coral-500);
+  border-color: var(--coral-500);
+}
+.cv-hist__l1 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cv-hist__num {
+  font-family: var(--font-code);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-900);
+}
+/* The "Now" pill (History's current version; the drawer's instruction history too). */
+.cv-now {
+  font-size: 10px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--coral-100);
+  color: var(--coral-700);
+  white-space: nowrap;
+}
+.cv-hist__when {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--ink-500);
+}
+.cv-hist__sum {
+  font-size: 13px;
+  color: var(--ink-800);
+  margin-top: 3px;
+}
+.cv-hist__l3 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+}
+/* An outline pill: a version's runs, a diff's "1 removed, 2 added". */
+.cv-pill {
+  font-size: 10px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--line-300);
+  color: var(--ink-600);
+  white-space: nowrap;
+}
+.cv-hist__acts {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+/* A text button: What changed. */
+.cv-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--coral-700);
+  cursor: pointer;
+}
+.cv-link:focus-visible,
+.cv-hist__more:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-radius: 4px;
+}
+.cv-hist__more {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink-600);
+  cursor: pointer;
+}
+.cv-hist__foot {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink-500);
+}
+.cv-hist__intro {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-600);
+  margin-bottom: 10px;
+}
+.cv-hist__runs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.cv-hist__run {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 11px 12px;
+  border: 1px solid var(--border-hairline);
+  border-radius: 10px;
+  background: var(--surface-card);
+}
+.cv-hist__run-l1 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cv-hist__run-n {
+  font-family: var(--font-code);
+  font-size: 12px;
+  color: var(--ink-900);
+}
+.cv-hist__run-l1 .tv-vtag {
+  margin-left: auto;
+}
+.cv-hist__task {
+  font-size: 13px;
+  color: var(--ink-800);
+}
+.cv-hist__meta {
+  font-size: 12px;
+  color: var(--ink-500);
+}
+
+/* ---- M5: What changed (Ver-Changes: 720px, 96px from the top) and Restore (Ver-Restore: 560px,
+   centred) in the Resume confirm's shell (.lv-confirm) ---- */
+.lv-confirm.cv-vdlg {
+  width: 560px;
+}
+.lv-confirm.cv-vdlg--wide {
+  width: 720px;
+  top: 96px;
+  transform: translateX(-50%);
+  max-height: calc(100vh - 112px);
+}
+.cv-dsec {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.cv-dsec__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cv-dsec__icon {
+  display: inline-flex;
+  color: var(--ink-600);
+}
+.cv-dsec__agent {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.cv-dsec__sep {
+  color: var(--stone-400);
+}
+.cv-dsec__field {
+  font-size: 13.5px;
+  color: var(--ink-700);
+}
+.cv-dsec__pill {
+  margin-left: auto;
+}
+.cv-diff {
+  border: 1px solid var(--line-200);
+  border-radius: 10px;
+  overflow: hidden;
+  padding: 6px 0;
+  background: var(--surface-card);
+  font-family: var(--font-code);
+  font-size: 12px;
+  line-height: 1.65;
+}
+.cv-diff__row {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  padding: 1px 10px;
+  color: var(--ink-600);
+}
+.cv-diff__row--removed {
+  background: #f9ebe7;
+  color: #8f3b2f;
+  text-decoration: line-through;
+  text-decoration-color: rgba(143, 59, 47, 0.45);
+}
+.cv-diff__row--added {
+  background: #eef3e6;
+  color: #3d4a2c;
+}
+.cv-diff__mark {
+  opacity: 0.7;
+}
+.cv-diff__text {
+  white-space: pre-wrap;
+}
+.cv-vsame {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ink-600);
+}
+.cv-vsame__icon {
+  display: inline-flex;
+  color: #52613e;
+}
+.cv-vruns {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-hairline);
+  border-radius: 12px;
+  background: var(--surface-card);
+}
+.cv-vruns__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.cv-vruns__run {
+  font-size: 13px;
+  color: var(--ink-800);
+}
+.cv-vwhat {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.cv-vlist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border-hairline);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--surface-card);
+}
+.cv-vlist li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line-200);
+}
+.cv-vlist__icon {
+  flex: none;
+  display: inline-flex;
+  color: var(--ink-500);
+  margin-top: 1px;
+}
+.cv-vlist__text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.cv-vlist__title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-900);
+}
+.cv-vlist__sub {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-600);
+}
+.cv-vcallout {
+  padding: 10px 14px;
+}
