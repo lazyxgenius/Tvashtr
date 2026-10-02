@@ -171,6 +171,37 @@ describe("StartNextDialog (Next-Carry)", () => {
     expect(onCancel).toHaveBeenCalledTimes(1);
   });
 
+  it("full run slots: the server's 429 reads as the board's sentence (Next-CarryMerged)", async () => {
+    const onStart = vi.fn<Start>(() =>
+      Promise.reject(
+        new ApiDetailError(
+          429,
+          "you already have 3 run(s) in flight (limit 3) — wait for one to finish, or cancel it",
+          {
+            code: "owner_concurrency_limit",
+            message:
+              "you already have 3 run(s) in flight (limit 3) — wait for one to finish, or cancel it",
+          },
+        ),
+      ),
+    );
+    const { dialog } = open(MERGED, onStart);
+    fireEvent.change(within(dialog).getByLabelText("What should the team do next?"), {
+      target: { value: "Add MACD" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Start run" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+      "You have 3 runs going, the most at once. Start this one when one of them finishes.",
+    );
+  });
+
+  it("the spec's line names the team's first agent", () => {
+    const { dialog } = open({ ...INFO, entry_agent: "Spec writer" });
+    expect(dialog).toHaveTextContent(
+      "Becomes the starting spec. The spec writer updates it for the new task.",
+    );
+  });
+
   it("Close and Escape cancel", () => {
     const { dialog, onCancel } = open(INFO);
     fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));

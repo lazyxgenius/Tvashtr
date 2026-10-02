@@ -36,6 +36,8 @@ export interface NextInfo {
   default_start: StartFrom;
   /** The version the new run uses (R3: the next one when the team has unsaved changes). */
   team: { id: string; version: number | null };
+  /** The team's first agent, who updates the carried spec ("Product manager"). */
+  entry_agent?: string | null;
 }
 
 /** What the person ticked under "Brings along". */

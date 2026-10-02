@@ -20,6 +20,7 @@ import {
   type NextInfo,
   type StartFrom,
 } from "../../../lib/api/startFrom";
+import { ApiDetailError } from "../../../lib/api/runs";
 import { routeToHash } from "../../../lib/nav";
 import { useModalDialog } from "../../../lib/useModalDialog";
 import { LoadState } from "../../runs/RunsTab";
@@ -35,6 +36,19 @@ const memoriesCount = (n: number) => (n === 1 ? "1 memory" : `${n} memories`);
  * comes along (R9), where it starts from, what stays behind, then Start run. A refusal shows its
  * reason above the footer and the dialog stays open.
  */
+/** "Product manager" → "product manager" in a sentence; a name like "PM" stays as it is. */
+const agentWord = (name: string) =>
+  /^[A-Z][a-z]/.test(name) ? name[0].toLowerCase() + name.slice(1) : name;
+
+/** The server's refusal, in the words Next-CarryMerged draws for full run slots. */
+function refusal(e: unknown): string {
+  const detail = e instanceof ApiDetailError ? (e.detail as { code?: string } | null) : null;
+  const limit = /limit (\d+)/.exec(e instanceof Error ? e.message : "")?.[1];
+  if (detail?.code === "owner_concurrency_limit" && limit)
+    return `You have ${limit} runs going, the most at once. Start this one when one of them finishes.`;
+  return e instanceof Error ? e.message : String(e);
+}
+
 export function StartNextDialog({
   info,
   onStart,
@@ -79,7 +93,7 @@ export function StartNextDialog({
     try {
       await onStart({ task: task.trim(), carry, start_from: from });
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(refusal(e));
       setBusy(false);
     }
   };
@@ -125,7 +139,7 @@ export function StartNextDialog({
                   ? `The final spec${info.spec?.version != null ? ` (v${info.spec.version})` : ""}`
                   : "The final spec (none)"
               }
-              description="Becomes the starting spec. The product manager updates it for the new task."
+              description={`Becomes the starting spec. The ${agentWord(info.entry_agent ?? "Product manager")} updates it for the new task.`}
               {...tick("spec")}
             />
             <Checkbox
