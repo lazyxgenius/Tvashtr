@@ -48,7 +48,7 @@ from dbos import DBOS
 from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from tvashtr.config import get_settings
+from tvashtr.config import BACKUP_ENVELOPE_RETRIES, get_settings
 from tvashtr.control_plane import (
     checkpoints,
     clone_reaper,
@@ -272,6 +272,34 @@ def _account_backup_model(run_id: str, capability: str | None, primary: str) -> 
     except Exception:
         logger.warning("account backup lookup failed run_id=%s", run_id, exc_info=True)
         return None
+
+
+def _backup_for(
+    run_id: str, fallback_model: str | None, capability: str | None, model: str
+) -> str | None:
+    """R2: the backup a step switches to — the node's ``fallback_model``, else the account's backup
+    for its capability — never the model that is running. The ONE choice both the switch and R17's
+    envelope (:func:`_has_usable_backup`) make, so the two never disagree."""
+    backup = fallback_model or _account_backup_model(run_id, capability, model)
+    return backup if backup and backup != model else None
+
+
+def _has_usable_backup(
+    run_id: str, fallback_model: str | None, capability: str | None, model: str
+) -> bool:
+    """MA ruling R17: the step has a backup the switch can actually run — the same choice, and (on
+    the BYOK path) a key the owner holds for it; a backup whose key is missing is skipped by the
+    switch, so it buys nothing. Proxy-ON: the per-run virtual key serves any model."""
+    backup = _backup_for(run_id, fallback_model, capability, model)
+    if backup is None:
+        return False
+    if get_settings().litellm_proxy_enabled:
+        return True
+    try:
+        _owner_api_key(run_id, backup)
+    except NoCredentialError:
+        return False
+    return True
 
 
 def _output_schema_violation(output: str | None, schema: dict | None) -> str | None:
@@ -1727,6 +1755,15 @@ def agent_run_step(
             else None
         ),
         multimodal=multimodal,
+        # MA ruling R17: with a usable backup the agent gets R2's envelope (3 tries), so a hung or
+        # busy primary reaches the switch below long before R1's stall ceiling; without one, the
+        # configured envelope stays (``None``). A Desktop-routed node has no LLM routing at all.
+        llm_num_retries=(
+            BACKUP_ENVELOPE_RETRIES
+            if desktop_route is None
+            and _has_usable_backup(run_id, fallback_model, capability, model)
+            else None
+        ),
     )
     # Select local vs Docker-sandboxed engine from the configured sandbox mode (P1.3a). The
     # EngineAdapter contract + AgentRunResult shape are identical across modes; the adapter is
@@ -1771,7 +1808,7 @@ def agent_run_step(
             # The node's own fallback, else the account's backup for the node's capability. A node
             # fallback the pre-flight swap already ran on equals ``model`` below and so stops here
             # (``test_a_fallback_equal_to_the_model_that_just_ran_is_not_retried``).
-            backup = fallback_model or _account_backup_model(run_id, capability, model)
+            backup = _backup_for(run_id, fallback_model, capability, model)
         if backup and backup != model:
             busy = not result.provider_failure
             try:
@@ -1838,6 +1875,9 @@ def agent_run_step(
                         task,
                         model=failover_model,
                         llm_api_key=failover_key,
+                        # R17: the backup has no backup of its own (one switch at most), so its
+                        # attempt gets the configured envelope.
+                        llm_num_retries=None,
                         session_key=(
                             session_key_for(run_id, f"{node_id}-failover")
                             if node_id is not None

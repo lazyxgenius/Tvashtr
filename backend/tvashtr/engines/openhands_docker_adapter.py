@@ -319,7 +319,11 @@ class OpenHandsDockerAdapter:
                 # None ⇒ byte-for-byte as 4a.
                 llm = LLM(
                     **agent_llm_routing(
-                        settings, model, "docker", api_key_override=task.llm_api_key
+                        settings,
+                        model,
+                        "docker",
+                        api_key_override=task.llm_api_key,
+                        num_retries=task.llm_num_retries,  # R17: the host's envelope
                     ),
                     temperature=0.0,
                     usage_id="tvashtr-agent",

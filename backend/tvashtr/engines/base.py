@@ -117,6 +117,12 @@ class AgentTask:
     # image input. ``True`` ⇒ the adapter builds the agent's LLM with vision explicitly enabled;
     # ``False`` (the default) ⇒ the LLM is built exactly as before (byte-identical).
     multimodal: bool = False
+    # MA ruling R17: the agent LLM's retry envelope (``num_retries``) for THIS task. The Control
+    # Plane sets it to R2's 3 tries when the node has a usable backup, so a hung or busy primary
+    # reaches the backup switch long before R1's stall ceiling. ``None`` (the default) ⇒ the adapter
+    # routes with ``settings.agent_num_retries`` exactly as before — the same additive,
+    # defaulted-field discipline as the fields above; the adapter learns a number, never why.
+    llm_num_retries: int | None = None
 
 
 @dataclass(frozen=True)

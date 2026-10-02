@@ -531,7 +531,13 @@ class OpenHandsFlyAdapter:
                 workspace.execute_command(f"mkdir -p {working_dir}", cwd="/tmp", timeout=30.0)
 
                 llm = LLM(
-                    **agent_llm_routing(settings, model, "fly", api_key_override=task.llm_api_key),
+                    **agent_llm_routing(
+                        settings,
+                        model,
+                        "fly",
+                        api_key_override=task.llm_api_key,
+                        num_retries=task.llm_num_retries,  # R17: the host's envelope
+                    ),
                     temperature=0.0,
                     usage_id="tvashtr-agent",
                     # M-thrift: an EXPLICIT output ceiling. Unset, the SDK resolves the model's own

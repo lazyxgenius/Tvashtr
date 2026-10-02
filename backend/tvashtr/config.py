@@ -773,11 +773,18 @@ class Settings(BaseSettings):
         return f"http://{host}:{self.litellm_proxy_port}"
 
 
+# MA ruling R17: an agent node with a usable backup gets R2's envelope — 3 attempts — instead of the
+# milestone-B one above (8 attempts ≈ 24 minutes for a model that never answers, past R1's 20-minute
+# stall ceiling, so the switch could never happen). 3 attempts × 120 s + 8 + 16 s of waits ≈ 6.5 min
+BACKUP_ENVELOPE_RETRIES = 3
+
+
 def agent_llm_routing(
     settings: Settings,
     model: str,
     sandbox_mode: str,
     api_key_override: str | None = None,
+    num_retries: int | None = None,
 ) -> dict:
     """Resolve the agent LLM's routing kwargs (model / api_key [/ base_url]).
 
@@ -832,10 +839,13 @@ def agent_llm_routing(
     # how long any ONE attempt may hang before it is called a failure. Without it the SDK's 300s
     # default multiplies through the retries, which is how a stalled provider ate ~30 minutes of a
     # live demo while reporting nothing at all.
+    #
+    # R17: ``num_retries`` is the task's own envelope when the host set one (a node with a usable
+    # backup); ``None`` ⇒ the configured envelope, byte-identical to before.
     return {
         "model": model,
         "api_key": api_key_override,
-        "num_retries": settings.agent_num_retries,
+        "num_retries": settings.agent_num_retries if num_retries is None else num_retries,
         "retry_max_wait": settings.agent_retry_max_wait_s,
         "timeout": settings.agent_request_timeout_s,
     }

@@ -625,7 +625,11 @@ class OpenHandsAdapter:
                 # slug + OPENROUTER_API_KEY). ``agent_llm_routing`` owns model/api_key/base_url.
                 llm = LLM(
                     **agent_llm_routing(
-                        settings, model, "local", api_key_override=task.llm_api_key
+                        settings,
+                        model,
+                        "local",
+                        api_key_override=task.llm_api_key,
+                        num_retries=task.llm_num_retries,  # R17: the host's envelope
                     ),
                     temperature=0.0,
                     usage_id="tvashtr-agent",
