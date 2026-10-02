@@ -132,15 +132,16 @@ def started_from(run: Run) -> dict | None:
 
 
 def came_along(carry: dict) -> str:
-    """ "brought spec v3, 2 decisions and 3 memories" — names only what came along."""
+    """ "brought spec v3, 2 decisions and 3 memories" — names what came along as Next-Started words
+    it: the spec, the decisions and the memories (the agents' summaries come along unnamed)."""
     spec = carry.get("spec")
     parts = [f"spec v{spec['version']}" if spec.get("version") else "the spec"] if spec else []
-    for key, one in (("decisions", "decision"), ("memories", "memory"), ("summaries", "summary")):
+    for key, one in (("decisions", "decision"), ("memories", "memory")):
         n = len(carry.get(key) or [])
         if n:
             parts.append(f"{n} {one if n == 1 else key}")
     if not parts:
-        return "brought nothing"
+        return "brought the agents’ summaries" if carry.get("summaries") else "brought nothing"
     return "brought " + (
         ", ".join(parts[:-1]) + " and " + parts[-1] if len(parts) > 1 else parts[0]
     )

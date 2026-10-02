@@ -501,7 +501,8 @@ def test_the_new_run_says_where_it_started_from(client, monkeypatch):
     resp, _ = _post(client, run_id, monkeypatch)
     new_id = resp.json()["run_id"]
     number = _run(new_id).carry["from"]["number"]
-    summary = "brought spec v3, 1 decision, 3 memories and 3 summaries"
+    # As Next-Started words it: the agents' summaries come along unnamed.
+    summary = "brought spec v3, 1 decision and 3 memories"
     expected = {"run_id": run_id, "number": number, "summary": summary}
     assert client.get(f"/api/runs/{new_id}").json()["run"]["started_from"] == expected
     # (the team's runs: the shared account has more runs than one page)
@@ -1010,3 +1011,26 @@ def test_resume_of_a_started_from_run_keeps_what_came_along(client, monkeypatch)
         again = resume.create(session, run, inv.id, owner_id=run.owner_id, desktop_routed=None)
         assert again.carry == new.carry
         session.rollback()
+
+
+def test_the_came_along_words_name_the_spec_decisions_and_memories_only():
+    from tvashtr.control_plane.run_views import came_along
+
+    summaries = [{"agent": "Engineer", "text": "…"}]
+    assert (
+        came_along(
+            {
+                "spec": {"version": 3},
+                "decisions": [{}, {}],
+                "memories": [{}] * 3,
+                "summaries": summaries,
+            }
+        )
+        == "brought spec v3, 2 decisions and 3 memories"
+    )
+    assert came_along({"spec": None, "decisions": [], "memories": [], "summaries": summaries}) == (
+        "brought the agents’ summaries"
+    )
+    assert came_along({"spec": None, "decisions": [], "memories": [], "summaries": []}) == (
+        "brought nothing"
+    )
