@@ -271,7 +271,10 @@ function Start({
             typed.current = true;
             setTask(e.target.value);
           }}
-          onKeyDown={(e) => e.key === "Enter" && go()}
+          // An input method's Enter (composing, or keyCode 229) picks a character, not Start.
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.nativeEvent.isComposing && e.keyCode !== 229) go();
+          }}
         />
         {start.target && (
           <div className="cmp-start__repo">

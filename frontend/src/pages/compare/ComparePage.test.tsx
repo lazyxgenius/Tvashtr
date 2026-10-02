@@ -311,6 +311,15 @@ describe("Compare versions — start (Cmp-Start)", () => {
     expect(screen.queryByRole("button", { name: /change/ })).toBeNull();
   });
 
+  it("Enter while an input method is composing doesn't start the compare", async () => {
+    open();
+    const task = await screen.findByRole("textbox", { name: "Task" });
+    await waitFor(() => expect(task).toHaveValue("Add an RSI indicator"));
+    fireEvent.keyDown(task, { key: "Enter", isComposing: true });
+    fireEvent.keyDown(task, { key: "Enter", keyCode: 229 });
+    expect(fetchMock.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(0);
+  });
+
   it("Start compare posts A, B, the task and the switch, then opens the compare", async () => {
     let finish: (r: Response) => void = () => undefined;
     open();
@@ -429,6 +438,42 @@ describe("Compare versions — running (Cmp-Running, Cmp-Queued, Cmp-NeedsYou)",
       expect(within(lane).getByText("3 runs are using your slots now.")).toBeInTheDocument();
     }
     expect(screen.getByRole("button", { name: "Stop compare" })).toBeInTheDocument();
+    // Review fix (Cmp-Queued): Home doesn't list a compare that hasn't started.
+    const foot = screen.getByText(/You can leave;/);
+    expect(foot).toHaveTextContent(
+      "You can leave; it starts on its own when two of your run slots are free.",
+    );
+    expect(foot).not.toHaveTextContent("Home shows it");
+  });
+
+  it("a lane that failed before any round reads its word alone (no dangling separator)", async () => {
+    compare = {
+      ...RUNNING,
+      sides: [
+        { ...RUNNING.sides[0], status: "failed", current: { label: "Failed", text: "" } },
+        RUNNING.sides[1],
+      ],
+    };
+    open("#/teams/team-1/compare/cmp-1");
+    const lane = await screen.findByRole("region", { name: "Version A" });
+    expect(lane.textContent).not.toMatch(/Failed ·/);
+  });
+
+  it("the Stop dialog opens fresh: the last attempt's error is gone", async () => {
+    open("#/teams/team-1/compare/cmp-1");
+    fireEvent.click(await screen.findByRole("button", { name: "Stop compare" }));
+    fetchMock.mockImplementationOnce(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ detail: "Couldn’t stop it." }), { status: 409 }),
+      ),
+    );
+    let dialog = screen.getByRole("alertdialog", { name: "Stop this compare?" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Stop compare" }));
+    await waitFor(() => expect(dialog).toHaveTextContent("Couldn’t stop it."));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Keep running" }));
+    fireEvent.click(screen.getByRole("button", { name: "Stop compare" }));
+    dialog = screen.getByRole("alertdialog", { name: "Stop this compare?" });
+    expect(dialog).not.toHaveTextContent("Couldn’t stop it.");
   });
 
   it("needs you: the lane's Open run opens its run; the footnote says you approve each gate", async () => {

@@ -99,7 +99,10 @@ function Running({ c, teamId, onStopped }: { c: Compare; teamId: string; onStopp
               variant="secondary"
               size="sm"
               className="cv-btn-flush"
-              onClick={() => setAsk(true)}
+              onClick={() => {
+                setError(null); // a fresh ask: never the last attempt's error
+                setAsk(true);
+              }}
             >
               <Square size={14} strokeWidth={1.6} aria-hidden />
               <span>Stop compare</span>
@@ -117,7 +120,10 @@ function Running({ c, teamId, onStopped }: { c: Compare; teamId: string; onStopp
         {c.auto_approve
           ? "Gates are approved automatically in this compare."
           : "You approve each gate yourself in this compare."}{" "}
-        You can leave; Home shows it under Running now.
+        {/* Cmp-Queued: Home lists runs, and a waiting compare has none yet. */}
+        {c.status === "waiting"
+          ? "You can leave; it starts on its own when two of your run slots are free."
+          : "You can leave; Home shows it under Running now."}
       </p>
       <ConfirmDialog
         open={ask}
@@ -159,8 +165,12 @@ function Now({ current }: { current: NonNullable<CompareSide["current"]> }) {
   return (
     <>
       <b>{current.label}</b>
-      {sep}
-      {current.text}
+      {current.text && (
+        <>
+          {sep}
+          {current.text}
+        </>
+      )}
     </>
   );
 }
