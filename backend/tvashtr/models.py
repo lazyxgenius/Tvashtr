@@ -424,6 +424,14 @@ class Run(Base):
     failed_node_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
     local_repo_label: Mapped[str | None] = mapped_column(Text, nullable=True)
     local_snapshot_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+    # M3 (migration ``0044``, ruling R8): a run made by Resume — the run it picks up and the step of
+    # that run it starts again from (an ``agent_invocations`` id). Both NULL for every other run.
+    resumed_from_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("runs.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    resumed_from_step: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("agent_invocations.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -920,6 +928,36 @@ class McpSecret(Base):
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class RunCheckpoint(Base):
+    """M3 (migration ``0044``, ruling R8): the run's workspace after one finished agent step — its
+    change against the commit the run's branch started from (``diff``, a binary git patch; NULL and
+    ``too_large`` when over ``checkpoints.MAX_DIFF_BYTES``) and that commit (``base_sha``). One row
+    per step (``invocation_id`` unique), written once. Resume rebuilds a workspace from it."""
+
+    __tablename__ = "run_checkpoints"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    run_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("runs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    invocation_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("agent_invocations.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    node_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    iteration: Mapped[int] = mapped_column(Integer, nullable=False)
+    base_sha: Mapped[str] = mapped_column(Text, nullable=False)
+    diff: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    too_large: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=false(), default=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
 
