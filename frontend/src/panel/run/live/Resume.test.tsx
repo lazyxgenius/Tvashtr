@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { ResumeInfo, ResumePoint } from "../../../lib/api/resume";
@@ -190,6 +190,36 @@ describe("ResumeConfirm (Prob-Confirm)", () => {
     expect(screen.getByRole("button", { name: "Resume run" })).toBeEnabled();
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(onCancel).toHaveBeenCalled();
+  });
+
+  it("while Resume run is on its way nothing cancels it, and a late refusal still shows", async () => {
+    let refuse: (e: Error) => void = () => undefined;
+    const onResume = vi.fn(
+      () =>
+        new Promise((_, reject) => {
+          refuse = reject;
+        }),
+    );
+    const onCancel = vi.fn();
+    render(
+      <ResumeConfirm info={info()} point={POINTS[3]} onResume={onResume} onCancel={onCancel} />,
+    );
+    const dialog = screen.getByRole("dialog", { name: "Resume from Engineer, round 2?" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Resume run" }));
+    await waitFor(() => expect(onResume).toHaveBeenCalledTimes(1));
+    // Escape, the scrim, the X and Cancel all wait for the answer.
+    fireEvent.keyDown(document, { key: "Escape" });
+    const scrim = document.querySelector(".ds-scrim");
+    if (scrim) fireEvent.click(scrim);
+    expect(within(dialog).getByRole("button", { name: "Close" })).toBeDisabled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(onCancel).not.toHaveBeenCalled();
+    act(() => refuse(new ApiDetailError(429, "You have 3 runs going.", null)));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("You have 3 runs going.");
+    // Answered: closing works again.
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(onCancel).toHaveBeenCalledTimes(1);
   });
 });
 

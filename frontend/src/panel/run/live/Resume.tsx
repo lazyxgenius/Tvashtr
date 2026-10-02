@@ -172,8 +172,13 @@ export function ResumeConfirm({
   onResume: () => Promise<unknown>;
   onCancel: () => void;
 }) {
-  const ref = useModalDialog<HTMLDivElement>(true, onCancel);
   const [busy, setBusy] = useState(false);
+  // While "Resume run" is on its way nothing cancels it: its answer (the new run, or a refusal to
+  // show here) is still coming.
+  const cancel = () => {
+    if (!busy) onCancel();
+  };
+  const ref = useModalDialog<HTMLDivElement>(true, cancel);
   const [error, setError] = useState<string | null>(null);
   const c = point.confirm;
   if (!c) return null;
@@ -197,7 +202,7 @@ export function ResumeConfirm({
   };
   return createPortal(
     <>
-      <div className="ds-scrim" onClick={onCancel} aria-hidden />
+      <div className="ds-scrim" onClick={cancel} aria-hidden />
       <div
         ref={ref}
         role="dialog"
@@ -214,7 +219,7 @@ export function ResumeConfirm({
             <h2 className="lv-confirm__title">{c.title}</h2>
             <div className="lv-confirm__sub">{sub}</div>
           </div>
-          <IconButton size="sm" aria-label="Close" title="Close" onClick={onCancel}>
+          <IconButton size="sm" aria-label="Close" title="Close" onClick={cancel} disabled={busy}>
             <X size={16} strokeWidth={1.6} aria-hidden />
           </IconButton>
         </header>
@@ -288,7 +293,7 @@ export function ResumeConfirm({
               : `${runNameStart(n)} stays as it is`}
           </div>
           <div className="lv-confirm__actions">
-            <Button variant="ghost" onClick={onCancel} disabled={busy}>
+            <Button variant="ghost" onClick={cancel} disabled={busy}>
               Cancel
             </Button>
             <Button
