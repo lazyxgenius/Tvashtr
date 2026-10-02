@@ -11,6 +11,7 @@ import { defaultTeamId } from "./composerModel";
 import { FirstTimeHome } from "./FirstTimeHome";
 import { HomeHeader } from "./HomeHeader";
 import { HomeContext, type HomeContextValue } from "./homeContext";
+import { ImportTeamDialog } from "./ImportTeamDialog";
 import { type ComposerPrefill, requestComposerPrefill } from "./homeData";
 import { NeedsYou } from "./NeedsYou";
 import { NewTeamDialog } from "./NewTeamDialog";
@@ -32,6 +33,8 @@ export function HomePage({ user = null }: { user?: AuthUser | null } = {}) {
   const [teamsError, setTeamsError] = useState(false);
   const [composerTeamId, setComposerTeamId] = useState<string | null>(null);
   const [newTeam, setNewTeam] = useState<{ templateKey?: string } | null>(null);
+  // M4: the team file New team's "Import a team file" picked, being checked.
+  const [importFile, setImportFile] = useState<File | null>(null);
   const [historyTeamId, setHistoryTeamId] = useState<string | null>(null);
   const composerFocus = useRef<(() => void) | null>(null);
   const toast = useToast();
@@ -141,7 +144,12 @@ export function HomePage({ user = null }: { user?: AuthUser | null } = {}) {
         open={newTeam !== null}
         initialTemplate={newTeam?.templateKey}
         onClose={() => setNewTeam(null)}
+        onImportFile={(file) => {
+          setNewTeam(null);
+          setImportFile(file);
+        }}
       />
+      <ImportTeamDialog file={importFile} onClose={() => setImportFile(null)} />
     </HomeContext.Provider>
   );
 }
