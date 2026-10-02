@@ -965,7 +965,17 @@ def test_one_side_failed(client):
     assert rows["result"]["b"] == (
         "Failed: The Engineer stopped responding: no update for 20 minutes"
     )
-    assert all(r["better"] is None for r in res["rows"]) and res["restore"] is None
+    assert all(r["better"] is None for r in res["rows"])
+    assert res["restore"] == 1  # Cmp-SideFailed: Restore the version that finished (not current)
+
+    # The current version finished and the older one failed: nothing to restore.
+    team2 = _two_versions(client)
+    cid2 = _seed_compare(team2, owner)
+    _side(owner, team2, cid2, "A", 1, status="failed", approved=False, failure="boom")
+    _side(owner, team2, cid2, "B", 2)
+    res2 = _results(client, cid2)["results"]
+    assert res2["headline"] == "v2 finished; v1 failed on this task"
+    assert res2["restore"] is None
 
 
 def test_a_running_compare_shows_each_lane(client):

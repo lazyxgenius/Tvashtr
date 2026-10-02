@@ -141,7 +141,8 @@ Retries and stalls = counts of the run's host `retry` and `stalled` events ("non
 finished → "vB did better on this task" / "vA did better on this task" when one side has more better rows, else
 "vA and vB did about the same"; one failed → "vA finished; vB failed on this task" (a side that ended stopped:
 "… stopped on this task"); neither finished → "Neither version finished this task"; stopped → "You stopped this
-compare". `restore` = the better version when it is not the current version, else null.
+compare". `restore` = the better version when it is not the current version, else null; when one side finished and
+the other failed (Cmp-SideFailed), the version that finished when it is not the current version.
 
 Built details: the values always show; `better` and `difference` only when both finished (else null / "").
 Result: approval first — an "Approved" side beats a "Finished" one (`better` set, no `difference`); the rounds

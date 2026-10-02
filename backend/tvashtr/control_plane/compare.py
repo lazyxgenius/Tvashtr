@@ -809,6 +809,8 @@ def _results(session, cmp: Compare, facts: dict) -> dict:
             name = vb if ok == va else va
             ended = "failed" if other["status"] == "failed" else "stopped"
             headline = f"{ok} finished; {name} {ended} on this task"
+            if ended == "failed":  # Cmp-SideFailed: Restore the version that finished
+                winner = cmp.version_a if ok == va else cmp.version_b
         else:
             headline = "Neither version finished this task"
     return {
