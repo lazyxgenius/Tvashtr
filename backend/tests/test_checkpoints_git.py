@@ -170,6 +170,9 @@ def test_a_committed_file_the_gitignore_ignores_is_kept(tmp_path):
     add_worktree(str(repo), str(new), "run-ign2", cp["base_sha"])
     checkpoints.apply(str(new), cp["diff"], marker="cp-6")
     assert (new / "build" / "out.js").read_text() == "compiled\n"
+    # ...and stays tracked, so the next checkpoint and the ship keep it.
+    assert _git(new, "ls-files", "build/out.js").stdout.strip() == "build/out.js"
+    assert b"build/out.js" in checkpoints.capture(str(new))["diff"]
 
 
 def test_apply_after_a_crash_between_the_patch_and_its_stamp_is_a_no_op(tmp_path):
@@ -185,3 +188,14 @@ def test_apply_after_a_crash_between_the_patch_and_its_stamp_is_a_no_op(tmp_path
     _git(new, "apply", "--binary", str(patch))  # applied, then the process died before the stamp
     assert checkpoints.apply(str(new), cp["diff"], marker="cp-7") is False
     assert (new / "a.txt").read_text() == "a\n"
+
+
+def test_the_remember_sidecar_is_carried_but_never_staged(tmp_path):
+    ws = _greenfield(tmp_path / "old")
+    (ws / "TVASHTR_REMEMBER.jsonl").write_text("{}\n")
+    (ws / "a.txt").write_text("a\n")
+    cp = checkpoints.capture(str(ws))
+    new = _greenfield(tmp_path / "new")
+    checkpoints.apply(str(new), cp["diff"], marker="cp-8")
+    assert (new / "TVASHTR_REMEMBER.jsonl").read_text() == "{}\n"
+    assert "TVASHTR_REMEMBER.jsonl" not in _git(new, "diff", "--cached", "--name-only").stdout

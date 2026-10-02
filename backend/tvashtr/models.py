@@ -17,6 +17,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Identity,
+    Index,
     Integer,
     LargeBinary,
     Numeric,
@@ -334,6 +335,15 @@ class Run(Base):
     breach at a cap — no ship, P1.2)."""
 
     __tablename__ = "runs"
+    __table_args__ = (
+        # M3 (migration ``0044``): one resumed run in flight per run (a double submit is refused).
+        Index(
+            "uq_runs_resumed_in_flight",
+            "resumed_from_run_id",
+            unique=True,
+            postgresql_where=text("status IN ('pending', 'running', 'awaiting_human')"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     team_graph_id: Mapped[uuid.UUID] = mapped_column(
@@ -941,21 +951,30 @@ class RunCheckpoint(Base):
     its own node ids. Resume and a recovery rebuild the workspace from the newest row."""
 
     __tablename__ = "run_checkpoints"
+    __table_args__ = (
+        Index(
+            "uq_run_checkpoints_seed",
+            "run_id",
+            unique=True,
+            postgresql_where=text("invocation_id IS NULL"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
     run_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("runs.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    invocation_id: Mapped[int] = mapped_column(
+    invocation_id: Mapped[int | None] = mapped_column(
         BigInteger,
         ForeignKey("agent_invocations.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
         unique=True,
     )
     node_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
     iteration: Mapped[int] = mapped_column(Integer, nullable=False)
     base_sha: Mapped[str] = mapped_column(Text, nullable=False)
-    diff: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    # Deferred: up to 20 MB, read only to rebuild a workspace or to start a resumed run.
+    diff: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True, deferred=True)
     too_large: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=false(), default=False
     )

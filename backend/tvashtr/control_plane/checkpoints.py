@@ -22,6 +22,7 @@ import uuid
 MAX_DIFF_BYTES = 20 * 1024 * 1024
 _GIT_TIMEOUT_S = 120
 _MARKER = "tvashtr-checkpoint"
+_REMEMBER = "TVASHTR_REMEMBER.jsonl"  # shipping._REMEMBER_FILE
 
 logger = logging.getLogger(__name__)
 
@@ -118,7 +119,10 @@ def apply(ws: str, diff: bytes, *, marker: str) -> bool:
                     path = os.path.join(ws, rel)
                     if os.path.isfile(path) and _untracked(ws, rel):
                         os.remove(path)
-                _git(ws, "apply", "--binary", "--whitespace=nowarn", patch)
+                # --index: a file the old run tracked (a force-added build output) stays tracked,
+                # so the next checkpoint and the ship keep it; the remember sidecar stays unstaged.
+                _git(ws, "apply", "--index", "--binary", "--whitespace=nowarn", patch)
+                _git(ws, "reset", "-q", "--", _REMEMBER, check=False)
                 applied = True
         finally:
             os.remove(patch)
@@ -202,68 +206,94 @@ def record(
         )
 
 
-def newest(run_id: str):
-    """The run's newest usable checkpoint (its own last step's, else its seed), or None."""
+def newest(run_id: str, *, with_diff: bool = False):
+    """The run's newest usable checkpoint (its own last step's, else its seed), or None. The diff
+    (deferred) is read only when asked."""
     from sqlalchemy import select
+    from sqlalchemy.orm import undefer
 
     from tvashtr.db import session_scope
     from tvashtr.models import RunCheckpoint
 
+    stmt = (
+        select(RunCheckpoint)
+        .where(RunCheckpoint.run_id == uuid.UUID(run_id), RunCheckpoint.too_large.is_(False))
+        .order_by(RunCheckpoint.invocation_id.desc().nulls_last())
+        .limit(1)
+    )
+    if with_diff:
+        stmt = stmt.options(undefer(RunCheckpoint.diff))
     with session_scope() as session:
-        rows = (
-            session.execute(
-                select(RunCheckpoint)
-                .where(
-                    RunCheckpoint.run_id == uuid.UUID(run_id), RunCheckpoint.too_large.is_(False)
-                )
-                .order_by(RunCheckpoint.invocation_id.desc().nulls_last())
-            )
-            .scalars()
-            .all()
-        )
-        for row in rows:
+        row = session.execute(stmt).scalar_one_or_none()
+        if row is not None:
             session.expunge(row)
-    return rows[0] if rows else None
-
-
-def restore(run_id: str, workspace: str) -> None:
-    """Rebuild a FRESH workspace — one with no marker: a resumed run's first, or one a recovery
-    re-made on another machine — from the run's newest checkpoint. A live workspace (marked) is left
-    alone. A resumed run whose carried work won't apply raises :class:`CheckpointError` (the walk
-    fails the run, readably); a recovered run's own checkpoint that won't apply falls back to its
-    seed, else to the fresh workspace (the old behaviour)."""
-    if os.path.exists(_marker_path(workspace)):
-        return
-    cp = newest(run_id)
-    if cp is None:
-        return
-    if cp.invocation_id is None:
-        apply(workspace, cp.diff or b"", marker=seed_marker(run_id))
-        return
-    try:
-        apply(workspace, cp.diff or b"", marker=step_marker(cp.invocation_id))
-    except CheckpointError:
-        logger.warning("checkpoint restore failed run_id=%s", run_id, exc_info=True)
-        seed = _seed(run_id)
-        if seed is not None:
-            apply(workspace, seed.diff or b"", marker=seed_marker(run_id))
+    return row
 
 
 def _seed(run_id: str):
     from sqlalchemy import select
+    from sqlalchemy.orm import undefer
 
     from tvashtr.db import session_scope
     from tvashtr.models import RunCheckpoint
 
     with session_scope() as session:
         row = session.execute(
-            select(RunCheckpoint).where(
-                RunCheckpoint.run_id == uuid.UUID(run_id), RunCheckpoint.invocation_id.is_(None)
-            )
+            select(RunCheckpoint)
+            .options(undefer(RunCheckpoint.diff))
+            .where(RunCheckpoint.run_id == uuid.UUID(run_id), RunCheckpoint.invocation_id.is_(None))
         ).scalar_one_or_none()
         if row is not None:
             session.expunge(row)
     return row
+
+
+def _opened_a_step(run_id: str) -> bool:
+    from sqlalchemy import select
+
+    from tvashtr.db import session_scope
+    from tvashtr.models import AgentInvocation
+
+    with session_scope() as session:
+        return (
+            session.execute(
+                select(AgentInvocation.id).where(AgentInvocation.run_id == run_id).limit(1)
+            ).first()
+            is not None
+        )
+
+
+def restore(run_id: str, workspace: str) -> None:
+    """Rebuild a FRESH workspace — one with no marker: a resumed run's first, or one a recovery
+    re-made on another machine — from the run's newest checkpoint. A live workspace (marked) is left
+    alone. Only a resumed run's FIRST entry (no step of its own yet) raises
+    :class:`CheckpointError` when its carried work won't apply (the walk fails the run, readably);
+    once the run has opened a step this is a replay, where failing would call a step the recording
+    doesn't have — so it logs and goes on: the run's own checkpoint, else its seed, else the fresh
+    workspace (the behaviour before M3)."""
+    if os.path.exists(_marker_path(workspace)):
+        return
+    cp = newest(run_id, with_diff=True)
+    if cp is None:
+        return
+    first_entry = cp.invocation_id is None and not _opened_a_step(run_id)
+    marker = seed_marker(run_id) if cp.invocation_id is None else step_marker(cp.invocation_id)
+    try:
+        apply(workspace, cp.diff or b"", marker=marker)
+        return
+    except CheckpointError:
+        if first_entry:
+            raise
+        logger.warning("checkpoint restore failed run_id=%s", run_id, exc_info=True)
+    if cp.invocation_id is None:
+        return
+    seed = _seed(run_id)
+    if seed is None:
+        return
+    try:
+        apply(workspace, seed.diff or b"", marker=seed_marker(run_id))
+    except CheckpointError:
+        logger.warning("seed restore failed run_id=%s", run_id, exc_info=True)
 
 
 def rebuild_base(run_id: str) -> str | None:
