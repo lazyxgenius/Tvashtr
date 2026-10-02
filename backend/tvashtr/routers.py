@@ -14,7 +14,7 @@ from typing import Annotated, Any, Literal
 
 from dbos import DBOS, SetWorkflowID
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 
@@ -41,6 +41,7 @@ from tvashtr.control_plane import (
     stall_sweep,
     team_file,
     toolkit,
+    versions,
 )
 from tvashtr.control_plane.connector_proxy import EVENT_KINDS as CONNECTOR_EVENT_KINDS
 from tvashtr.control_plane.connector_proxy import connector_use
@@ -1318,6 +1319,13 @@ def create_run(
         cap = get_settings().default_run_budget_usd
 
     with db.session_scope() as session:
+        # M5 (R3): a run of a library team starts on a version — its changes since the latest one
+        # are saved as a new version first, so every run has a version.
+        version_number, version_saved = (
+            versions.for_run(session, library_team_id, uuid.UUID(current_user.id))
+            if library_team_id is not None
+            else (None, False)
+        )
         session.add(
             Run(
                 id=uuid.UUID(run_id),
@@ -1343,6 +1351,7 @@ def create_run(
                 desktop_subscriptions=desktop_routed if body.desktop_target else None,
                 library_team_id=library_team_id,
                 retry_of_run_id=retry_of,
+                team_version_number=version_number,
                 local_repo_label=local.label if local else None,
                 local_snapshot_id=local.snapshot_id if local else None,
             )
@@ -1353,7 +1362,11 @@ def create_run(
     with SetWorkflowID(run_id):
         DBOS.start_workflow(run_team, idea)
 
-    return {"run_id": run_id}
+    return {
+        "run_id": run_id,
+        "team_version_number": version_number,
+        "version_saved": version_saved,
+    }
 
 
 # The two fixed v1 A/B configs (§14.2), in launch order: A = the no-review ``two_node`` team,
@@ -3435,6 +3448,118 @@ def get_team_file(
             "lines": _team_file_lines(content),
             "needs": data["needs"],
         }
+
+
+class SaveVersionRequest(BaseModel):
+    note: str | None = Field(default=None, max_length=versions.NOTE_LIMIT)
+
+
+@router.get("/api/teams/{team_id}/versions")
+def get_team_versions(
+    team_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> dict:
+    """M5 (R3): the header chip and History › Versions — the current version, the changes since
+    it, every version newest first. A team with none gets v1 = its current state. Owner-scoped."""
+    me = uuid.UUID(current_user.id)
+    with db.session_scope() as session:
+        team = _require_library_team(session, team_id, me)
+        return versions.listing(session, team, me)
+
+
+@router.post("/api/teams/{team_id}/versions", status_code=201)
+def save_team_version(
+    team_id: str,
+    body: SaveVersionRequest,
+    current_user: Annotated[UserOut, Depends(get_current_user)],
+) -> dict:
+    """M5: Save as vN — the working copy as a new version (409 when nothing changed)."""
+    me = uuid.UUID(current_user.id)
+    with db.session_scope() as session:
+        team = _require_library_team(session, team_id, me)
+        version = versions.save(session, team, me, note=body.note)
+        if version is None:
+            top = versions.latest(session, team)
+            raise HTTPException(status_code=409, detail=f"Nothing changed since v{top.number}.")
+        return versions.listing(session, team, me)["versions"][0]
+
+
+def _version_number(number: str) -> int:
+    try:
+        n = int(number)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="version not found") from exc
+    if n < 1:
+        raise HTTPException(status_code=404, detail="version not found")
+    return n
+
+
+@router.get("/api/teams/{team_id}/versions/{number}")
+def get_team_version(
+    team_id: str, number: str, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> dict:
+    """M5: What changed in vN (against vN-1), its runs. 404 for a number the team lacks."""
+    me = uuid.UUID(current_user.id)
+    with db.session_scope() as session:
+        team = _require_library_team(session, team_id, me)
+        found = versions.detail(session, team, _version_number(number), me)
+        if found is None:
+            raise HTTPException(status_code=404, detail="version not found")
+        return found
+
+
+@router.get("/api/teams/{team_id}/versions/{number}/restore")
+def get_team_version_restore(
+    team_id: str, number: str, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> dict:
+    """M5: the Restore dialog — the version it makes and what goes back. Nothing changes."""
+    me = uuid.UUID(current_user.id)
+    with db.session_scope() as session:
+        team = _require_library_team(session, team_id, me)
+        plan = versions.restore_plan(session, team, _version_number(number), me)
+        if plan is None:
+            raise HTTPException(status_code=404, detail="version not found")
+        if not plan["changes"] and plan["draft_saved_as"] is None:
+            raise HTTPException(
+                status_code=409, detail=f"v{plan['current']} already matches v{plan['number']}."
+            )
+        return plan
+
+
+@router.post("/api/teams/{team_id}/versions/{number}/restore", status_code=201)
+def restore_team_version(
+    team_id: str, number: str, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> dict:
+    """M5 (R3): Restore vN — a NEW version equal to vN; nothing is deleted; a run in flight keeps
+    its version. The working copy's own changes are saved as a version first."""
+    me = uuid.UUID(current_user.id)
+    with db.session_scope() as session:
+        team = _require_library_team(session, team_id, me)
+        n = _version_number(number)
+        plan = versions.restore_plan(session, team, n, me)
+        if plan is None:
+            raise HTTPException(status_code=404, detail="version not found")
+        if not plan["changes"] and plan["draft_saved_as"] is None:
+            raise HTTPException(status_code=409, detail=f"v{plan['current']} already matches v{n}.")
+        return versions.restore(session, team, n, me)
+
+
+@router.get("/api/teams/{team_id}/nodes/{node_id}/instruction-history")
+def get_instruction_history(
+    team_id: str, node_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> dict:
+    """M5: the drawer's Instructions › History — the versions in which this agent's instructions
+    changed, newest first. 404 for another account's team or a node not in it."""
+    me = uuid.UUID(current_user.id)
+    with db.session_scope() as session:
+        team = _require_library_team(session, team_id, me)
+        try:
+            nid = uuid.UUID(node_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail="node not found") from exc
+        node = session.get(AgentNode, nid)
+        if node is None or node.team_graph_id != team.id:
+            raise HTTPException(status_code=404, detail="node not found")
+        return versions.instruction_history(session, team, str(nid), me)
 
 
 def _public_check(row: dict) -> dict:

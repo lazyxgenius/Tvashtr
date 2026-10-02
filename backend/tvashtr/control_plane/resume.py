@@ -530,6 +530,8 @@ def create(
         library_team_id=run.library_team_id,
         resumed_from_run_id=run.id,
         resumed_from_step=invocation_id,
+        # M5: the old run's snapshot, so the old run's version (R8: not the current team).
+        team_version_number=run.team_version_number,
     )
     session.add(new)
     session.flush()

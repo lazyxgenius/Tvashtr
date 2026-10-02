@@ -112,6 +112,8 @@ def run_fields(run: Run) -> dict:
         "desktop_target": bool(run.desktop_target),
         "library_team_id": str(run.library_team_id) if run.library_team_id else None,
         "retry_of_run_id": str(run.retry_of_run_id) if run.retry_of_run_id else None,
+        # M5: the version of its library team the run started on (None before M5 / ephemeral).
+        "team_version_number": run.team_version_number,
     }
 
 

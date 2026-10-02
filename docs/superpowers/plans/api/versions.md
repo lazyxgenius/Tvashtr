@@ -33,11 +33,12 @@ routes.
            {"op": "added", "text": "5. Approve only when the tests pass and every spec item is met."}]}
 {"key": "node:<id>:model", "node_id": "…", "agent": "Engineer", "role": "engineer", "field": "Model",
  "kind": "value", "before": "openai/gpt-4.1-mini", "after": "anthropic/claude-sonnet-4"}
-// fields: Instructions (text) · Model · Backup model · File access ("can edit" / "read-only") · Skills ·
-// Tools · Name · Description · Gate · Settings (other config) — values are names, never secrets
+// value fields: Model · Backup model · File access ("can edit" / "read-only") · Name · Description
+{"key": "node:<id>:skills", "node_id": "…", "agent": "Engineer", "role": "engineer", "field": "Skills",
+ "kind": "changed"}   // no values: Skills · Tools · Type · Gate · Settings (other config) — never secrets
 // a whole agent / gate / end
 {"key": "node:<id>", "node_id": "…", "agent": "Spec approval", "role": "prd_gate", "field": null,
- "kind": "added" | "removed"}
+ "kind": "added" | "removed", "gate": true}   // "Added the Spec approval gate"
 // a route
 {"key": "route:<n>", "agent": null, "field": "Routes", "kind": "added" | "removed",
  "text": "Reviewer → Engineer · when changes requested · up to 3 rounds"}

@@ -446,11 +446,44 @@ class Run(Base):
     resumed_from_step: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("agent_invocations.id", ondelete="SET NULL"), nullable=True
     )
+    # M5 (migration ``0046``, ruling R3): the version of its library team the run started on. NULL
+    # for a run of an ephemeral team, and for runs from before M5.
+    team_version_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class TeamVersion(Base):
+    """M5 (migration ``0046``, ruling R3): an explicit checkpoint of a library team — ``number``
+    (v1, v2, …), the team in the M4 file format (``snapshot``), a full copy of its rows (``graph``:
+    What changed and Restore read it; never sent to the browser), a plain ``summary``, an optional
+    ``note``, who saved it and how (``source``: first / save / run / restore)."""
+
+    __tablename__ = "team_versions"
+    __table_args__ = (
+        UniqueConstraint("team_graph_id", "number", name="uq_team_versions_team_number"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    team_graph_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("team_graphs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    number: Mapped[int] = mapped_column(Integer, nullable=False)
+    snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    graph: Mapped[dict] = mapped_column(JSONB, nullable=False, deferred=True)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    author_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    source: Mapped[str] = mapped_column(Text, nullable=False, server_default="save")
+    restored_from: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
 

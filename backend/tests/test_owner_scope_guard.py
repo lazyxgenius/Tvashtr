@@ -603,6 +603,30 @@ ROUTES: dict[str, tuple[str, object]] = {
             "test_owner_scope_teams::test_b_own_team_with_a_node_or_edge_is_404",
         ],
     ),
+    "GET /api/teams/{team_id}/versions": (
+        "id",
+        ["test_team_versions::test_versions_are_owner_scoped"],
+    ),
+    "POST /api/teams/{team_id}/versions": (
+        "id",
+        ["test_team_versions::test_versions_are_owner_scoped"],
+    ),
+    "GET /api/teams/{team_id}/versions/{number}": (
+        "id",
+        ["test_team_versions::test_versions_are_owner_scoped"],
+    ),
+    "GET /api/teams/{team_id}/versions/{number}/restore": (
+        "id",
+        ["test_team_versions::test_versions_are_owner_scoped"],
+    ),
+    "POST /api/teams/{team_id}/versions/{number}/restore": (
+        "id",
+        ["test_team_versions::test_versions_are_owner_scoped"],
+    ),
+    "GET /api/teams/{team_id}/nodes/{node_id}/instruction-history": (
+        "id",
+        ["test_team_versions::test_versions_are_owner_scoped"],
+    ),
     "GET /api/teams/{team_id}/file": (
         "id",
         ["test_team_file::test_another_account_cannot_read_a_team_file"],

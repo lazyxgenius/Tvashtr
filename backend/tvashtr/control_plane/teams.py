@@ -2488,11 +2488,24 @@ def list_team_runs(team_id: uuid.UUID, owner_id: uuid.UUID) -> list[dict] | None
                 Run.pr_url,
                 func.coalesce(Run.cost_total_usd, 0).label("cost"),
                 run_spent_usd_expr().label("spent"),
+                Run.library_team_id,
+                Run.team_version_number,
             )
             .select_from(links)
             .join(Run, Run.id == links.c.run_id)
             .order_by(Run.created_at.desc(), Run.id)
         ).all()
+        # M5 (History › Runs): "run #12" — the run's place among the team's runs (as
+        # node_history._run_number counts it) — and the run that resumed it ("resumed as #13").
+        numbered = [r.id for r in reversed(rows) if r.library_team_id == team_id]
+        numbers = {run_id: k for k, run_id in enumerate(numbered, start=1)}
+        resumed = dict(
+            session.execute(
+                select(Run.resumed_from_run_id, Run.id).where(
+                    Run.resumed_from_run_id.in_([r.id for r in rows])
+                )
+            ).all()
+        )
         return [
             {
                 "run_id": str(run_id),
@@ -2505,8 +2518,22 @@ def list_team_runs(team_id: uuid.UUID, owner_id: uuid.UUID) -> list[dict] | None
                 "pr_url": pr_url,
                 "pr_number": _pr_number(pr_url),
                 "spent_usd": float(spent),
+                "number": numbers.get(run_id),
+                "team_version_number": version,
+                "resumed_as": numbers.get(resumed.get(run_id)),
             }
-            for run_id, status, idea, created_at, updated_at, pr_url, cost, spent in rows
+            for (
+                run_id,
+                status,
+                idea,
+                created_at,
+                updated_at,
+                pr_url,
+                cost,
+                spent,
+                _lib,
+                version,
+            ) in rows
         ]
 
 
