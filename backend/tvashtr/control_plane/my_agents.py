@@ -18,10 +18,14 @@ import re
 import uuid
 from copy import deepcopy
 from datetime import UTC, datetime
+from urllib.parse import urlsplit
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 
-from tvashtr.control_plane import team_file, tool_usage, versions
+from tvashtr.config import get_settings
+from tvashtr.control_plane import team_file, teams, tool_usage, versions
+from tvashtr.control_plane.credentials import held_provider_slugs
 from tvashtr.control_plane.guardrails import mask_secrets
 from tvashtr.control_plane.node_history import _run_number
 from tvashtr.control_plane.run_failure import node_label
@@ -40,7 +44,6 @@ PARTS = ("instructions", "model", "skills_tools", "file_access", "memories")
 NAME_MAX = 60
 PURPOSE_MAX = 300
 AGENT_KINDS = tool_usage.AGENT_KINDS
-_REF = re.compile(r"^\$\{[A-Za-z_][A-Za-z0-9_]*\}$")
 
 
 class MyAgentsError(Exception):
@@ -70,30 +73,84 @@ def _label(node: AgentNode) -> str:
     return node_label(node.role_name, node.kind, node.config)
 
 
+# An inline server travels only when it is provably made of references: these keys, every env /
+# header value a ``${NAME}`` (optionally after "Bearer" / "Token" / "Basic"), a plain https URL (no
+# sign-in, query or fragment), and no part of its address or arguments that looks like a token.
+_SERVER_KEYS = {"command", "args", "url", "env", "headers", "type", "transport"}
+_REF_ANY = re.compile(r"\$\{[A-Za-z_][A-Za-z0-9_]*\}")
+_SCHEMES = {"", "bearer", "token", "basic"}
+_OPAQUE = re.compile(r"[A-Za-z0-9_\-]{16,}")
+_SECRET_FLAG = re.compile(r"(?i)(token|key|secret|password|passwd|auth)")
+
+
+def _looks_opaque(text: str) -> bool:
+    """A run of 16+ letters/digits/-/_ holding both letters and digits: an id or a token."""
+    return any(re.search(r"[A-Za-z]", m) and re.search(r"[0-9]", m) for m in _OPAQUE.findall(text))
+
+
+def _safe_value(value) -> bool:
+    if not isinstance(value, str) or not _REF_ANY.search(value):
+        return False
+    return _REF_ANY.sub("", value).strip().lower() in _SCHEMES
+
+
+def _safe_text(text) -> bool:
+    if not isinstance(text, str):
+        return False
+    bare = _REF_ANY.sub("", text)
+    return mask_secrets(bare) == bare and not _looks_opaque(bare)
+
+
 def _safe_server(server) -> bool:
-    """An inline server travels only when nothing in it is a literal secret: every env / header
-    value is a ``${NAME}`` reference and masking changes nothing else in it."""
-    if not isinstance(server, dict):
+    if not isinstance(server, dict) or set(server) - _SERVER_KEYS:
         return False
     for key in ("env", "headers"):
         values = server.get(key) or {}
-        if not isinstance(values, dict):
+        if not isinstance(values, dict) or not all(_safe_value(v) for v in values.values()):
             return False
-        if any(not (isinstance(v, str) and _REF.match(v.strip())) for v in values.values()):
+    url = server.get("url")
+    if url is not None:
+        parts = urlsplit(url) if isinstance(url, str) else None
+        if (
+            parts is None
+            or parts.scheme not in ("https", "http")
+            or "@" in parts.netloc
+            or parts.query
+            or parts.fragment
+            or not _safe_text(url)
+        ):
             return False
-    rest = {k: v for k, v in server.items() if k not in ("env", "headers")}
-    return team_file._masked(rest) == rest
+    args = server.get("args") or []
+    if not isinstance(args, list):
+        return False
+    for k, arg in enumerate(args):
+        if not isinstance(arg, str):
+            return False
+        if _REF_ANY.fullmatch(arg.strip()):
+            continue
+        flagged = k > 0 and isinstance(args[k - 1], str) and _SECRET_FLAG.search(args[k - 1])
+        if flagged or "=" in arg and _SECRET_FLAG.search(arg.split("=", 1)[0]):
+            return False
+        if not _safe_text(arg):
+            return False
+    for key in ("command", "type", "transport"):
+        if key in server and not _safe_text(server[key]):
+            return False
+    return True
 
 
 def _clean_tool_config(tool_config) -> dict | None:
-    config = deepcopy(tool_config) if isinstance(tool_config, dict) else {}
-    servers = config.get("mcpServers")
+    """Only what a tool setup is made of: the library refs (``tvashtr``) and the inline servers that
+    hold no secret."""
+    source = tool_config if isinstance(tool_config, dict) else {}
+    config = {}
+    if isinstance(source.get("tvashtr"), dict):
+        config["tvashtr"] = deepcopy(source["tvashtr"])
+    servers = source.get("mcpServers")
     if isinstance(servers, dict):
-        kept = {name: s for name, s in servers.items() if _safe_server(s)}
+        kept = {name: deepcopy(s) for name, s in servers.items() if _safe_server(s)}
         if kept:
             config["mcpServers"] = kept
-        else:
-            config.pop("mcpServers")
     return config or None
 
 
@@ -149,12 +206,12 @@ def _parts(session, owner_id, node: AgentNode, include: list[str]) -> dict:
 
 
 def _memories(session, owner_id, node: AgentNode) -> list[dict]:
-    """The agent's OWN memories (node tier: never the repo's or the account's)."""
+    """The agent's OWN memories (node tier — what it learned on any repo; never the repo's or the
+    account's shared memories)."""
     rows = session.execute(
         select(NodeMemory).where(
             NodeMemory.owner_id == owner_id,
             NodeMemory.node_id == node.id,
-            NodeMemory.repo_key.is_(None),
             NodeMemory.status == "active",
             NodeMemory.invalid_at.is_(None),
         )
@@ -162,6 +219,7 @@ def _memories(session, owner_id, node: AgentNode) -> list[dict]:
     return [
         {
             "content": mask_secrets(m.content),
+            "repo_key": m.repo_key,
             "polarity": m.polarity,
             "pinned": bool(m.pinned),
             "embedding": [float(x) for x in m.embedding] if m.embedding is not None else None,
@@ -335,9 +393,18 @@ def save(
     created = agent is None
     now = datetime.now(UTC)
     if created:
-        agent = SavedAgent(owner_id=owner_id, name=name, purpose=(purpose or "")[:PURPOSE_MAX])
-        session.add(agent)
-        session.flush()
+        try:
+            with session.begin_nested():
+                agent = SavedAgent(
+                    owner_id=owner_id, name=name, purpose=(purpose or "")[:PURPOSE_MAX]
+                )
+                session.add(agent)
+                session.flush()
+        except IntegrityError:
+            # Saved under this name by another request meanwhile: this one is its next version.
+            agent = _by_name(session, owner_id, name)
+            created = False
+    if created:
         number = 1
     else:
         if purpose is not None:
@@ -415,8 +482,11 @@ def _before(node: AgentNode) -> dict:
     }
 
 
-def _apply(session, owner_id, team: TeamGraph, node: AgentNode, agent, version) -> dict:
-    """Write the version's parts to the node; return what was there (for Undo)."""
+def _apply(
+    session, owner_id, team: TeamGraph, node: AgentNode, agent, version, *, entry_id=...
+) -> dict:
+    """Write the version's parts to the node; return what was there (for Undo). ``entry_id``: the
+    team's entry when the caller knows it (a node it just added must not count as the entry)."""
     if node.kind not in AGENT_KINDS:
         raise MyAgentsError(409, "Only an agent can use a saved agent.")
     before = _before(node)
@@ -441,12 +511,26 @@ def _apply(session, owner_id, team: TeamGraph, node: AgentNode, agent, version) 
             versions._live(session, owner_id),
         )
     if "edits_allowed" in parts:
-        entry = _entry_node_id(session, team.id) == node.id
-        node.edits_allowed = False if entry else bool(parts["edits_allowed"])
+        if entry_id is ...:
+            entry_id = _entry_node_id(session, team.id)
+        node.edits_allowed = False if entry_id == node.id else bool(parts["edits_allowed"])
+    held = {
+        " ".join(c.split()).lower()
+        for c in session.execute(
+            select(NodeMemory.content).where(
+                NodeMemory.node_id == node.id,
+                NodeMemory.owner_id == owner_id,
+                NodeMemory.status == "active",
+            )
+        ).scalars()
+    }
     for memory in version.memories or []:
+        if " ".join(memory["content"].split()).lower() in held:
+            continue  # it has this one already (a second use, an update)
         row = NodeMemory(
             owner_id=owner_id,
             node_id=node.id,
+            repo_key=memory.get("repo_key"),
             content=memory["content"],
             polarity=memory.get("polarity") or "context",
             pinned=bool(memory.get("pinned")),
@@ -479,9 +563,10 @@ def undo(session, owner_id, *, team_id, node_id, before: dict) -> str:
     _team, node = _owned_node(session, owner_id, team_id, node_id)
     if not isinstance(before, dict) or node.kind not in AGENT_KINDS:
         raise MyAgentsError(422, "Nothing to undo.")
-    if isinstance(before.get("prompt"), str) and before["prompt"].strip():
+    # Back exactly as it was — a new agent's blank instructions or model included.
+    if "prompt" in before and (before["prompt"] is None or isinstance(before["prompt"], str)):
         node.prompt = before["prompt"]
-    if isinstance(before.get("model"), str) and before["model"]:
+    if "model" in before and (before["model"] is None or isinstance(before["model"], str)):
         node.model = before["model"]
     cfg = dict(node.config) if isinstance(node.config, dict) else {}
     if before.get("fallback_model"):
@@ -557,6 +642,7 @@ def use_in_team(session, owner_id, agent_id, team_id) -> dict:
         raise _not_found("team")
     top = _latest(session, agent)
     source = top.parts.get("source") or {}
+    entry_id = _entry_node_id(session, team.id)  # before the new node: it never becomes the entry
     xs = [
         (n.position or {}).get("x", 0) or 0
         for n in session.execute(
@@ -564,6 +650,12 @@ def use_in_team(session, owner_id, agent_id, team_id) -> dict:
         ).scalars()
     ]
     kind = source.get("kind") if source.get("kind") in AGENT_KINDS else "agent"
+    model = top.parts.get("model") or (
+        teams.account_default_model(
+            held_provider_slugs(owner_id), "thinker" if kind == "completion" else "worker"
+        )
+        or get_settings().default_model
+    )
     cfg = {
         k: v for k, v in (("title", agent.name), ("description", source.get("description"))) if v
     }
@@ -573,14 +665,14 @@ def use_in_team(session, owner_id, agent_id, team_id) -> dict:
         kind=kind,
         engine="openhands" if kind == "agent" else None,
         prompt=top.parts.get("prompt") or "",
-        model=top.parts.get("model"),
+        model=model,
         position={"x": (max(xs) if xs else 0) + 260, "y": 0},
         config=cfg or None,
         edits_allowed=kind == "agent",
     )
     session.add(node)
     session.flush()
-    _apply(session, owner_id, team, node, agent, top)
+    _apply(session, owner_id, team, node, agent, top, entry_id=entry_id)
     return {"team_id": str(team.id), "node_id": str(node.id)}
 
 
@@ -590,36 +682,36 @@ def use_in_team(session, owner_id, agent_id, team_id) -> dict:
 def recent_tasks(session, owner_id, *, q: str | None, limit: int) -> list[dict]:
     """The owner's recent run tasks, newest first, one per task text (case and spaces ignored),
     only runs of their own library teams."""
-    stmt = (
-        select(Run, TeamGraph)
+    task_key = func.lower(func.regexp_replace(func.btrim(Run.idea), r"\s+", " ", "g"))
+    latest_per_task = (
+        select(Run.id)
         .join(TeamGraph, Run.library_team_id == TeamGraph.id)
         .where(
             Run.owner_id == owner_id,
             TeamGraph.owner_id == owner_id,
             TeamGraph.is_library.is_(True),
         )
-        .order_by(Run.created_at.desc(), Run.id)
+        .distinct(task_key)
+        .order_by(task_key, Run.created_at.desc(), Run.id)
     )
     if q and q.strip():
-        stmt = stmt.where(Run.idea.ilike(_like(q.strip()), escape="\\"))
-    seen: set[str] = set()
-    out: list[dict] = []
-    for run, team in session.execute(stmt.limit(500)).all():
-        key = " ".join(run.idea.split()).lower()
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append(
-            {
-                "task": run.idea,
-                "team": {"id": str(team.id), "name": team.name},
-                "status": run.status,
-                "status_group": status_group(run.status),
-                "run_id": str(run.id),
-                "number": _run_number(session, run),
-                "created_at": run.created_at.isoformat(),
-            }
-        )
-        if len(out) >= limit:
-            break
-    return out
+        latest_per_task = latest_per_task.where(Run.idea.ilike(_like(q.strip()), escape="\\"))
+    rows = session.execute(
+        select(Run, TeamGraph)
+        .join(TeamGraph, Run.library_team_id == TeamGraph.id)
+        .where(Run.id.in_(latest_per_task.scalar_subquery()))
+        .order_by(Run.created_at.desc(), Run.id)
+        .limit(limit)
+    ).all()
+    return [
+        {
+            "task": run.idea,
+            "team": {"id": str(team.id), "name": team.name},
+            "status": run.status,
+            "status_group": status_group(run.status),
+            "run_id": str(run.id),
+            "number": _run_number(session, run),
+            "created_at": run.created_at.isoformat(),
+        }
+        for run, team in rows
+    ]

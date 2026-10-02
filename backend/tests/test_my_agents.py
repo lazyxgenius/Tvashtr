@@ -410,3 +410,191 @@ def test_edges_are_never_touched_by_a_use(client):
     with session_scope() as session:
         assert len(session.execute(select(Edge)).scalars().all()) == n_edges
         assert session.get(AgentNode, uuid.UUID(rev["id"])) is not None
+
+
+# ------------------------------------------------------------------- the backend review
+
+
+def _parts_of(agent_id: str) -> dict:
+    with session_scope() as session:
+        return (
+            session.execute(
+                select(SavedAgentVersion)
+                .where(SavedAgentVersion.saved_agent_id == uuid.UUID(agent_id))
+                .order_by(SavedAgentVersion.number.desc())
+            )
+            .scalars()
+            .first()
+            .parts
+        )
+
+
+def test_an_inline_server_with_a_secret_anywhere_is_left_out(client):
+    client, owner = fresh_account("ma")
+    team = library_team(client)
+    eng = _node(client, team, "engineer")
+    secret = "Ab12" * 8
+    _patch(
+        client,
+        team,
+        eng["id"],
+        tool_config={
+            "mcpServers": {
+                "zap": {"url": f"https://mcp.zapier.com/api/mcp/s/{secret}/mcp"},
+                "q": {"url": f"https://mcp.example.com/sse?token={secret}"},
+                "cmd": {"command": "npx", "args": ["-y", "linear-mcp", "--token", "lin_api_x1"]},
+                "auth": {"url": "https://a.example.com/mcp", "auth": "tok_123"},
+                "bearer": {
+                    "url": "https://b.example.com/mcp",
+                    "headers": {"Authorization": "Bearer ${GH_TOKEN}"},
+                },
+                "plain": {"command": "npx", "args": ["-y", "@acme/mcp"], "env": {"K": "${K}"}},
+            },
+            "junk": {"x": secret},
+        },
+    )
+    agent = _save(client, team, eng["id"], name="Builder")["agent"]
+    parts = _parts_of(agent["id"])
+    blob = str(parts)
+    assert secret not in blob and "lin_api_x1" not in blob and "tok_123" not in blob
+    assert sorted(parts["tool_config"]["mcpServers"]) == ["bearer", "plain"]
+    assert "junk" not in parts["tool_config"]
+
+
+def test_undo_puts_back_a_blank_prompt_and_model(client):
+    client, owner = fresh_account("ma")
+    team = library_team(client)
+    rev = _node(client, team, "reviewer")
+    _patch(client, team, rev["id"], prompt="Be strict.")
+    agent = _save(client, team, rev["id"])["agent"]
+    with session_scope() as session:
+        node = session.get(AgentNode, uuid.UUID(_node(client, team, "engineer")["id"]))
+        node.prompt, node.model = "", ""
+        eng_id = str(node.id)
+    used = _use(client, team, eng_id, agent["id"])
+    client.post(f"/api/teams/{team}/nodes/{eng_id}/undo-agent", json={"before": used["before"]})
+    with session_scope() as session:
+        node = session.get(AgentNode, uuid.UUID(eng_id))
+        assert (node.prompt, node.model) == ("", "")
+
+
+def test_the_agent_s_own_memories_on_a_repo_are_saved_and_not_doubled(client):
+    client, owner = fresh_account("ma")
+    team = library_team(client)
+    rev = _node(client, team, "reviewer")
+    with session_scope() as session:
+        session.add(
+            NodeMemory(
+                owner_id=owner,
+                node_id=uuid.UUID(rev["id"]),
+                repo_key="acme/app",
+                content="Prefers pytest -q",
+                status="active",
+            )
+        )
+    agent = _save(client, team, rev["id"], include=[*ALL, "memories"])["agent"]
+    other = library_team(client, name="Bugfix squad")
+    target = _node(client, other, "reviewer")
+    _use(client, other, target["id"], agent["id"])
+    _use(client, other, target["id"], agent["id"])  # again: no second copy
+    with session_scope() as session:
+        rows = (
+            session.execute(select(NodeMemory).where(NodeMemory.node_id == uuid.UUID(target["id"])))
+            .scalars()
+            .all()
+        )
+    assert [(m.content, m.repo_key) for m in rows] == [("Prefers pytest -q", "acme/app")]
+
+
+def test_an_added_agent_keeps_its_file_access_whatever_its_id(client):
+    client, owner = fresh_account("ma")
+    team = library_team(client)
+    eng = _node(client, team, "engineer")
+    agent = _save(client, team, eng["id"], name="Builder")["agent"]
+    for _ in range(6):
+        node_id = client.post(
+            f"/api/my-agents/{agent['id']}/use-in-team", json={"team_id": team}
+        ).json()["node_id"]
+        with session_scope() as session:
+            assert session.get(AgentNode, uuid.UUID(node_id)).edits_allowed is True
+
+
+def test_an_added_agent_without_a_saved_model_gets_the_account_default(client):
+    client, owner = fresh_account("ma")
+    team = library_team(client)
+    rev = _node(client, team, "reviewer")
+    agent = _save(client, team, rev["id"], include=["skills_tools"])["agent"]
+    node_id = client.post(
+        f"/api/my-agents/{agent['id']}/use-in-team", json={"team_id": team}
+    ).json()["node_id"]
+    with session_scope() as session:
+        assert session.get(AgentNode, uuid.UUID(node_id)).model
+
+
+def test_restore_keeps_a_node_s_saved_agent_when_its_content_is_the_same(client):
+    client, owner = fresh_account("ma")
+    team = library_team(client)
+    client.get(f"/api/teams/{team}/versions")  # v1
+    eng = _node(client, team, "engineer")
+    _patch(client, team, eng["id"], prompt="Pending edit.")
+    rev = _node(client, team, "reviewer")
+    agent = _save(client, team, rev["id"])["agent"]  # the Reviewer now based on it
+    assert client.post(f"/api/teams/{team}/versions/1/restore").status_code == 201
+    assert _node(client, team, "reviewer")["config"]["based_on"]["id"] == agent["id"]
+
+
+def test_resaving_without_a_purpose_keeps_it(client):
+    client, owner = fresh_account("ma")
+    team = library_team(client)
+    rev = _node(client, team, "reviewer")
+    _save(client, team, rev["id"])  # purpose "Reviews it."
+    resp = client.post(
+        "/api/my-agents",
+        json={"team_id": team, "node_id": rev["id"], "name": "Strict reviewer", "include": ALL},
+    )
+    assert resp.status_code == 201 and resp.json()["agent"]["purpose"] == "Reviews it."
+
+
+def test_a_save_racing_a_new_name_becomes_the_next_version(client, monkeypatch):
+    from tvashtr.control_plane import my_agents
+
+    client, owner = fresh_account("ma")
+    team = library_team(client)
+    rev = _node(client, team, "reviewer")
+    real = my_agents._by_name
+    calls = {"n": 0}
+
+    def racing(session, owner_id, name):
+        calls["n"] += 1
+        if calls["n"] == 1:  # another request saved this name meanwhile
+            with session_scope() as other:
+                other.add(SavedAgent(owner_id=owner_id, name=name, purpose=""))
+                other.flush()
+                agent_id = other.execute(
+                    select(SavedAgent.id).where(SavedAgent.owner_id == owner_id)
+                ).scalar_one()
+                other.add(
+                    SavedAgentVersion(
+                        saved_agent_id=agent_id,
+                        number=1,
+                        parts={},
+                        included=["instructions"],
+                        built_on="Reviewer",
+                    )
+                )
+            return None
+        return real(session, owner_id, name)
+
+    monkeypatch.setattr(my_agents, "_by_name", racing)
+    saved = _save(client, team, rev["id"])
+    assert saved["version"] == 2 and saved["created"] is False
+
+
+def test_recent_tasks_look_past_many_reruns(client):
+    client, owner = fresh_account("ma")
+    team = library_team(client)
+    make_run(owner, team, idea="An older task", status="completed")
+    for _ in range(510):
+        make_run(owner, team, idea="The same task", status="completed")
+    tasks = [t["task"] for t in client.get("/api/recent-tasks").json()["tasks"]]
+    assert tasks == ["The same task", "An older task"]

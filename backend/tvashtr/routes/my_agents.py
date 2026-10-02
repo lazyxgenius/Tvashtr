@@ -36,7 +36,7 @@ class SaveAgentRequest(BaseModel):
     team_id: str
     node_id: str
     name: str = Field(max_length=200)
-    purpose: str = Field(default="", max_length=2000)
+    purpose: str | None = Field(default=None, max_length=2000)  # absent: a re-save keeps it
     include: list[Part]
 
 

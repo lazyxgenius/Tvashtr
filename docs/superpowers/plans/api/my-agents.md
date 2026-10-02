@@ -11,9 +11,9 @@ words are made server-side (`control_plane/my_agents.py`).
 |---|---|---|
 | `instructions` | the prompt (secrets masked) | "Instructions" — "The current text (v7)" |
 | `model` | model + backup model | "Model: xai/grok-4.7" — "Teams without Grok can pick another model" |
-| `skills_tools` | skills (inline skill text masked) + tools (library tools, switches, connector grants, Domains; an inline server whose settings hold a literal secret value is left out) | "Skills (2) and tools (1)" |
+| `skills_tools` | skills (inline skill text masked; a repo skill only as a plain GitHub URL) + tools (library tools, switches, connector grants, Domains; an inline server travels only when it is made of references — its env / header values `${NAME}` (optionally after Bearer / Token / Basic), a plain URL with no sign-in, query or fragment, and nothing in its address or arguments that looks like a token — else it is left out) | "Skills (2) and tools (1)" |
 | `file_access` | can edit / read-only | "File access: read-only" |
-| `memories` | the agent's own memories (content, never repo / account memories) — **off by default** | "Memories (3)" — "Usually about this team’s repo. Leave off to start fresh." |
+| `memories` | the agent's own memories (what it learned, on any repo; never the repo's or the account's shared memories; a memory the node already has isn't copied twice) — **off by default** | "Memories (3)" — "Usually about this team’s repo. Leave off to start fresh." |
 
 Never included: sign-ins, keys and secrets (connector sign-ins and secret values stay where they are;
 a grant or `${NAME}` is a reference). Never moved by using one: the node's id, role, kind, routes,
@@ -46,7 +46,7 @@ Body `{"team_id", "node_id", "name": "Strict reviewer", "purpose": "…", "inclu
 "model", "skills_tools", "file_access"]}` (`memories` only when asked). The agent's SAVED state is used
 (the drawer saves its draft first). `name` (1–60 chars, trimmed) names the agent: a name the account
 already has makes the next version of it ("Saved as version 3"), a new name makes v1. The node then
-carries `based_on` this version. → `{"agent": <the agents[] item>, "version": 2, "created": false}`.
+carries `based_on` this version (`purpose` left out keeps the agent's). → `{"agent": <the agents[] item>, "version": 2, "created": false}`.
 422 for an empty name / nothing included; 404 for a node that isn't the caller's agent.
 
 ## `PATCH /api/my-agents/{agent_id}` — rename / what it's for

@@ -560,7 +560,7 @@ def restore(session, team: TeamGraph, number: int, author_id) -> dict | None:
     if target is None:
         return None
     draft = save(session, team, author_id)
-    _apply(session, team, target.graph)
+    _apply(session, team, target.graph, live=capture(session, team))
     session.flush()
     session.expire_all()
     team = session.get(TeamGraph, team.id)
@@ -581,7 +581,7 @@ def restore(session, team: TeamGraph, number: int, author_id) -> dict | None:
     }
 
 
-def _apply(session, team: TeamGraph, graph: dict) -> None:
+def _apply(session, team: TeamGraph, graph: dict, *, live: dict | None = None) -> None:
     """Rows equal to ``graph``: removed nodes go, missing ones come back with their own id (where
     they were), the others take its content and keep their place; the edges are its edges."""
     t = graph.get("team") or {}
@@ -589,7 +589,8 @@ def _apply(session, team: TeamGraph, graph: dict) -> None:
     team.budget_usd = t.get("budget_usd")
     team.repo = t.get("repo")
     wanted = {n["id"]: n for n in graph.get("nodes") or []}
-    live = _live(session, team.owner_id)
+    live_rows = {n["id"]: n for n in (live or {}).get("nodes") or []}
+    library = _live(session, team.owner_id)
     for edge in session.execute(select(Edge).where(Edge.team_graph_id == team.id)).scalars():
         session.delete(edge)
     session.flush()
@@ -616,7 +617,15 @@ def _apply(session, team: TeamGraph, graph: dict) -> None:
         node.model = row["model"]
         node.engine = row["engine"]
         node.config = deepcopy(row["config"])
-        node.tool_config, node.skills = _reconcile(row, live)
+        now = live_rows.get(node_id)
+        if now is not None and not _node_rows(now, row):
+            # The same content: the saved agent it uses (M6, not content) stays as it is now.
+            cfg = dict(node.config or {})
+            cfg.pop("based_on", None)
+            if (now.get("config") or {}).get("based_on"):
+                cfg["based_on"] = deepcopy(now["config"]["based_on"])
+            node.config = cfg or None
+        node.tool_config, node.skills = _reconcile(row, library)
         node.edits_allowed = row["edits_allowed"]
     session.flush()
     session.add_all(
