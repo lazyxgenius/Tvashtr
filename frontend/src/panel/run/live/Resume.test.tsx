@@ -127,6 +127,39 @@ describe("ResumePick (Prob-Pick)", () => {
     expect(screen.getByRole("complementary", { name: "Resume this run" })).toBeInTheDocument();
     expect(screen.getByText("Uses the same team setup as this run")).toBeInTheDocument();
   });
+
+  it("lists steps carried from an earlier run (no step of this run) once each, never resumable", () => {
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    const carried = (node_id: string, title: string) =>
+      point({
+        invocation_id: null,
+        node_id,
+        title,
+        text: "From run #11",
+        resumable: false,
+        confirm: null,
+        from_run: { run_id: "r-11", number: 11 },
+      });
+    render(
+      <ResumePick
+        info={info({
+          points: [
+            carried("n-pm", "Product manager"),
+            carried("n-prd", "Approval gate"),
+            POINTS[3],
+          ],
+        })}
+        onPick={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    const panel = screen.getByRole("complementary", { name: "Resume run #12" });
+    expect(within(panel).getAllByText("From run #11")).toHaveLength(2);
+    expect(within(panel).getAllByRole("button", { name: "Resume from here" })).toHaveLength(1);
+    // No React key warning for the carried steps (they have no invocation id).
+    expect(err.mock.calls.flat().join(" ")).not.toMatch(/key/);
+    err.mockRestore();
+  });
 });
 
 describe("ResumeConfirm (Prob-Confirm)", () => {

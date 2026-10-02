@@ -16,7 +16,8 @@ export interface ResumeConfirm {
 
 /** One step of the run, in the order it ran (agent steps and gates). */
 export interface ResumePoint {
-  invocation_id: number;
+  /** Null for a step carried from an earlier run (never resumable). */
+  invocation_id: number | null;
   node_id: string;
   origin_node_id: string | null;
   label: string;
@@ -31,6 +32,8 @@ export interface ResumePoint {
   state: string;
   resumable: boolean;
   confirm?: ResumeConfirm | null;
+  /** The run a carried step came from (null or absent: this run's own step). */
+  from_run?: { run_id: string; number: number | null } | null;
 }
 
 export interface ResumeInfo {

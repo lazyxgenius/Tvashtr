@@ -869,6 +869,8 @@ export default function App({
   };
   const resumedFrom = run?.resumed_from ?? activity?.resumed_from ?? null;
   const confirmPoint = resumeFlow.confirm;
+  // Only this run's own steps resume (a step carried from an earlier run has no invocation).
+  const resumeAt = confirmPoint?.invocation_id;
   const pickInfo = !authoring && resumeFlow.pick ? resumeFlow.info : null;
   // One tree whether the panel is open or not, so opening it never remounts the canvas or
   // Activity; closed, the wrapper is `display: contents` and the layout is as without it.
@@ -1114,11 +1116,11 @@ export default function App({
           />
         ),
       )}
-      {resumeFlow.info && confirmPoint && (
+      {resumeFlow.info && confirmPoint && resumeAt != null && (
         <ResumeConfirm
           info={resumeFlow.info}
           point={confirmPoint}
-          onResume={() => startResumed(confirmPoint.invocation_id)}
+          onResume={() => startResumed(resumeAt)}
           onCancel={resumeFlow.closeConfirm}
         />
       )}

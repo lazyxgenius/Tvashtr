@@ -87,7 +87,7 @@ export function ResumePick({
       </header>
       <div className="lv-pick__body">
         <ol className="lv-pick__list">
-          {info.points.map((p) => {
+          {info.points.map((p, i) => {
             const suggested = p.state === "suggested";
             const gate = p.kind === "gate";
             const Icon = suggested
@@ -98,7 +98,7 @@ export function ResumePick({
             const tone = suggested ? "danger" : gate ? "ok" : "idle";
             return (
               <li
-                key={p.invocation_id}
+                key={p.invocation_id ?? `c:${i}`}
                 className={`lv-pick__step${suggested ? " lv-pick__step--suggested" : ""}`}
               >
                 <div className="lv-pick__row">
