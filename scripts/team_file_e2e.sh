@@ -78,9 +78,10 @@ curl -sf "$BASE/health" >/dev/null || { echo "ERROR: backend not healthy" >&2; e
 echo "backend up (pid $BACKEND_PID)"
 
 hr
-echo "STEP D: start the Vite dev server"
+echo "STEP D: start the Vite dev server on :${VITE_PORT} (proxying /api → :${PORT})"
 hr
-( cd "$FRONTEND" && exec ./node_modules/.bin/vite --host 127.0.0.1 --port "$VITE_PORT" --strictPort ) >"$VITE_LOG" 2>&1 &
+( cd "$FRONTEND" && TVASHTR_API_PROXY_TARGET="http://127.0.0.1:${PORT}" \
+  exec ./node_modules/.bin/vite --host 127.0.0.1 --port "$VITE_PORT" --strictPort ) >"$VITE_LOG" 2>&1 &
 VITE_PID=$!
 for _ in $(seq 1 60); do
   if ! kill -0 "$VITE_PID" 2>/dev/null; then
