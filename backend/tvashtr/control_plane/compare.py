@@ -537,6 +537,7 @@ def _lane(session, run: Run, extras: dict, live: dict) -> dict:
         "_facts": {
             "status": status,
             "result": result,
+            "approved": approved,
             "rounds": rounds,
             "cost": run_views.spent_usd(run, live),
             "elapsed": elapsed,
@@ -692,8 +693,12 @@ def _rows(fa: dict, fb: dict, tested: tuple | None, cmp: Compare, both: bool) ->
             difference = "same" if abs(y - x) <= near else diff(y - x)
         return _row(key, label, a, b, better, difference)
 
-    rows = [
-        mark(
+    if both and fa["approved"] != fb["approved"]:
+        # Approval first: "Approved" beats "Finished" (never approved) whatever the rounds.
+        better = "a" if fa["approved"] else "b"
+        result = _row("result", "Result", fa["result"], fb["result"], better)
+    else:
+        result = mark(
             "result",
             "Result",
             fa["result"],
@@ -702,7 +707,9 @@ def _rows(fa: dict, fb: dict, tested: tuple | None, cmp: Compare, both: bool) ->
             fb["rounds"],
             lower=True,
             diff=lambda d: f"{_count(abs(d), 'fewer round' if d < 0 else 'more round')}",
-        ),
+        )
+    rows = [
+        result,
         mark(
             "cost",
             "Cost",

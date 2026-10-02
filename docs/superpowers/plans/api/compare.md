@@ -140,6 +140,8 @@ finished → "vB did better on this task" / "vA did better on this task" when on
 compare". `restore` = the better version when it is not the current version, else null.
 
 Built details: the values always show; `better` and `difference` only when both finished (else null / "").
+Result: approval first — an "Approved" side beats a "Finished" one (`better` set, no `difference`); the rounds
+decide only between two sides in the same state.
 `difference` is B against A: rounds "2 fewer rounds" / "1 more round"; cost "−$0.56" (within a cent: "same");
 time "−15m" (within a minute: "same", no mark); tests "+1" / "same". Retries and stalls: fewer is better, no
 difference text. Files changed: never marked ("—" with no checkpoint). The agent-tests row is the agent with the

@@ -826,6 +826,23 @@ def test_the_older_version_doing_better_offers_restore_and_ties_say_so(client):
     assert {r["key"]: r["difference"] for r in tied["rows"]}["cost"] == "same"
 
 
+@pytest.mark.parametrize("approved_side", ["A", "B"])
+def test_an_approved_side_beats_an_unapproved_one_whatever_the_rounds(client, approved_side):
+    """Approval first: "Approved in round 4" beats "Finished in round 2" (a reviewer that never
+    approved); rounds count only between two sides in the same state."""
+    owner = auth_user_id()
+    team = _two_versions(client)
+    cid = _seed_compare(team, owner)
+    for label, version in (("A", 1), ("B", 2)):
+        ok = label == approved_side
+        _side(owner, team, cid, label, version, rounds=4 if ok else 2, approved=ok)
+    row = {r["key"]: r for r in _results(client, cid)["results"]["rows"]}["result"]
+    words = {"A": row["a"], "B": row["b"]}
+    other = "B" if approved_side == "A" else "A"
+    assert (words[approved_side], words[other]) == ("Approved in round 4", "Finished in round 2")
+    assert (row["better"], row["difference"]) == (approved_side.lower(), "")
+
+
 def test_one_side_failed(client):
     owner = auth_user_id()
     team = _two_versions(client)
