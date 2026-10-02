@@ -79,4 +79,4 @@ Body gains `"check_set": "<task set id>"`: after the save commits, a compare of 
 that set starts (`auto_approve` true); never blocking or failing the save (a refusal is returned as
 `"check_started": null` with `"check_error"`). The versions listing gains, per version, `"check": {"compare_id",
 "set": "Indicators", "passed": 5, "total": 5, "against": 7, "against_passed": 4, "cost_delta_usd": -0.70, "status": "running"|"finished",
-"worse": false} | null` and, at the top, `"check_sets": [{"id", "name", "count", "estimate"}]` for the Save-as dialog.
+"worse": false, "ended_at": "…" | null} | null` and, at the top, `"check_sets": [{"id", "name", "count", "estimate"}]` for the Save-as dialog.
