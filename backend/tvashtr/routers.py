@@ -23,6 +23,8 @@ from tvashtr.auth import UserOut, _store_installation, get_current_user
 from tvashtr.config import get_settings
 from tvashtr.control_plane import (
     activity,
+    agent_test_runner,
+    agent_tests,
     desktop_jobs,
     document_views,
     domain_read,
@@ -1043,6 +1045,8 @@ def _enforce_run_ceilings(
             .select_from(Run)
             .where(Run.owner_id == owner_id, Run.created_at >= since)
         ).scalar_one()
+        # M7 (R12): agent-test replays count toward the owner's concurrency cap only.
+        owner_in_flight += agent_test_runner.replays_in_flight(session, owner_id)
 
     owner_in_flight -= replacing_in_flight
     fleet_in_flight -= replacing_in_flight
@@ -3454,6 +3458,8 @@ def get_team_file(
 
 class SaveVersionRequest(BaseModel):
     note: str | None = Field(default=None, max_length=versions.NOTE_LIMIT)
+    # M7 (R6): then run the changed agents' tests on the new version (never blocks the save).
+    run_tests: bool = False
 
 
 @router.get("/api/teams/{team_id}/versions")
@@ -3478,11 +3484,25 @@ def save_team_version(
     me = uuid.UUID(current_user.id)
     with db.session_scope() as session:
         team = _require_library_team(session, team_id, me)
+        offer = agent_tests.nudge(session, versions.pending(session, team, me)[1])
         version = versions.save(session, team, me, note=body.note)
         if version is None:
             top = versions.latest(session, team)
             raise HTTPException(status_code=409, detail=f"Nothing changed since v{top.number}.")
-        return versions.listing(session, team, me)["versions"][0]
+        number = version.number
+    started = []
+    if body.run_tests and offer:
+        for agent in offer["agents"]:
+            try:
+                run = agent_test_runner.start(
+                    me, team_id, agent["node_id"], trigger="save", version=number
+                )
+                started.append({"node_id": agent["node_id"], "run_id": run["id"]})
+            except agent_tests.TestsError:
+                continue  # already running, or its tests were removed: the save still stands
+    with db.session_scope() as session:
+        team = _require_library_team(session, team_id, me)
+        return {**versions.listing(session, team, me)["versions"][0], "tests_started": started}
 
 
 def _version_number(number: str) -> int:
@@ -3667,11 +3687,18 @@ def get_team_graph(
         # Deterministic left-to-right order (PM at x=0 first), matching the run-graph read.
         nodes = sorted(nodes, key=lambda n: (n.position.get("x", 0), str(n.id)))
         last_run_by_origin = _latest_invocation_by_origin(session, [n.id for n in nodes])
+        # M7: each agent's tests ("5 of 6 tests" on its card, the Tests tab count); None ⇒ none.
+        tests = agent_tests.graph_tests(session, [n.id for n in nodes])
         return {
             "team_graph_id": str(graph.id),
             "name": graph.name,  # B-NODES (additive): the toolbar's team name
             "nodes": [
-                {**_node_base_dict(n), "last_run": last_run_by_origin.get(n.id)} for n in nodes
+                {
+                    **_node_base_dict(n),
+                    "last_run": last_run_by_origin.get(n.id),
+                    "tests": tests.get(n.id),
+                }
+                for n in nodes
             ],
             "edges": [_edge_to_dict(e) for e in edges],
         }

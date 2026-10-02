@@ -179,6 +179,9 @@ limit ran out mid-way.
   commits, a test run starts for each changed agent with tests (`trigger: "save"`, on the new version),
   never blocking or failing the save. Response gains `tests_started: [{"node_id", "run_id"}]`.
 
+- `GET /api/spend` — a replay runs on the owner's keys, so its cost counts in the month / week totals
+  and its team's row (an AI check is on Tvashtr's key and never counts).
+
 ## Settings (R7)
 
 `TVASHTR_CHECKS_MODEL` (default `openai/gpt-4.1-mini`) and `TVASHTR_CHECKS_API_KEY` (empty ⇒ AI checks

@@ -774,13 +774,21 @@ def listing(session, team: TeamGraph, viewer: uuid.UUID) -> dict:
         .scalars()
         .all()
     )
+    from tvashtr.control_plane import agent_tests  # M7 (lazy: it reads this module's callers)
+
+    tested = agent_tests.version_rows(session, team)
     return {
         "current": top.number,
         "saved_at": top.created_at.isoformat(),
         "changes": len(rows),
         "next": top.number + 1,
         "total": len(versions),
-        "versions": [_row(v, viewer, runs.get(v.number, 0)) for v in versions],
+        "versions": [
+            {**_row(v, viewer, runs.get(v.number, 0)), "tests": tested.get(v.number)}
+            for v in versions
+        ],
+        # M7 (R6): the changed agents that have tests — Save as vN offers to run them.
+        "tests": agent_tests.nudge(session, rows),
     }
 
 

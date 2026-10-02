@@ -15,7 +15,7 @@ from sqlalchemy import func, select
 
 from tvashtr.config import get_settings
 from tvashtr.db import session_scope
-from tvashtr.models import CostRecord, Run, TeamGraph
+from tvashtr.models import AgentTestRun, CostRecord, Run, TeamGraph
 
 
 class UnknownTimeZoneError(ValueError):
@@ -64,6 +64,32 @@ def owner_spend(owner_id: uuid.UUID, tz_name: str | None = None, *, now=None) ->
             .where(Run.owner_id == owner_id, in_month)
             .group_by(Run.library_team_id, TeamGraph.name)
         ).all()
+        # M7: agent-test replays run on the owner's keys too (their ledger rows have no run).
+        tests_month, tests_week = session.execute(
+            select(
+                func.coalesce(
+                    func.sum(AgentTestRun.cost_usd).filter(AgentTestRun.created_at >= month_start),
+                    0,
+                ),
+                func.coalesce(
+                    func.sum(AgentTestRun.cost_usd).filter(AgentTestRun.created_at >= week_start),
+                    0,
+                ),
+            ).where(AgentTestRun.owner_id == owner_id, AgentTestRun.created_at >= since)
+        ).one()
+        tests_by_team = session.execute(
+            select(AgentTestRun.team_id, TeamGraph.name, func.sum(AgentTestRun.cost_usd))
+            .outerjoin(TeamGraph, TeamGraph.id == AgentTestRun.team_id)
+            .where(AgentTestRun.owner_id == owner_id, AgentTestRun.created_at >= month_start)
+            .group_by(AgentTestRun.team_id, TeamGraph.name)
+        ).all()
+    month_total = float(month_total) + float(tests_month)
+    week_total = float(week_total) + float(tests_week)
+    merged: dict = {}
+    for team_id, name, total in [*per_team, *tests_by_team]:
+        key = (team_id, name)
+        merged[key] = merged.get(key, 0.0) + float(total or 0)
+    per_team = [(team_id, name, total) for (team_id, name), total in merged.items()]
 
     by_team = sorted(
         (

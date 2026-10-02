@@ -83,7 +83,12 @@ def _live_run_ids(candidate_ids: list[str]) -> set[str]:
         rows = session.execute(
             select(Run.id, Run.status).where(Run.id.in_(list(parsed.keys())))
         ).all()
-    return {parsed[row_id] for row_id, status in rows if status in LIVE_STATUSES}
+    live = {parsed[row_id] for row_id, status in rows if status in LIVE_STATUSES}
+    # M7: an agent-test replay's sandbox is named after its result row (no Run row) — spare it
+    # while it runs.
+    from tvashtr.control_plane.agent_test_runner import live_replay_ids
+
+    return live | {parsed[rid] for rid in live_replay_ids(list(parsed.keys()))}
 
 
 def sweep_orphaned_fly_apps() -> int:

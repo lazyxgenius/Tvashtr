@@ -44,6 +44,7 @@ from tvashtr.models import SpikeHelloEvent
 from tvashtr.routers import owns_workflow, spike_workflow_id
 from tvashtr.routers import router as api_router
 from tvashtr.routes import account as revamp_account
+from tvashtr.routes import agent_tests as revamp_agent_tests
 from tvashtr.routes import connectors as revamp_connectors
 from tvashtr.routes import connectors_oauth as revamp_connectors_oauth
 from tvashtr.routes import desktop_app as revamp_desktop_app
@@ -172,6 +173,7 @@ for _revamp_router in (
     revamp_account.router,
     revamp_nodes.router,
     revamp_my_agents.router,
+    revamp_agent_tests.router,
     revamp_documents.router,
     revamp_memory.router,
     revamp_local_repo.router,

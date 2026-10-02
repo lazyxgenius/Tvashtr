@@ -36,7 +36,6 @@ import uuid
 from urllib.parse import urlparse, urlunparse
 
 from itsdangerous import BadData, URLSafeTimedSerializer
-from sqlalchemy import select
 
 from tvashtr.config import get_settings
 from tvashtr.control_plane import connector_oauth, connector_proxy, connectors
@@ -70,12 +69,9 @@ def _owner_for_run(run_id: str) -> uuid.UUID | None:
     """The run owner (mirrors ``team_run._owner_api_key``'s lookup). ``None`` if the run/owner is
     absent — resolved LAZILY, only when a server actually references a ``${NAME}`` secret, so a
     no-secret config never touches the DB (and stays inert for a synthetic run_id)."""
-    try:
-        rid = uuid.UUID(run_id)
-    except (ValueError, AttributeError, TypeError):
-        return None
-    with session_scope() as session:
-        return session.execute(select(Run.owner_id).where(Run.id == rid)).scalar_one_or_none()
+    from tvashtr.control_plane.node_library import owner_for_run  # M7: a replay's owner too
+
+    return owner_for_run(run_id)
 
 
 def _substitute(server: dict, values: dict[str, str]) -> dict:

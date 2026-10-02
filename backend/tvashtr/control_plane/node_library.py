@@ -67,7 +67,17 @@ def owner_for_run(run_id: str) -> uuid.UUID | None:
     if rid is None:
         return None
     with session_scope() as session:
-        return session.execute(select(Run.owner_id).where(Run.id == rid)).scalar_one_or_none()
+        owner = session.execute(select(Run.owner_id).where(Run.id == rid)).scalar_one_or_none()
+        if owner is None:
+            # M7: an agent-test replay runs under its result's id (no Run row): its owner's.
+            from tvashtr.models import AgentTestResult, AgentTestRun
+
+            owner = session.execute(
+                select(AgentTestRun.owner_id)
+                .join(AgentTestResult, AgentTestResult.test_run_id == AgentTestRun.id)
+                .where(AgentTestResult.id == rid)
+            ).scalar_one_or_none()
+        return owner
 
 
 # ---- tool_library: one account's reusable MCP servers

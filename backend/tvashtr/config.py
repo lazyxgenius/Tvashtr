@@ -689,6 +689,24 @@ class Settings(BaseSettings):
         ),
     )
 
+    # --- M7 (R7): AI checks in agent tests run on TVASHTR's key with a small model, never the
+    # owner's. An empty key ⇒ AI checks are "Not available yet" (skipped, not failed). A SECRET, like
+    # the Fly token above: read with ``.get_secret_value()``, never logged or returned.
+    checks_model: str = Field(
+        default="openai/gpt-4.1-mini",
+        validation_alias=AliasChoices("TVASHTR_CHECKS_MODEL", "checks_model"),
+    )
+    checks_api_key: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias=AliasChoices("TVASHTR_CHECKS_API_KEY", "checks_api_key"),
+    )
+    # AI checks per account per calendar month (UTC).
+    checks_monthly_limit: int = Field(
+        default=200,
+        gt=0,
+        validation_alias=AliasChoices("TVASHTR_CHECKS_MONTHLY_LIMIT", "checks_monthly_limit"),
+    )
+
     # --- M-subs-desktop: the owner's Tvashtr Desktop runs subscription nodes ---------------------
     # A connected subscription mirror counts for a Desktop launch only while the owner's Desktop
     # runner has polled within this window (A3 freshness, ~2 min).

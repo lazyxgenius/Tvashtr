@@ -201,6 +201,11 @@ def _run_detail(session, node: AgentNode, run_id: str, owner_id: uuid.UUID) -> d
     connectors = connector_use(session, run.id, inv_ids)
     docs = _run_documents(session, run)
     skills = _skills_given(session, clone.skills, owner_id)
+    from tvashtr.control_plane.agent_tests import blocked_rounds  # M7 (lazy: no import cycle)
+
+    blocked = (
+        blocked_rounds(session, run, invocations) if clone.kind in ("agent", "completion") else {}
+    )
 
     rounds = []
     for inv in invocations:
@@ -230,6 +235,8 @@ def _run_detail(session, node: AgentNode, run_id: str, owner_id: uuid.UUID) -> d
                 },
                 "produced": _produced(inv, clone, run, docs, emits, is_entry, job),
                 "connectors": connectors.get(inv.id),
+                # M7: why "Make this a test" is off for this round (None ⇒ it can be a test).
+                "test_blocked": blocked.get(inv.id),
             }
         )
         if clone.kind == "domain_query":

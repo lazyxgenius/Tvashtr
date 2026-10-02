@@ -16,7 +16,7 @@ import uuid
 from sqlalchemy import select
 
 from tvashtr.db import session_scope
-from tvashtr.models import RunWarning
+from tvashtr.models import Run, RunWarning
 
 
 def record_resolution_warning(run_id: str, source_kind: str, name: str, reason: str) -> None:
@@ -27,6 +27,8 @@ def record_resolution_warning(run_id: str, source_kind: str, name: str, reason: 
     (run_id, source_kind, name, reason). Openhands-free + litellm-free at import."""
     rid = uuid.UUID(run_id)
     with session_scope() as session:
+        if session.get(Run, rid) is None:
+            return  # M7: an agent-test replay has no run to warn on (its result shows the outcome)
         existing = session.execute(
             select(RunWarning.id).where(
                 RunWarning.run_id == rid,
