@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 
 import App from "./App";
+import { ToastProvider } from "./design-system/components";
 import type { ResumeInfo } from "./lib/api/resume";
 
 // M3 — Resume from here on the real <App/> (the control plane stubbed): the callouts open the pick
@@ -215,6 +216,21 @@ describe("App — M3 Resume from here", () => {
     expect(screen.getByRole("region", { name: "Activity" })).toBe(activity);
     expect(document.querySelector("main.cv-main")).toBe(main);
     expect(within(activity).getByRole("button", { name: "Show activity" })).toBeInTheDocument();
+  });
+
+  it("Home's ?resume=1 on a run that can't resume any more says why, then drops it", async () => {
+    getInfo = () =>
+      reply({ ...INFO, available: false, reason: "Picked up again as run #13", points: [] });
+    const opened = vi.fn();
+    render(
+      <ToastProvider>
+        <App teamId="team-1" initialRunId={RUN} resume onResumeOpened={opened} />
+      </ToastProvider>,
+    );
+    const toast = await screen.findByText("Picked up again as run #13");
+    expect(toast.closest("[role=status]")).toHaveClass("ds-toast");
+    await waitFor(() => expect(opened).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("complementary", { name: "Resume run #12" })).toBeNull();
   });
 
   it("Home's ?resume=1 leaves the address alone once the run view has gone", async () => {

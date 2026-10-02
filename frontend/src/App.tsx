@@ -5,6 +5,7 @@ import { RunBlockedBanner } from "./canvas/RunBlockedBanner";
 import { credentialBlock, validityBlock } from "./canvas/runBlocked";
 import { TeamCanvas } from "./canvas/TeamCanvas";
 import "./canvas/chrome.css";
+import { useToast } from "./design-system/components";
 import { type DashView, navigate, type NodeTab } from "./lib/nav";
 import { CancelRunButton } from "./components/CancelRunButton";
 import { RunBanner } from "./components/RunBanner";
@@ -252,6 +253,7 @@ export default function App({
   const resumeFlow = useResume(authoring ? null : runId);
   const openResume = resumeFlow.open;
   const resumeRequested = useRef(routeResume === true);
+  const toast = useToast();
 
   // Load BYOK + subscription coverage while authoring so Run can gate on missing providers.
   useEffect(() => {
@@ -307,17 +309,20 @@ export default function App({
     };
   }, []);
 
-  // Home's Resume (`?resume=1`): open the panel once, then drop it from the address — unless the
-  // person has already left this run view.
+  // Home's Resume (`?resume=1`): open the panel once, or say why Resume isn't offered any more
+  // (e.g. "Picked up again as run #13"); then drop it from the address — unless the person has
+  // already left this run view.
   useEffect(() => {
     if (!resumeRequested.current) return;
     resumeRequested.current = false;
     void openResume("pick")
-      .catch(() => undefined)
+      .catch((e: unknown) => {
+        if (mountedRef.current) toast({ message: e instanceof Error ? e.message : String(e) });
+      })
       .finally(() => {
         if (mountedRef.current) onResumeOpened?.();
       });
-  }, [openResume, onResumeOpened]);
+  }, [openResume, onResumeOpened, toast]);
 
   // Resolve the default open team when none was passed (a standalone mount / the tests): pick the
   // first library team. Team management + selection live on the Dashboard now (Part A); this only
