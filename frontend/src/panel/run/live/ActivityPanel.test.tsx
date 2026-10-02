@@ -371,7 +371,7 @@ describe("ActivityPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Stop run" }));
     const ask = screen.getByRole("alertdialog", { name: "Stop this run?" });
     expect(ask).toHaveTextContent(
-      "Bugfix squad stops now and the run is marked Stopped. Anything already pushed stays on its branch. You can’t resume a stopped run.",
+      "Bugfix squad stops now and the run is marked Stopped. Anything already pushed stays on its branch. You can resume it later from the step it stopped at.",
     );
     expect(a.onStop).not.toHaveBeenCalled();
     fireEvent.click(within(ask).getByRole("button", { name: "Keep running" }));
@@ -618,5 +618,59 @@ describe("ActivityPanel — M3 Resume from here", () => {
     expect(
       screen.getByText("Read the reviewer’s notes from round 1").closest("li"),
     ).not.toHaveClass("lv-line--carried");
+  });
+});
+
+describe("ActivityPanel — R19 resume a stopped run (Prob-Stopped)", () => {
+  const STOPPED: PinnedCallout = {
+    kind: "stopped",
+    node_id: "n-eng",
+    label: "Engineer",
+    title: "You stopped this run at Engineer, round 2",
+    body: "Nothing was shipped.",
+    task_id: null,
+    backup_model: null,
+    gate_kind: null,
+    resume: { invocation_id: 105, label: "Engineer, round 2" },
+    safe: "your approved spec (v2) and the Engineer’s round 1 changes are saved",
+  };
+
+  it("a neutral callout with Safe / Next and one button: Resume from <step> opens the pick", () => {
+    const a = { ...actions(), onResume: vi.fn(() => Promise.resolve()) };
+    render(<ActivityPanel activity={activity({ pinned: STOPPED })} now={NOW} actions={a} />);
+    const callout = screen.getByRole("status");
+    expect(callout).toHaveClass("lv-pin__box", "lv-pin__box--neutral");
+    expect(callout).not.toHaveClass("lv-pin__box--danger");
+    expect(within(callout).getByText("You stopped this run at Engineer, round 2")).toHaveClass(
+      "lv-pin__title",
+    );
+    expect(callout).toHaveTextContent(
+      "Nothing was shipped. Safe: your approved spec (v2) and the Engineer’s round 1 changes are saved. Next: resume from Engineer, round 2. Tvashtr skips the work that is done, so you don’t pay for it again.",
+    );
+    const buttons = within(callout).getAllByRole("button");
+    expect(buttons.map((b) => b.textContent)).toEqual(["Resume from Engineer, round 2"]);
+    fireEvent.click(buttons[0]);
+    expect(a.onResume).toHaveBeenCalledWith("pick");
+    expect(a.onStop).not.toHaveBeenCalled();
+    expect(a.onRetryFromStart).not.toHaveBeenCalled();
+  });
+
+  it("stopped callout without resume: no button (never a dead one), no Safe / Next", () => {
+    const a = { ...actions(), onResume: vi.fn(() => Promise.resolve()) };
+    render(
+      <ActivityPanel
+        activity={activity({
+          pinned: { ...STOPPED, title: "You stopped this run", resume: null, safe: null },
+        })}
+        now={NOW}
+        actions={a}
+      />,
+    );
+    const callout = screen.getByRole("status");
+    expect(callout).toHaveClass("lv-pin__box--neutral");
+    expect(callout).toHaveTextContent("You stopped this run");
+    expect(callout).toHaveTextContent("Nothing was shipped.");
+    expect(callout).not.toHaveTextContent(/Safe:|Next:/);
+    expect(within(callout).queryAllByRole("button")).toHaveLength(0);
   });
 });

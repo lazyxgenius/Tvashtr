@@ -440,7 +440,7 @@ describe("Running now", () => {
     await userEvent.click(within(docs).getByRole("button", { name: "Stop" }));
     const dialog = screen.getByRole("alertdialog", { name: "Stop this run?" });
     expect(dialog).toHaveTextContent(
-      "Docs team stops now and the run is marked Stopped. Anything already pushed stays on its branch. You can’t resume a stopped run.",
+      "Docs team stops now and the run is marked Stopped. Anything already pushed stays on its branch. You can resume it later from the step it stopped at.",
     );
     await userEvent.click(within(dialog).getByRole("button", { name: "Stop run" }));
     expect(await screen.findByText("Run stopped.")).toBeInTheDocument();

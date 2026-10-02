@@ -245,24 +245,31 @@ function Pinned({
       ? ""
       : pin.kind === "retrying"
         ? " lv-pin__box--warn"
-        : " lv-pin__box--danger";
+        : pin.kind === "stopped"
+          ? " lv-pin__box--neutral"
+          : " lv-pin__box--danger";
   return (
     <div className="lv-pin">
       <div className={`lv-pin__box${tone}`} role="status">
         <span className="lv-pin__icon">
-          <StateGlyph
-            state={
-              pin.kind === "gate" ? "needs_you" : pin.kind === "retrying" ? "retrying" : "stalled"
-            }
-          />
+          {pin.kind === "stopped" ? (
+            <Square size={14} strokeWidth={1.6} aria-hidden />
+          ) : (
+            <StateGlyph
+              state={
+                pin.kind === "gate" ? "needs_you" : pin.kind === "retrying" ? "retrying" : "stalled"
+              }
+            />
+          )}
         </span>
         <div className="lv-pin__body">
           <div className="lv-pin__title">{pin.title}</div>
           <div className="lv-pin__text">
             {pin.body}
-            {/* M3: what is saved, and where Resume picks up (Prob-Stalled / Prob-Failed). */}
+            {/* M3: what is saved, and where Resume picks up (Prob-Stalled / Prob-Failed; R19
+                Prob-Stopped words it as Prob-Failed does). */}
             {pin.safe &&
-              (pin.kind === "failed" ? (
+              (pin.kind === "failed" || pin.kind === "stopped" ? (
                 <>
                   {" "}
                   <b>Safe:</b> {pin.safe}.
@@ -270,7 +277,7 @@ function Pinned({
               ) : (
                 ` ${pin.safe[0].toUpperCase()}${pin.safe.slice(1)}.`
               ))}
-            {pin.kind === "failed" && resume && (
+            {(pin.kind === "failed" || pin.kind === "stopped") && resume && (
               <>
                 {" "}
                 <b>Next:</b> resume from {resume.label}. Tvashtr skips the work that is done, so you
@@ -346,6 +353,10 @@ function Pinned({
             {pin.kind === "failed" &&
               resume &&
               resumeButton(`Resume from ${resume.label}`, resume.invocation_id)}
+            {/* R19: a stopped run's one button opens the "Resume run #N" pick, as a stalled run's. */}
+            {pin.kind === "stopped" &&
+              resume &&
+              resumeButton(`Resume from ${resume.label}`, "pick")}
             {pin.kind === "failed" && (
               <Button
                 variant="secondary"
