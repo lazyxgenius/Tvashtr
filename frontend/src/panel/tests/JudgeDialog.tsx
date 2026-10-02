@@ -47,22 +47,41 @@ export function JudgeDialog({
 }) {
   const answers = useLoaded(`judge:${test.id}`, () => listAnswers(teamId, nodeId, test.id));
   const [shown, setShown] = useState(PAGE);
-  const [labels, setLabels] = useState<ReadonlyMap<string, boolean>>(() => new Map());
-  const [result, setResult] = useState<JudgeResult | null>(null);
+  // The labels saved with the test, and the agreement they gave, are where it opens.
+  const saved = test.checks[check]?.judge ?? null;
+  const [labels, setLabels] = useState<ReadonlyMap<string, boolean>>(
+    () => new Map((saved?.labels ?? []).map((r) => [r.answer.trim(), r.you])),
+  );
+  const [result, setResult] = useState<JudgeResult | null>(() =>
+    saved && saved.total > 0
+      ? {
+          rows: saved.labels ?? [],
+          agree: saved.agree,
+          total: saved.total,
+          trusted: saved.trusted,
+          ai: null,
+        }
+      : null,
+  );
+  // Only a label the person changes here runs the check again.
+  const [touched, setTouched] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const seq = useRef(0);
 
-  // The server keys answers by their trimmed text.
+  // The server keys answers by their trimmed text. Saved labels on answers no longer listed come last.
   const top = first?.trim() || null;
-  const texts = [
+  const listed = [
     ...(top ? [top] : []),
     ...(answers.value ?? []).map((a) => a.text.trim()).filter((t) => t && t !== top),
   ];
+  const texts = [...listed, ...[...labels.keys()].filter((t) => !listed.includes(t))];
   const visible = texts.slice(0, shown);
-  const judged = new Map((result?.rows ?? []).map((r) => [r.answer, r]));
+  // Test-Judge: "3 more labelled" — labelled answers below the ones shown.
+  const moreLabelled = texts.slice(shown).filter((t) => labels.has(t)).length;
+  const judged = new Map((result?.rows ?? []).map((r) => [r.answer.trim(), r]));
 
   useEffect(() => {
-    if (labels.size === 0) return;
+    if (!touched || labels.size === 0) return;
     const mine = ++seq.current;
     const t = window.setTimeout(() => {
       judgeCheck(teamId, nodeId, test.id, {
@@ -80,12 +99,13 @@ export function JudgeDialog({
       );
     }, JUDGE_DEBOUNCE_MS);
     return () => window.clearTimeout(t);
-  }, [labels, teamId, nodeId, test.id, check]);
+  }, [touched, labels, teamId, nodeId, test.id, check]);
 
   const label = (answer: string, you: boolean) => {
     const next = new Map(labels);
     if (next.get(answer) === you) next.delete(answer);
     else next.set(answer, you);
+    setTouched(true);
     setLabels(next);
   };
   const misses = (result?.rows ?? []).filter((r) => r.ai !== null && r.ai !== r.you);
@@ -179,6 +199,7 @@ export function JudgeDialog({
               );
             })}
           </ul>
+          {moreLabelled > 0 && <span className="tt-judge__more">{moreLabelled} more labelled</span>}
         </div>
       )}
       {result && result.total > 0 && !error && (

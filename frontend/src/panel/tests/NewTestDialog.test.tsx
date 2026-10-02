@@ -40,6 +40,8 @@ describe("NewTestDialog", () => {
     expect(within(gets).getByText("Spec v2")).toBeInTheDocument();
     expect(within(gets).getByText("1 page")).toBeInTheDocument();
     expect(within(gets).getByText("core/indicators.py")).toBeInTheDocument();
+    // Whose change it was isn't known here: "The change".
+    expect(within(gets).getByText("The change")).toBeInTheDocument();
     expect(within(gets).getByText("3 failed, 38 passed")).toBeInTheDocument();
     expect(within(dialog).getByLabelText<HTMLInputElement>("Must say").value).toBe(
       "Changes requested",
@@ -121,6 +123,14 @@ describe("NewTestDialog", () => {
     expect(dialog).toHaveTextContent(
       "AI checks aren’t available yet, so they’re skipped, not failed. The other checks still run.",
     );
+  });
+
+  it("the gets row names whose change it was (Test-New: The Engineer’s change)", () => {
+    const { dialog } = renderDialog({
+      ...FROM_ROUND,
+      gets: { ...FROM_ROUND.gets, change_by: "Engineer" },
+    });
+    expect(within(dialog).getByText("The Engineer’s change")).toBeInTheDocument();
   });
 
   it("no estimate: no cost note; no run number or answer: a shorter line", () => {

@@ -43,7 +43,9 @@ export function GetsList({
           <span className="tt-gets__icon" aria-hidden>
             <FileCode size={14} strokeWidth={1.6} />
           </span>
-          <span className="tt-gets__label">The change</span>
+          <span className="tt-gets__label">
+            {gets.change_by ? `The ${gets.change_by}’s change` : "The change"}
+          </span>
           <span className="tt-gets__value">
             {gets.change.map((c, i) => (
               <Fragment key={c.path}>
