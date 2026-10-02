@@ -23,6 +23,7 @@ from tvashtr.db import session_scope
 from tvashtr.models import (
     AgentInvocation,
     AgentNode,
+    Compare,
     CostRecord,
     Edge,
     HumanTask,
@@ -372,6 +373,14 @@ def run_extras(session, runs: list[Run], *, include_progress: bool = False) -> d
             ).all()
         )
 
+    # M8: a run of a compare (its pair is a ``compares`` row — an A/B pair's is not).
+    pair_ids = {r.pair_id for r in runs if r.pair_id}
+    compares = (
+        set(session.execute(select(Compare.id).where(Compare.id.in_(pair_ids))).scalars())
+        if pair_ids
+        else set()
+    )
+
     out: dict = {}
     for run in runs:
         rid = str(run.id)
@@ -424,6 +433,13 @@ def run_extras(session, runs: list[Run], *, include_progress: bool = False) -> d
             "live": worst_step.get(rid),
             "number": numbers.get(run.id),
             "resumed_from": (seeds.get(run.id) or {}).get("from_run"),
+            "compare": {
+                "id": str(run.pair_id),
+                "label": run.pair_label,
+                "version": run.team_version_number,
+            }
+            if run.pair_id in compares
+            else None,
         }
         if include_progress:
             carried_nodes = {row["node_id"] for row in (seeds.get(run.id) or {}).get("carried", [])}

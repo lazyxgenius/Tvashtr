@@ -135,6 +135,7 @@ from tvashtr.engines.sandbox_cache import close_run_sandboxes, session_key_for
 from tvashtr.metering import record_agent_cost, running_cost
 from tvashtr.models import (
     AgentNode,
+    Compare,
     DesktopNodeJob,
     Domain,
     Edge,
@@ -491,6 +492,14 @@ def load_graph_step(run_id: str) -> dict:
         base_ref = run.base_ref
         subpath = run.subpath
         resumed = run.resumed_from_run_id is not None
+        # M8 (R5): a compare run (its pair is a ``compares`` row; an A/B pair's is not).
+        auto_approve = (
+            session.execute(
+                select(Compare.auto_approve).where(Compare.id == run.pair_id)
+            ).scalar_one_or_none()
+            if run.pair_id is not None
+            else None
+        )
         nodes = (
             session.execute(select(AgentNode).where(AgentNode.team_graph_id == run.team_graph_id))
             .scalars()
@@ -554,6 +563,11 @@ def load_graph_step(run_id: str) -> dict:
         # dict without them and its step sequence never changes.
         "checkpoints": True,
         "resumed": resumed,
+        # M8 (R5): a compare run never ships (the walk reads this) and approves its own gates
+        # unless ``auto_approve`` is off (``gates.gate_auto_resolution_step`` reads the compare).
+        # Recorded here like ``checkpoints``: a workflow recorded before M8 replays a dict without
+        # it, so its walk still ships.
+        "compare": {"auto_approve": auto_approve} if auto_approve is not None else None,
     }
 
 
@@ -3139,6 +3153,20 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
             # ``rejected``. Either way the run is finalized here and the walk ends.
             open_invocation_step(run_id, current, 1)
             cfg = node["config"] or {}
+            if cfg.get("terminal_kind") == "ship" and graph.get("compare"):
+                # M8 (R5): a compare run never ships — no commit, no push, no pull request, no
+                # bundle — and teaches no memory (it is a trial of a version, not the team's
+                # work). It ends completed; its Ship step closes with the outcome ``compare``.
+                final = finalize_run_step(run_id, status="completed")
+                close_invocation_step(run_id, current, 1, "done", "compare")
+                DBOS.logger.info(f"run_team compare run done (no ship) run_id={run_id}")
+                return {
+                    "run_id": run_id,
+                    "status": "completed",
+                    "document_id": pm_document_id,
+                    "pr_url": None,
+                    "cost_total": final["cost_total_usd"],
+                }
             if cfg.get("terminal_kind") == "ship":
                 ship = ship_step(run_id, workspace)
                 # M-h1b: for a HOSTED-GitHub run push the ship branch + open the PR BEFORE

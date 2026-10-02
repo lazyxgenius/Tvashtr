@@ -725,7 +725,10 @@ def build(
             {"pr_url": run.pr_url, "pr_number": pr_number, "branch": run.ship_branch},
         )
     if ended:
-        if run.status == "completed":
+        if run.status == "completed" and any(i.outcome == "compare" for i in invs):
+            # M8 (R5): a compare run's Ship step closed without shipping.
+            text, tone = "Finished · no pull request in a compare", "ok"
+        elif run.status == "completed":
             text, tone = f"Done in {_duration(elapsed_s)} · ${cost:.2f}", "ok"
         elif run.status == "failed":
             text, tone = f"Failed after {_duration(elapsed_s)} · ${cost:.2f}", "danger"

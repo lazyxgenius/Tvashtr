@@ -675,6 +675,26 @@ ROUTES: dict[str, tuple[str, object]] = {
         "list",
         ["test_my_agents::test_recent_tasks_are_one_per_task_newest_first_and_only_yours"],
     ),
+    "GET /api/teams/{team_id}/compare": (
+        "id",
+        ["test_compare::test_compare_routes_are_owner_scoped"],
+    ),
+    "GET /api/teams/{team_id}/compare/changes": (
+        "id",
+        ["test_compare::test_compare_routes_are_owner_scoped"],
+    ),
+    "POST /api/teams/{team_id}/compare": (
+        "id",
+        ["test_compare::test_compare_routes_are_owner_scoped"],
+    ),
+    "GET /api/compares/{compare_id}": (
+        "id",
+        ["test_compare::test_compare_routes_are_owner_scoped"],
+    ),
+    "POST /api/compares/{compare_id}/stop": (
+        "id",
+        ["test_compare::test_compare_routes_are_owner_scoped"],
+    ),
     "GET /api/teams/{team_id}/versions": (
         "id",
         ["test_team_versions::test_versions_are_owner_scoped"],

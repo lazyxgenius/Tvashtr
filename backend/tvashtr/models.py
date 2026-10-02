@@ -488,6 +488,50 @@ class TeamVersion(Base):
     )
 
 
+class Compare(Base):
+    """M8 (migration ``0049``, ruling R5): two versions of a library team run on one task at the
+    same time. Its id is the two runs' ``pair_id`` (``pair_label`` 'A' runs ``version_a``, 'B'
+    ``version_b``). ``status``: waiting (no room for two runs yet; no run rows) | running |
+    finished | stopped. ``repo``/``base_ref``: the GitHub target both sides run on (NULL ⇒
+    greenfield). One waiting or running compare per team (``uq_compares_team_active``)."""
+
+    __tablename__ = "compares"
+    __table_args__ = (
+        Index("ix_compares_team_created", "team_graph_id", text("created_at DESC")),
+        Index(
+            "uq_compares_team_active",
+            "team_graph_id",
+            unique=True,
+            postgresql_where=text("status IN ('waiting', 'running')"),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    owner_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    team_graph_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("team_graphs.id", ondelete="CASCADE"), nullable=False
+    )
+    version_a: Mapped[int] = mapped_column(Integer, nullable=False)
+    version_b: Mapped[int] = mapped_column(Integer, nullable=False)
+    task: Mapped[str] = mapped_column(Text, nullable=False)
+    auto_approve: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("true"), default=True
+    )
+    repo: Mapped[str | None] = mapped_column(Text, nullable=True)
+    base_ref: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    stop_requested: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=false(), default=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class SavedAgent(Base):
     """M6 (migration ``0047``, ruling R4): a saved agent ("my agent") — one agent's setup saved
     from its panel to use in any of the owner's teams. ``name`` is unique per owner ignoring case.
