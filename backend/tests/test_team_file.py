@@ -678,10 +678,9 @@ def test_a_fix_lands_on_the_agent_that_needs_it_not_every_agent_with_its_name(cl
 
 def test_a_model_your_desktop_plan_covers_is_set_up_here(client, monkeypatch):
     c, owner = fresh_account("tf-plan")
-    from tvashtr.control_plane import teams
-
+    # team_file's own reference: test_review_cap re-imports `teams` into a new module object.
     monkeypatch.setattr(
-        teams,
+        team_file.teams,
         "_readiness_inputs",
         lambda session, owner_id: {"held": set(), "connected": {"claude"}, "fresh": {"claude"}},
     )
