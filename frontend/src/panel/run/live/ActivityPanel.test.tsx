@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ActivityLine, PinnedCallout, RunActivity } from "../../../lib/api/activity";
 import { ApiDetailError } from "../../../lib/api/runs";
@@ -672,5 +672,77 @@ describe("ActivityPanel — R19 resume a stopped run (Prob-Stopped)", () => {
     expect(callout).toHaveTextContent("Nothing was shipped.");
     expect(callout).not.toHaveTextContent(/Safe:|Next:/);
     expect(within(callout).queryAllByRole("button")).toHaveLength(0);
+  });
+});
+
+describe("ActivityPanel — M10 a run started from another (Next-Started)", () => {
+  const STARTED_FROM: ActivityLine[] = [
+    line("run:started-from", {
+      node_id: null,
+      label: "Run",
+      kind: "started",
+      text: "Started from run #12 · brought spec v3, 2 decisions and 3 memories",
+      came_along: true,
+      at: T(11, 10, 2),
+    }),
+    line("run:started", {
+      node_id: null,
+      label: "Run",
+      kind: "started",
+      text: "Working on branch tvashtr/run-14, from pull request #42",
+      at: T(11, 10, 3),
+    }),
+    line("pm:read-spec", {
+      node_id: "n-pm",
+      label: "Product manager",
+      kind: "read",
+      text: "Read the spec from run #12 (v3)",
+      at: T(11, 10, 5),
+    }),
+  ];
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("its first line links See what came along, which opens what run #12 brought", async () => {
+    const fetchMock = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            from: { run_id: "r-12", number: 12 },
+            spec: { version: 3 },
+            decisions: [{ title: "Spec approved", text: null }],
+            memories: [{ id: "m1", content: "Register every indicator on INDICATORS" }],
+            summaries: [],
+          }),
+        ),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <ActivityPanel
+        activity={activity({ run_id: "r-14", lines: STARTED_FROM, total: 3 })}
+        now={NOW}
+        actions={actions()}
+      />,
+    );
+    const first = screen.getByText(
+      "Started from run #12 · brought spec v3, 2 decisions and 3 memories",
+    );
+    expect(first).toHaveClass("lv-now-line");
+    expect(first.closest("li")).toHaveClass("lv-line--came");
+    // Only that line links it; the run's own start line is as before.
+    expect(screen.getAllByRole("button", { name: "See what came along" })).toHaveLength(1);
+    const own = screen.getByText("Working on branch tvashtr/run-14, from pull request #42");
+    expect(own).not.toHaveClass("lv-now-line");
+    expect(own.closest("li")).not.toHaveClass("lv-line--came");
+    fireEvent.click(
+      within(first.closest("li") as HTMLElement).getByRole("button", {
+        name: "See what came along",
+      }),
+    );
+    const pop = await screen.findByRole("dialog", { name: "What came along from run #12" });
+    expect(fetchMock).toHaveBeenCalledWith("/api/runs/r-14/carry", expect.anything());
+    expect(pop).toHaveTextContent("Spec v3 · became this run’s starting spec");
+    expect(pop).toHaveTextContent("Register every indicator on INDICATORS");
   });
 });

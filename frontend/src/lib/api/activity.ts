@@ -101,6 +101,8 @@ export interface ActivityLine {
   refs: ActivityRefs;
   /** M3: the run a carried line came from (null or absent: this run's own line). */
   from_run?: { run_id: string; number: number | null } | null;
+  /** M10: the "Started from run #12 · brought …" line — it links "See what came along". */
+  came_along?: boolean;
 }
 
 /** M3: the run this one resumed (docs/superpowers/plans/api/resume.md). */

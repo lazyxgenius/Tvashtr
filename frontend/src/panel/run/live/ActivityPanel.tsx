@@ -7,6 +7,7 @@ import { StopRunDialog } from "../../../components/StopRunDialog";
 import { Button, IconButton } from "../../../design-system/components";
 import type { ActivityLine, PinnedCallout, RunActivity } from "../../../lib/api/activity";
 import { clock, currentLineIds, duration } from "./liveFormat";
+import { CameAlong } from "./StartNext";
 import { StateGlyph } from "./StateGlyph";
 
 /** What the panel's buttons do — the run view wires each to an existing action. */
@@ -56,7 +57,7 @@ const since = (iso: string, now: number) =>
 /** A line's small square icon, in its tone (M3: a carried step's arrow, the Resumed line's). */
 export function LineIcon({ line }: { line: ActivityLine }) {
   const state =
-    line.kind === "carried"
+    line.kind === "carried" || line.came_along
       ? "carried_over"
       : line.kind === "resumed"
         ? "retrying"
@@ -102,11 +103,13 @@ function Line({
   current,
   now,
   actions,
+  runId,
 }: {
   line: ActivityLine;
   current: boolean;
   now: number;
   actions: ActivityActions;
+  runId: string;
 }) {
   const [open, setOpen] = useState(false);
   const r = line.refs;
@@ -118,6 +121,9 @@ function Line({
     // M3: a step carried from the run this one resumed (Prob-Resumed).
     extra =
       line.from_run.number != null ? `from run #${line.from_run.number}` : "from an earlier run";
+  } else if (line.came_along) {
+    // M10: "Started from run #12 · brought …" (Next-Started).
+    extra = <CameAlong runId={runId} />;
   } else if (line.kind === "edited" && r.file) {
     if (line.node_id) {
       extra = (
@@ -188,11 +194,15 @@ function Line({
             .filter(Boolean)
             .join("\n");
   return (
-    <li className={`lv-line${line.from_run ? " lv-line--carried" : ""}`}>
+    <li
+      className={`lv-line${line.from_run ? " lv-line--carried" : ""}${line.came_along ? " lv-line--came" : ""}`}
+    >
       <span className="lv-line__time">{clock(line.at)}</span>
       <LineIcon line={line} />
       <span className="lv-line__who">{line.label}</span>
-      <span className={`lv-line__what${current || line.kind === "resumed" ? " lv-now-line" : ""}`}>
+      <span
+        className={`lv-line__what${current || line.kind === "resumed" || line.came_along ? " lv-now-line" : ""}`}
+      >
         <LineWhat line={line} />
       </span>
       <span className="lv-line__extra">{extra}</span>
@@ -526,7 +536,14 @@ export function ActivityPanel({
             }}
           >
             {shown.map((l) => (
-              <Line key={l.id} line={l} current={current.has(l.id)} now={now} actions={actions} />
+              <Line
+                key={l.id}
+                line={l}
+                current={current.has(l.id)}
+                now={now}
+                actions={actions}
+                runId={activity.run_id}
+              />
             ))}
           </ol>
         </>
