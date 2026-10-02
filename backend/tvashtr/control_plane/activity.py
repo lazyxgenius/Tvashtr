@@ -894,10 +894,24 @@ def build(
             + ("" if run.pr_url else " Nothing was shipped."),
             "task_id": None,
         }
+    elif run.status == "cancelled":
+        # MA ruling R19: a stopped run offers Resume from the step it stopped at (the title gains
+        # that step once ``run_activity`` knows it). It never joins Needs you: you stopped it.
+        at = next((a for a in agents if a["live_state"] == "stopped"), None)
+        pinned = {
+            "kind": "stopped",
+            "node_id": at["node_id"] if at else None,
+            "label": at["label"] if at else "Run",
+            "title": "You stopped this run",
+            "body": "" if run.pr_url else "Nothing was shipped.",
+            "task_id": None,
+        }
     if pinned is not None:
         pinned.setdefault("backup_model", None)
         pinned.setdefault("gate_kind", None)
-        pinned.setdefault("resume", None)  # M3: filled by ``run_activity`` (failed / stalled)
+        pinned.setdefault(
+            "resume", None
+        )  # M3: filled by ``run_activity`` (failed / stalled / stopped)
         pinned.setdefault("safe", None)
 
     summary = None
@@ -1061,8 +1075,10 @@ def run_activity(session, run: Run, after: str | None = None, *, resume_info: bo
     )
     all_lines = reply.pop("_all_lines")
     pinned = reply["pinned"]
-    if resume_info and pinned is not None and pinned["kind"] in ("failed", "stalled"):
+    if resume_info and pinned is not None and pinned["kind"] in ("failed", "stalled", "stopped"):
         points = resume.points(session, run, all_lines)
         pinned["resume"] = resume.resume_hint_from(points)
         pinned["safe"] = resume.safe_text(points) if pinned["resume"] else None
+        if pinned["kind"] == "stopped" and pinned["resume"]:
+            pinned["title"] = f"You stopped this run at {pinned['resume']['label']}"
     return reply
