@@ -40,11 +40,13 @@ not say whose value is a verdict ("Approved", "Changes requested") checks the ve
     "source": {"kind": "round", "run_id": "…", "run_number": 12, "iteration": 1} | {"kind": "file", "row": 7},
     "checks": [{"kind": "must_say", "value": "Changes requested", "from_round": true},
                {"kind": "ai", "value": "Asks for RSI to be registered on INDICATORS",
-                "judge": {"agree": 9, "total": 10, "trusted": true} | null}],
+                "judge": {"agree": 9, "total": 10, "trusted": true,
+                          "labels": [{"answer": "…", "you": true, "ai": true, "reason": "…"}]} | null}],
     "gets": {                                             // "What the Reviewer gets" (the New dialog rows)
       "task": "Add an RSI indicator",
       "documents": [{"name": "Spec", "version_no": 2, "pages": 1, "is_shared_spec": true}],
       "change": [{"path": "core/indicators.py", "added": 48, "removed": 3}],   // [] = none
+      "change_by": "Engineer" | null,                     // whose change it was ("The Engineer’s change")
       "test_output": "3 failed, 38 passed" | null,
       "feedback": true                                    // it got a reviewer's feedback (round 2+)
     },

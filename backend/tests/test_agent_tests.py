@@ -142,7 +142,8 @@ def _run_with_rounds(c, owner, team, tmp_path, *, checkpointed=True) -> dict:
         _cp(run_id, ids["pm"], pm, 1, ws)
     (Path(ws) / "core").mkdir()
     (Path(ws) / "core" / "rsi.py").write_text("def rsi(prices):\n    return 50\n")
-    ids["eng1"] = _inv(run_id, eng, 1, outcome="built", manifest=read)
+    brief = "Built the feature — changed 1 file(s): core/rsi.py"  # team_run._worker_brief
+    ids["eng1"] = _inv(run_id, eng, 1, outcome="built", detail=brief, manifest=read)
     if checkpointed:
         _cp(run_id, ids["eng1"], eng, 1, ws)
     ids["rev1"] = _inv(
@@ -169,7 +170,7 @@ def _run_with_rounds(c, owner, team, tmp_path, *, checkpointed=True) -> dict:
     if checkpointed:
         _cp(run_id, ids["rev1"], rev, 1, ws, feedback="rsi isn't registered on INDICATORS")
     (Path(ws) / "core" / "rsi.py").write_text("def rsi(prices):\n    return 51\n")
-    ids["eng2"] = _inv(run_id, eng, 2, outcome="built", manifest=read)
+    ids["eng2"] = _inv(run_id, eng, 2, outcome="built", detail=brief, manifest=read)
     if checkpointed:
         _cp(run_id, ids["eng2"], eng, 2, ws)
     ids["rev2"] = _inv(run_id, rev, 2, outcome="approved", manifest=read)
@@ -342,6 +343,7 @@ def test_the_new_test_dialog_shows_what_the_round_got(tmp_path):
         "change": [{"path": "core/rsi.py", "added": 2, "removed": 0}],
         "test_output": "3 failed, 38 passed",
         "feedback": False,
+        "change_by": "Engineer",
     }
     assert draft["checks"] == [SAY]
     assert draft["ai"] == {"available": False, "left": 200, "limit": 200}
@@ -751,7 +753,14 @@ def test_check_the_ai_check_is_trusted_at_eight_of_ten(tmp_path, monkeypatch):
     again = c.post(url, json={"check": 1, "labels": labels}).json()
     assert again["agree"] == 9 and len(calls) == 10  # judged answers aren't checked twice
     listed = _tests(c, team, rev["id"])["tests"][0]["checks"][1]
-    assert listed["judge"] == {"agree": 9, "total": 10, "trusted": True}
+    assert {k: listed["judge"][k] for k in ("agree", "total", "trusted")} == {
+        "agree": 9,
+        "total": 10,
+        "trusted": True,
+    }
+    assert [(row["answer"], row["you"], row["ai"]) for row in listed["judge"]["labels"]] == [
+        (f"answer {i}", i != 9, True) for i in range(10)
+    ]
     not_ai = c.post(url, json={"check": 0, "labels": labels})
     assert not_ai.status_code == 422
 

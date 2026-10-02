@@ -139,8 +139,11 @@ test("agent tests: make a test from a round, run both, see pass and fail", async
     }),
   );
 
-  // Run all 2, and wait for the replays (real model calls on the owner's key).
+  // Run all 2, and wait for the replays (real model calls on the owner's key). The second test
+  // was made outside this page: load it afresh.
   drawer = await drawerOn(page, team, rev, "tests");
+  await page.reload();
+  drawer = page.getByRole("complementary", { name: "Reviewer settings" });
   await expect(drawer.getByText("2 tests")).toBeVisible({ timeout: 30_000 });
   await shot(drawer, "tests-list");
   await drawer.getByRole("button", { name: "Run all 2" }).click();

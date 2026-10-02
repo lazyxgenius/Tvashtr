@@ -465,6 +465,10 @@ def _round(session, owner_id: uuid.UUID, node: AgentNode, invocation_id) -> dict
         ],
         "test_output": _test_output(session, run, [i for i in (inv.id, prev_inv) if i]),
         "answered": _answered(inv, emits),
+        # Whose change it was ("The Engineer’s change"): the last step before it that edited files.
+        "change_by": next((r["label"] for r in reversed(rows[:k]) if r.get("files")), None)
+        if diff
+        else None,
     }
     return {
         "run": run,
@@ -491,6 +495,7 @@ def _gets(inputs: dict) -> dict:
         "change": list(inputs.get("change") or []),
         "test_output": inputs.get("test_output"),
         "feedback": bool(inputs.get("feedback")),
+        "change_by": inputs.get("change_by"),
     }
 
 
@@ -753,7 +758,9 @@ def _test_view(test: AgentTest) -> dict:
             item["from_round"] = True
         if c["kind"] == "ai":
             judge = c.get("judge")
-            item["judge"] = {k: judge[k] for k in ("agree", "total", "trusted")} if judge else None
+            # The labels come back too: Check the AI check reopens with them ("3 more labelled").
+            keys = ("agree", "total", "trusted", "labels")
+            item["judge"] = {k: judge.get(k) for k in keys} if judge else None
         checks.append(item)
     return {
         "id": str(test.id),
