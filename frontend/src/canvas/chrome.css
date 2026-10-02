@@ -828,7 +828,10 @@
   align-items: flex-start;
   gap: 10px;
   padding: 10px 12px;
-  border-bottom: 1px solid var(--line-200);
+}
+/* Ver-RestoreDraft: a line between the items, none under the last. */
+.cv-vlist li + li {
+  border-top: 1px solid var(--line-200);
 }
 .cv-vlist__icon {
   flex: none;

@@ -1,8 +1,8 @@
 # M5 — Team versions: parity record, branch feat/m05-fe (from feat/m05-versions b0acf59), 2026-10-02.
 # Design: the Claude Design "Tvashtr Team Setup" canvas export (page "versions"), shot with shoot-design.mjs at 1440x900:
-#   Ver-History, Ver-Draft, Ver-Changes, Ver-ChangesFields, Ver-Restore, Ver-RunTag, Ver-AgentHistory, Ver-AgentCompare,
-#   Ver-RunBar, Ver-HomeRuns — 10 design shots, 10 fonts-ok.
-# App: scripts/design-parity/scenarios/versions.mjs (22 board shots + 2 kept shots, website + Desktop, runs-live.mjs's
+#   Ver-History, Ver-Draft, Ver-Changes, Ver-ChangesFields, Ver-Restore, Ver-RestoreDraft, Ver-RunTag, Ver-AgentHistory,
+#   Ver-AgentCompare, Ver-RunBar, Ver-HomeRuns — 11 design shots, 11 fonts-ok.
+# App: scripts/design-parity/scenarios/versions.mjs (24 board shots + 2 kept shots, website + Desktop, runs-live.mjs's
 #   `pair` convention) answering the contract's shapes (docs/superpowers/plans/api/versions.md): the boards' canvas
 #   (Product manager → Spec approval → Engineer ⇄ Reviewer, up to 3 rounds → Ship); `GET /api/teams/t-ind/versions` is
 #   v7 … v1 as Ver-History lists them (v7 2m ago "Reviewer: stricter about the INDICATORS registry" 1 run, v6 yesterday
@@ -10,12 +10,15 @@
 #   file" no runs, v2, v1; `changes` 0, or 2 for Ver-Draft); `/versions/7` the Reviewer's instructions diff with `same`
 #   models / routes / gates / budget and run #12 Done; `/versions/6` (Ver-ChangesFields) the Spec approval gate added,
 #   three route rows, the Engineer's Model (gpt-4.1-mini → claude-sonnet-4) and Skills, `same` budget, run #11 Failed;
-#   `/versions/6/restore` makes v8 from v7; `/runs` the six runs of Ver-RunTag (#12 … #7 with their versions, durations,
+#   `/versions/6/restore` makes v8 from v7 (Ver-RestoreDraft, with the chip's 2 changes: `draft_saved_as` 8, makes v9, five
+#   rows — the Reviewer's instructions, the Engineer's Model back to gpt-4.1-mini, his Skills, the Spec approval gate
+#   added back, one route); `/runs` the six runs of Ver-RunTag (#12 … #7 with their versions, durations,
 #   spend, pull requests, "resumed as #13", a stopped run); the Reviewer's `/instruction-history` (v7 Now, v6, v4 the
 #   built-in first text) over the boards' Reviewer instructions; Ver-RunBar is Live-Done's run #12 (runs-fixtures) with
 #   `team_version_number` 7; Ver-HomeRuns is home-fixtures' Recent runs with versions 7, 3, 5, 2, 6.
 # States are reached through the UI: the header chip opens History (Ver-History, Ver-Draft); its Runs tab (Ver-RunTag);
-#   What changed on v7 / v6 (Ver-Changes, Ver-ChangesFields); Restore on v6 (Ver-Restore); the Reviewer's drawer
+#   What changed on v7 / v6 (Ver-Changes, Ver-ChangesFields); Restore on v6 (Ver-Restore, and with the chip's changes
+#   Ver-RestoreDraft); the Reviewer's drawer
 #   (`?node=n-rev`) › Instructions › History (Ver-AgentHistory), then Compare on v6 (Ver-AgentCompare); the run view of
 #   run #12 (Ver-RunBar); Home (Ver-HomeRuns). The pointer is moved off the controls before each shot (no hover states
 #   are drawn).
@@ -30,7 +33,8 @@
 #   select, the intro 12.5px, each run's "run #12" 12px code, its badge, the blue v7 tag 11px, the task 13px, the meta line
 #   12px), What changed (title 22px, sub 13px, each section's 13.5/600 name › 13.5px field with its 10px pill, the 12px
 #   code diff, "Nothing else changed: …" 13px, RUNS ON V7 11.5/600 + 13px + the badge, the footer 12.5px, Restore v6
-#   secondary md, Close primary md), Restore (title 22px, sub 13px, WHAT CHANGES 11.5/600, the row 13/500 + 12.5px, the
+#   secondary md, Close primary md), Restore / Restore with changes not saved yet (title 22px, sub 13px, WHAT CHANGES 11.5/600, each row
+#   13/500, the last row's count 12.5px, the
 #   callout 14/600 + 13px, Cancel ghost md, Restore as v8 primary md), the drawer's History tint sm between Templates and
 #   Open full editor, INSTRUCTION HISTORY 11.5/600 + "3 versions" 12px, each entry's v7 12.5/600 code, Now, the 11.5px
 #   time, the 12.5px +/− lines and "First text, from the built-in Reviewer", Use this text ghost sm, Compare 12/500, the
@@ -82,10 +86,11 @@
 #   this run', 'Start the next run from this' (M10), the cards' run chips (the app's run view, m2.txt W2/W3); Home's
 #   'Engines 2 to fix' / 'Toolkit 1 missing' nav badges and the team card's letter tile (the existing Home); the web renders
 #   of the Desktop boards have no title strip or 'Tvashtr Desktop' chip.
-# note (copy) Restore's sub says "Your changes are saved as v8 first." before the drawn sentence when the preview has
-#   `draft_saved_as` (then it makes v9); the drawn sentence is otherwise as is. Restore's WHAT CHANGES lists the
-#   instructions rows as drawn ("<Agent> › Instructions go back to the v6 text"); its other rows are not drawn yet, so it
-#   lists only those (the count line counts every change).
+# note (Ver-RestoreDraft, added for the two open points) with `draft_saved_as` the sub is the board's "Your changes are
+#   saved as v8 first. Restoring makes a new version, v9, that matches v6. v7 and v8 stay in History, …"; WHAT CHANGES
+#   lists every change row (the working copy → vN), every route row in one "Routes go back to how they were in v6", and
+#   the count line ("5 changes. Everything else is already the same.") is on the last item, as both Restore boards draw
+#   it; a line between the items and none under the last (Ver-RestoreDraft's list).
 # note (layout) History docks on the canvas's right at 420px (≤1280px it floats, as Team file) and never beside Team file
 #   or the agent drawer; What changed / Compare are 720px, 96px from the top; Restore 560px, centred (the Resume confirm's
 #   shell). The toolbar keeps its Documents toggle and spend (the boards leave them out; the app governs).
@@ -99,6 +104,8 @@ Ver-ChangesFields web: matched 93/106 design items · 3 with size/type drift · 
 Ver-ChangesFields desktop: matched 95/106 design items · 3 with size/type drift · 8 only moved · 11 not found in app — covered: W7×3
 Ver-Restore web: matched 76/90 design items · 0 with size/type drift · 10 only moved · 14 not found in app
 Ver-Restore desktop: matched 78/90 design items · 0 with size/type drift · 10 only moved · 12 not found in app
+Ver-RestoreDraft web: matched 82/96 design items · 0 with size/type drift · 10 only moved · 14 not found in app
+Ver-RestoreDraft desktop: matched 84/96 design items · 0 with size/type drift · 10 only moved · 12 not found in app
 Ver-RunTag web: matched 57/72 design items · 0 with size/type drift · 21 only moved · 15 not found in app
 Ver-RunTag desktop: matched 59/72 design items · 0 with size/type drift · 21 only moved · 13 not found in app
 Ver-AgentHistory web: matched 60/82 design items · 1 with size/type drift · 19 only moved · 22 not found in app — covered: W7×1

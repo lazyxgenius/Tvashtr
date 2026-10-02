@@ -22,7 +22,7 @@ import {
   type VersionChange,
 } from "../lib/api/versions";
 import { useModalDialog } from "../lib/useModalDialog";
-import { diffPill, runLook, versionAge } from "../lib/versionFormat";
+import { diffPill, restoreTitles, runLook, versionAge } from "../lib/versionFormat";
 import { listNatural } from "../pages/home/homeFormat";
 import { glyphForNode } from "../panel/nodeGlyph";
 import { LoadState } from "../panel/runs/RunsTab";
@@ -340,16 +340,18 @@ export function VersionRestore({
         setBusy(false);
       });
     });
-  // Only an agent's instructions are drawn in this list so far (Ver-Restore).
-  const rows = p ? p.changes.filter((c) => c.kind === "text") : [];
+  const titles = p ? restoreTitles(p.changes, number) : [];
   const count = p?.changes.length ?? 0;
+  const draft = p?.draft_saved_as;
   return (
     <VersionDialog
       title={`Restore v${number}?`}
       icon={<RotateCcw size={17} strokeWidth={1.6} aria-hidden />}
       sub={
         p
-          ? `${p.draft_saved_as != null ? `Your changes are saved as v${p.draft_saved_as} first. ` : ""}Restoring makes a new version, v${p.makes}, that matches v${number}. v${p.current} stays in History, so you can switch back at any time.`
+          ? draft != null
+            ? `Your changes are saved as v${draft} first. Restoring makes a new version, v${p.makes}, that matches v${number}. v${p.current} and v${draft} stay in History, so you can switch back at any time.`
+            : `Restoring makes a new version, v${p.makes}, that matches v${number}. v${p.current} stays in History, so you can switch back at any time.`
           : ""
       }
       onClose={cancel}
@@ -373,20 +375,18 @@ export function VersionRestore({
     >
       {p ? (
         <>
-          {rows.length > 0 && (
+          {titles.length > 0 && (
             <div className="cv-vwhat">
               <span className="lv-confirm__eyebrow">What changes</span>
               <ul className="cv-vlist">
-                {rows.map((c, i) => (
-                  <li key={c.key}>
+                {titles.map((title, i) => (
+                  <li key={i}>
                     <span className="cv-vlist__icon">
                       <Info size={16} strokeWidth={1.6} aria-hidden />
                     </span>
                     <div className="cv-vlist__text">
-                      <span className="cv-vlist__title">
-                        {c.agent} › {c.field} go back to the v{number} text
-                      </span>
-                      {i === 0 && (
+                      <span className="cv-vlist__title">{title}</span>
+                      {i === titles.length - 1 && (
                         <span className="cv-vlist__sub">
                           {count} change{count === 1 ? "" : "s"}. Everything else is already the
                           same.

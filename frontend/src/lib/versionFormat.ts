@@ -1,6 +1,31 @@
 /** M5's small words (the Ver-* boards): a version's age, the runs pill, the diff pill, a run's look. */
 import { elapsedShort, money } from "../pages/home/homeFormat";
 import type { TeamRunRow } from "./api";
+import type { VersionChange } from "./api/versions";
+
+/**
+ * Restore's WHAT CHANGES (Ver-Restore / Ver-RestoreDraft): one line per change row (the working
+ * copy → vN), every route row in one "Routes go back to how they were in vN".
+ */
+export function restoreTitles(changes: VersionChange[], n: number): string[] {
+  const out: string[] = [];
+  let routes = false;
+  for (const c of changes) {
+    if (c.key.startsWith("route:")) {
+      if (!routes) out.push(`Routes go back to how they were in v${n}`);
+      routes = true;
+      continue;
+    }
+    const who = c.agent ? `${c.agent} › ${c.field}` : (c.field ?? "");
+    const node = `The ${c.agent}${c.gate ? " gate" : ""}`;
+    if (c.kind === "text") out.push(`${who} go back to the v${n} text`);
+    else if (c.kind === "value")
+      out.push(c.after != null ? `${who} goes back to ${c.after}` : `${who} is cleared`);
+    else if (c.kind === "changed") out.push(`${who} go back to v${n}’s`);
+    else out.push(`${node} ${c.kind === "added" ? "comes back" : "is removed"}`);
+  }
+  return out;
+}
 
 const unit = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"} ago`;
 

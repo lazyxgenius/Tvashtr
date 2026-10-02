@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { diffPill, runLook, runMeta, runsPill, versionAge } from "./versionFormat";
+import type { VersionChange } from "./api/versions";
+import { diffPill, restoreTitles, runLook, runMeta, runsPill, versionAge } from "./versionFormat";
 
 const NOW = Date.parse("2026-10-02T12:00:00Z");
 const ago = (minutes: number) => new Date(NOW - minutes * 60_000).toISOString();
@@ -27,6 +28,57 @@ describe("versionFormat (M5's words, as the Ver-* boards print them)", () => {
     expect(diffPill(1, 2)).toBe("1 removed, 2 added");
     expect(diffPill(0, 2)).toBe("2 added");
     expect(diffPill(3, 0)).toBe("3 removed");
+  });
+
+  it("restoreTitles: one line per change, every route in one (Ver-RestoreDraft)", () => {
+    const row = (over: Partial<VersionChange>): VersionChange => ({
+      key: "k",
+      agent: "Engineer",
+      field: null,
+      kind: "changed",
+      ...over,
+    });
+    expect(
+      restoreTitles(
+        [
+          row({ key: "t", agent: "Reviewer", field: "Instructions", kind: "text" }),
+          row({
+            key: "m",
+            field: "Model",
+            kind: "value",
+            before: "a",
+            after: "openai/gpt-4.1-mini",
+          }),
+          row({ key: "b", field: "Backup model", kind: "value", before: "x", after: null }),
+          row({
+            key: "team:budget_usd",
+            agent: null,
+            field: "Budget",
+            kind: "value",
+            after: "$5.00",
+          }),
+          row({ key: "s", field: "Skills", kind: "changed" }),
+          row({ key: "g", agent: "Spec approval", kind: "added", gate: true }),
+          row({ key: "a", agent: "Architect", kind: "added" }),
+          row({ key: "route:1", agent: null, field: "Routes", kind: "added", text: "A → B" }),
+          row({ key: "g2", agent: "Escalation", kind: "removed", gate: true }),
+          row({ key: "route:2", agent: null, field: "Routes", kind: "removed", text: "B → C" }),
+          row({ key: "r", agent: "Tester", kind: "removed" }),
+        ],
+        6,
+      ),
+    ).toEqual([
+      "Reviewer › Instructions go back to the v6 text",
+      "Engineer › Model goes back to openai/gpt-4.1-mini",
+      "Engineer › Backup model is cleared",
+      "Budget goes back to $5.00",
+      "Engineer › Skills go back to v6’s",
+      "The Spec approval gate comes back",
+      "The Architect comes back",
+      "Routes go back to how they were in v6",
+      "The Escalation gate is removed",
+      "The Tester is removed",
+    ]);
   });
 
   it("runLook: the plain state words", () => {

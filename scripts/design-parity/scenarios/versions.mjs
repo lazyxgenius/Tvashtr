@@ -1,5 +1,5 @@
 // M5 — team versions (Team Setup › Ver-History, Ver-Draft, Ver-Changes, Ver-ChangesFields, Ver-Restore,
-// Ver-RunTag, Ver-AgentHistory, Ver-AgentCompare, Ver-RunBar, Ver-HomeRuns). `kept-teamcanvas-*` capture
+// Ver-RestoreDraft, Ver-RunTag, Ver-AgentHistory, Ver-AgentCompare, Ver-RunBar, Ver-HomeRuns). `kept-teamcanvas-*` capture
 // the team canvas's kept-elements inventory with M5 on screen (the chip), website and Desktop. Each
 // board renders as a website and a Desktop render (runs-live.mjs's `pair` convention): every Ver-*
 // board but Ver-HomeRuns is drawn in Desktop (the 30px title strip), so the Desktop render is the
@@ -254,6 +254,44 @@ const RESTORE = {
   draft_saved_as: null,
   changes: [{ ...REVIEWER_TEXT, lines: [] }],
 };
+// ---- Ver-RestoreDraft: the same with two changes not saved yet — they become v8, the restore v9 ----
+const RESTORE_DRAFT = {
+  number: 6,
+  makes: 9,
+  current: 7,
+  draft_saved_as: 8,
+  changes: [
+    { ...REVIEWER_TEXT, lines: [] },
+    {
+      key: "node:n-eng:model",
+      node_id: "n-eng",
+      agent: "Engineer",
+      role: "engineer",
+      field: "Model",
+      kind: "value",
+      before: "anthropic/claude-sonnet-4",
+      after: "openai/gpt-4.1-mini",
+    },
+    {
+      key: "node:n-eng:skills",
+      node_id: "n-eng",
+      agent: "Engineer",
+      role: "engineer",
+      field: "Skills",
+      kind: "changed",
+    },
+    {
+      key: "node:n-prd",
+      node_id: "n-prd",
+      agent: "Spec approval",
+      role: "prd_approval",
+      field: null,
+      kind: "added",
+      gate: true,
+    },
+    route(1, "added", "Spec approval → Engineer · when approved"),
+  ],
+};
 // ---- Ver-RunTag: the team's runs, each with its version ----
 const run = (n, status, v, idea, minutes, spent, extra = {}) => ({
   run_id: `r-${n}`,
@@ -354,7 +392,9 @@ function teamRoutes(desktop, changes = 0) {
     [`GET /api/teams/${TEAM_ID}/versions`]: versions(changes),
     [`GET /api/teams/${TEAM_ID}/versions/7`]: V7,
     [`GET /api/teams/${TEAM_ID}/versions/6`]: V6,
-    [`GET /api/teams/${TEAM_ID}/versions/6/restore`]: RESTORE,
+    [`GET /api/teams/${TEAM_ID}/versions/6/restore`]: changes
+      ? RESTORE_DRAFT
+      : RESTORE,
     [`GET /api/teams/${TEAM_ID}/nodes/n-rev/instruction-history`]: HISTORY,
     "GET /api/runs/r-12/documents": { documents: [] },
     "GET /api/account/preferences": {},
@@ -451,6 +491,16 @@ export default [
       await page
         .getByText("Compared with v5 · saved yesterday by you")
         .waitFor();
+    }),
+  }),
+  ...pair("Ver-RestoreDraft", {
+    ...canvas(2),
+    steps: history(async (page) => {
+      await panel(page)
+        .getByRole("button", { name: "Restore" })
+        .first()
+        .click();
+      await page.getByText("Routes go back to how they were in v6").waitFor();
     }),
   }),
   ...pair("Ver-Restore", {

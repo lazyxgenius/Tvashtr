@@ -170,6 +170,54 @@ const PREVIEW: RestorePreview = {
   draft_saved_as: null,
   changes: [TEXT_ROW],
 };
+// Ver-RestoreDraft: restoring v5 with changes not saved yet — they become v8, the restore v9.
+const DRAFT_PREVIEW: RestorePreview = {
+  number: 5,
+  makes: 9,
+  current: 7,
+  draft_saved_as: 8,
+  changes: [
+    { ...TEXT_ROW, lines: [] },
+    {
+      key: "node:tn-eng:model",
+      agent: "Engineer",
+      role: "engineer",
+      field: "Model",
+      kind: "value",
+      before: "anthropic/claude-sonnet-4",
+      after: "openai/gpt-4.1-mini",
+    },
+    {
+      key: "node:tn-eng:skills",
+      agent: "Engineer",
+      role: "engineer",
+      field: "Skills",
+      kind: "changed",
+    },
+    {
+      key: "node:tn-prd",
+      agent: "Spec approval",
+      role: "prd_gate",
+      field: null,
+      kind: "added",
+      gate: true,
+    },
+    {
+      key: "route:1",
+      agent: null,
+      field: "Routes",
+      kind: "removed",
+      text: "Product manager → Spec approval",
+    },
+    {
+      key: "route:2",
+      agent: null,
+      field: "Routes",
+      kind: "added",
+      text: "Product manager → Engineer",
+    },
+  ],
+};
 const run = (
   n: number,
   status: string,
@@ -224,6 +272,7 @@ beforeEach(() => {
       return reply({ number: 8, restored_from: 6, draft_saved_as: null }, 201);
     }
     if (url === "/api/teams/team-1/versions/6/restore") return reply(PREVIEW);
+    if (url === "/api/teams/team-1/versions/5/restore") return reply(DRAFT_PREVIEW);
     if (url === "/api/teams/team-1/runs") return reply({ runs: RUNS });
     if (url === "/api/teams/team-1/file?format=yaml")
       return reply({ filename: "t.yaml", format: "yaml", content: "a: 1", lines: 1, needs: {} });
@@ -518,6 +567,37 @@ describe("App — M5 What changed and Restore", () => {
     await waitFor(() => expect(calls("GET", "/api/teams/team-1/graph")).toBe(graphLoads + 1));
     expect(await screen.findByText("· saved just now")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Version history" })).toHaveTextContent("v8");
+  });
+
+  it("Restore with changes not saved yet (Ver-RestoreDraft): v8 first, every change, v9", async () => {
+    renderApp();
+    const panel = await openHistory();
+    await within(panel).findByText("5 of 7 versions");
+    fireEvent.click(within(panel).getAllByRole("button", { name: "Restore" })[1]);
+    const dialog = await screen.findByRole("dialog", { name: "Restore v5?" });
+    expect(
+      await within(dialog).findByText(
+        "Your changes are saved as v8 first. Restoring makes a new version, v9, that matches v5. v7 and v8 stay in History, so you can switch back at any time.",
+      ),
+    ).toBeInTheDocument();
+    const items = within(dialog).getAllByRole("listitem");
+    expect(items.map((li) => li.querySelector(".cv-vlist__title")?.textContent)).toEqual([
+      "Reviewer › Instructions go back to the v5 text",
+      "Engineer › Model goes back to openai/gpt-4.1-mini",
+      "Engineer › Skills go back to v5’s",
+      "The Spec approval gate comes back",
+      "Routes go back to how they were in v5",
+    ]);
+    // The count is on the last item: every change row (the two routes are two).
+    expect(items.map((li) => li.querySelector(".cv-vlist__sub")?.textContent ?? null)).toEqual([
+      null,
+      null,
+      null,
+      null,
+      "6 changes. Everything else is already the same.",
+    ]);
+    expect(dialog).toHaveTextContent("A run started on v7 finishes on v7. New runs use v9.");
+    expect(within(dialog).getByRole("button", { name: "Restore as v9" })).toBeInTheDocument();
   });
 
   it("Cancel closes the Restore dialog and keeps History", async () => {
