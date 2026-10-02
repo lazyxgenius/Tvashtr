@@ -1,4 +1,4 @@
-import { type MutableRefObject, useEffect, useState } from "react";
+import { type MutableRefObject, useEffect, useRef, useState } from "react";
 import { Copy, FlaskConical, Maximize2, Zap } from "lucide-react";
 
 import { Button, type MenuEntry } from "../design-system/components";
@@ -330,6 +330,25 @@ function AgentEditor({
   const [testsWanted, setTestsWanted] = useState(false);
   if (!testsWanted && tab === "tests") setTestsWanted(true);
   const tests = useAgentTests(teamId, node.id, testsWanted, () => void onSaved());
+  // The graph says the tests changed (a run started by Save and run tests, a test added
+  // elsewhere): an idle tab reads them again (#3). A tab that polls is already reading.
+  const graphTests = JSON.stringify(node.tests ?? null);
+  const seenGraphTests = useRef(graphTests);
+  const reloadTests = tests.reload;
+  const polling = tests.running;
+  useEffect(() => {
+    if (seenGraphTests.current === graphTests) return;
+    seenGraphTests.current = graphTests;
+    if (testsWanted && !polling) reloadTests();
+  }, [graphTests, testsWanted, polling, reloadTests]);
+  // This editor is still the one on screen (a slow answer for an agent left behind goes nowhere).
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
   const [testsBusy, setTestsBusy] = useState(false);
   const [newTest, setNewTest] = useState<FromRound | null>(null);
   const [upload, setUpload] = useState<{ filename: string; content: string } | null>(null);
@@ -341,7 +360,9 @@ function AgentEditor({
   // "Open this replay": its result id (an in-drawer sheet on the Tests tab).
   const [replay, setReplay] = useState<string | null>(null);
   if (replay !== null && tab !== "tests") setReplay(null);
+  // The Delete test confirm belongs to the Tests tab: leaving it drops it (#17).
   const [deletingTest, setDeletingTest] = useState<AgentTest | null>(null);
+  if (deletingTest !== null && tab !== "tests") setDeletingTest(null);
   const [deleteTestBusy, setDeleteTestBusy] = useState(false);
   // "Compare with v6": the instructions then against the text now (M5's compare).
   const [comparing, setComparing] = useState<InstructionEntry | null>(null);
@@ -392,7 +413,9 @@ function AgentEditor({
   // The drawer's Output format editor covers the Save footer; focus mode keeps it in view.
   const subCoversFooter =
     (schemaText !== null && tab === "setup" && !focus) ||
-    ((skillSub !== null || toolSub !== null) && tab === "skills");
+    ((skillSub !== null || toolSub !== null) && tab === "skills") ||
+    // M7: the docked replay sheet takes the Save footer's place too (#12).
+    (replay !== null && tab === "tests" && !focus);
   // ⌘S / Ctrl+S saves; while a confirm is open the confirm's own buttons decide.
   useSaveShortcut(() => {
     const busy =
@@ -470,15 +493,35 @@ function AgentEditor({
     void onSaved();
   };
   // Runs › round ⋯ › Make this a test: the round as a test (409: why it can't be one), on Tests.
+  // A slow answer for an agent the person has since left is dropped (#10).
   const makeTest = (invocationId: number) =>
     void getFromRound(teamId, node.id, invocationId).then(
       (round) => {
+        if (!alive.current) return;
         setTestsWanted(true);
         onTabChange("tests");
         setNewTest(round);
       },
-      (err: unknown) => failed(err, "Can’t make a test from this round."),
+      (err: unknown) => {
+        if (alive.current) failed(err, "Can’t make a test from this round.");
+      },
     );
+  // New test / "Pick a round from a run": the drawer's Runs tab, whose rounds have Make this a test.
+  // From focus mode it docks first, then moves to Runs (#8).
+  const [runsWhenDocked, setRunsWhenDocked] = useState(false);
+  useEffect(() => {
+    if (!runsWhenDocked || focus) return;
+    setRunsWhenDocked(false);
+    onTabChange("runs");
+  }, [runsWhenDocked, focus, onTabChange]);
+  const pickRound = () => {
+    if (!focus) {
+      onTabChange("runs");
+      return;
+    }
+    setRunsWhenDocked(true);
+    onFocusChange(false);
+  };
   const copyAnswer = (text: string) =>
     void Promise.resolve()
       .then(() => navigator.clipboard.writeText(text))
@@ -1023,7 +1066,7 @@ function AgentEditor({
           onRunAll={runAllTests}
           onStop={stopTests}
           busy={testsBusy}
-          onPickRound={() => onTabChange("runs")}
+          onPickRound={pickRound}
           onPickFile={pickTestFile}
           onOpenReplay={(r: TestResult) => setReplay(r.id)}
           onCompare={compareWith}
@@ -1173,7 +1216,7 @@ function AgentEditor({
     />
   ) : testsFooter ? (
     (tests.value?.tests.length ?? 0) > 0 && !tests.running ? (
-      <TestsFooter onNewTest={() => onTabChange("runs")} onPickFile={pickTestFile} />
+      <TestsFooter onNewTest={pickRound} onPickFile={pickTestFile} />
     ) : undefined
   ) : (
     <SaveBar

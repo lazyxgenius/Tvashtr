@@ -150,4 +150,20 @@ describe("UploadTestsDialog", () => {
     expect(within(dialog).getByText("fixed.csv")).toBeInTheDocument();
     expect(calls.at(-1)?.body).toEqual({ filename: "fixed.csv", content: "task\nAdd EMA\n" });
   });
+
+  it("a failed Add says so and can be tried again (#2)", async () => {
+    let fail = true;
+    mockApi({
+      [`POST ${BASE}/file/check`]: FILE_CHECK,
+      [`POST ${BASE}/file`]: () => (fail ? jsonError(502, "Bad gateway") : { added: 12 }),
+    });
+    const { dialog, onAdded } = renderDialog();
+    const add = await within(dialog).findByRole("button", { name: "Add 12 tests" });
+    fireEvent.click(add);
+    expect(await within(dialog).findByRole("alert")).toBeInTheDocument();
+    expect(add).toBeEnabled();
+    fail = false;
+    fireEvent.click(add);
+    await waitFor(() => expect(onAdded).toHaveBeenCalledWith(12));
+  });
 });

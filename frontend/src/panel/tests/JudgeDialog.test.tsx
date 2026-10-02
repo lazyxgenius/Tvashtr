@@ -181,4 +181,82 @@ describe("JudgeDialog", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Label more" }));
     expect(within(dialog).queryByText(/more labelled/)).toBeNull();
   });
+
+  it("a long answer is sent and matched by its exact text (#7)", async () => {
+    const long = `Changes requested: ${"the registry is incomplete. ".repeat(600)}`.trim();
+    expect(long.length).toBeGreaterThan(15_000);
+    const calls = mockApi({
+      [`GET ${BASE}/answers`]: { answers: [{ text: long, from: "Run #12 · round 1" }] },
+      [`POST ${BASE}/judge`]: (_u: URL, body: { labels: { answer: string; you: boolean }[] }) => ({
+        rows: body.labels.map((l) => ({ ...l, ai: true, reason: "" })),
+        agree: 1,
+        total: 1,
+        trusted: false,
+        ai: null,
+      }),
+    });
+    const { dialog } = renderDialog({ ...TESTS[5] });
+    await flush();
+    fireEvent.click(within(row(dialog, 2)).getByRole("button", { name: "Yes" }));
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+    await flush();
+    const posted = calls.filter((c) => c.method === "POST").at(-1)?.body as {
+      labels: { answer: string }[];
+    };
+    expect(posted.labels[0].answer).toBe(long);
+    expect(within(dialog).getByLabelText("AI check: answer 2")).toHaveTextContent("Yes");
+  });
+
+  it("a label made just before closing is still saved (#11)", async () => {
+    const calls = mockApi({
+      [`GET ${BASE}/answers`]: { answers: ANSWERS },
+      [`POST ${BASE}/judge`]: { rows: [], agree: 0, total: 0, trusted: false, ai: null },
+    });
+    const { dialog, onUsed } = renderDialog();
+    await flush();
+    fireEvent.click(within(row(dialog, 1)).getByRole("button", { name: "No" }));
+    act(() => {
+      vi.advanceTimersByTime(100);
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Use this check" }));
+    expect(onUsed).toHaveBeenCalled();
+    await flush();
+    const posts = calls.filter((c) => c.method === "POST");
+    expect(posts).toHaveLength(1);
+    expect(posts[0].body).toEqual({ check: 1, labels: [{ answer: FAILED, you: false }] });
+    // Nothing more is sent after it closed.
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    await flush();
+    expect(calls.filter((c) => c.method === "POST")).toHaveLength(1);
+  });
+
+  it("clearing every label leaves no stale agreement (#11)", async () => {
+    mockApi({
+      [`GET ${BASE}/answers`]: { answers: ANSWERS },
+      [`POST ${BASE}/judge`]: {
+        rows: [{ answer: FAILED, you: true, ai: true, reason: "" }],
+        agree: 1,
+        total: 1,
+        trusted: false,
+        ai: null,
+      },
+    });
+    const { dialog } = renderDialog();
+    await flush();
+    const yes = within(row(dialog, 1)).getByRole("button", { name: "Yes" });
+    fireEvent.click(yes);
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+    await flush();
+    expect(within(dialog).getByRole("status")).toHaveTextContent("Agrees with you on 1 of 1");
+    fireEvent.click(yes);
+    expect(yes).toHaveAttribute("aria-pressed", "false");
+    expect(within(dialog).queryByRole("status")).toBeNull();
+    expect(within(dialog).getByLabelText("AI check: answer 1")).toHaveTextContent("");
+  });
 });

@@ -85,6 +85,8 @@ export interface TestRun {
   elapsed_s: number;
   /** R12: the owner's runs use all 3 slots. */
   waiting_for_slot: boolean;
+  /** A stop was asked for while a replay is still going (it ends when the replay does). */
+  stopping?: boolean;
   error: string | null;
   /** "+1 since v6" (delta may be ≤ 0). */
   since: { version: number; delta: number } | null;
