@@ -53,7 +53,10 @@ export type LineKind =
   | "error"
   | "pr"
   | "done"
-  | "message";
+  | "message"
+  // M3: a step carried from the run this one resumed, and the Run line saying where it resumed.
+  | "carried"
+  | "resumed";
 
 export interface ActivityRefs {
   files?: string[];
@@ -96,6 +99,15 @@ export interface ActivityLine {
   text: string;
   tone: "neutral" | "ok" | "warn" | "danger";
   refs: ActivityRefs;
+  /** M3: the run a carried line came from (null or absent: this run's own line). */
+  from_run?: { run_id: string; number: number | null } | null;
+}
+
+/** M3: the run this one resumed (docs/superpowers/plans/api/resume.md). */
+export interface ResumedFrom {
+  run_id: string;
+  number: number | null;
+  step_label: string;
 }
 
 export interface PinnedCallout {
@@ -108,6 +120,10 @@ export interface PinnedCallout {
   backup_model: string | null;
   /** gate: what the gate decides ("prd_approval" = the spec). */
   gate_kind?: string | null;
+  /** M3 (failed / stalled): where Resume picks up ("Engineer, round 2"); null: not offered. */
+  resume?: { invocation_id: number; label: string } | null;
+  /** M3: what is saved ("your approved spec (v2) and the Engineer’s round 1 changes are saved"). */
+  safe?: string | null;
 }
 
 export interface RunSummary {
@@ -131,6 +147,9 @@ export interface RunActivity {
   lines: ActivityLine[];
   pinned: PinnedCallout | null;
   summary: RunSummary | null;
+  /** M3: "run #12" (null without a library team); absent from an older server. */
+  number?: number | null;
+  resumed_from?: ResumedFrom | null;
 }
 
 export function getRunActivity(runId: string, after?: string | null): Promise<RunActivity> {

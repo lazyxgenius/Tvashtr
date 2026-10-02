@@ -52,6 +52,8 @@ describe("parseRoute / routeToHash", () => {
     ["#/toolkit/secrets", { page: "secrets" }],
     ["#/teams/t1", { page: "team", teamId: "t1" }],
     ["#/teams/t1/runs/r1", { page: "team", teamId: "t1", runId: "r1" }],
+    // M3: Home's Resume opens the run view with "Resume run #n" open.
+    ["#/teams/t1/runs/r1?resume=1", { page: "team", teamId: "t1", runId: "r1", resume: true }],
     [
       "#/teams/t1?node=n1&tab=skills&focus=1",
       { page: "team", teamId: "t1", node: "n1", tab: "skills", focus: true },

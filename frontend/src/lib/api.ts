@@ -134,6 +134,8 @@ export interface GraphNode {
   /** M1 stall guard: what the node is doing right now (derived server-side; absent on older
    *  servers). */
   live?: NodeLive;
+  /** M3: a resumed run's node with a carried step and no step of its own yet ("From run #12"). */
+  carried?: { from_run_id: string; number: number | null; text: string } | null;
 }
 
 /** M1: a node's live block on the run graph. */
@@ -207,6 +209,9 @@ export interface RunRow {
   budget_cap_usd?: number | null;
   // What the run works on (the Retry prefill's target; the server sends it via `run_fields`).
   target?: RunTarget | null;
+  // M3 (resume.md): "run #12" (null without a library team) and the run this one resumed.
+  number?: number | null;
+  resumed_from?: { run_id: string; number: number | null; step_label: string } | null;
 }
 
 export interface CostRow {

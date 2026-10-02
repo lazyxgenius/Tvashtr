@@ -18,7 +18,7 @@
  *   #/toolkit/memory (the page picks Inbox or Active) · #/toolkit/memory/inbox|active|archive
  *   #/toolkit/secrets
  *   #/teams/<teamId>?node=<id>&tab=<tab>&focus=1
- *   #/teams/<teamId>/runs/<runId>
+ *   #/teams/<teamId>/runs/<runId>[?resume=1] (resume: the run view with "Resume run #n" open, M3)
  *   #/teams/<teamId>/docs/<documentId>?v=<n>&compare=<m>
  *   #/teams/<teamId>/runs/<runId>/docs/<documentId>?v=<n>&compare=<m> (the viewer over a run view)
  *   #/setup/engines|project|team          (Tvashtr Desktop only; the website goes Home)
@@ -95,6 +95,8 @@ export type Route =
       focus?: boolean;
       version?: number;
       compare?: number;
+      /** M3: open the run view with its "Resume run #n" panel (Home's Resume). */
+      resume?: boolean;
     };
 
 const ENGINES_TABS: EnginesTab[] = ["overview", "subscriptions", "keys"];
@@ -244,6 +246,7 @@ export function parseRoute(hash: string): Route {
       if (v !== undefined) route.version = v;
       const cmp = num(q.get("compare"));
       if (cmp !== undefined) route.compare = cmp;
+      if (route.runId && q.get("resume") === "1") route.resume = true;
       return route;
     }
     default:
@@ -313,6 +316,7 @@ export function routeToHash(route: Route): string {
       if (route.focus) q.set("focus", "1");
       if (route.version !== undefined) q.set("v", String(route.version));
       if (route.compare !== undefined) q.set("compare", String(route.compare));
+      if (route.runId && route.resume) q.set("resume", "1");
       const qs = q.toString();
       return qs ? `${path}?${qs}` : path;
     }
