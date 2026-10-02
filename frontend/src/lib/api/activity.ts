@@ -111,7 +111,8 @@ export interface ResumedFrom {
 }
 
 export interface PinnedCallout {
-  kind: "gate" | "retrying" | "stalled" | "failed";
+  /** R19: "stopped" — a run the person stopped (status "cancelled"); never joins Needs you. */
+  kind: "gate" | "retrying" | "stalled" | "failed" | "stopped";
   node_id: string | null;
   label: string;
   title: string;
@@ -120,7 +121,7 @@ export interface PinnedCallout {
   backup_model: string | null;
   /** gate: what the gate decides ("prd_approval" = the spec). */
   gate_kind?: string | null;
-  /** M3 (failed / stalled): where Resume picks up ("Engineer, round 2"); null: not offered. */
+  /** M3 (failed / stalled; R19 stopped): where Resume picks up ("Engineer, round 2"); null: not offered. */
   resume?: { invocation_id: number; label: string } | null;
   /** M3: what is saved ("your approved spec (v2) and the Engineer’s round 1 changes are saved"). */
   safe?: string | null;

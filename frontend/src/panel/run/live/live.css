@@ -355,6 +355,14 @@
   background: #fbefec;
   border-color: #e7b9b0;
 }
+/* R19 Prob-Stopped: the person stopped it on purpose — a neutral box, its square in ink. */
+.lv-pin__box--neutral {
+  background: var(--surface-card);
+  border-color: var(--line-400);
+}
+.lv-pin__box--neutral .lv-pin__icon {
+  color: var(--ink-600);
+}
 .lv-pin__icon {
   flex: none;
   display: inline-flex;
