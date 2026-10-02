@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 
 import App from "./App";
@@ -76,6 +76,7 @@ let runStatus: string;
 let runExtra: Record<string, unknown>;
 let pin: unknown;
 let postReply: { status: number; body: unknown };
+let getInfo: () => Promise<Response>;
 type Fetch = (input: string, init?: RequestInit) => Promise<Response>;
 let fetchMock: Mock<Fetch>;
 const reply = (body: unknown, status = 200) =>
@@ -87,9 +88,10 @@ beforeEach(() => {
   runExtra = {};
   pin = pinned("failed");
   postReply = { status: 201, body: { run_id: "run-13", number: 13 } };
+  getInfo = () => reply(INFO);
   fetchMock = vi.fn<Fetch>((url, init) => {
     if (url === `/api/runs/${RUN}/resume`)
-      return init?.method === "POST" ? reply(postReply.body, postReply.status) : reply(INFO);
+      return init?.method === "POST" ? reply(postReply.body, postReply.status) : getInfo();
     if (url === `/api/runs/${RUN}`)
       return reply({
         run_id: RUN,
@@ -213,6 +215,25 @@ describe("App — M3 Resume from here", () => {
     expect(screen.getByRole("region", { name: "Activity" })).toBe(activity);
     expect(document.querySelector("main.cv-main")).toBe(main);
     expect(within(activity).getByRole("button", { name: "Show activity" })).toBeInTheDocument();
+  });
+
+  it("Home's ?resume=1 leaves the address alone once the run view has gone", async () => {
+    let answer: ((r: Response) => void) | null = null;
+    getInfo = () =>
+      new Promise<Response>((resolve) => {
+        answer = resolve;
+      });
+    const opened = vi.fn();
+    const { unmount } = render(
+      <App teamId="team-1" initialRunId={RUN} resume onResumeOpened={opened} />,
+    );
+    await waitFor(() => expect(answer).not.toBeNull());
+    unmount();
+    await act(async () => {
+      answer?.(new Response(JSON.stringify(INFO), { status: 200 }));
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    expect(opened).not.toHaveBeenCalled();
   });
 
   it("a resumed run's bar links to the run it resumed", async () => {

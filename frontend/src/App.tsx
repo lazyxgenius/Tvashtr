@@ -252,13 +252,6 @@ export default function App({
   const resumeFlow = useResume(authoring ? null : runId);
   const openResume = resumeFlow.open;
   const resumeRequested = useRef(routeResume === true);
-  useEffect(() => {
-    if (!resumeRequested.current) return;
-    resumeRequested.current = false;
-    void openResume("pick")
-      .catch(() => undefined)
-      .finally(() => onResumeOpened?.());
-  }, [openResume, onResumeOpened]);
 
   // Load BYOK + subscription coverage while authoring so Run can gate on missing providers.
   useEffect(() => {
@@ -313,6 +306,18 @@ export default function App({
       mountedRef.current = false;
     };
   }, []);
+
+  // Home's Resume (`?resume=1`): open the panel once, then drop it from the address — unless the
+  // person has already left this run view.
+  useEffect(() => {
+    if (!resumeRequested.current) return;
+    resumeRequested.current = false;
+    void openResume("pick")
+      .catch(() => undefined)
+      .finally(() => {
+        if (mountedRef.current) onResumeOpened?.();
+      });
+  }, [openResume, onResumeOpened]);
 
   // Resolve the default open team when none was passed (a standalone mount / the tests): pick the
   // first library team. Team management + selection live on the Dashboard now (Part A); this only
