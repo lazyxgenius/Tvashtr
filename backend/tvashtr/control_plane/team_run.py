@@ -503,6 +503,7 @@ def load_graph_step(run_id: str) -> dict:
         )
         # M9 (R11): a set compare run runs its task's hidden check at the compare terminal.
         check = run.task_set_item_id is not None
+        carry = run.carry  # M10 (R9): what came along from the run this one started from
         nodes = (
             session.execute(select(AgentNode).where(AgentNode.team_graph_id == run.team_graph_id))
             .scalars()
@@ -577,6 +578,10 @@ def load_graph_step(run_id: str) -> dict:
             if auto_approve is not None
             else None
         ),
+        # M10 (R9): the snapshot of what came along (``runs.carry``; None for every other run).
+        # Recorded here like ``compare``: a workflow recorded before M10 replays a dict without it,
+        # so its agents' compiled context is exactly what it was.
+        "carry": carry,
     }
 
 
@@ -1566,6 +1571,7 @@ def agent_run_step(
     output_schema: dict | None = None,
     output_schema_name: str | None = None,
     capability: str | None = None,
+    carry: dict | None = None,
 ) -> dict:
     """The ONE generic agent step (P1.8a) — replaces the role-specific ``engineer_run_step`` AND
     ``reviewer_agent_run_step``. M-unify U1: it is now the SINGLE path EVERY AgentNode executes
@@ -1659,6 +1665,9 @@ def agent_run_step(
         # workflow body (read_named_documents_step). None ⇒ NO read-docs part ⇒ byte-identical; when
         # present the caller also passed spec=None so they REPLACE the default PRD part.
         read_documents=read_documents,
+        # M10 (R9): what came along from the run this one started from (named parts after the
+        # idea). None (every other run) ⇒ no part ⇒ byte-identical.
+        carry=carry,
     )
     manifest = compiled.manifest()
     # Revamp B-DOCS: which document versions this agent was given (``[{name, document_id,
@@ -2792,6 +2801,14 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
             if output_schema is not None and emits:
                 capability_kwargs["output_schema"] = output_schema
                 capability_kwargs["output_schema_name"] = node["role_name"]
+            # M10 (R9): what came along, off the RECORDED graph dict (absent before M10 ⇒ no
+            # kwarg ⇒ byte-identical call). The carried spec reaches only the entry's FIRST
+            # invocation (it has no spec of its own yet and updates it for the new task).
+            carry_kwargs: dict = {}
+            if graph.get("carry"):
+                carry_kwargs["carry"] = (
+                    graph["carry"] if entry_was_first else {**graph["carry"], "spec": None}
+                )
             result = agent_run_step(
                 run_id,
                 node["prompt"],
@@ -2813,6 +2830,7 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                 **memory_kwargs,  # M-memory S3: the retrieved facts (absent ⇒ byte-identical call)
                 **docs_kwargs,  # M-docs: the reads_from documents (absent ⇒ byte-identical call)
                 **capability_kwargs,  # Session A: fallback_model (absent ⇒ byte-identical call)
+                **carry_kwargs,  # M10: what came along (absent ⇒ byte-identical call)
                 capability=capability_of(node["kind"]),  # M1 (R2): the seat its backup serves
             )
             delete_vkey_step(run_id, vkey)

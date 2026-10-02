@@ -176,6 +176,16 @@ def get_installation_token(installation_id: int) -> str:
     return token
 
 
+def cached_installation_tokens(installation_ids: list[int]) -> list[str]:
+    """M10: the installation tokens this process holds for ``installation_ids`` — known secret
+    values a downloaded run log masks. Never minted here, never returned by an endpoint."""
+    return [
+        _installation_token_cache[int(i)][0]
+        for i in installation_ids
+        if int(i) in _installation_token_cache
+    ]
+
+
 def _repo_to_dict(repo: dict) -> dict:
     """A repository as the dashboard shows it — NON-secret fields only (never the token used to
     fetch it)."""
@@ -561,6 +571,14 @@ def list_open_pull_requests(installation_id: int, full_name: str, *, head: str) 
         token=token,
     )
     return result if isinstance(result, list) else []
+
+
+def pull_request_merged(installation_id: int, full_name: str, number: int) -> bool:
+    """M10: whether pull request ``number`` of ``full_name`` was merged. Raises ``GithubAppError``
+    when GitHub can't say (the caller reads unknown as not merged)."""
+    token = get_installation_token(installation_id)
+    result = _http("GET", f"{_GITHUB_API}/repos/{full_name}/pulls/{int(number)}", token=token)
+    return bool(result.get("merged")) if isinstance(result, dict) else False
 
 
 def create_pull_request(

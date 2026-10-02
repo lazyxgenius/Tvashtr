@@ -41,6 +41,7 @@ from tvashtr.control_plane import (
     resume,
     run_views,
     stall_sweep,
+    start_from,
     team_file,
     toolkit,
     versions,
@@ -1155,15 +1156,20 @@ def create_run(
     validation, and long before a Run row or a team clone exists. A launch refused for capacity
     should cost nothing and leave nothing behind. (An out-of-range ``budget_cap_usd`` is refused
     before them, like any other malformed body.)"""
+    return launch_run(body, uuid.UUID(current_user.id))
+
+
+def launch_run(body: CreateRunRequest, owner_id: uuid.UUID, **run_fields) -> dict:
+    """``POST /api/runs``'s whole launch path (see :func:`create_run`), shared with M10's
+    ``POST /api/runs/{id}/next``: ``run_fields`` are extra columns of the new run (M10:
+    ``started_from_run_id`` and the ``carry`` snapshot); none for ``POST /api/runs``."""
     budget_problem = run_views.budget_problem(body.budget_cap_usd)
     if budget_problem:
         raise HTTPException(status_code=422, detail=budget_problem)
-    _enforce_run_ceilings(uuid.UUID(current_user.id))
+    _enforce_run_ceilings(owner_id)
     retry_of = None
     if body.retry_of_run_id is not None:
-        retry_of, retry_problem = run_views.retry_problem(
-            uuid.UUID(current_user.id), body.retry_of_run_id
-        )
+        retry_of, retry_problem = run_views.retry_problem(owner_id, body.retry_of_run_id)
         if retry_problem:
             raise HTTPException(status_code=422, detail=retry_problem)
     idea = resolve_run_idea(body.idea)
@@ -1190,7 +1196,7 @@ def create_run(
     # Revamp P10: validate a Desktop folder's snapshot (claimed below, with the Run insert).
     local = None
     if body.local_repo is not None:
-        local = local_repo.check_launch(uuid.UUID(current_user.id), body)
+        local = local_repo.check_launch(owner_id, body)
 
     if github_repo is not None:
         # Hosted GitHub run: AUTHORISE the repo against THIS owner's installation(s) — a user can
@@ -1198,7 +1204,6 @@ def create_run(
         # from its default_branch (no branch picker). ``repo_path`` stays NULL: the durable
         # ``clone_github_repo_step`` sets it before ``load_graph_step``, so the run then looks
         # like a local brownfield run (the walk is never forked).
-        owner_id = uuid.UUID(current_user.id)
         with db.session_scope() as session:
             installation_ids = [
                 row.installation_id
@@ -1290,7 +1295,7 @@ def create_run(
             source = session.get(TeamGraph, gid)
             # M-accounts Slice B: the source authored team must be OWNED by the current user — you
             # can't launch (or even probe) another account's team (404, not 400, on a foreign id).
-            if source is None or source.owner_id != uuid.UUID(current_user.id):
+            if source is None or source.owner_id != owner_id:
                 raise HTTPException(status_code=404, detail="unknown team_graph_id")
             library_team_id = gid if source.is_library else None
             nodes, edges = graph_dicts(session, gid)
@@ -1311,9 +1316,7 @@ def create_run(
     else:
         team_graph_id = build_two_node_team()
 
-    desktop_routed = _launch_preflight(
-        uuid.UUID(current_user.id), team_graph_id, body.desktop_target
-    )
+    desktop_routed = _launch_preflight(owner_id, team_graph_id, body.desktop_target)
 
     run_id = str(uuid.uuid4())
 
@@ -1326,9 +1329,7 @@ def create_run(
         # M5 (R3): a run of a library team starts on a version — its changes since the latest one
         # are saved as a new version first, so every run has a version.
         version_number, version_saved = (
-            versions.for_run(
-                session, library_team_id, uuid.UUID(current_user.id), uuid.UUID(team_graph_id)
-            )
+            versions.for_run(session, library_team_id, owner_id, uuid.UUID(team_graph_id))
             if library_team_id is not None
             else (None, False)
         )
@@ -1338,7 +1339,7 @@ def create_run(
                 team_graph_id=uuid.UUID(team_graph_id),
                 # M-accounts Slice B: the run is OWNED by construction (the current user) — the
                 # executor resolves THIS owner's keys; there is no owner-less run.
-                owner_id=uuid.UUID(current_user.id),
+                owner_id=owner_id,
                 idea=idea,
                 workflow_id=run_id,
                 status="running",
@@ -1360,6 +1361,7 @@ def create_run(
                 team_version_number=version_number,
                 local_repo_label=local.label if local else None,
                 local_snapshot_id=local.snapshot_id if local else None,
+                **run_fields,
             )
         )
         if local is not None:
@@ -1924,6 +1926,8 @@ def get_run_graph(run_id: str, current_user: Annotated[UserOut, Depends(get_curr
 
         carried_rows, _from, start_node = resume.carried(session, run)
         carried_nodes = resume.carried_by_node(carried_rows)
+        # M10: a run started from another one — its entry agent's card reads the carried spec.
+        spec_cards = start_from.spec_card(run, nodes, edges)
         runs_again = (
             activity._reachable(
                 run_views._graph_edges(session, {run.team_graph_id}).get(run.team_graph_id, []),
@@ -1970,7 +1974,8 @@ def get_run_graph(run_id: str, current_user: Annotated[UserOut, Depends(get_curr
                     # "Not reached". ``None`` for every other node.
                     "carried": _carried_card(
                         carried_nodes, str(n.id), latest_by_node, str(n.id) in runs_again
-                    ),
+                    )
+                    or spec_cards.get(str(n.id)),
                     # P1.5c (§14.1): the node's per-round invocation history, ascending by
                     # iteration — additive read of the already-persisted rows ([] before the
                     # node is reached). The Reviewer panel renders each round's `outcome`
