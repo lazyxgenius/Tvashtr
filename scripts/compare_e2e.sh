@@ -20,6 +20,10 @@ BASE="http://127.0.0.1:${PORT}"
 BACKEND_LOG="/tmp/tvashtr_compare_backend.log"
 VITE_LOG="/tmp/tvashtr_compare_vite.log"
 export TVASHTR_COMPARE_SHOTS_DIR="${TVASHTR_COMPARE_SHOTS_DIR:-/tmp/tvashtr_compare_shots}"
+# M9: scripts/task_set_e2e.sh runs its own spec through this same driver.
+SPEC="${SPEC:-e2e/compare.spec.ts}"
+E2E_NAME="${E2E_NAME:-COMPARE E2E}"
+PASSED_LINE="${PASSED_LINE:-two versions → Compare → both lanes → results; no PR, gates approved by the compare}"
 
 cd "$ROOT"
 
@@ -123,21 +127,21 @@ hr
 ( cd "$FRONTEND" && npx playwright install chromium )
 
 hr
-echo "STEP F: run the M8 compare Playwright spec"
+echo "STEP F: run the Playwright spec ${SPEC}"
 hr
 cd "$FRONTEND"
 set +e
-TVASHTR_E2E_BASE_URL="http://127.0.0.1:${VITE_PORT}" npx playwright test e2e/compare.spec.ts
+TVASHTR_E2E_BASE_URL="http://127.0.0.1:${VITE_PORT}" npx playwright test "$SPEC"
 PW_EXIT=$?
 set -e
 
 hr
 if [[ "$PW_EXIT" == "0" ]]; then
-  echo "COMPARE E2E PASSED (two versions → Compare → both lanes → results; no PR, gates approved by the compare)"
+  echo "${E2E_NAME} PASSED (${PASSED_LINE})"
   echo "screenshots: $TVASHTR_COMPARE_SHOTS_DIR"
   ls -la "$TVASHTR_COMPARE_SHOTS_DIR"/*.png 2>/dev/null || true
 else
-  echo "COMPARE E2E FAILED at the Playwright proof (exit $PW_EXIT)"
+  echo "${E2E_NAME} FAILED at the Playwright proof (exit $PW_EXIT)"
 fi
 hr
 exit "$PW_EXIT"
