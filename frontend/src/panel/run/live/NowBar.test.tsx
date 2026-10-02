@@ -162,3 +162,51 @@ describe("NowBar", () => {
     }
   });
 });
+
+describe("NowBar — M3 a resumed run (Prob-Resumed)", () => {
+  const carried = (text: string) => ({ from_run_id: "r-12", number: 12, text });
+  const graph: GraphData = {
+    ...GRAPH,
+    nodes: GRAPH.nodes.map((n) =>
+      n.id === "n-pm"
+        ? { ...n, carried: carried("From run #12") }
+        : n.id === "n-prd"
+          ? { ...n, carried: carried("Approved in run #12") }
+          : n.id === "n-rev"
+            ? { ...n, carried: carried("From run #12") }
+            : n,
+    ),
+  };
+  const agents = AGENTS.map((a) =>
+    a.node_id === "n-pm"
+      ? { ...a, live_state: "carried_over" as const, activity: "From run #12 · spec v2" }
+      : a.node_id === "n-prd"
+        ? { ...a, live_state: "carried_over" as const, activity: "Approved in run #12" }
+        : a.node_id === "n-rev"
+          ? { ...a, activity: "Round 1 notes carried over" }
+          : a,
+  );
+
+  it("carried steps say Carried over and where they were done, with no time", () => {
+    render(<NowBar agents={agents} graph={graph} now={NOW} onSelect={() => {}} />);
+    expect(screen.getByRole("button", { name: /^Product manager/ })).toHaveTextContent(
+      /^Product managerCarried overFrom run #12 · spec v2$/,
+    );
+    // A carried gate keeps the server's words (no "· 10:43" of a gate decided in this run).
+    expect(screen.getByRole("button", { name: /^Approval gate/ })).toHaveTextContent(
+      /^Approval gateCarried overApproved in run #12$/,
+    );
+  });
+
+  it("a step that runs again after its carried rounds waits with its carried notes, never Not reached", () => {
+    for (const status of ["running", "failed"]) {
+      const { unmount } = render(
+        <NowBar agents={agents} graph={graph} status={status} now={NOW} onSelect={() => {}} />,
+      );
+      const chip = screen.getByRole("button", { name: /^Reviewer/ });
+      expect(chip).toHaveTextContent("WaitingRound 1 notes carried over");
+      expect(chip).not.toHaveTextContent(/Not reached|Starts after/);
+      unmount();
+    }
+  });
+});

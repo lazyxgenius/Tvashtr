@@ -16,7 +16,7 @@ const aboveTitleStrip = (page) =>
   page.addStyleTag({ content: "html { height: calc(100% + 30px); margin-top: -30px; }" });
 
 /** Wait for the run view's Activity panel (the first poll has landed). */
-const activityReady = async (page) => {
+export const activityReady = async (page) => {
   await page.getByRole("region", { name: "Activity" }).waitFor();
   await page.waitForTimeout(300);
 };
@@ -30,7 +30,7 @@ const showOutput = async (page) => {
  * A board as a website render and a Desktop render. `desktopBoard` = the board is drawn in Desktop
  * (the comparison is the Desktop render; the web render is framed under the title strip).
  */
-function pair(board, { desktopBoard = true, path = runPath(), routes, steps, init = "", now }) {
+export function pair(board, { desktopBoard = true, path = runPath(), routes, steps, init = "", now }) {
   now ??= boardNow(board);
   const frame = (f) => async (p) => {
     await f(p);
@@ -58,8 +58,8 @@ function pair(board, { desktopBoard = true, path = runPath(), routes, steps, ini
 }
 
 // ---- Live-Home: Home's Running now cards with their live line, and Needs you's "Run stalled" ----
-const HOME_NOW = "10:42:20";
-const at = (s) => new Date(Date.parse(clockAt(HOME_NOW)) - s * 1000).toISOString();
+export const HOME_NOW = "10:42:20";
+export const at = (s) => new Date(Date.parse(clockAt(HOME_NOW)) - s * 1000).toISOString();
 const chip = (id, label, role_name, kind, state, loops_with = null) => ({
   node_id: id,
   origin_node_id: null,
@@ -101,7 +101,7 @@ const live = (label, live_state, activity, lastS, startedS = lastS) => ({
   last_event_at: at(lastS),
   activity_started_at: at(startedS),
 });
-const HOME_RUNS = [
+export const HOME_RUNS = [
   homeRun("r-12", "t-ind", "Indicator sprint team", "Add an RSI indicator", "awaiting_human", 64, {
     spent_usd: 0.06,
     live_state: "needs_you",
@@ -156,7 +156,7 @@ const HOME_RUNS = [
     ],
   }),
 ];
-const HOME_INBOX = [
+export const HOME_INBOX = [
   {
     key: "gate:12",
     kind: "approval",
@@ -202,6 +202,8 @@ const HOME_INBOX = [
       retry: null,
       backup_model: null,
     },
+    // M3: the server offers Resume (Live-Home's row and card draw it).
+    resume: { invocation_id: 7, label: "Engineer" },
   },
 ];
 const HOME_ROUTES = homeRoutes({
@@ -209,7 +211,7 @@ const HOME_ROUTES = homeRoutes({
   "GET /api/runs": { runs: HOME_RUNS, next_cursor: null },
 });
 // The board reads "Good morning" (the Home scenarios' 9am).
-const MORNING = `Date.prototype.getHours = function getHours() { return 9; };
+export const MORNING = `Date.prototype.getHours = function getHours() { return 9; };
   try { localStorage.setItem("tvashtr.home.lastTeam", "t-ind"); } catch { /* ignore */ }`;
 
 export default [

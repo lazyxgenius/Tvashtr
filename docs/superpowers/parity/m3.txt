@@ -1,0 +1,104 @@
+# M3 — Resume from here: parity record, branch feat/m03-resume-fe (from feat/m03-resume 9c3475c), 2026-10-02.
+# Design: the Claude Design "Tvashtr Runs" canvas export (canvas.json v3, page "Problems and resume"), shot with
+#   shoot-design.mjs at 1440x900: Prob-Stalled, Prob-Failed, Prob-Pick, Prob-Confirm, Prob-ConfirmStalled (added for M3),
+#   Prob-Resumed, Live-Home, Prob-HomeFailed (added for M3) — 8 design shots, 8 fonts-ok.
+# App: scripts/design-parity/scenarios/runs-resume.mjs (16 app shots, website + Desktop, runs-live.mjs's `pair`) on
+#   runs-fixtures.mjs, which now carries the contract's M3 fields (docs/superpowers/plans/api/resume.md): Prob-Stalled /
+#   Prob-Failed's pinned `resume` {105, "Engineer, round 2"} and `safe`, their body without the saved sentence (the app adds
+#   it); `GET /api/runs/r-12/resume` (Prob-Pick's five steps and the contract's confirm sample; `stops_run` while the run
+#   still runs); Prob-Pick / -Confirm draw run #12 as Prob-Failed does a minute later (11:01:05), Prob-ConfirmStalled as
+#   Prob-Stalled; `resumedRoutes()` is run #13 (r-13): `number` 13, `resumed_from` {r-12, 12, "Engineer, round 2"}, graph
+#   nodes' `carried`, Activity's carried lines (`kind: "carried"`, `from_run`), the `resumed` Run line and the agents'
+#   `carried_over` / waiting-with-notes. Live-Home's run_stalled inbox item (runs-live.mjs) gains `resume`;
+#   Prob-HomeFailed adds the board's run_failed item (Release crew) with `resume`.
+# States are reached through the UI: the Failed callout's "Resume from Engineer, round 2" (Prob-Confirm), the Stalled
+#   callout's "Resume from the last finished step" then the suggested step's "Resume from here" (Prob-ConfirmStalled),
+#   Home's address `#/teams/t-ind/runs/r-12?resume=1` then "Hide activity" (Prob-Pick draws the Activity folded), run
+#   #13's address (Prob-Resumed), Home scrolled 206px (Live-Home, Prob-HomeFailed — as M2's Live-Home).
+# Which render is the comparison: the Prob-* boards are drawn in Desktop (the 30px title strip): the Desktop render is the
+#   comparison and the web render is framed 30px down; Live-Home and Prob-HomeFailed are website boards: the web render is
+#   the comparison and the Desktop render is framed 30px up (scenarios/panel-shell.mjs's convention, as m2.txt).
+# GATE: MET — every new M3 element is at 0 size/type drift: the Failed callout's "Resume from Engineer, round 2"
+#   (235x32, as drawn) with "Safe:" / "Next:" (13/700), the Stalled callout's "Resume from the last finished step"
+#   (255x32), the "Resume run #12" panel (title 19px, Kept / Suggested chips 10px, "Resume from here" 140x32 ghost /
+#   154x32 primary, Cancel 69x32 — at the board's own x/y, ±2px), the confirm dialog (title 22px, Kept / Runs again,
+#   the skips box 14/600 + 13px, the same-team note 12.5px, the footer note, Cancel / Resume run — all at the board's
+#   position: none is even "only moved"), the stalled variant's two sentences, the run bar's "Resumed from #12"
+#   (127x20, 11px), the Now bar's Carried over chips (11.5/500 word, 11.5px line), the carried cards ("From run #12"
+#   10px chip, "Approved in run #12" 9.5px, "Round 1 notes carried over" 11px line), the carried Activity lines'
+#   "from run #12" and the Resumed line, Home's Resume (90x32, 13/500) on Run stalled / Run failed and the stalled
+#   card's Resume (64x19, 12/500). Every drift item is an M2 waiver (W1–W4, defined in m2.txt) or W5 below (a pairing
+#   artefact, not drift). Each summary line ends "— covered: <id>×<n>", one per drift item (0 uncovered).
+# built in this sweep (frontend/, vitest + tsc + eslint --max-warnings 0 + prettier green):
+#   42ef0bb api-client: resume.md's types (GET/POST /resume, run number / resumed_from, Activity from_run / carried /
+#     resumed, pinned resume + safe, graph carried, inbox resume; all optional) and the address flag `?resume=1`.
+#   e906901 run view: the callouts' Resume (only when pinned.resume), the Safe / Next copy, "Resume run #12" (opened by
+#     the Stalled callout and by `?resume=1`), the confirm (opened by the Failed callout and by "Resume from here"; Resume
+#     run → POST, then the new run's address on the same team; a refusal's detail in the dialog), "Resumed from #12".
+#     The new buttons' leading icon sits inside the label, flush, as the boards draw it (the toolbar's `.cv-btn-flush`),
+#     so they are drawn width — not W1.
+#   ae0f90d / 500a20f run view: carried steps — Now bar chips, dimmed dashed cards with their chip, a carried step that
+#     runs again waiting with its notes; never "Not reached" / "Starts after".
+#   7ebc04a Home: Resume on Needs you's Run stalled / Run failed rows and the stalled Running now card.
+# waivers W1–W4: as m2.txt (W1 the design-system Button's 8px icon gap on M2's buttons 'Stop run' / 'Jump to live'; W2
+#   the run bar is the app's toolbar ('Stalled' 12→11.5px pairs with the Now bar's state word, the run bar's 'Stop run'
+#   pairs with the callout's); W3 the canvas cards' existing parts ('Round 2' 10→10.5px, 400→500; 'Ship' pairs with the
+#   Now bar's Ship chip when the fit settles differently); W4 the dashboard chrome ('⌘K' 18→22, 'Home2' 600→500)).
+# waiver W5 (pairing, M3 elements at the board's size) the matcher pairs by words and nearest position:
+#   'Approved in run #12' 9.5→11.5px (Prob-Resumed) — the gate pill's line is 9.5/400 in the app as drawn (measured at
+#   595,370); the app fits the whole graph, so the pill sits 270px from the board's and the board's pill line pairs with
+#   the Now bar chip's same words (11.5px there, as drawn). 'Product manager' / 'Approval gate' 600→500 (Prob-Resumed) —
+#   the board's first two carried lines sit behind "Show 2 earlier steps" in the app (it shows the last six steps, M2
+#   layout note), so their who column pairs with the Activity filter buttons; the visible carried lines match.
+# note (layout) the "Resume run #12" panel takes the right edge from under the Now bar to the bottom and the canvas +
+#   Activity share the rest, as Prob-Pick draws; the app does not fold the Activity when the panel opens (the person's
+#   own fold stays) — the scenario folds it with "Hide activity" as the board draws it. While the confirm is open over
+#   the panel, the panel stays under the scrim (Cancel goes back to it); Prob-Confirm draws no panel. The callouts sit
+#   lower than drawn (the app's Activity panel is 340px, m2.txt's layout note): 'Resume from …' are "only moved".
+# note (copy, server words) the bold 'Impact:' (Prob-Failed) and 'Nothing has shipped.' (Prob-Stalled) are inside the
+#   server's body (m2.txt's note); the app bolds the 'Safe:' / 'Next:' it adds. The stalled callout's saved sentence is
+#   the server's `safe` with a capital, the failed one's follows 'Safe:' — one `safe` per callout, so the two boards'
+#   different words ('The spec, your approval and the round 1 changes are saved.' / 'your approved spec (v2) and the
+#   Engineer's round 1 changes are saved') are each fixture's. The Pick panel's step icons follow the step (gate shield,
+#   failed ✕, pm / engineer / reviewer by role); the board tints the Reviewer's square coral — no field says so.
+# note (Prob-Resumed) the app keeps the run bar (W2: 'run #13', 'Running', '1m 02s', '$0.07 of $5.00', 'Stop run', 'Back
+#   to the team', 'Add an RSI indicator' are "not found"); the state words are brief 2.5's ('Running tests' / '● Running
+#   tests' read "Running a command"; '● Waiting for round 2' is the card's existing "● Waiting"); the PM card's second
+#   line 'Spec v2' has no field (the contract's carried text is one string, shown as the chip); 'Edited +12 −4' is
+#   separate spans (m2.txt); '10:42:05' / 'Wrote the spec (v2)' / '10:43:10' / 'You approved the spec' are the two
+#   carried lines behind "Show 2 earlier steps"; 'Spec approval' / 'Round 2 of 3' are the existing gate name / loop label
+#   (m2.txt's "not found" list).
+# note (Home) Needs you's rows keep their existing buttons and order after Resume (Run failed: Resume, View run, Retry, ⋯;
+#   Run stalled: Resume, View run, ⋯); the app's Recent runs column narrows Needs you, so the buttons sit 350px left of
+#   the board's ("only moved"). The stalled card's Resume shows when Needs you offers Resume for that run (its inbox
+#   item's `resume`; the runs list has no resume field). Prob-HomeFailed's nav reads "Home 3" (three items) where the
+#   board keeps Live-Home's 'Home 2'. The rest of Live-Home's "not found" list is m2.txt's (header above the scroll,
+#   the nav badges, the existing card lines).
+# Not found in app (not built): 'What does Stalled mean?' / 'Show what happened' (M2: links whose result no board draws).
+Prob-Stalled web: matched 65/92 design items · 6 with size/type drift · 39 only moved · 27 not found in app — covered: W1×2, W2×2, W3×2
+Prob-Stalled desktop: matched 67/92 design items · 5 with size/type drift · 40 only moved · 25 not found in app — covered: W1×2, W2×2, W3×1
+Prob-Failed web: matched 67/92 design items · 2 with size/type drift · 56 only moved · 25 not found in app — covered: W1×1, W3×1
+Prob-Failed desktop: matched 69/92 design items · 2 with size/type drift · 56 only moved · 23 not found in app — covered: W1×1, W3×1
+Prob-Pick web: matched 68/91 design items · 1 with size/type drift · 21 only moved · 23 not found in app — covered: W3×1
+Prob-Pick desktop: matched 70/91 design items · 1 with size/type drift · 21 only moved · 21 not found in app — covered: W3×1
+Prob-Confirm web: matched 55/78 design items · 1 with size/type drift · 23 only moved · 23 not found in app — covered: W3×1
+Prob-Confirm desktop: matched 57/78 design items · 1 with size/type drift · 23 only moved · 21 not found in app — covered: W3×1
+Prob-ConfirmStalled web: matched 51/78 design items · 2 with size/type drift · 21 only moved · 27 not found in app — covered: W2×1, W3×1
+Prob-ConfirmStalled desktop: matched 53/78 design items · 2 with size/type drift · 21 only moved · 25 not found in app — covered: W2×1, W3×1
+Prob-Resumed web: matched 70/91 design items · 5 with size/type drift · 35 only moved · 21 not found in app — covered: W1×1, W3×1, W5×3
+Prob-Resumed desktop: matched 72/91 design items · 5 with size/type drift · 35 only moved · 19 not found in app — covered: W1×1, W3×1, W5×3
+Live-Home web: matched 48/67 design items · 2 with size/type drift · 32 only moved · 19 not found in app — covered: W4×2
+Live-Home desktop: matched 48/67 design items · 2 with size/type drift · 32 only moved · 19 not found in app — covered: W4×2
+Prob-HomeFailed web: matched 56/76 design items · 1 with size/type drift · 40 only moved · 20 not found in app — covered: W4×1
+Prob-HomeFailed desktop: matched 56/76 design items · 1 with size/type drift · 40 only moved · 20 not found in app — covered: W4×1
+
+# Kept elements (brief §2.2): INVENTORY=1 shoot-app.mjs after the change, the scenarios kept-runview.txt / kept-home.txt
+#   were captured with (runs-live.mjs kept-runview-*, home-kept.mjs kept-home-*); every listed item is still present:
+kept-runview-desktop: 13/13 kept items present
+kept-runview-drawer-web: 27/27 kept items present
+kept-runview-web: 13/13 kept items present
+kept-home-desktop: 63/63 kept items present
+kept-home-web: 64/64 kept items present
+# and with the M3 states on screen: Prob-Resumed-web (run #13 running, "Resumed from #12" in the bar) has all 13
+#   kept-runview-web items; Prob-Pick-web ("Resume run #12" open on a failed run) has 11/13 — 'Cancel run' and 'Running…'
+#   show only while a run is in flight, as before M3 (an ended run shows "Edit this team").

@@ -537,6 +537,22 @@
   color: var(--ink-500);
   white-space: nowrap;
 }
+/* M3 (Live-Home): a stalled run's Resume, at the end of its live line. */
+.hm-run__resume {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--coral-700);
+  white-space: nowrap;
+  cursor: pointer;
+}
 .hm-run__waiting {
   display: flex;
   align-items: center;

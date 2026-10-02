@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import type { ActivityLine, RunActivity } from "../../../lib/api/activity";
-import { agoLong, agoShort, currentLineIds, mergeActivity, stateWord } from "./liveFormat";
+import {
+  aboutMinutes,
+  agoLong,
+  agoShort,
+  currentLineIds,
+  mergeActivity,
+  stateWord,
+} from "./liveFormat";
 
 const NOW = Date.parse("2026-10-02T10:45:24Z");
 const at = (secondsAgo: number) => new Date(NOW - secondsAgo * 1000).toISOString();
@@ -117,5 +124,14 @@ describe("currentLineIds", () => {
     expect([
       ...currentLineIds([l("asked", "n-eng", "message"), l("done", null, "done", "ok")]),
     ]).toEqual(["done"]);
+  });
+});
+
+describe("aboutMinutes (Prob-Confirm)", () => {
+  it("rounds to whole minutes, never 'about 0'", () => {
+    expect(aboutMinutes(480)).toBe("about 8 minutes");
+    expect(aboutMinutes(509)).toBe("about 8 minutes");
+    expect(aboutMinutes(510)).toBe("about 9 minutes");
+    expect(aboutMinutes(20)).toBe("about 1 minute");
   });
 });

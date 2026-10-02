@@ -176,3 +176,59 @@ describe("Needs you — Run stalled (Live-Home)", () => {
     expect(window.location.hash).toBe("#/teams/t-bug/runs/r-stall");
   });
 });
+
+describe("M3 — Resume on Home (Live-Home, Prob-HomeFailed)", () => {
+  const RESUME = { invocation_id: 105, label: "Engineer, round 2" };
+  const rowOf = (section: HTMLElement, title: string) =>
+    within(section).getByText(title).closest("li") as HTMLElement;
+  const names = (row: HTMLElement) =>
+    within(row)
+      .getAllByRole("button")
+      .map((b) => b.getAttribute("aria-label") ?? b.textContent);
+
+  it("Needs you's Run stalled and Run failed rows gain Resume first, opening the run's Resume panel", async () => {
+    mockApi(
+      homeRoutes({
+        "GET /api/inbox": {
+          count: 5,
+          items: [
+            ...INBOX_ITEMS.map((i) => (i.kind === "run_failed" ? { ...i, resume: RESUME } : i)),
+            { ...stalledInboxItem(310), resume: RESUME },
+          ],
+        },
+      }),
+    );
+    renderHome();
+    const section = await screen.findByRole("region", { name: "Needs you" });
+    await within(section).findByText("Run stalled");
+    const stalled = rowOf(section, "Run stalled");
+    expect(names(stalled)).toEqual(["Resume", "View run", "More for Run stalled"]);
+    const failed = rowOf(section, "Run failed");
+    // The failed row keeps View run and Retry; Resume comes before them.
+    expect(names(failed)).toEqual(["Resume", "View run", "Retry", "More for Run failed"]);
+    fireEvent.click(within(stalled).getByRole("button", { name: "Resume" }));
+    expect(window.location.hash).toBe("#/teams/t-bug/runs/r-stall?resume=1");
+    fireEvent.click(within(failed).getByRole("button", { name: "Resume" }));
+    expect(window.location.hash).toBe("#/teams/t-bug/runs/r-flaky?resume=1");
+  });
+
+  it("the stalled Running now card gains Resume when Needs you offers it", async () => {
+    mockApi(
+      homeRoutes({
+        "GET /api/runs": { runs: [STALLED, QUIET], next_cursor: null },
+        "GET /api/inbox": { count: 1, items: [{ ...stalledInboxItem(310), resume: RESUME }] },
+      }),
+    );
+    renderHome();
+    await screen.findByRole("article", { name: "Bugfix squad: Fix the flaky login test" });
+    const stalled = card("Bugfix squad: Fix the flaky login test");
+    fireEvent.click(await within(stalled).findByRole("button", { name: "Resume" }));
+    expect(window.location.hash).toBe("#/teams/t-bug/runs/r-stall?resume=1");
+    // Only the stalled card, and only with the server's resume.
+    expect(
+      within(card("Research pod: Compare three charting libraries")).queryByRole("button", {
+        name: "Resume",
+      }),
+    ).toBeNull();
+  });
+});

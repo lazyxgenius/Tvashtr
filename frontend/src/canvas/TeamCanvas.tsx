@@ -53,6 +53,8 @@ import { WorkEdge } from "./WorkEdge";
 const nodeTypes = { agentNode: AgentNodeCard };
 const edgeTypes = { rework: ReworkEdge, work: WorkEdge };
 
+const NONE_CARRIED: ReadonlySet<string> = new Set();
+
 const EMPTY_FLAGS: ValidityFlags = {
   nodeErrors: new Map(),
   edgeErrors: new Map(),
@@ -74,8 +76,16 @@ function entryNodeIds(graph: GraphData): Set<string> {
 
 /** M2: a run's step that hasn't started says what it starts after, as its Now bar chip does
  *  (Live-NeedsYou) — or, once the run ended, that it was never reached. */
-function waitingLine(graph: GraphData, n: GraphNode, run: RunRow | null): string | null {
+function waitingLine(
+  graph: GraphData,
+  n: GraphNode,
+  run: RunRow | null,
+  carriedOver: ReadonlySet<string>,
+): string | null {
   if (n.live?.live_state !== "waiting" || n.status !== "idle") return null;
+  // M3: a step carried from the run this one resumed was reached there: a card that runs again says
+  // what it carries ("Round 1 notes carried over"); a carried-over one says it in its chip.
+  if (n.carried) return carriedOver.has(n.id) ? null : n.carried.text;
   if (run && RUN_TERMINAL.has(run.status)) return "Not reached";
   const from = graph.edges.find(
     (e) => e.target_node_id === n.id && e.edge_type !== "escalation",
@@ -191,6 +201,7 @@ export function TeamCanvas({
   ringKey = 0,
   docChips,
   onOpenDoc,
+  carriedOver = NONE_CARRIED,
 }: {
   graph: GraphData | null;
   run: RunRow | null;
@@ -221,6 +232,8 @@ export function TeamCanvas({
   /** DOCS-11: each card's written documents (by canvas node id) and what a chip's click opens. */
   docChips?: ReadonlyMap<string, readonly RunDoc[]>;
   onOpenDoc?: (doc: RunDoc) => void;
+  /** M3: a resumed run's nodes whose every step was carried (the Activity's "Carried over"). */
+  carriedOver?: ReadonlySet<string>;
 }) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<AgentNodeData>>([]);
   const [pending, setPending] = useState<PendingConnect | null>(null);
@@ -312,8 +325,9 @@ export function TeamCanvas({
             graph.run_id,
             flags,
             entry.has(n.id),
-            waitingLine(graph, n, run),
+            waitingLine(graph, n, run, carriedOver),
           ),
+          carried: carriedOver.has(n.id) ? (n.carried?.text ?? null) : null,
           hovered: editable && hoverNodeId === n.id,
         },
       })),
@@ -343,15 +357,16 @@ export function TeamCanvas({
                   graph.run_id,
                   flags,
                   entry.has(n.id),
-                  waitingLine(graph, n, run),
+                  waitingLine(graph, n, run, carriedOver),
                 ),
+                carried: carriedOver.has(n.id) ? (n.carried?.text ?? null) : null,
                 hovered: nd.data.hovered,
               },
             }
           : nd;
       }),
     );
-  }, [graph, run, workflowStatus, tasks, flags, setNodes]);
+  }, [graph, run, workflowStatus, tasks, flags, setNodes, carriedOver]);
 
   // Part 1: thread the hovered flag into each node's data (author mode only) so the affordances render
   // from state (`data.hovered`), not CSS `:hover` — they linger through the 450ms grace window. Only

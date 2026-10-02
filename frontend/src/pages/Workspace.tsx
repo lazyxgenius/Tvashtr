@@ -130,6 +130,8 @@ export function Workspace({
         onLogout={onLogout}
         teamId={route.teamId}
         initialRunId={route.runId ?? null}
+        resume={route.resume}
+        onResumeOpened={() => navigate({ ...route, resume: undefined }, { replace: true })}
         onBackToDashboard={(view) => navigate(dashViewRoute(view))}
         config={config}
         node={route.node}

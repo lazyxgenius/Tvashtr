@@ -705,9 +705,12 @@ function boardOf(board) {
         node_id: "n-eng",
         label: "Engineer",
         title: "The Engineer may be stuck",
-        body: "No update for 5m 10s. Its last step was asking the model for the next step, at 10:53:30. Nothing has shipped. The spec, your approval and the round 1 changes are saved.",
+        // M3: the saved sentence is the server's `safe`, which the app adds after the body.
+        body: "No update for 5m 10s. Its last step was asking the model for the next step, at 10:53:30. Nothing has shipped.",
         task_id: null,
         backup_model: null,
+        resume: { invocation_id: 105, label: "Engineer, round 2" },
+        safe: "the spec, your approval and the round 1 changes are saved",
       },
     },
     "Prob-Failed": {
@@ -792,9 +795,12 @@ function boardOf(board) {
         node_id: "n-eng",
         label: "Engineer",
         title: "Engineer failed: the model didn’t answer after 3 tries",
-        body: "Impact: nothing was shipped. Safe: your approved spec (v2) and the Engineer’s round 1 changes are saved. Next: resume from Engineer, round 2. Tvashtr skips the work that is done, so you don’t pay for it again.",
+        // M3: the app adds "Safe: …" (the server's `safe`) and "Next: resume from …" (`resume`).
+        body: "Impact: nothing was shipped.",
         task_id: null,
         backup_model: null,
+        resume: { invocation_id: 105, label: "Engineer, round 2" },
+        safe: "your approved spec (v2) and the Engineer’s round 1 changes are saved",
       },
     },
     "Live-Done": {
@@ -877,8 +883,17 @@ function boardOf(board) {
       },
     },
   };
-  return B[board];
+  return B[ALIAS[board] ?? board];
 }
+
+// M3: the Resume boards draw run #12 as Prob-Failed / Prob-Stalled draw it (Prob-Pick and
+// Prob-Confirm a minute later: "17m ago", "2m ago").
+const ALIAS = {
+  "Prob-Pick": "Prob-Failed",
+  "Prob-Confirm": "Prob-Failed",
+  "Prob-ConfirmStalled": "Prob-Stalled",
+};
+const MOMENT = { "Prob-Pick": "11:01:05", "Prob-Confirm": "11:01:05" };
 
 /** `GET /api/runs/r-12/activity` for a board (the whole reply; `after` is ignored). */
 export function activityFor(board) {
@@ -897,7 +912,8 @@ export function activityFor(board) {
 }
 
 /** The run graph for a board: node statuses + the M1 `live` blocks the cards read. */
-function boardGraph(board) {
+function boardGraph(name) {
+  const board = ALIAS[name] ?? name;
   const b = boardOf(board);
   const a = new Map(agentsOf(b.agents).map((x) => [x.node_id, x]));
   const live = (id) => {
@@ -1028,6 +1044,8 @@ export function boardRoutes(board, { asked = true } = {}) {
       tasks: board === "Live-NeedsYou" ? [GATE_TASK] : [],
     },
     [`GET /api/runs/${RUN_ID}/activity`]: activityFor(board),
+    // M3: where run #12 can resume (read when a Resume opens; stalled: Resume stops it first).
+    [`GET /api/runs/${RUN_ID}/resume`]: resumeInfo(b.status === "running"),
     "GET /api/account/preferences": {
       notify_asked: asked,
       notify_needs_you: true,
@@ -1039,4 +1057,204 @@ export function boardRoutes(board, { asked = true } = {}) {
   });
 }
 
-export const boardNow = (board) => boardOf(board).now;
+export const boardNow = (board) => MOMENT[board] ?? boardOf(board).now;
+
+// ---- M3: Resume from here (resume.md; Runs › Prob-Pick / -Confirm / -ConfirmStalled / -Resumed) ----
+const CONFIRM_R2 = {
+  title: "Resume from Engineer, round 2?",
+  step_label: "Engineer, round 2",
+  kept: [
+    { text: "Spec v2", at: null },
+    { text: "Your approval", at: clockAt("10:43:10") },
+    {
+      text: "Engineer round 1: changes to core/indicators.py and tests/test_indicators.py",
+      at: null,
+    },
+    { text: "Reviewer round 1: the 2 fixes it asked for", at: null },
+  ],
+  runs_again: [
+    "Engineer · round 2",
+    "Reviewer · round 2, and round 3 if it asks for more",
+    "Ship, if the reviewer approves",
+  ],
+  skips_cost_usd: 0.56,
+  skips_s: 480,
+};
+const point = (id, node, label, title, text, hms, cost, extra = {}) => ({
+  invocation_id: id,
+  node_id: node,
+  origin_node_id: node,
+  label,
+  kind: "agent",
+  iteration: 1,
+  title,
+  text,
+  at: clockAt(hms),
+  cost_usd: cost,
+  state: "kept",
+  resumable: true,
+  confirm: { ...CONFIRM_R2, title: `Resume from ${title.replace(" · round ", ", round ")}?` },
+  ...extra,
+});
+
+/** `GET /api/runs/r-12/resume` (Prob-Pick's steps); `stops_run` while it still runs (stalled). */
+export function resumeInfo(stopsRun = false) {
+  return {
+    run_id: RUN_ID,
+    number: 12,
+    next_number: 13,
+    available: true,
+    reason: null,
+    stops_run: stopsRun,
+    points: [
+      point(101, "n-pm", "Product manager", "Product manager", "Wrote the spec (v2)", "10:42:05", 0.06),
+      point(102, "n-prd", "Approval gate", "Approval gate", "You approved the spec", "10:43:10", null, {
+        kind: "gate",
+        resumable: false,
+        confirm: null,
+      }),
+      point(103, "n-eng", "Engineer", "Engineer · round 1", "Edited 2 files · tests passed", "10:46:12", 0.41),
+      point(104, "n-rev", "Reviewer", "Reviewer · round 1", "Asked for 2 fixes", "10:48:40", 0.09),
+      point(105, "n-eng", "Engineer", "Engineer · round 2", "Failed: the model didn’t answer", "10:59:05", 0.28, {
+        iteration: 2,
+        state: "suggested",
+        confirm: CONFIRM_R2,
+      }),
+    ],
+  };
+}
+
+export const RESUMED_ID = "r-13";
+export const resumedPath = () => `/#/teams/${TEAM_ID}/runs/${RESUMED_ID}`;
+export const RESUMED_NOW = "11:03:08";
+const FROM_12 = { run_id: RUN_ID, number: 12 };
+const RESUMED_FROM = { ...FROM_12, step_label: "Engineer, round 2" };
+
+/** Prob-Resumed: run #13, resumed from run #12 at Engineer, round 2, running round 2's tests. */
+export function resumedRoutes() {
+  const carried = (text) => ({ from_run_id: RUN_ID, number: 12, text });
+  const plainLive = (state, activity = null, at = null) => ({
+    live_state: state,
+    last_event_at: at && clockAt(at),
+    activity,
+    activity_started_at: at && clockAt(at),
+    retry: null,
+    backup_model: null,
+  });
+  const n = (key, status, iteration, live, extra = {}) => ({
+    ...NODES[key],
+    origin_node_id: NODES[key].id,
+    status,
+    iteration,
+    invocations: [],
+    live,
+    ...extra,
+  });
+  const graph = {
+    run_id: RESUMED_ID,
+    team_graph_id: `${TEAM_ID}-run13`,
+    nodes: [
+      n("pm", "idle", 0, plainLive("waiting"), { carried: carried("From run #12") }),
+      n("prd", "idle", 0, plainLive("waiting"), { carried: carried("Approved in run #12") }),
+      n("stop", "idle", 0, plainLive("waiting")),
+      n("eng", "running", 2, plainLive("running_command", "Running the tests", "11:03:05"), {
+        invocations: [{ ...inv(6, 2, "running"), started_at: clockAt("11:02:14") }],
+      }),
+      n("rev", "idle", 0, plainLive("waiting"), {
+        carried: carried("Round 1 notes carried over"),
+      }),
+      n("esc", "idle", 0, plainLive("waiting")),
+      n("ship", "idle", 0, plainLive("waiting")),
+    ],
+    edges: EDGES,
+    resolution_warnings: [],
+    live_state: "running_command",
+  };
+  lineSeq = 0;
+  const carriedLine = (hms, label, text, iteration = null) => ({
+    ...L(hms, label, "carried", text, "neutral", {}, iteration),
+    id: `c:1:${lineSeq}`,
+    from_run: FROM_12,
+  });
+  const lines = [
+    carriedLine("10:42:05", "Product manager", "Wrote the spec (v2)", 1),
+    carriedLine("10:43:10", "Approval gate", "You approved the spec"),
+    carriedLine("10:46:12", "Engineer", "Round 1 · edited 2 files", 1),
+    carriedLine("10:48:40", "Reviewer", "Round 1 · asked for 2 fixes", 1),
+    L("11:02:14", "Run", "resumed", "Resumed from run #12 at Engineer, round 2"),
+    L("11:02:20", "Engineer", "read", "Read the reviewer’s notes from round 1", "neutral", {}, 2),
+    L(
+      "11:02:41",
+      "Engineer",
+      "edited",
+      "Edited core/indicators.py",
+      "neutral",
+      { file: "core/indicators.py", added: 12, removed: 4 },
+      2,
+    ),
+    L(
+      "11:03:05",
+      "Engineer",
+      "tests",
+      "Running the tests",
+      "neutral",
+      { command: PYTEST, running: true, started_at: clockAt("11:03:05"), output_tail: [] },
+      2,
+    ),
+  ];
+  const activity = {
+    run_id: RESUMED_ID,
+    status: "running",
+    live_state: "running_command",
+    cursor: `${clockAt(RESUMED_NOW)}|ev:${lines.length}`,
+    total: lines.length,
+    number: 13,
+    resumed_from: RESUMED_FROM,
+    agents: agentsOf({
+      "n-pm": { state: "carried_over", activity: "From run #12 · spec v2", iteration: 1 },
+      "n-prd": { state: "carried_over", activity: "Approved in run #12", iteration: 1 },
+      "n-eng": {
+        state: "running_command",
+        activity: "Running tests · round 2",
+        at: "11:03:05",
+        iteration: 2,
+      },
+      "n-rev": { state: "waiting", activity: "Round 1 notes carried over", iteration: 1 },
+    }),
+    lines,
+    pinned: null,
+    summary: null,
+  };
+  const row = {
+    ...runRow("running"),
+    id: RESUMED_ID,
+    team_graph_id: `${TEAM_ID}-run13`,
+    created_at: before(RESUMED_NOW, 62),
+    updated_at: clockAt(RESUMED_NOW),
+    cost_total_usd: 0.07,
+    spent_usd: 0.07,
+    number: 13,
+    resumed_from: RESUMED_FROM,
+  };
+  return runRoutes("working", {
+    [`GET /api/runs/${RESUMED_ID}`]: {
+      run_id: RESUMED_ID,
+      workflow_status: "PENDING",
+      run: row,
+      costs: [],
+    },
+    [`GET /api/runs/${RESUMED_ID}/graph`]: graph,
+    [`GET /api/runs/${RESUMED_ID}/tasks`]: { run_id: RESUMED_ID, tasks: [] },
+    [`GET /api/runs/${RESUMED_ID}/activity`]: activity,
+    [`GET /api/runs/${RESUMED_ID}/documents`]: { documents: [] },
+    [`GET /api/spike/run-events/${RESUMED_ID}`]: { run_id: RESUMED_ID, events: [] },
+    "GET /api/account/preferences": {
+      notify_asked: true,
+      notify_needs_you: true,
+      notify_stalls_fails: true,
+      notify_finishes: true,
+    },
+    "GET /api/inbox": { count: 0, items: [] },
+    "GET /api/runs": { runs: [], next_cursor: null },
+  });
+}

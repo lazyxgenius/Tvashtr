@@ -1,4 +1,4 @@
-import { ShieldCheck } from "lucide-react";
+import { RotateCcw, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 
 import { type RunListRow, type RunLive, stopRun } from "../../lib/api/runs";
@@ -60,10 +60,13 @@ function RunCard({
   row,
   fresh,
   onStop,
+  resumable = false,
 }: {
   row: RunListRow;
   fresh: boolean;
   onStop: (row: RunListRow) => void;
+  /** M3: Needs you offers Resume for this stalled run. */
+  resumable?: boolean;
 }) {
   const live = LIVE.has(row.status);
   const look = runStatusLook(row.status);
@@ -110,6 +113,17 @@ function RunCard({
           <b>{step.label}</b>
           {` · ${line.text}`}
           {line.aside && <span className="hm-run__live-aside">{line.aside}</span>}
+          {/* M3 (Live-Home): a stalled run's Resume opens it with "Resume run #12" open. */}
+          {resumable && teamId && step.live_state === "stalled" && (
+            <button
+              type="button"
+              className="hm-run__resume"
+              onClick={() => navigate({ page: "team", teamId, runId: row.run_id, resume: true })}
+            >
+              <RotateCcw size={13} strokeWidth={1.6} aria-hidden />
+              Resume
+            </button>
+          )}
         </div>
       )}
       {live && row.awaiting && (
@@ -165,7 +179,7 @@ function RunCard({
  * while Home is open stays for a minute with its final badge; the section hides when empty.
  */
 export function RunningNow() {
-  const { active, ended, justLaunched } = useHomeData();
+  const { active, ended, justLaunched, inbox } = useHomeData();
   const { reloadTeams } = useHome();
   const toast = useToast();
   const [stopping, setStopping] = useState<RunListRow | null>(null);
@@ -184,6 +198,12 @@ export function RunningNow() {
 
   const rows = [...(active.data ?? []), ...ended.map((e) => e.row)];
   const liveCount = (active.data ?? []).length;
+  // M3: the stalled runs Needs you offers Resume for (the server's `resume`).
+  const resumable = new Set(
+    (inbox.data?.items ?? []).flatMap((i) =>
+      i.kind === "run_stalled" && i.resume ? [i.run.id] : [],
+    ),
+  );
 
   if (active.error && !active.data) {
     return (
@@ -250,7 +270,13 @@ export function RunningNow() {
       </div>
       <div className="hm-grid2">
         {rows.map((r) => (
-          <RunCard key={r.run_id} row={r} fresh={r.run_id === justLaunched} onStop={setStopping} />
+          <RunCard
+            key={r.run_id}
+            row={r}
+            fresh={r.run_id === justLaunched}
+            onStop={setStopping}
+            resumable={resumable.has(r.run_id)}
+          />
         ))}
       </div>
       <StopRunDialog

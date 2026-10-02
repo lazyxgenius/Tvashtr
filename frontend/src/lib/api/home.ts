@@ -66,6 +66,8 @@ export interface InboxRunFailed {
     library_team_id?: string | null;
   };
   failure: RunFailure | null;
+  /** M3: where Resume picks up; null / absent when it isn't offered. */
+  resume?: { invocation_id: number; label: string } | null;
 }
 
 /** A running step with no update for 5 minutes (M1, ruling R1); Resume arrives with M3. */
@@ -91,6 +93,8 @@ export interface InboxRunStalled {
     retry: { attempt: number; of: number; next_at: string } | null;
     backup_model: string | null;
   };
+  /** M3: where Resume picks up; null / absent when it isn't offered. */
+  resume?: { invocation_id: number; label: string } | null;
 }
 
 export interface InboxSetupGap {
