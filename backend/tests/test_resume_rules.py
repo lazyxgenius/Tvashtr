@@ -307,3 +307,138 @@ def test_the_forced_failure_fails_one_round_of_one_role_and_never_in_a_resumed_r
             .values(resumed_from_run_id=uuid.UUID(make_run(auth_user_id(), None)[0]))
         )
     assert team_run._forced_failure(run_id, engineer, 2) is None
+
+
+# ---------------------------------------------------------------------------- review fixes
+
+
+def _resumed_but_never_started(client, monkeypatch, tmp_path) -> tuple[str, str]:
+    """#12 fails at Engineer round 2 and is resumed as #13, whose workflow never runs."""
+    old = _new_run()
+    _harness(monkeypatch, tmp_path, fail_round_2_of={old})
+    assert _start(old)["status"] == "failed"
+    monkeypatch.setattr(routers.DBOS, "start_workflow", lambda *a, **k: None)
+    return old, _resume(client, old, _failed_inv(old))
+
+
+def test_a_child_that_ended_before_its_first_step_does_not_strand_the_run(
+    client, monkeypatch, tmp_path
+):
+    old, new = _resumed_but_never_started(client, monkeypatch, tmp_path)
+    assert client.get(f"/api/runs/{old}/resume").json()["available"] is False  # #13 in flight
+    with session_scope() as session:
+        session.execute(update(Run).where(Run.id == uuid.UUID(new)).values(status="cancelled"))
+    again = client.get(f"/api/runs/{old}/resume").json()
+    assert again["available"] is True, again["reason"]
+    keys = {i["key"] for i in client.get("/api/inbox").json()["items"]}
+    with session_scope() as session:
+        status = session.get(Run, uuid.UUID(old)).status
+    assert status != "failed" or f"run_failed:{old}" in keys
+
+
+def test_your_edit_made_while_the_step_was_stalled_is_carried(client, monkeypatch):
+    monkeypatch.setattr(routers.DBOS, "start_workflow", lambda *a, **k: None)
+    monkeypatch.setattr(get_settings(), "stalled_after_s", 60)
+    run_id = make_run(auth_user_id(), None, status="running")[0]
+    graph = _graph_of(run_id)
+    from tvashtr.documents.service import create_document_with_initial_version
+
+    doc = create_document_with_initial_version(
+        "Mini-PRD", "prd", "v1", "agent:entry", f"{run_id}:pm-prd-v1", run_id=uuid.UUID(run_id)
+    )
+    with session_scope() as session:
+        session.execute(update(Run).where(Run.workflow_id == run_id).values(pm_document_id=doc.id))
+        session.execute(  # the PM wrote v1 before the Engineer started
+            update(DocumentVersion)
+            .where(DocumentVersion.document_id == doc.id)
+            .values(created_at=datetime.now(UTC) - timedelta(minutes=10))
+        )
+    add_invocation(run_id, clone_node(graph, "engineer"), "running")
+    with session_scope() as session:
+        session.execute(
+            update(AgentInvocation)
+            .where(AgentInvocation.run_id == run_id)
+            .values(started_at=datetime.now(UTC) - timedelta(minutes=6))
+        )
+    # While the Engineer is stuck you clarify the spec (the agent's own words written during the
+    # step it is re-running are not carried; yours are).
+    add_version(doc.id, "v2 clarified", "human", f"{run_id}:human:1")
+    add_version(doc.id, "agent half-way", "agent:entry", f"{run_id}:spec:x:9")
+    point = client.get(f"/api/runs/{run_id}/resume").json()["points"][0]
+    new = _resume(client, run_id, point["invocation_id"])
+    with session_scope() as session:
+        run = session.get(Run, uuid.UUID(new))
+        versions = session.execute(
+            select(DocumentVersion.version_no, DocumentVersion.content)
+            .where(DocumentVersion.document_id == run.pm_document_id)
+            .order_by(DocumentVersion.version_no)
+        ).all()
+    assert [tuple(v) for v in versions] == [(1, "v1"), (2, "v2 clarified")]
+
+
+def test_a_hosted_run_whose_repo_left_the_installation_is_refused_before_anything_stops(
+    client, monkeypatch
+):
+    monkeypatch.setattr(routers.DBOS, "start_workflow", lambda *a, **k: None)
+    monkeypatch.setattr(get_settings(), "stalled_after_s", 60)
+    monkeypatch.setattr(routers.github_app, "find_repo_in_installations", lambda ids, repo: None)
+    run_id = make_run(
+        auth_user_id(), None, status="running", github_repo="lazyxgenius/trade_mcp", base_ref="main"
+    )[0]
+    add_invocation(run_id, clone_node(_graph_of(run_id), "engineer"), "running")
+    with session_scope() as session:
+        session.execute(
+            update(AgentInvocation)
+            .where(AgentInvocation.run_id == run_id)
+            .values(started_at=datetime.now(UTC) - timedelta(minutes=6))
+        )
+    inv = _first_inv(run_id)
+    resp = client.post(f"/api/runs/{run_id}/resume", json={"invocation_id": inv})
+    assert resp.status_code == 422, resp.text
+    assert resp.json()["detail"]["message"] == "github_repo is not in your installations"
+    with session_scope() as session:
+        assert (
+            session.execute(select(Run.status).where(Run.workflow_id == run_id)).scalar_one()
+            == "running"
+        )
+
+
+def test_a_rebuild_that_fails_after_the_run_opened_a_step_never_raises(
+    client, monkeypatch, tmp_path
+):
+    """A recovery replays recorded steps; failing the run there would call a step the recording
+    doesn't have. Only a resumed run's FIRST entry (no step of its own yet) fails readably."""
+    old, new = _resumed_but_never_started(client, monkeypatch, tmp_path)
+    with session_scope() as session:
+        session.execute(
+            update(RunCheckpoint)
+            .where(RunCheckpoint.run_id == uuid.UUID(new))
+            .values(diff=b"diff --git a/nope b/nope\n--- a/nope\n+++ b/nope\n@@ -1 +1 @@\n-x\n+y\n")
+        )
+    ws = tmp_path / "fresh"
+    ws.mkdir()
+    init_workspace_repo(str(ws))
+    import pytest
+
+    with pytest.raises(checkpoints.CheckpointError):
+        checkpoints.restore(new, str(ws))  # first entry: the run has no step of its own
+    graph = _graph_of(new)
+    add_invocation(new, clone_node(graph, "engineer"), "running", iteration=2)
+    ws2 = tmp_path / "fresh2"
+    ws2.mkdir()
+    init_workspace_repo(str(ws2))
+    checkpoints.restore(new, str(ws2))  # a replay elsewhere: logged, never raised
+
+
+def test_a_carried_node_that_runs_again_reads_as_waiting_with_its_notes_on_the_canvas(
+    client, monkeypatch, tmp_path
+):
+    old, new = _resumed_but_never_started(client, monkeypatch, tmp_path)
+    nodes = {n["role_name"]: n for n in client.get(f"/api/runs/{new}/graph").json()["nodes"]}
+    assert nodes["reviewer"]["carried"]["text"] == "Round 1 notes carried over"
+    assert nodes["engineer"]["carried"]["text"] == "Round 1 carried over"
+    assert nodes["pm"]["carried"]["text"].startswith("From ")
+
+
+def test_the_seed_diff_is_not_read_on_a_poll(client):
+    assert RunCheckpoint.__mapper__.attrs["diff"].deferred is True

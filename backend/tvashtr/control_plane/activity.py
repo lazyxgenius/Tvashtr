@@ -787,12 +787,7 @@ def build(
         if inv is None and nid in carried_nodes:
             rows = carried_nodes[nid]
             if nid in will_run:
-                last = rows[-1]
-                notes = "notes " if last.get("verdict") else ""
-                live.update(
-                    live_state="waiting",
-                    activity=f"Round {last['iteration']} {notes}carried over",
-                )
+                live.update(live_state="waiting", activity=resume.waiting_text(rows))
             else:
                 live.update(
                     live_state="carried_over",
@@ -941,6 +936,8 @@ def build(
         "summary": summary,
         "number": number,
         "resumed_from": resumed_from,
+        # Every line, whatever ``after`` is: ``run_activity`` hands them to Resume (popped there).
+        "_all_lines": [_public(ln) for ln in lines],
     }
 
 
@@ -1062,9 +1059,10 @@ def run_activity(session, run: Run, after: str | None = None, *, resume_info: bo
         start_node=start_node,
         number=resume.number(session, run),
     )
+    all_lines = reply.pop("_all_lines")
     pinned = reply["pinned"]
     if resume_info and pinned is not None and pinned["kind"] in ("failed", "stalled"):
-        points = resume.points(session, run)
+        points = resume.points(session, run, all_lines)
         pinned["resume"] = resume.resume_hint_from(points)
         pinned["safe"] = resume.safe_text(points) if pinned["resume"] else None
     return reply

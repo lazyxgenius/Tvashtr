@@ -64,6 +64,17 @@ def next_number(session, run: Run) -> int | None:
     )
 
 
+def picked_up():
+    """A resumed run that has picked its run up: still in flight, or it opened a step of its own.
+    One that ended before its first step (stopped, a failed clone) leaves the run resumable."""
+    from sqlalchemy import exists, or_
+
+    return or_(
+        Run.status.in_(_IN_FLIGHT),
+        exists(select(AgentInvocation.id).where(AgentInvocation.run_id == Run.workflow_id)),
+    )
+
+
 def run_ref(number_: int | None) -> str:
     return f"run #{number_}" if number_ else "an earlier run"
 
@@ -139,7 +150,7 @@ def _brief_files(detail: str | None) -> list[str]:
     return [f for f in listed if f and not f.startswith("+")]
 
 
-def step_rows(session, run: Run) -> list[dict]:
+def step_rows(session, run: Run, lines: list[dict] | None = None) -> list[dict]:
     """The run's steps in the order they ran: its carried ones (a resumed run), then its own agent
     steps, Query domain rounds and gates — each with its words, cost, time and outcome."""
     nodes = {
@@ -162,7 +173,8 @@ def step_rows(session, run: Run) -> list[dict]:
     invs = [i for i in invs if str(i.node_id) in nodes and nodes[str(i.node_id)].kind in _ROW_KINDS]
     if not invs:
         return rows
-    lines = activity.run_activity(session, run, resume_info=False)["lines"]
+    if lines is None:  # the run view passes the lines it has just built
+        lines = activity.run_activity(session, run, resume_info=False)["lines"]
     by_step: dict[tuple, list[dict]] = {}
     for ln in lines:
         if ln.get("from_run") is None:
@@ -370,8 +382,10 @@ def _documents_before(session, run: Run, before: datetime) -> list[tuple[str | N
     return [(name, version) for name, version in rows]
 
 
-def points(session, run: Run) -> dict:
-    """The ``GET /api/runs/{id}/resume`` reply (owner already checked)."""
+def points(session, run: Run, lines: list[dict] | None = None, *, confirm: bool = True) -> dict:
+    """The ``GET /api/runs/{id}/resume`` reply (owner already checked). ``lines``: the run's whole
+    Activity when the caller has it; ``confirm`` False skips each point's confirm data but the
+    step label (Needs you's button needs no more)."""
     num = number(session, run)
     out = {
         "run_id": str(run.id),
@@ -384,7 +398,9 @@ def points(session, run: Run) -> dict:
     }
     child = (
         session.execute(
-            select(Run).where(Run.resumed_from_run_id == run.id).order_by(Run.created_at.desc())
+            select(Run)
+            .where(Run.resumed_from_run_id == run.id, picked_up())
+            .order_by(Run.created_at.desc())
         )
         .scalars()
         .first()
@@ -400,7 +416,7 @@ def points(session, run: Run) -> dict:
         out["reason"] = "The run is still going" if run.status in _IN_FLIGHT else "The run finished"
         return out
     edges = run_views._graph_edges(session, {run.team_graph_id}).get(run.team_graph_id, [])
-    rows = step_rows(session, run)
+    rows = step_rows(session, run, lines)
     cps = _checkpoints(session, run)
     suggested = _suggested(run, rows, stalled)
     for k, row in enumerate(rows):
@@ -423,7 +439,9 @@ def points(session, run: Run) -> dict:
             "resumable": resumable,
             "from_run": row.get("from_run"),
         }
-        if resumable:
+        if resumable and not confirm:
+            point["confirm"] = {"step_label": _title(row, edges).replace(" · round ", ", round ")}
+        elif resumable:
             again = _runs_again(session, run, rows, k, edges)
             step_label = again[0].replace(" · round ", ", round ")
             before = [r for r in rows[:k] if r["kind"] != "gate"]
@@ -445,9 +463,9 @@ def points(session, run: Run) -> dict:
 
 
 def resume_hint(session, run: Run) -> dict | None:
-    """``{"invocation_id", "label"}`` of the suggested point when Resume is offered (the pinned
-    callout's and Needs you's button), else None."""
-    return resume_hint_from(points(session, run))
+    """``{"invocation_id", "label"}`` of the suggested point when Resume is offered (Needs you's
+    button), else None — without the run's Activity (no step words are needed)."""
+    return resume_hint_from(points(session, run, lines=[], confirm=False))
 
 
 def resume_hint_from(reply: dict) -> dict | None:
@@ -512,18 +530,25 @@ def create(
     doc_map: dict[uuid.UUID, uuid.UUID] = {}
     docs = session.execute(select(Document).where(Document.run_id == run.id)).scalars().all()
     for doc in docs:
-        versions = [v for v in doc.versions if v.created_at < chosen.started_at]
+        # As they stood when the chosen step started (a gate edit, a Query domain section), plus
+        # your own edits since (made while it stalled) — never the agents' words from the step that
+        # runs again. Numbered afresh, in order.
+        versions = [
+            v
+            for v in sorted(doc.versions, key=lambda v: (v.created_at, v.version_no))
+            if v.created_at < chosen.started_at or v.created_by == "human"
+        ]
         if not versions:
             continue
         copy = Document(title=doc.title, doc_type=doc.doc_type, run_id=new_id, name=doc.name)
         session.add(copy)
         session.flush()
         doc_map[doc.id] = copy.id
-        for v in versions:
+        for no, v in enumerate(versions, start=1):
             session.add(
                 DocumentVersion(
                     document_id=copy.id,
-                    version_no=v.version_no,
+                    version_no=no,
                     content=v.content,
                     created_by=v.created_by,
                     note=v.note,
@@ -590,6 +615,18 @@ def carried(session, run: Run) -> tuple[list[dict], dict | None, str | None]:
         return [], None, None
     state = seed.state
     return list(state.get("carried", [])), state.get("from_run"), state.get("start_node_id")
+
+
+def waiting_text(rows: list[dict]) -> str:
+    """A carried node that runs again: "Round 1 notes carried over" (a reviewer's verdict) or
+    "Round 1 carried over"."""
+    last = rows[-1]
+    notes = "notes " if last.get("verdict") else ""
+    return f"Round {last['iteration']} {notes}carried over"
+
+
+def card_text(rows: list[dict], runs_again: bool) -> str:
+    return waiting_text(rows) if runs_again else carried_text(rows)
 
 
 def carried_text(rows: list[dict]) -> str:

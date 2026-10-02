@@ -1902,7 +1902,16 @@ def get_run_graph(run_id: str, current_user: Annotated[UserOut, Depends(get_curr
             for n in nodes
         }
 
-        carried_nodes = resume.carried_by_node(resume.carried(session, run)[0])
+        carried_rows, _from, start_node = resume.carried(session, run)
+        carried_nodes = resume.carried_by_node(carried_rows)
+        runs_again = (
+            activity._reachable(
+                run_views._graph_edges(session, {run.team_graph_id}).get(run.team_graph_id, []),
+                start_node,
+            )
+            if start_node
+            else set()
+        )
 
         # M-tools C7.A (SHARED CONTRACT S1): run-scoped resolution warnings — tools/skills that
         # FAILED to resolve at run time and were SKIPPED (the run continued). Oldest-first; [] none.
@@ -1939,7 +1948,9 @@ def get_run_graph(run_id: str, current_user: Annotated[UserOut, Depends(get_curr
                     # M3 (R8): a resumed run's node whose work was carried (no step of its own
                     # yet) — the card says "From run #12" / "Approved in run #12", never
                     # "Not reached". ``None`` for every other node.
-                    "carried": _carried_card(carried_nodes, str(n.id), latest_by_node),
+                    "carried": _carried_card(
+                        carried_nodes, str(n.id), latest_by_node, str(n.id) in runs_again
+                    ),
                     # P1.5c (§14.1): the node's per-round invocation history, ascending by
                     # iteration — additive read of the already-persisted rows ([] before the
                     # node is reached). The Reviewer panel renders each round's `outcome`
@@ -1978,7 +1989,9 @@ def get_run_graph(run_id: str, current_user: Annotated[UserOut, Depends(get_curr
         }
 
 
-def _carried_card(carried_nodes: dict, node_id: str, latest_by_node: dict) -> dict | None:
+def _carried_card(
+    carried_nodes: dict, node_id: str, latest_by_node: dict, runs_again: bool
+) -> dict | None:
     rows = carried_nodes.get(node_id)
     if not rows or node_id in latest_by_node:
         return None
@@ -1986,7 +1999,7 @@ def _carried_card(carried_nodes: dict, node_id: str, latest_by_node: dict) -> di
     return {
         "from_run_id": origin["run_id"],
         "number": origin["number"],
-        "text": resume.carried_text(rows),
+        "text": resume.card_text(rows, runs_again),
     }
 
 
@@ -2045,7 +2058,28 @@ def resume_run(
         stops_run = reply["stops_run"]
         team_graph_id = str(run.team_graph_id)
         desktop_target = bool(run.desktop_target)
+        github_repo = run.github_repo
+        installation_ids = (
+            [
+                row.installation_id
+                for row in session.execute(
+                    select(GithubInstallation).where(GithubInstallation.owner_id == owner_id)
+                ).scalars()
+            ]
+            if github_repo
+            else []
+        )
     _enforce_run_ceilings(owner_id, replacing_in_flight=1 if stops_run else 0)
+    # A hosted run's repo must still be the owner's (as POST /api/runs checks) — before anything
+    # is stopped. The HTTP call runs after the session closes.
+    if github_repo and github_app.find_repo_in_installations(installation_ids, github_repo) is None:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "github_repo is not in your installations",
+                "github_repo": github_repo,
+            },
+        )
     desktop_routed = _launch_preflight(owner_id, team_graph_id, desktop_target)
     if stops_run:
         cancel_run_core(run_id)
