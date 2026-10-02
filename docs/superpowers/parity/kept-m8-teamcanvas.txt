@@ -1,0 +1,44 @@
+# Kept-elements inventory — m8-teamcanvas (the team canvas, authoring: the toolbar's Back to teams, Run this team, the name, the version chip, Documents, Team file, spend, connection), captured on main 533f0e3 (before M8) with scripts/design-parity/shoot-app.mjs INVENTORY=1
+# Scenarios: scripts/design-parity/scenarios/compare.mjs (kept-m8-teamcanvas-web / -desktop: versions.mjs's teamRoutes, the canvas at #/teams/t-ind), the same scenario shot on main 533f0e3
+#   (Vite :5312) and on m08-parity = feat/m08-compare 3df9885 (Vite :5311). After the change every line must still be present (superset).
+
+## kept-m8-teamcanvas-desktop
+button: Account
+button: Add to canvas
+button: Back to teams
+button: Documents 0
+button: Fit View
+button: Run this team
+button: Set this node’s model
+button: Team file
+button: Version history
+button: Zoom In
+button: Zoom Out
+header: 
+main: 
+toolbar: Team
+
+## kept-m8-teamcanvas-web
+button: Account
+button: Add to canvas
+button: Back to teams
+button: Documents 0
+button: Fit View
+button: Run this team
+button: Set this node’s model
+button: Team file
+button: Version history
+button: Zoom In
+button: Zoom Out
+header: 
+main: 
+toolbar: Team
+
+# After M8 (m08-parity, the same scenario):
+kept-m8-teamcanvas: web 14/14, desktop 14/14 kept items present — none missing (after: 15 each, added "button: Compare")
+# The toolbar's words and places (read from the same shots' measurements, the toolbar row, before → after, x in px):
+#   Back to teams @20 · Run this team @72 · Indicator sprint team @231 · Version history (v7 · saved 2m ago) @392 · Documents 0 @582 ·
+#   Team file @1162 · $0.00 (spend) @1273 · Connected @1341 — every one present after at the same x, web and Desktop; "Compare" is
+#   added at 1052, right before Team file (12 items → 14: its button and its label).
+# Also re-shot on m08-parity: kept-m7-teamcanvas-* (kept-m7-teamcanvas.txt, the Reviewer's drawer open: 46/46 web and Desktop) and
+#   kept-m7-history-* (kept-m7-history.txt, History open: 29/29 web and Desktop) — none missing; each adds only "button: Compare".

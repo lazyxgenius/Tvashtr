@@ -1,0 +1,107 @@
+# M8 — Compare two versions: parity record, branch m08-parity (= feat/m08-compare 3df9885), 2026-10-02.
+# Design: the Claude Design "Quality" canvas export (page "compare"): Cmp-Start, Cmp-Running, Cmp-Results (the brief's three) and
+#   the M8 boards for the undrawn states — Cmp-OneVersion, Cmp-Queued, Cmp-NeedsYou, Cmp-SideFailed, Cmp-StopConfirm,
+#   Cmp-Versions; and the "Team Setup" canvas's Ver-Draft (M5's board, which draws the toolbar's Compare before Team file).
+#   Shot with shoot-design.mjs at 1440x900, FONT_CACHE_DIR …/scratchpad/font-cache: 10 design shots, 10 fonts-ok.
+# App: Vite :5311 on the m08-parity worktree (its own cacheDir), no backend. scripts/design-parity/scenarios/compare.mjs answers
+#   the contract's shapes (docs/superpowers/plans/api/compare.md) with the boards' data: GET /api/teams/t-ind/compare (team
+#   "Indicator sprint team"; v7 now · 1 run "Reviewer: stricter about the INDICATORS registry" current, v6 yesterday · 3 runs "Added
+#   the Spec approval gate", v5 3 days ago · 2 runs "Engineer: model changed to xai/grok-4.7"; defaults 6 / 7, 1 change, target
+#   lazyxgenius/trade_mcp from main, estimate $2.30 · 25 min; Cmp-OneVersion: v1 only, "The team’s first version", no estimate),
+#   GET /api/recent-tasks (the team's "Add an RSI indicator", which fills the task box) and GET /api/compares/cmp-1 in each board's
+#   state: running 19m 10s / $2.02 (A v6 Running 19m 10s · $1.10, Engineer · round 3, the board's four lines; B v7 Finished
+#   16m 02s · $0.92, Approved in round 2, "Finished · no pull request in a compare"); waiting with 3 of 3 slots in use; running
+#   12m 40s / $0.75 with gates asked (A Needs you · Spec approval · waiting for you, gate_task_id 41; B Engineer · round 1); finished
+#   2 minutes ago, $2.40 in all, the board's seven result rows (v7 did better; Restore v6) and the side-failed rows (v6 finished; v7
+#   failed). Each lane's strip is Product manager › Spec approval › Engineer ⇄ Reviewer › Ship. Ver-Draft is versions.mjs's own
+#   scenario (the canvas with 2 changes, History open), re-exported by compare.mjs.
+# States are reached through the UI: #/teams/t-ind/compare (Start, OneVersion; the task filled from recent tasks); its
+#   /compare/cmp-1 address (the lanes, then the results); Stop compare › the confirm (Cmp-StopConfirm); ?tab=versions (Cmp-Versions).
+#   The clock stands still at the boards' moment, 10:34:26 (runs-live.mjs's `pair`), so the lines read 10:31:40 … and "6 s ago".
+# Which render is the comparison: every board is drawn in Desktop (the 30px title strip): the Desktop render is the comparison and
+#   the web render is framed 30px down (m7.txt / ma.txt's convention). Both renders are recorded below.
+# GATE: size/type MET — every new M8 element is at 0 size/type drift on every render (web and Desktop); NOT CLEAN — 1 real "not found
+#   in app" (Cmp-NeedsYou 'Working') and 2 layout drifts on new elements (the results table, the Needs-you lane head) are reported
+#   below for the lead to fix; none is waived.
+#   At 0 drift, box for box where measured (Desktop; x,y w×h): the bar's title 'Compare versions' 21/400 Newsreader, the team name
+#   12.5px, the line tabs Compare / Versions 14/500 (58–61×29); Start: the 26px Newsreader title, the 14px lede, the two Selects
+#   333×44 16/400 at (323,306) and (820,306) (drawn (323,307) / (820,307); measured by their aria-labels "Version A" / "Version B",
+#   so the board's [ctl] 'v6' / 'v7' / 'v1' are "not found" by name), the 12.5px captions, the 18px "vs", '1 change' 51×19 12/500,
+#   RUN THEM ON 11.5/600, Task 14/500 and its 900×44 16px input, the 12px mono repo line, Approve gates automatically 14px + its 13px
+#   line, the 13px estimate with $2.30 13/600, Start compare 143×40 14/500 (OneVersion: its disabled state, the 13px one-version
+#   callout); the lanes: the 24px Newsreader headline, the 12/500 badges (Running 79×22, Waiting 75×22, Finished 80×22, Needs you
+#   93×22, Waiting for a free slot 155×22), the 12.5px mono "19m 10s · $2.02 so far", Stop compare 127×32 13/500, the lane's 14/600
+#   mono vN, its 12px mono time · cost, Open run 84×32 13/500, the strip's 12.5px "Engineer · round 3" (700 + 400), each line's
+#   11px mono clock, 12.5/600 who, 13px what (600 for the line now), the 11.5/600 mono file, the 11px "6 s ago", the 13px queued
+#   line, the 12.5px foot; Stop this compare? 22px Newsreader in the 546px dialog, its 13.5px sentence, Keep running 109×32 / Stop
+#   compare 113×32 13/500; results: the 26px headline, the 13px sub, the 12/500 Finished badge, the header's 13px mono vN and Open
+#   run 53×19 12/500, DIFFERENCE 11.5/600, the 13px row labels, the 13.5px values (600 on the better side), the 12.5px differences,
+#   the failed value, v7 is your current version. 13px, Restore v6 120×40 / Done 69×40 14/500; Versions: the 26px title, the 14px
+#   lede, the 13/600 mono vN, the 11.5px ages, the 13px summaries, the 10px pills and Current, Compare with v7 131×32 13/500 (×2);
+#   Ver-Draft: the toolbar's Compare 97×32 13/500 Inter (its label 57 wide), as drawn.
+# TO FIX (new elements; measured on the Desktop render, the web render is the same 30px lower):
+#   1. not found in app — Cmp-NeedsYou, lane B's badge 'Working' 12/500 80×22 at (810,276): the app shows "Running" for a side whose
+#      status is running (CompareView SIDE_LOOK), as Cmp-Running draws its running lane A ('Running' 79×22 at (112,276)). The two
+#      boards disagree for the same status; the lead rules which word (or which state) shows "Working".
+#   2. layout — the results table (Cmp-Results, Cmp-SideFailed): every value with the better check renders the check ON ITS OWN LINE
+#      above the words (the 14×14 lucide svg computes display:block — Tailwind's preflight `svg { display: block }`; compare.css's
+#      `.cmp-res__cell svg` sets margin and vertical-align but not display), so those rows are 59px tall where the board draws every
+#      row 45px (Results: Result, Cost, Time, Reviewer’s tests, Retries 59 vs 45; Repo tests and Files changed 45 = drawn) and the
+#      table is 433 tall vs 360 (Results), 405 vs 360 (SideFailed); the board's 13×13 check sits inline left of the words. Also: the
+#      header row is 50px (board 47) and its empty first cell is untinted (the `<td />` misses `thead th`'s surface-sunk fill; the
+#      board tints the whole header row rgb(239,236,225)); the A column's words start at x 277 (board 287) and DIFFERENCE / the
+#      differences at 1197 (board 1189); B's at 737 (board 738).
+#   3. layout — Cmp-NeedsYou: lane A's head is 61px tall with its Open run button (14 + 32 + 14 + 1), the board's is 55 (the button
+#      drawn at y 271 inside the 260–315 head) and lane B's is 55: lane A's strip and lines sit 6px lower than lane B's (board: level).
+# Not built, by rule (not drift): 'Task sets2' (the tab and its count, every board) — arrives with M9; 'One task' / 'A task set'
+#   (the switch, Cmp-Start / -OneVersion: the content under RUN THEM ON sits 20px higher, "only moved") — arrives with M9; "One task
+#   is a small sample", "Run the Indicators task set (5 tasks) before you rely on this." and 'Compare on Indicators' (Cmp-Results) —
+#   arrives with M9 (the foot sits 56px higher, "only moved"); 'Compare the code' (Cmp-Results / -SideFailed) — not built (no board
+#   for its target); Ver-Draft's ⋯ 'More for this team' — not built (as m5.txt / m7.txt).
+# waiver: app governs (brief 2.2/2.3) — the canvas header (CanvasHeader: logo, "the living canvas", the env chip, Account), shared
+#   by the compare page and the canvas, and the toolbar's existing controls (Back to teams, Run this team, the name, the version chip,
+#   Save as v8, Documents, Team file, spend, Connected): 0 size/type drift on every render; recorded so nothing is silently waived.
+#   The web renders' 'Tvashtr — the living canvas' (the Desktop title strip) and 'Tvashtr Desktop' (the env chip; the web shows the
+#   host) are not found there by rule.
+# waiver W11: as m5.txt (Ver-Draft, ×4) [ctl] 'Restore' 32→13 high, 73→47 wide: History's rows name their buttons with the version
+#   ("Restore v6"), so the board's control pairs with the label inside it; the controls measure as drawn. Its five 'What changed'
+#   controls are "not found" by name for the same reason (their labels match at 0 drift).
+# note (layout, only moved) the toolbar's Compare is at (1052,98) where Ver-Draft draws (1071,98): the app keeps the spend "$0.00"
+#   and has no ⋯ (not built), and the right group keeps its 12px gap (the board draws ~5px) — the toolbar is the app's (2.2/2.3).
+#   The bar's title line box is 27px (board 34; the glyphs sit where drawn) and the team name 3px higher (122 vs 125), so the page
+#   under it sits 1–3px higher than drawn. The Stop dialog is centred in the window (447,372) where the board draws it at (470,260) —
+#   the existing ConfirmDialog's placement (ma.txt); its size (546 wide) and words are as drawn.
+# note (copy, server words) Start's caption reads "Yesterday · 3 runs · Added the Spec approval gate" (the stored summary, as the
+#   Versions tab draws it); Cmp-Start lowercases it mid-caption ("added the …") — matched case-insensitively, same size. The lanes'
+#   "Editing core/indicators.py" is the board's: the server's Activity says "Edited <file>" / "Running <command>", so the fixture
+#   gives it as an open step with the file as its code (the app sets it in mono as drawn).
+# Not found in app (a new element, real): 'Working' (Cmp-NeedsYou, TO FIX 1). Everything else not found is by rule, above.
+Cmp-Start desktop: matched 29/35 design items · 0 with size/type drift · 13 only moved · 6 not found in app
+Cmp-Start web: matched 27/35 design items · 0 with size/type drift · 13 only moved · 8 not found in app
+Cmp-Running desktop: matched 51/53 design items · 0 with size/type drift · 2 only moved · 2 not found in app
+Cmp-Running web: matched 49/53 design items · 0 with size/type drift · 2 only moved · 4 not found in app
+Cmp-Results desktop: matched 46/53 design items · 0 with size/type drift · 27 only moved · 7 not found in app
+Cmp-Results web: matched 44/53 design items · 0 with size/type drift · 27 only moved · 9 not found in app
+Cmp-OneVersion desktop: matched 27/32 design items · 0 with size/type drift · 11 only moved · 5 not found in app
+Cmp-OneVersion web: matched 25/32 design items · 0 with size/type drift · 11 only moved · 7 not found in app
+Cmp-Queued desktop: matched 23/25 design items · 0 with size/type drift · 2 only moved · 2 not found in app
+Cmp-Queued web: matched 21/25 design items · 0 with size/type drift · 2 only moved · 4 not found in app
+Cmp-NeedsYou desktop: matched 50/53 design items · 0 with size/type drift · 2 only moved · 3 not found in app
+Cmp-NeedsYou web: matched 48/53 design items · 0 with size/type drift · 2 only moved · 5 not found in app
+Cmp-SideFailed desktop: matched 42/45 design items · 0 with size/type drift · 22 only moved · 3 not found in app
+Cmp-SideFailed web: matched 40/45 design items · 0 with size/type drift · 22 only moved · 5 not found in app
+Cmp-StopConfirm desktop: matched 57/59 design items · 0 with size/type drift · 8 only moved · 2 not found in app
+Cmp-StopConfirm web: matched 55/59 design items · 0 with size/type drift · 8 only moved · 4 not found in app
+Cmp-Versions desktop: matched 30/32 design items · 0 with size/type drift · 2 only moved · 2 not found in app
+Cmp-Versions web: matched 28/32 design items · 0 with size/type drift · 2 only moved · 4 not found in app
+Ver-Draft desktop: matched 65/80 design items · 4 with size/type drift · 12 only moved · 15 not found in app — covered: W11×4
+Ver-Draft web: matched 63/80 design items · 4 with size/type drift · 12 only moved · 17 not found in app — covered: W11×4
+# (m5.txt's Ver-Draft: 63/80 desktop, 61/80 web, 17 / 19 not found — the toolbar's Compare and its label now match.)
+# Renders: 10 design shots (fonts-ok) + 20 app board shots (10 boards × web + Desktop); 4 kept shots (kept-m8-teamcanvas web and
+#   Desktop on main 533f0e3, Vite :5312, and on m08-parity) + 4 re-shots of earlier kept scenarios on m08-parity.
+
+# Kept elements (brief §2.2): docs/superpowers/parity/kept-m8-teamcanvas.txt — the team canvas (authoring), INVENTORY=1, before
+#   (main 533f0e3) and after (m08-parity):
+kept-m8-teamcanvas: web 14/14, desktop 14/14 kept items present — none missing (after: 15, added "button: Compare")
+#   and the earlier records still hold on m08-parity: kept-m7-teamcanvas-web 46/46, -desktop 46/46; kept-m7-history-web 29/29,
+#   -desktop 29/29 (each adds only "button: Compare").
