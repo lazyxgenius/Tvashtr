@@ -156,7 +156,14 @@ export function getVersions(teamId: string): Promise<TeamVersions> {
 export function saveVersion(
   teamId: string,
   body: { note?: string; run_tests?: boolean; check_set?: string } = {},
-): Promise<TeamVersion & { tests_started?: { node_id: string; run_id: string }[] }> {
+): Promise<
+  TeamVersion & {
+    tests_started?: { node_id: string; run_id: string }[];
+    /** M9 (R6): the set check the save started, or why it didn't (the save stands either way). */
+    check_started?: { compare_id: string; status: string } | null;
+    check_error?: string | null;
+  }
+> {
   return apiRequest("POST", `${team(teamId)}/versions`, body);
 }
 

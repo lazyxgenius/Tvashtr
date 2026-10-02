@@ -225,6 +225,7 @@ const ONE_RESULTS: Compare = {
 
 let sets: TaskSet[];
 let compare: Compare;
+let start: CompareStart;
 let saveReply: { status: number; body: unknown };
 let deleteReply: { status: number; body: unknown };
 type Fetch = (input: string, init?: RequestInit) => Promise<Response>;
@@ -239,13 +240,16 @@ const bodyOf = (url: string, method: string) =>
 beforeEach(() => {
   sets = [INDICATORS, BUGFIXES];
   compare = SET_RUNNING;
+  start = START;
   saveReply = { status: 201, body: { ...BUGFIXES, id: "set-new" } };
   deleteReply = { status: 204, body: null };
   fetchMock = vi.fn<Fetch>((url, init) => {
     const method = init?.method ?? "GET";
     if (url === "/api/teams/team-1/compare" && method === "POST")
       return reply({ id: "cmp-9", status: "running" }, 201);
-    if (url === "/api/teams/team-1/compare") return reply(START);
+    if (url === "/api/teams/team-1/compare") return reply(start);
+    if (url.startsWith("/api/teams/team-1/compare/changes"))
+      return reply({ a: 5, b: 7, rows: [], summary: "" });
     if (url === "/api/teams/team-1/task-sets" && method === "POST")
       return reply(saveReply.body, saveReply.status);
     if (url === "/api/teams/team-1/task-sets") return reply({ sets });
@@ -667,6 +671,14 @@ describe("A set compare (Set-Running, Set-Results)", () => {
       screen.getByText("6 of 10 runs started · 4 waiting for a free slot"),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Stop compare" })).toBeInTheDocument();
+    // Set-StopConfirm: the confirm says what stopping a set does.
+    fireEvent.click(screen.getByRole("button", { name: "Stop compare" }));
+    expect(
+      await screen.findByRole("alertdialog", { name: "Stop this compare?" }),
+    ).toHaveTextContent(
+      "Every run of this compare stops now and is marked Stopped, and the tasks not started yet won’t start. Nothing ships in a compare.",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Keep running" }));
     expect(screen.queryByRole("region", { name: "Version A" })).toBeNull();
     const table = screen.getByRole("table", { name: "Tasks" });
     expect(
@@ -764,6 +776,25 @@ describe("One task is a small sample (Cmp-Results)", () => {
       "true",
     );
     expect(screen.getByRole("combobox", { name: "Task set" })).toHaveValue("set-ind");
+  });
+
+  it("Compare on the set keeps the versions that result compared", async () => {
+    compare = {
+      ...ONE_RESULTS,
+      sides: ONE_RESULTS.sides.map((s) => (s.label === "A" ? { ...s, version: 5 } : s)),
+    };
+    start = {
+      ...START,
+      versions: [
+        ...START.versions,
+        { number: 5, when: ago(4320), runs: 2, summary: "Engineer model", current: false },
+      ],
+    };
+    open("#/teams/team-1/compare/cmp-1");
+    fireEvent.click(await screen.findByRole("button", { name: "Compare on Indicators" }));
+    await waitFor(() => expect(window.location.hash).toBe("#/teams/team-1/compare"));
+    expect(await screen.findByRole("combobox", { name: "Version A" })).toHaveValue("5");
+    expect(screen.getByRole("combobox", { name: "Version B" })).toHaveValue("7");
   });
 
   it("no set for the team: no callout", async () => {

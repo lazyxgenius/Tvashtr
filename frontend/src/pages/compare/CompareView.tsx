@@ -61,8 +61,8 @@ export function CompareView({
 }: {
   id: string;
   teamId: string;
-  /** "Compare on <set>": the Compare tab with that set chosen. */
-  onCompareOn: (setId: string) => void;
+  /** "Compare on <set>": the Compare tab with that set chosen, on the versions this one compared. */
+  onCompareOn: (setId: string, versions: { a: number; b: number }) => void;
 }) {
   const { compare, failed, refresh } = useCompare(id);
   if (!compare)
@@ -178,7 +178,9 @@ function Running({ c, teamId, onStopped }: { c: Compare; teamId: string; onStopp
         onConfirm={stop}
         onCancel={() => !busy && setAsk(false)}
       >
-        Both runs stop now and are marked Stopped. Nothing ships in a compare.
+        {set
+          ? "Every run of this compare stops now and is marked Stopped, and the tasks not started yet won’t start. Nothing ships in a compare."
+          : "Both runs stop now and are marked Stopped. Nothing ships in a compare."}
       </ConfirmDialog>
     </div>
   );
@@ -315,7 +317,7 @@ function Results({
   c: Compare;
   teamId: string;
   onRestored: () => void;
-  onCompareOn: (setId: string) => void;
+  onCompareOn: (setId: string, versions: { a: number; b: number }) => void;
 }) {
   const r = c.results as NonNullable<Compare["results"]>;
   const [look, variant] = COMPARE_LOOK[c.status];
@@ -399,7 +401,12 @@ function Results({
                 variant="secondary"
                 size="sm"
                 className="cv-btn-flush"
-                onClick={() => onCompareOn((r.sample as NonNullable<typeof r.sample>).set_id)}
+                onClick={() =>
+                  onCompareOn((r.sample as NonNullable<typeof r.sample>).set_id, {
+                    a: c.sides.find((x) => x.label === "A")?.version ?? 0,
+                    b: c.sides.find((x) => x.label === "B")?.version ?? 0,
+                  })
+                }
               >
                 <ListChecks size={14} strokeWidth={1.6} aria-hidden />
                 <span>Compare on {r.sample.name}</span>

@@ -81,8 +81,9 @@ export function ComparePage({
   );
   const list = sets.value ?? [];
   const [chosen, setChosen] = useState<string | null>(null);
-  const compareOn = (setId: string) => {
+  const compareOn = (setId: string, v?: { a: number; b: number }) => {
     setChosen(setId);
+    if (v) setPick(v);
     navigate({ page: "compare", teamId }, { replace: true });
   };
   const tabs = [

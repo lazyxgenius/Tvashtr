@@ -76,6 +76,8 @@ let testing: boolean;
 let graphFails: number;
 // What the next GET /versions answers instead of `summary` (a fresher summary).
 let nextSummary: TeamVersions | null;
+// The POST /versions reply's M9 fields (null: the plain M5 reply).
+let saveExtra: Record<string, unknown> | null;
 const reply = (body: unknown, status = 200) =>
   Promise.resolve(new Response(JSON.stringify(body), { status }));
 const posts = () =>
@@ -88,6 +90,7 @@ const graphReads = () =>
 beforeEach(() => {
   window.location.hash = "";
   summary = versions(TESTS);
+  saveExtra = null;
   testing = false;
   graphFails = 0;
   nextSummary = null;
@@ -105,7 +108,7 @@ beforeEach(() => {
       return reply({ errors: [], warnings: [], runnable: true });
     if (url === "/api/teams/team-1/versions" && method === "POST") {
       summary = { ...versions(null, 0), current: 8, next: 9, saved_at: ago(0) };
-      return reply({ number: 8, tests_started: [] }, 201);
+      return reply({ number: 8, tests_started: [], ...saveExtra }, 201);
     }
     if (url === "/api/teams/team-1/versions" && nextSummary) {
       summary = nextSummary;
@@ -360,6 +363,23 @@ describe("App — M9 Save as vN offers a compare on a task set (Set-SaveCheck)",
     fireEvent.click(compare);
     fireEvent.click(within(dialog).getByRole("button", { name: "Save and check" }));
     await waitFor(() => expect(posts()).toEqual([{ check_set: "set-ind" }]));
+  });
+
+  it("a check that couldn't start: the save stands and a toast says why (Set-CheckNotStarted)", async () => {
+    summary = { ...versions(null), check_sets: [INDICATORS] };
+    saveExtra = {
+      check_started: null,
+      check_error: "This team already has a compare running. Stop it first.",
+    };
+    renderApp();
+    await saveAs();
+    const dialog = await screen.findByRole("dialog", { name: "Save as v8" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save and check" }));
+    expect(
+      await screen.findByText(
+        "Saved v8. The check on Indicators didn’t start: This team already has a compare running. Stop it first.",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("no set and no tests: Save as v8 still saves at once with {} (M5)", async () => {

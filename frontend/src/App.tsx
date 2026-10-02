@@ -860,16 +860,24 @@ export default function App({
           } else postVersion();
         });
     });
-  const postVersion = (body?: { note?: string; run_tests?: boolean; check_set?: string }) => {
+  const postVersion = (
+    body?: { note?: string; run_tests?: boolean; check_set?: string },
+    /** The set's name, for a check that couldn't start (Set-CheckNotStarted). */
+    checkSet?: string,
+  ) => {
     if (!currentTeamId) return;
     const teamOfSave = currentTeamId;
     setSaveStep("posting");
     saveVersion(teamOfSave, body)
       .then(
-        () => {
+        (saved) => {
           savedVersion.current = true;
           // The tests start after the save: the canvas chips read the graph again.
           if (body?.run_tests && mountedRef.current) void loadTeam(teamOfSave);
+          if (saved?.check_error && mountedRef.current)
+            toast({
+              message: `Saved v${saved.number}. The check on ${checkSet ?? "the set"} didn’t start: ${saved.check_error}`,
+            });
         },
         (e: unknown) =>
           toast(
@@ -1283,7 +1291,7 @@ export default function App({
               onClose={() => setSaveNudge(null)}
               onSave={(body) => {
                 setSaveNudge(null);
-                postVersion(body);
+                postVersion(body, saveNudge.check_sets?.find((x) => x.id === body.check_set)?.name);
               }}
             />
           )}
