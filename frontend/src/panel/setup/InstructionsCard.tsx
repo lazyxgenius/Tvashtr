@@ -7,7 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Layers, Lock, Maximize2 } from "lucide-react";
+import { History, Layers, Lock, Maximize2 } from "lucide-react";
 
 import { Button, IconButton } from "../../design-system/components";
 import { ChangedDot } from "../ChangedDot";
@@ -34,6 +34,7 @@ export function InstructionsCard({
   onOpenFullEditor,
   templates,
   chooser,
+  history,
   focusEditor = false,
   readOnly = false,
 }: {
@@ -48,6 +49,8 @@ export function InstructionsCard({
   templates?: ReactNode;
   /** Shown instead of the editor (the new agent's template chooser). */
   chooser?: ReactNode;
+  /** M5: the History toggle (Ver-AgentHistory), tinted while the instruction history shows. */
+  history?: { open: boolean; onToggle: () => void };
   /** Put the caret in the editor when it takes the chooser's place ("Start from scratch"). */
   focusEditor?: boolean;
   readOnly?: boolean;
@@ -97,6 +100,18 @@ export function InstructionsCard({
             <Button variant="ghost" size="sm" className="nd-btn-flush" disabled>
               <Layers size={14} strokeWidth={1.7} aria-hidden />
               <span>Templates</span>
+            </Button>
+          )}
+          {history && (
+            <Button
+              variant={history.open ? "tint" : "ghost"}
+              size="sm"
+              className="nd-btn-flush"
+              aria-pressed={history.open}
+              onClick={history.onToggle}
+            >
+              <History size={14} strokeWidth={1.6} aria-hidden />
+              <span>History</span>
             </Button>
           )}
           {onOpenFullEditor && (

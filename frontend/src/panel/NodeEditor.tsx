@@ -108,6 +108,8 @@ export interface NodeEditorProps {
   onOpenDoc?: (docId: string, place?: DocPlace) => void;
   /** Focus Runs' "Open this run on the canvas": the run view of that run (FOCUS-64). */
   onOpenRun?: (runId: string) => void;
+  /** M5: the team's latest version (the instruction history is read again when it changes). */
+  teamVersion?: number;
 }
 
 /**
@@ -224,6 +226,7 @@ function AgentEditor({
   onOpenDocuments,
   onOpenDoc,
   onOpenRun,
+  teamVersion,
   cover: pageCover,
 }: NodeEditorProps) {
   const api = useAgentDraft(node, { teamId, onSaved: () => onSaved() });
@@ -362,6 +365,15 @@ function AgentEditor({
   const requestRoutingUpdate = () => {
     const update = contractUpdate(node.id, draft.prompt, edges);
     if (update) setPending({ kind: "routing", update });
+  };
+  // M5: Instructions › History's "Use this text" puts an older text in the editor as a draft.
+  const applyOlderText = (text: string, number: number) => {
+    const before = draft.prompt;
+    api.set("prompt", text);
+    toast.show(`Instructions set to the v${number} text`, {
+      label: "Undo",
+      onAction: () => api.set("prompt", before),
+    });
   };
   const applyRoutingUpdate = (update: ContractUpdate) => {
     const before = draft.prompt;
@@ -772,6 +784,7 @@ function AgentEditor({
           onCompareTemplates={openTemplates}
           onPreview={() => setSetupView("preview")}
           sub={focus ? schemaEditor : undefined}
+          history={{ teamId, version: teamVersion, onUse: applyOlderText }}
         />
       );
   }
