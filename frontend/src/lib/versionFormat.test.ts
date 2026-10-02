@@ -15,6 +15,11 @@ describe("versionFormat (M5's words, as the Ver-* boards print them)", () => {
     expect(versionAge(ago(8 * 1440), NOW)).toBe("1 week ago");
     expect(versionAge(ago(20 * 1440), NOW)).toBe("2 weeks ago");
     expect(versionAge("nope", NOW)).toBe("");
+    // In a sentence: "saved 2 minutes ago", "saved yesterday".
+    expect(versionAge(ago(2), NOW, true)).toBe("2 minutes ago");
+    expect(versionAge(ago(1), NOW, true)).toBe("1 minute ago");
+    expect(versionAge(ago(60), NOW, true)).toBe("1 hour ago");
+    expect(versionAge(ago(30 * 60), NOW, true)).toBe("yesterday");
   });
 
   it("runsPill / diffPill", () => {

@@ -21,9 +21,8 @@ import {
   restoreVersion,
   type VersionChange,
 } from "../lib/api/versions";
-import { formatRelativeTimeWords } from "../lib/time";
 import { useModalDialog } from "../lib/useModalDialog";
-import { diffPill, runLook } from "../lib/versionFormat";
+import { diffPill, runLook, versionAge } from "../lib/versionFormat";
 import { listNatural } from "../pages/home/homeFormat";
 import { glyphForNode } from "../panel/nodeGlyph";
 import { LoadState } from "../panel/runs/RunsTab";
@@ -235,7 +234,7 @@ export function VersionChanges({
 }) {
   const loaded = useLoaded(`${teamId}:${number}`, () => getVersion(teamId, number));
   const d = loaded.value;
-  const saved = d ? `saved ${formatRelativeTimeWords(d.created_at)} by ${d.author}` : "";
+  const saved = d ? `saved ${versionAge(d.created_at, Date.now(), true)} by ${d.author}` : "";
   return (
     <VersionDialog
       title={`What changed in v${number}`}

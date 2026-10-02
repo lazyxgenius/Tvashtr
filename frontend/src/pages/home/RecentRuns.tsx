@@ -217,14 +217,16 @@ export function RecentRuns() {
                     <span>{r.idea}</span>
                   </button>
                   <div className="hm-recent__meta">
-                    {r.team?.name ?? "Run"}
-                    {/* M5 (Ver-HomeRuns): the version the run used, after the team's name. */}
                     {r.team_version_number != null ? (
-                      <VersionTag number={r.team_version_number} />
+                      // M5 (Ver-HomeRuns): the version the run used, after the team's name.
+                      <>
+                        <span>{r.team?.name ?? "Run"}</span>
+                        <VersionTag number={r.team_version_number} />
+                        <span>· {formatRelativeTime(r.created_at)}</span>
+                      </>
                     ) : (
-                      " "
+                      `${r.team?.name ?? "Run"} · ${formatRelativeTime(r.created_at)}`
                     )}
-                    · {formatRelativeTime(r.created_at)}
                   </div>
                 </div>
                 <RunEnd row={r} />

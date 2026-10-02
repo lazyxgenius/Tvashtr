@@ -2,14 +2,18 @@
 import { elapsedShort, money } from "../pages/home/homeFormat";
 import type { TeamRunRow } from "./api";
 
-/** "just now", "2m ago", "5h ago", "yesterday", "3 days ago", "1 week ago", then a date. */
-export function versionAge(iso: string, now = Date.now()): string {
+const unit = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"} ago`;
+
+/** "just now", "2m ago", "5h ago", "yesterday", "3 days ago", "1 week ago", then a date. `long`
+ *  spells the minutes and hours out for a sentence ("saved 2 minutes ago by you"). */
+export function versionAge(iso: string, now = Date.now(), long = false): string {
   const t = Date.parse(iso);
   if (Number.isNaN(t)) return "";
   const m = Math.floor((now - t) / 60_000);
   if (m < 1) return "just now";
-  if (m < 60) return `${m}m ago`;
-  if (m < 1440) return `${Math.floor(m / 60)}h ago`;
+  if (m < 60) return long ? unit(m, "minute") : `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (m < 1440) return long ? unit(h, "hour") : `${h}h ago`;
   const d = Math.floor(m / 1440);
   if (d === 1) return "yesterday";
   if (d < 7) return `${d} days ago`;

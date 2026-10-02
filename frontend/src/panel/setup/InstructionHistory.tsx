@@ -37,7 +37,7 @@ function InstructionCompare({
     <VersionDialog
       title={`Compare v${n} with the text now`}
       icon={<GitCompare size={17} strokeWidth={1.6} aria-hidden />}
-      sub={`${agent}’s instructions · v${n} was saved ${versionAge(e.created_at)}${e.from_builtin ? "" : ` by ${e.author}`}`}
+      sub={`${agent}’s instructions · v${n} was saved ${versionAge(e.created_at, Date.now(), true)}${e.from_builtin ? "" : ` by ${e.author}`}`}
       wide
       onClose={onClose}
       actions={
