@@ -488,6 +488,26 @@ describe("Recent runs and Spend", () => {
     expect(calls.some((c) => c.path === "/api/runs?status=stopped&limit=5")).toBe(true);
   });
 
+  it("each row's meta line shows the version its run used (M5, Ver-HomeRuns)", async () => {
+    mockApi(
+      homeRoutes({
+        "GET /api/runs": () => ({
+          runs: [{ ...RSI_RUN, team_version_number: 7 }, DOCS_RUN],
+          next_cursor: null,
+        }),
+      }),
+    );
+    renderHome();
+    const recent = await screen.findByRole("region", { name: "Recent runs" });
+    const rsi = await within(recent).findByRole("button", { name: RSI_RUN.idea });
+    const meta = rsi.nextElementSibling as HTMLElement;
+    expect(within(meta).getByText("v7")).toHaveClass("tv-vtag");
+    expect(meta).toHaveTextContent(/^Indicator sprint teamv7· 26m ago$/);
+    const docs = within(recent).getByRole("button", { name: DOCS_RUN.idea });
+    expect((docs.nextElementSibling as HTMLElement).querySelector(".tv-vtag")).toBeNull();
+    expect(docs.nextElementSibling).toHaveTextContent(" · ");
+  });
+
   it("shows the month, the week and each team's bar", async () => {
     mockApi(homeRoutes());
     renderHome();

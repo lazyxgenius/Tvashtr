@@ -4,6 +4,7 @@ import { type MouseEvent, useCallback, useEffect, useRef, useState } from "react
 import { type RunListRow, type RunStatusFilter, listRunsPage } from "../../lib/api/runs";
 import { navigate } from "../../lib/nav";
 import { formatRelativeTime } from "../../lib/time";
+import { VersionTag } from "../../components/VersionTag";
 import { Popover } from "../../design-system/components";
 import { useHome } from "./homeContext";
 import { useHomeData } from "./homeData";
@@ -216,7 +217,14 @@ export function RecentRuns() {
                     <span>{r.idea}</span>
                   </button>
                   <div className="hm-recent__meta">
-                    {r.team?.name ?? "Run"} · {formatRelativeTime(r.created_at)}
+                    {r.team?.name ?? "Run"}
+                    {/* M5 (Ver-HomeRuns): the version the run used, after the team's name. */}
+                    {r.team_version_number != null ? (
+                      <VersionTag number={r.team_version_number} />
+                    ) : (
+                      " "
+                    )}
+                    · {formatRelativeTime(r.created_at)}
                   </div>
                 </div>
                 <RunEnd row={r} />
