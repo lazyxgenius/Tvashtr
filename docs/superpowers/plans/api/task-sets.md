@@ -62,12 +62,13 @@ set never deletes compares or runs (their `task_set_id` becomes NULL; History ke
   `task` / `task_set_id`). Hosted: a set whose 2 × N runs can't fit the owner's daily run limit is refused (422, plain
   words). Launch: item by item, both versions of an item together, as two of the owner's run slots free (the M8 waiter
   keeps going until every item is launched; re-armed at startup).
-- `GET /api/compares/{id}` gains, for a set compare, `"set": {"id", "name", "count"}`, `"started": n`, `"waiting": m`
+- `GET /api/compares/{id}` gains, for a set compare, `"set": {"id", "name", "count"}`, `"started": n`, `"runs_waiting": m` (M8's `waiting` keeps its shape)
   and `"items": [{"task", "a": Cell, "b": Cell, "badge": "v7 better" | "v7 costs more" | "same" | null}]` where
   `Cell = {"run_id", "status": "waiting"|"running"|"finished"|"failed"|"stopped", "now": "Engineer · round 2" | null,
   "check": "passed"|"failed"|null, "rounds", "cost_usd", "note": "signal line missing" | "stalled, then resumed" | null}`
   (the note is the check's last output line on a failed check, else the run's failure words); and `results` gains
-  `"cards": [{"key": "checks"|"rounds"|"cost"|"retries", "label", "a", "b", "note"}]` ("2 more tasks really work",
+  `"cards": [{"key": "checks"|"rounds"|"cost"|"retries", "label", "a", "b", "note", "tone": "good"|"warn"|null}]`
+  (`a` / `b` bare values — the page adds "v6 " / "v7 "; `tone`: B better / worse / neither) ("2 more tasks really work",
   "about 1 fewer round", "$0.90 less in all", "steadier runs") with `rows` empty.
 - A one-task compare's `results` gains `"sample": {"set_id", "name", "count"} | null` — the team's set for "One task is
   a small sample · Compare on <set>" (null when the team has none).
@@ -77,5 +78,5 @@ set never deletes compares or runs (their `task_set_id` becomes NULL; History ke
 Body gains `"check_set": "<task set id>"`: after the save commits, a compare of the new version vs the previous one on
 that set starts (`auto_approve` true); never blocking or failing the save (a refusal is returned as
 `"check_started": null` with `"check_error"`). The versions listing gains, per version, `"check": {"compare_id",
-"set": "Indicators", "passed": 5, "total": 5, "against": 7, "cost_delta_usd": -0.70, "status": "running"|"finished",
+"set": "Indicators", "passed": 5, "total": 5, "against": 7, "against_passed": 4, "cost_delta_usd": -0.70, "status": "running"|"finished",
 "worse": false} | null` and, at the top, `"check_sets": [{"id", "name", "count", "estimate"}]` for the Save-as dialog.
