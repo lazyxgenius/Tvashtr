@@ -146,13 +146,19 @@ describe("NodeEditor — M5 Instructions › History", () => {
     expect(within(items[0]).getByText("− Approve when the tests pass.")).toHaveClass(
       "nd-ihist__line--removed",
     );
-    expect(within(items[0]).queryByRole("button", { name: "Use this text" })).toBeNull();
+    expect(within(items[0]).queryByRole("button", { name: "Use the v7 text" })).toBeNull();
     expect(items[1]).toHaveTextContent("v6yesterday · you");
     expect(items[2]).toHaveTextContent("v45 days ago");
     expect(items[2]).toHaveTextContent("First text, from the built-in Reviewer");
     expect(items[2]).not.toHaveTextContent("· you");
-    expect(within(items[0]).queryByRole("button", { name: "Compare" })).toBeNull();
-    expect(within(items[1]).getByRole("button", { name: "Compare" })).toBeInTheDocument();
+    expect(within(items[0]).queryByRole("button", { name: "Compare v7" })).toBeNull();
+    // Each row's buttons are named with their version; the words on them stay as drawn.
+    expect(within(items[1]).getByRole("button", { name: "Compare v6" })).toHaveTextContent(
+      /^Compare$/,
+    );
+    expect(within(items[2]).getByRole("button", { name: "Use the v4 text" })).toHaveTextContent(
+      /^Use this text$/,
+    );
     expect(section).toHaveTextContent(
       "Using an older text changes only these instructions. It becomes a draft until you save.",
     );
@@ -166,7 +172,7 @@ describe("NodeEditor — M5 Instructions › History", () => {
     fireEvent.click(within(drawer).getByRole("button", { name: "History" }));
     const section = within(drawer).getByRole("region", { name: "Instruction history" });
     const items = await within(section).findAllByRole("listitem");
-    fireEvent.click(within(items[1]).getByRole("button", { name: "Use this text" }));
+    fireEvent.click(within(items[1]).getByRole("button", { name: "Use the v6 text" }));
     expect(instructions(drawer).value).toBe(V6_TEXT);
     expect(within(drawer).getByText("1 unsaved change")).toBeInTheDocument();
     const toast = drawer.querySelector(".nd-toast-host") as HTMLElement;
@@ -182,7 +188,7 @@ describe("NodeEditor — M5 Instructions › History", () => {
     const items = await within(
       within(drawer).getByRole("region", { name: "Instruction history" }),
     ).findAllByRole("listitem");
-    fireEvent.click(within(items[1]).getByRole("button", { name: "Compare" }));
+    fireEvent.click(within(items[1]).getByRole("button", { name: "Compare v6" }));
     const dialog = screen.getByRole("dialog", { name: "Compare v6 with the text now" });
     expect(dialog).toHaveTextContent("Reviewer’s instructions · v6 was saved yesterday by you");
     const section = within(dialog).getByRole("region", { name: "Reviewer › Instructions" });

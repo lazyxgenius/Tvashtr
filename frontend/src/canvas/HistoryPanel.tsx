@@ -4,6 +4,7 @@ import { type ReactNode, useState } from "react";
 import { Badge, Button, IconButton, Select } from "../design-system/components";
 import { getTeamRuns, type TeamRunRow } from "../lib/api";
 import type { TeamVersion, TeamVersions } from "../lib/api/versions";
+import { useTicker } from "../lib/useTicker";
 import { runLook, runMeta, runsPill, versionAge } from "../lib/versionFormat";
 import { LoadState } from "../panel/runs/RunsTab";
 import type { Loaded } from "../panel/runs/useLoaded";
@@ -136,6 +137,7 @@ function VersionsTab({
   onOpen: (kind: Dialog["kind"], number: number) => void;
 }) {
   const [all, setAll] = useState(false);
+  const now = useTicker();
   const v = versions.value;
   const shown = v ? (all ? v.versions : v.versions.slice(0, SHOWN)) : [];
   const older = v ? v.versions.length - shown.length : 0;
@@ -158,7 +160,8 @@ function VersionsTab({
               <VersionRow
                 key={row.number}
                 row={row}
-                now={row.number === v.current}
+                current={row.number === v.current}
+                now={now}
                 last={i === shown.length - 1}
                 onOpen={onOpen}
               />
@@ -185,35 +188,48 @@ function VersionsTab({
 
 function VersionRow({
   row,
+  current,
   now,
   last,
   onOpen,
 }: {
   row: TeamVersion;
-  now: boolean;
+  current: boolean;
+  /** The time now (a 60 s tick: "2m ago" ages while the panel sits open). */
+  now: number;
   last: boolean;
   onOpen: (kind: Dialog["kind"], number: number) => void;
 }) {
   return (
-    <li className={`cv-hist__ver${now ? " cv-hist__ver--now" : ""}`}>
+    <li className={`cv-hist__ver${current ? " cv-hist__ver--now" : ""}`}>
       {!last && <span className="cv-hist__line" aria-hidden />}
       <span className="cv-hist__dot" aria-hidden />
       <div className="cv-hist__l1">
         <span className="cv-hist__num">v{row.number}</span>
-        {now && <span className="cv-now">Now</span>}
+        {current && <span className="cv-now">Now</span>}
         <span className="cv-hist__when">
-          {versionAge(row.created_at)} · {row.author}
+          {versionAge(row.created_at, now)} · {row.author}
         </span>
       </div>
       <div className="cv-hist__sum">{row.note || row.summary}</div>
       <div className="cv-hist__l3">
         <span className="cv-pill">{runsPill(row.runs)}</span>
         <span className="cv-hist__acts">
-          <button type="button" className="cv-link" onClick={() => onOpen("changes", row.number)}>
+          <button
+            type="button"
+            className="cv-link"
+            aria-label={`What changed in v${row.number}`}
+            onClick={() => onOpen("changes", row.number)}
+          >
             What changed
           </button>
-          {!now && (
-            <Button variant="ghost" size="sm" onClick={() => onOpen("restore", row.number)}>
+          {!current && (
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label={`Restore v${row.number}`}
+              onClick={() => onOpen("restore", row.number)}
+            >
               Restore
             </Button>
           )}

@@ -884,9 +884,6 @@
 .hm-recent__meta {
   font-size: 12px;
   color: var(--ink-500);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 /* M5 (Ver-HomeRuns): the run's version, inline after the team's name. */
 .hm-recent__meta .tv-vtag {

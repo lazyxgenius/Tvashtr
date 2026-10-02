@@ -790,6 +790,11 @@
   display: inline-flex;
   color: #52613e;
 }
+/* What changed in v1 (nothing before it): the version's own line. */
+.cv-vfirst {
+  font-size: 13px;
+  color: var(--ink-600);
+}
 .cv-vruns {
   box-sizing: border-box;
   display: flex;

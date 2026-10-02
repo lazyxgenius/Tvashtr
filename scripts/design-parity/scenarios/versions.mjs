@@ -473,8 +473,7 @@ export default [
     ...canvas(),
     steps: history(async (page) => {
       await panel(page)
-        .getByRole("button", { name: "What changed" })
-        .first()
+        .getByRole("button", { name: "What changed in v7" })
         .click();
       await page
         .getByText("Compared with v6 · saved 2 minutes ago by you")
@@ -485,8 +484,7 @@ export default [
     ...canvas(),
     steps: history(async (page) => {
       await panel(page)
-        .getByRole("button", { name: "What changed" })
-        .nth(1)
+        .getByRole("button", { name: "What changed in v6" })
         .click();
       await page
         .getByText("Compared with v5 · saved yesterday by you")
@@ -496,20 +494,14 @@ export default [
   ...pair("Ver-RestoreDraft", {
     ...canvas(2),
     steps: history(async (page) => {
-      await panel(page)
-        .getByRole("button", { name: "Restore" })
-        .first()
-        .click();
+      await panel(page).getByRole("button", { name: "Restore v6" }).click();
       await page.getByText("Routes go back to how they were in v6").waitFor();
     }),
   }),
   ...pair("Ver-Restore", {
     ...canvas(),
     steps: history(async (page) => {
-      await panel(page)
-        .getByRole("button", { name: "Restore" })
-        .first()
-        .click();
+      await panel(page).getByRole("button", { name: "Restore v6" }).click();
       await page.getByText("Runs that are going keep their version").waitFor();
     }),
   }),
@@ -540,7 +532,7 @@ export default [
   ...pair("Ver-AgentCompare", {
     ...canvas(0, { path: `/#/teams/${TEAM_ID}?node=n-rev` }),
     steps: reviewerHistory(async (page, drawer) => {
-      await drawer.getByRole("button", { name: "Compare" }).first().click();
+      await drawer.getByRole("button", { name: "Compare v6" }).click();
       await page
         .getByRole("dialog", { name: "Compare v6 with the text now" })
         .waitFor();

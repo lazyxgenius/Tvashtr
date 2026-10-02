@@ -3,6 +3,9 @@ import { elapsedShort, money } from "../pages/home/homeFormat";
 import type { TeamRunRow } from "./api";
 import type { VersionChange } from "./api/versions";
 
+/** "changed" fields that are one thing ("Type goes back"); the others are many ("Skills go back"). */
+const SINGULAR = new Set(["Type", "Gate"]);
+
 /**
  * Restore's WHAT CHANGES (Ver-Restore / Ver-RestoreDraft): one line per change row (the working
  * copy → vN), every route row in one "Routes go back to how they were in vN".
@@ -17,11 +20,13 @@ export function restoreTitles(changes: VersionChange[], n: number): string[] {
       continue;
     }
     const who = c.agent ? `${c.agent} › ${c.field}` : (c.field ?? "");
-    const node = `The ${c.agent}${c.gate ? " gate" : ""}`;
+    // " gate" unless the name says it already (the server's _phrase).
+    const node = `The ${c.agent}${c.gate && !/gate/i.test(c.agent ?? "") ? " gate" : ""}`;
     if (c.kind === "text") out.push(`${who} go back to the v${n} text`);
     else if (c.kind === "value")
       out.push(c.after != null ? `${who} goes back to ${c.after}` : `${who} is cleared`);
-    else if (c.kind === "changed") out.push(`${who} go back to v${n}’s`);
+    else if (c.kind === "changed")
+      out.push(`${who} ${SINGULAR.has(c.field ?? "") ? "goes" : "go"} back to v${n}’s`);
     else out.push(`${node} ${c.kind === "added" ? "comes back" : "is removed"}`);
   }
   return out;

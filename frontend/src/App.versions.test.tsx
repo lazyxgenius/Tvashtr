@@ -218,6 +218,18 @@ const DRAFT_PREVIEW: RestorePreview = {
     },
   ],
 };
+// v1: nothing before it (no changes, no "same").
+const V1: VersionDetail = {
+  ...V7,
+  number: 1,
+  created_at: ago(10 * 1440),
+  summary: "First version",
+  current: false,
+  compared_with: null,
+  changes: [],
+  same: [],
+  runs: [],
+};
 const run = (
   n: number,
   status: string,
@@ -245,6 +257,11 @@ const RUNS = [
 type Fetch = (input: string, init?: RequestInit) => Promise<Response>;
 let fetchMock: Mock<Fetch>;
 let summary: TeamVersions;
+// Per test: what GET /versions (after the first answer) and POST /versions answer instead.
+let versionsReply: (() => Promise<Response>) | null;
+let saveReply: (() => Promise<Response>) | null;
+// The summary reads after a POST /versions (Save as vN's reload).
+let readsAfterSave: number;
 const reply = (body: unknown, status = 200) =>
   Promise.resolve(new Response(JSON.stringify(body), { status }));
 const calls = (method: string, url: string) =>
@@ -254,6 +271,9 @@ const calls = (method: string, url: string) =>
 beforeEach(() => {
   window.location.hash = "";
   summary = versions();
+  versionsReply = null;
+  saveReply = null;
+  readsAfterSave = -1;
   fetchMock = vi.fn<Fetch>((url, init) => {
     const method = init?.method ?? "GET";
     if (url === "/api/teams") return reply({ teams: [{ team_graph_id: "team-1", name: "x" }] });
@@ -261,10 +281,19 @@ beforeEach(() => {
     if (url === "/api/teams/team-1/validate")
       return reply({ errors: [], warnings: [], runnable: true });
     if (url === "/api/teams/team-1/versions" && method === "POST") {
+      readsAfterSave = 0;
+      if (saveReply) return saveReply();
       summary = { ...versions(0, 8), saved_at: ago(0) };
       return reply({ number: 8 }, 201);
     }
+    if (url === "/api/teams/team-1/versions" && readsAfterSave >= 0) {
+      readsAfterSave += 1;
+      if (versionsReply) return versionsReply();
+    }
     if (url === "/api/teams/team-1/versions") return reply(summary);
+    if (url === "/api/teams/team-1/versions/1") return reply(V1);
+    if (url === "/api/teams/team-1/versions/4/restore")
+      return reply({ detail: "v7 already matches v4." }, 409);
     if (url === "/api/teams/team-1/versions/7") return reply(V7);
     if (url === "/api/teams/team-1/versions/6") return reply(V6);
     if (url === "/api/teams/team-1/versions/6/restore" && method === "POST") {
@@ -304,6 +333,7 @@ describe("App — M5 the version chip", () => {
     renderApp();
     const button = await chip();
     expect(button).toHaveTextContent("v7· saved 2m ago");
+    expect(button).toHaveAccessibleDescription("v7 · saved 2m ago");
     expect(button).toHaveAttribute("aria-expanded", "false");
     expect(button).not.toHaveClass("cv-ver--draft");
     expect(screen.queryByRole("button", { name: /^Save as/ })).toBeNull();
@@ -327,6 +357,83 @@ describe("App — M5 the version chip", () => {
     expect(await screen.findByText("· saved just now")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Version history" })).toHaveTextContent("v8");
     expect(screen.queryByRole("button", { name: /^Save as/ })).toBeNull();
+  });
+
+  it("Save as v8 stays busy until the reloaded summary arrives (no second POST), then focus returns to the chip", async () => {
+    summary = versions(2);
+    let arrive: () => void = () => {};
+    versionsReply = () =>
+      new Promise((resolve) => {
+        arrive = () => resolve(new Response(JSON.stringify(summary)));
+      });
+    renderApp();
+    await chip();
+    const save = screen.getByRole("button", { name: "Save as v8" });
+    fireEvent.click(save);
+    await waitFor(() => expect(calls("POST", "/api/teams/team-1/versions")).toBe(1));
+    await waitFor(() => expect(readsAfterSave).toBe(1));
+    expect(save).toHaveAttribute("aria-busy", "true");
+    expect(save).toBeDisabled();
+    fireEvent.click(save);
+    expect(calls("POST", "/api/teams/team-1/versions")).toBe(1);
+    arrive();
+    expect(await screen.findByText("· saved just now")).toBeInTheDocument();
+    const button = screen.getByRole("button", { name: "Version history" });
+    expect(button).toHaveTextContent("v8");
+    await waitFor(() => expect(button).toHaveFocus());
+  });
+
+  it("a 409 on Save as v8 is a refresh: its detail in a plain toast, then the summary reloads", async () => {
+    summary = versions(2);
+    saveReply = () => {
+      summary = { ...versions(0), saved_at: ago(0) };
+      return reply({ detail: "Nothing changed since v7." }, 409);
+    };
+    renderApp();
+    await chip();
+    fireEvent.click(screen.getByRole("button", { name: "Save as v8" }));
+    const toast = (await screen.findByText("Nothing changed since v7.")).closest(".ds-toast");
+    expect(toast?.querySelector(".ds-toast__icon--error")).toBeNull();
+    expect(await screen.findByText("· saved just now")).toBeInTheDocument();
+    expect(readsAfterSave).toBe(1);
+    expect(screen.queryByRole("button", { name: /^Save as/ })).toBeNull();
+  });
+
+  it("an error on Save as v8 reloads too; a failed reload keeps the chip on screen", async () => {
+    summary = versions(2);
+    saveReply = () => reply({ detail: "boom" }, 500);
+    versionsReply = () => reply({ detail: "down" }, 500);
+    renderApp();
+    await chip();
+    fireEvent.click(screen.getByRole("button", { name: "Save as v8" }));
+    expect(await screen.findByText("boom")).toBeInTheDocument();
+    await waitFor(() => expect(readsAfterSave).toBe(1));
+    // The reload failed: the last summary stays, and Save as v8 can be pressed again.
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Save as v8" })).not.toHaveAttribute("aria-busy"),
+    );
+    expect(screen.getByRole("button", { name: "Version history" })).toHaveTextContent(
+      "v7· 2 changes since v7",
+    );
+  });
+
+  it("a failed first load shows no chip", async () => {
+    versionsReply = null;
+    fetchMock.mockImplementation((url, init) =>
+      url === "/api/teams/team-1/versions"
+        ? reply({ detail: "down" }, 500)
+        : url === "/api/teams/team-1/graph"
+          ? reply(GRAPH)
+          : url === "/api/teams/team-1/validate"
+            ? reply({ errors: [], warnings: [], runnable: true })
+            : url === "/api/teams" && (init?.method ?? "GET") === "GET"
+              ? reply({ teams: [{ team_graph_id: "team-1", name: "x" }] })
+              : reply({}),
+    );
+    renderApp();
+    await screen.findByRole("button", { name: "Team file" });
+    await waitFor(() => expect(calls("GET", "/api/teams/team-1/versions")).toBeGreaterThan(0));
+    expect(screen.queryByRole("button", { name: "Version history" })).toBeNull();
   });
 
   it("one change reads '· 1 change since v7'", async () => {
@@ -411,14 +518,21 @@ describe("App — M5 History", () => {
     expect(rows[0]).toHaveTextContent("v7Now2m ago · you");
     expect(rows[0]).toHaveTextContent("Reviewer: stricter about the INDICATORS registry");
     expect(rows[0]).toHaveTextContent("1 run");
-    expect(within(rows[0]).queryByRole("button", { name: "Restore" })).toBeNull();
+    expect(within(rows[0]).queryByRole("button", { name: "Restore v7" })).toBeNull();
     expect(rows[1]).toHaveTextContent("v6yesterday · you");
     expect(rows[1]).toHaveTextContent("3 runs");
     expect(rows[2]).toHaveTextContent("3 days ago");
     expect(rows[4]).toHaveTextContent("1 week ago · you");
     expect(rows[4]).toHaveTextContent("no runs");
-    expect(within(panel).getAllByRole("button", { name: "Restore" })).toHaveLength(4);
-    expect(within(panel).getAllByRole("button", { name: "What changed" })).toHaveLength(5);
+    // Each row's buttons are named with their version; the words on them stay as drawn.
+    const names = (re: RegExp) =>
+      within(panel)
+        .getAllByRole("button", { name: re })
+        .map((b) => [b.getAttribute("aria-label"), b.textContent]);
+    expect(names(/^Restore v\d$/)).toEqual([6, 5, 4, 3].map((n) => [`Restore v${n}`, "Restore"]));
+    expect(names(/^What changed in v\d$/)).toEqual(
+      [7, 6, 5, 4, 3].map((n) => [`What changed in v${n}`, "What changed"]),
+    );
 
     fireEvent.click(within(panel).getByRole("button", { name: "Show 2 older versions" }));
     expect(within(panel).getAllByRole("listitem")).toHaveLength(7);
@@ -463,7 +577,7 @@ describe("App — M5 What changed and Restore", () => {
     renderApp();
     const panel = await openHistory();
     await within(panel).findByText("5 of 7 versions");
-    fireEvent.click(within(panel).getAllByRole("button", { name: "What changed" })[0]);
+    fireEvent.click(within(panel).getByRole("button", { name: "What changed in v7" }));
     const dialog = await screen.findByRole("dialog", { name: "What changed in v7" });
     expect(
       await within(dialog).findByText("Compared with v6 · saved 2 minutes ago by you"),
@@ -502,7 +616,7 @@ describe("App — M5 What changed and Restore", () => {
     renderApp();
     const panel = await openHistory();
     await within(panel).findByText("5 of 7 versions");
-    fireEvent.click(within(panel).getAllByRole("button", { name: "What changed" })[1]);
+    fireEvent.click(within(panel).getByRole("button", { name: "What changed in v6" }));
     const dialog = await screen.findByRole("dialog", { name: "What changed in v6" });
     expect(await within(dialog).findByText(/^Compared with v5 · saved/)).toBeInTheDocument();
     const sections = within(dialog).getAllByRole("region");
@@ -548,7 +662,7 @@ describe("App — M5 What changed and Restore", () => {
     renderApp();
     const panel = await openHistory();
     await within(panel).findByText("5 of 7 versions");
-    fireEvent.click(within(panel).getAllByRole("button", { name: "Restore" })[0]);
+    fireEvent.click(within(panel).getByRole("button", { name: "Restore v6" }));
     const dialog = await screen.findByRole("dialog", { name: "Restore v6?" });
     expect(
       await within(dialog).findByText(
@@ -573,7 +687,7 @@ describe("App — M5 What changed and Restore", () => {
     renderApp();
     const panel = await openHistory();
     await within(panel).findByText("5 of 7 versions");
-    fireEvent.click(within(panel).getAllByRole("button", { name: "Restore" })[1]);
+    fireEvent.click(within(panel).getByRole("button", { name: "Restore v5" }));
     const dialog = await screen.findByRole("dialog", { name: "Restore v5?" });
     expect(
       await within(dialog).findByText(
@@ -600,11 +714,38 @@ describe("App — M5 What changed and Restore", () => {
     expect(within(dialog).getByRole("button", { name: "Restore as v9" })).toBeInTheDocument();
   });
 
+  it("What changed in v1 (nothing before it) shows the version's line", async () => {
+    renderApp();
+    const panel = await openHistory();
+    await within(panel).findByText("5 of 7 versions");
+    fireEvent.click(within(panel).getByRole("button", { name: "Show 2 older versions" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "What changed in v1" }));
+    const dialog = await screen.findByRole("dialog", { name: "What changed in v1" });
+    const line = await within(dialog).findByText("First version");
+    expect(line).toHaveClass("cv-vfirst");
+    expect(within(dialog).queryByRole("button", { name: /^Restore/ })).toBeNull();
+  });
+
+  it("Restore that would change nothing (409): the server's words, Cancel only", async () => {
+    renderApp();
+    const panel = await openHistory();
+    await within(panel).findByText("5 of 7 versions");
+    fireEvent.click(within(panel).getByRole("button", { name: "Restore v4" }));
+    const dialog = await screen.findByRole("dialog", { name: "Restore v4?" });
+    expect(await within(dialog).findByText("v7 already matches v4.")).toBeInTheDocument();
+    expect(dialog).not.toHaveTextContent("What changes");
+    expect(dialog).not.toHaveTextContent("Runs that are going keep their version");
+    expect(dialog).not.toHaveTextContent("Couldn’t load");
+    expect(within(dialog).queryByRole("button", { name: /^Restore as/ })).toBeNull();
+    expect(within(dialog).queryByRole("button", { name: "Retry" })).toBeNull();
+    expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeInTheDocument();
+  });
+
   it("Cancel closes the Restore dialog and keeps History", async () => {
     renderApp();
     const panel = await openHistory();
     await within(panel).findByText("5 of 7 versions");
-    fireEvent.click(within(panel).getAllByRole("button", { name: "Restore" })[0]);
+    fireEvent.click(within(panel).getByRole("button", { name: "Restore v6" }));
     const dialog = await screen.findByRole("dialog", { name: "Restore v6?" });
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
     expect(screen.queryByRole("dialog", { name: "Restore v6?" })).toBeNull();
