@@ -97,8 +97,8 @@ Test-Empty desktop: matched 55/67 design items · 2 with size/type drift · 29 o
 Test-Empty web: matched 53/67 design items · 2 with size/type drift · 29 only moved · 14 not found in app — covered: W1×2
 Test-FromRun desktop: matched 61/92 design items · 7 with size/type drift · 42 only moved · 31 not found in app — covered: W1×1, W2×6
 Test-FromRun web: matched 59/92 design items · 8 with size/type drift · 41 only moved · 33 not found in app — covered: W1×1, W2×7
-Test-New desktop: matched 82/98 design items · 5 with size/type drift · 19 only moved · 16 not found in app — covered: W1×2, W3×3
-Test-New web: matched 80/98 design items · 5 with size/type drift · 19 only moved · 18 not found in app — covered: W1×2, W3×3
+Test-New desktop: matched 83/98 design items · 5 with size/type drift · 19 only moved · 15 not found in app — covered: W1×2, W3×3
+Test-New web: matched 81/98 design items · 5 with size/type drift · 19 only moved · 17 not found in app — covered: W1×2, W3×3
 Test-List desktop: matched 71/83 design items · 2 with size/type drift · 44 only moved · 12 not found in app — covered: W1×2
 Test-List web: matched 69/83 design items · 2 with size/type drift · 44 only moved · 14 not found in app — covered: W1×2
 Test-Running desktop: matched 69/81 design items · 2 with size/type drift · 45 only moved · 12 not found in app — covered: W1×2
@@ -107,18 +107,18 @@ Test-Results desktop: matched 72/84 design items · 2 with size/type drift · 45
 Test-Results web: matched 70/84 design items · 2 with size/type drift · 45 only moved · 14 not found in app — covered: W1×2
 Test-Upload desktop: matched 99/113 design items · 5 with size/type drift · 43 only moved · 14 not found in app — covered: W1×2, W5×3
 Test-Upload web: matched 97/113 design items · 5 with size/type drift · 43 only moved · 16 not found in app — covered: W1×2, W5×3
-Test-Judge desktop: matched 101/119 design items · 2 with size/type drift · 57 only moved · 18 not found in app — covered: W1×2
-Test-Judge web: matched 99/119 design items · 2 with size/type drift · 57 only moved · 20 not found in app — covered: W1×2
+Test-Judge desktop: matched 102/119 design items · 2 with size/type drift · 58 only moved · 17 not found in app — covered: W1×2
+Test-Judge web: matched 100/119 design items · 2 with size/type drift · 58 only moved · 19 not found in app — covered: W1×2
 Test-SaveNudge desktop: matched 85/97 design items · 2 with size/type drift · 43 only moved · 12 not found in app — covered: W1×2
 Test-SaveNudge web: matched 83/97 design items · 2 with size/type drift · 43 only moved · 14 not found in app — covered: W1×2
 Test-RoundMenuOff desktop: matched 63/94 design items · 7 with size/type drift · 44 only moved · 31 not found in app — covered: W1×1, W2×6
 Test-RoundMenuOff web: matched 61/94 design items · 7 with size/type drift · 44 only moved · 33 not found in app — covered: W1×1, W2×6
-Test-AddCheck desktop: matched 98/113 design items · 4 with size/type drift · 67 only moved · 15 not found in app — covered: W1×2, W3×1, W4×1
-Test-AddCheck web: matched 96/113 design items · 4 with size/type drift · 67 only moved · 17 not found in app — covered: W1×2, W3×1, W4×1
-Test-NoAI desktop: matched 82/98 design items · 5 with size/type drift · 19 only moved · 16 not found in app — covered: W1×2, W3×3
-Test-NoAI web: matched 80/98 design items · 5 with size/type drift · 19 only moved · 18 not found in app — covered: W1×2, W3×3
-Test-Replay desktop: matched 74/87 design items · 2 with size/type drift · 49 only moved · 13 not found in app — covered: W1×2
-Test-Replay web: matched 72/87 design items · 2 with size/type drift · 49 only moved · 15 not found in app — covered: W1×2
+Test-AddCheck desktop: matched 99/113 design items · 4 with size/type drift · 68 only moved · 14 not found in app — covered: W1×2, W3×1, W4×1
+Test-AddCheck web: matched 97/113 design items · 4 with size/type drift · 68 only moved · 16 not found in app — covered: W1×2, W3×1, W4×1
+Test-NoAI desktop: matched 83/98 design items · 5 with size/type drift · 19 only moved · 15 not found in app — covered: W1×2, W3×3
+Test-NoAI web: matched 81/98 design items · 5 with size/type drift · 19 only moved · 17 not found in app — covered: W1×2, W3×3
+Test-Replay desktop: matched 75/87 design items · 2 with size/type drift · 50 only moved · 12 not found in app — covered: W1×2
+Test-Replay web: matched 73/87 design items · 2 with size/type drift · 50 only moved · 14 not found in app — covered: W1×2
 Test-RowMenu desktop: matched 75/92 design items · 2 with size/type drift · 51 only moved · 17 not found in app — covered: W1×2
 Test-RowMenu web: matched 73/92 design items · 2 with size/type drift · 51 only moved · 19 not found in app — covered: W1×2
 Test-UploadError desktop: matched 83/95 design items · 2 with size/type drift · 43 only moved · 12 not found in app — covered: W1×2
@@ -139,3 +139,6 @@ Set-Checked desktop: matched 35/60 design items · 0 with size/type drift · 20 
 Set-Checked web: matched 33/60 design items · 0 with size/type drift · 20 only moved · 27 not found in app
 Test-RowMenu (the confirm shot) desktop: matched 79/92 design items · 2 with size/type drift · 50 only moved · 13 not found in app — covered: W1×2
 Test-RowMenu (the confirm shot) web: matched 77/92 design items · 2 with size/type drift · 48 only moved · 15 not found in app — covered: W1×2
+# Re-shot by the lead after a82e57b + 89de19f (2026-10-02 ~18:05 IST, Vite :5199, the same scenario): Test-New, -Replay, -Judge,
+#   -AddCheck and -NoAI, web and Desktop — each one more item matched ("The Engineer’s change" / "3 more labelled" built), size/type
+#   drift unchanged and covered by the same waivers.
