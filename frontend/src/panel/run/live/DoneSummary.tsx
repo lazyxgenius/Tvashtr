@@ -76,14 +76,16 @@ export function DoneSummary({
           )}
           {startNext && (
             <span className="lv-done__next">
+              {/* The icon sits flush in the label, as Next-Finished draws it (207 wide). */}
               <Button
                 variant="primary"
                 size="sm"
-                iconLeft={<CornerDownRight size={14} strokeWidth={2} aria-hidden />}
+                className="cv-btn-flush"
                 aria-describedby={tipId}
                 onClick={startNext.onStart}
               >
-                Start the next run from this
+                <CornerDownRight size={14} strokeWidth={2} aria-hidden />
+                <span>Start the next run from this</span>
               </Button>
               <span id={tipId} className="lv-done__tip" role="tooltip">
                 <span className="lv-done__tip-title">

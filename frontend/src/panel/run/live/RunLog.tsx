@@ -50,23 +50,30 @@ export function RunMore({
   const [open, setOpen] = useState(false);
   return (
     <>
-      <Menu
-        label="More for this run"
-        width={232}
-        trigger={(props) => (
-          <IconButton size="sm" aria-label="More for this run" title="More for this run" {...props}>
-            <MoreHorizontal size={16} strokeWidth={1.6} aria-hidden />
-          </IconButton>
-        )}
-        items={[
-          {
-            key: "log",
-            label: "Download the run log",
-            icon: <Download size={15} strokeWidth={1.6} aria-hidden />,
-            onSelect: () => setOpen(true),
-          },
-        ]}
-      />
+      <span className="lv-more">
+        <Menu
+          label="More for this run"
+          width={232}
+          trigger={(props) => (
+            <IconButton
+              size="sm"
+              aria-label="More for this run"
+              title="More for this run"
+              {...props}
+            >
+              <MoreHorizontal size={16} strokeWidth={1.6} aria-hidden />
+            </IconButton>
+          )}
+          items={[
+            {
+              key: "log",
+              label: "Download the run log",
+              icon: <Download size={15} strokeWidth={1.6} aria-hidden />,
+              onSelect: () => setOpen(true),
+            },
+          ]}
+        />
+      </span>
       {open && (
         <RunLogDialog
           runId={runId}
