@@ -123,7 +123,7 @@ test("agent tests: make a test from a round, run both, see pass and fail", async
   if (await prefilled.count()) await prefilled.first().click();
   await dialog.getByRole("button", { name: "Add a check" }).click();
   await page.getByRole("menuitem", { name: /Must not say/ }).click();
-  await dialog.getByLabel("Must not say").fill(NEVER);
+  await dialog.getByRole("textbox", { name: "Must not say", exact: true }).fill(NEVER);
   await shot(dialog, "new-test");
   await dialog.getByRole("button", { name: "Save test" }).click();
   await expect(dialog).toBeHidden({ timeout: 30_000 });

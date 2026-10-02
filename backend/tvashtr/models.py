@@ -539,8 +539,8 @@ class SavedAgentVersion(Base):
 
 
 class AgentTest(Base):
-    """M7: one saved round of one library agent — what it got (``inputs``: the task, the documents it
-    read, the change it saw and its base, the test output) + ``diff`` (that change, applied to a
+    """M7: one saved round of one library agent — what it got (``inputs``: the task, the documents
+    it read, the change it saw and its base, the test output) + ``diff`` (that change, applied to a
     rebuilt workspace) and the ``checks`` on what it says."""
 
     __tablename__ = "agent_tests"

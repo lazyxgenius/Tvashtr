@@ -690,8 +690,8 @@ class Settings(BaseSettings):
     )
 
     # --- M7 (R7): AI checks in agent tests run on TVASHTR's key with a small model, never the
-    # owner's. An empty key ⇒ AI checks are "Not available yet" (skipped, not failed). A SECRET, like
-    # the Fly token above: read with ``.get_secret_value()``, never logged or returned.
+    # owner's. An empty key ⇒ AI checks are "Not available yet" (skipped, not failed). A SECRET,
+    # like the Fly token above: read with ``.get_secret_value()``, never logged or returned.
     checks_model: str = Field(
         default="openai/gpt-4.1-mini",
         validation_alias=AliasChoices("TVASHTR_CHECKS_MODEL", "checks_model"),

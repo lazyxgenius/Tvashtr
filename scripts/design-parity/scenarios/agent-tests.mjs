@@ -462,13 +462,11 @@ const newTest = async (page) => {
   return dialog;
 };
 const pickFile = async (page) => {
-  await page
-    .locator(".nd-foot [data-testid=test-file]")
-    .setInputFiles({
-      name: "reviewer-examples.csv",
-      mimeType: "text/csv",
-      buffer: Buffer.from("task,expected\n"),
-    });
+  await page.locator(".nd-foot [data-testid=test-file]").setInputFiles({
+    name: "reviewer-examples.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from("task,expected\n"),
+  });
 };
 
 // ---- The run view (Test-FromRun / -RoundMenuOff): run #12 done, the Reviewer's rounds ----
@@ -761,13 +759,11 @@ export default [
     },
     then: async (p) => {
       await listed(p);
-      await p
-        .locator(".nd-foot [data-testid=test-file]")
-        .setInputFiles({
-          name: "reviewer-examples.jsonl",
-          mimeType: "application/jsonl",
-          buffer: Buffer.from("{}\n"),
-        });
+      await p.locator(".nd-foot [data-testid=test-file]").setInputFiles({
+        name: "reviewer-examples.jsonl",
+        mimeType: "application/jsonl",
+        buffer: Buffer.from("{}\n"),
+      });
       await p
         .getByRole("dialog", { name: "Add tests from a file" })
         .getByText("This file can’t be read")
