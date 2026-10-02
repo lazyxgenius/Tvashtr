@@ -226,6 +226,10 @@ class TeamGraph(Base):
     # NULL on legacy rows and on run-snapshot clones.
     template_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     duplicated_from_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+    # M4 (migration ``0045``): the team's default budget and repo (a hosted GitHub ``owner/name``),
+    # carried by its team file. NULL until a team file sets them.
+    budget_usd: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
+    repo: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
