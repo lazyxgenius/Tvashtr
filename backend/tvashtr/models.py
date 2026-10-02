@@ -487,6 +487,56 @@ class TeamVersion(Base):
     )
 
 
+class SavedAgent(Base):
+    """M6 (migration ``0047``, ruling R4): a saved agent ("my agent") — one agent's setup saved
+    from its panel to use in any of the owner's teams. ``name`` is unique per owner ignoring case.
+    Deleting it never changes a team."""
+
+    __tablename__ = "saved_agents"
+    __table_args__ = (
+        Index("uq_saved_agents_owner_name", "owner_id", text("lower(name)"), unique=True),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    owner_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    purpose: Mapped[str] = mapped_column(Text, nullable=False, server_default="", default="")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class SavedAgentVersion(Base):
+    """M6: one version of a saved agent — its included parts (secrets masked or left out), the
+    agent's own memories only when asked, the role it was built on."""
+
+    __tablename__ = "saved_agent_versions"
+    __table_args__ = (
+        UniqueConstraint("saved_agent_id", "number", name="uq_saved_agent_versions_number"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    saved_agent_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("saved_agents.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    number: Mapped[int] = mapped_column(Integer, nullable=False)
+    parts: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    included: Mapped[list] = mapped_column(JSONB, nullable=False)
+    memories: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    built_on: Mapped[str] = mapped_column(Text, nullable=False)
+    author_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
 class EngineerRunAttempt(Base):
     """One row per *execution* of ``engineer_run_step`` (intentionally NOT
     idempotent): a crash-then-resume yields two rows with different ``pid``s —

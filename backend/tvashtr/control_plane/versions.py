@@ -37,6 +37,8 @@ NOTE_LIMIT = 200
 _BUILTIN_PROMPTS = {t["role_name"]: (t["title"], t["prompt"]) for t in NODE_TEMPLATES}
 # The node's config keys that have a field of their own in a change row; the rest are "Settings".
 _OWN_KEYS = ("title", "description", "fallback_model")
+# Which saved agent (M6) a node uses: where it came from, not what it does — never a change.
+_NOT_CONTENT = ("based_on",)
 # Settings whose ``false`` is what an unset one means.
 _OFF_BY_DEFAULT = ("memory_remember_enabled", "multimodal")
 
@@ -48,6 +50,7 @@ def _settings(cfg: dict) -> dict:
         k: v
         for k, v in cfg.items()
         if k not in _OWN_KEYS
+        and k not in _NOT_CONTENT
         and v not in (None, "", [], {})
         and not (k in _OFF_BY_DEFAULT and v is False)
     }

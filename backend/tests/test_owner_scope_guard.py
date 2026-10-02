@@ -603,6 +603,34 @@ ROUTES: dict[str, tuple[str, object]] = {
             "test_owner_scope_teams::test_b_own_team_with_a_node_or_edge_is_404",
         ],
     ),
+    "GET /api/my-agents": ("list", ["test_my_agents::test_my_agents_are_owner_scoped"]),
+    "POST /api/my-agents": ("id", ["test_my_agents::test_my_agents_are_owner_scoped"]),
+    "PATCH /api/my-agents/{agent_id}": ("id", ["test_my_agents::test_my_agents_are_owner_scoped"]),
+    "DELETE /api/my-agents/{agent_id}": ("id", ["test_my_agents::test_my_agents_are_owner_scoped"]),
+    "POST /api/my-agents/{agent_id}/update-team": (
+        "id",
+        ["test_my_agents::test_my_agents_are_owner_scoped"],
+    ),
+    "POST /api/my-agents/{agent_id}/use-in-team": (
+        "id",
+        ["test_my_agents::test_my_agents_are_owner_scoped"],
+    ),
+    "POST /api/teams/{team_id}/nodes/{node_id}/use-agent": (
+        "id",
+        ["test_my_agents::test_my_agents_are_owner_scoped"],
+    ),
+    "POST /api/teams/{team_id}/nodes/{node_id}/undo-agent": (
+        "id",
+        ["test_my_agents::test_my_agents_are_owner_scoped"],
+    ),
+    "POST /api/teams/{team_id}/nodes/{node_id}/detach-agent": (
+        "id",
+        ["test_my_agents::test_my_agents_are_owner_scoped"],
+    ),
+    "GET /api/recent-tasks": (
+        "list",
+        ["test_my_agents::test_recent_tasks_are_one_per_task_newest_first_and_only_yours"],
+    ),
     "GET /api/teams/{team_id}/versions": (
         "id",
         ["test_team_versions::test_versions_are_owner_scoped"],
