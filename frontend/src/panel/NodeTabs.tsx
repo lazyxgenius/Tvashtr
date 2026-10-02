@@ -1,13 +1,11 @@
-import { useEffect, useRef } from "react";
-
 import { Tabs, type TabItem } from "../design-system/components";
 import type { NodeTab } from "../lib/nav";
 
 /**
  * Setup · Skills & tools · Memory · Runs · Docs (PANEL-16). A count shows only when it isn't 0.
  * M7: the team drawer adds Tests between Runs and Docs (`testsCount` given, even 0); the run view's
- * drawer keeps its five. Six tabs don't fit the 384px drawer, so that row scrolls sideways (no
- * scrollbar) with every label on one line, and the open tab is kept in view.
+ * drawer keeps its five. R18: all six show at once in the 384px drawer, as the Quality boards draw
+ * the row (`tabsT`): the tabs shrink and "Skills & tools" wraps over three lines beside its count.
  */
 export function NodeTabs({
   value,
@@ -31,15 +29,8 @@ export function NodeTabs({
     ...(withTests ? [{ value: "tests" as const, label: "Tests", count: testsCount || null }] : []),
     { value: "docs", label: "Docs" },
   ];
-  const row = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!withTests) return;
-    row.current
-      ?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')
-      ?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
-  }, [value, withTests]);
   return (
-    <div ref={row} className={`nd-tabs${withTests ? " nd-tabs--scroll" : ""}`}>
+    <div className="nd-tabs">
       <Tabs variant="line" items={items} value={value} onChange={onChange} aria-label="Agent" />
     </div>
   );

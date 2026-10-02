@@ -144,7 +144,8 @@ describe("NodeEditor — M7 Tests tab", () => {
         .getAllByRole("tab")
         .map((t) => t.textContent),
     ).toEqual(["Setup", "Skills & tools", "Memory", "Runs", "Tests6", "Docs"]);
-    expect(tablist.closest(".nd-tabs")).toHaveClass("nd-tabs--scroll");
+    // R18: the six tabs wrap inside the drawer (the boards' row) instead of scrolling sideways.
+    expect(tablist.closest(".nd-tabs")).not.toHaveClass("nd-tabs--scroll");
     fireEvent.click(within(tablist).getByRole("tab", { name: /Tests/ }));
     expect(props.onTabChange).toHaveBeenCalledWith("tests");
     // Kept: the header's More menu, unchanged.
