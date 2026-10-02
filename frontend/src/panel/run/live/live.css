@@ -930,6 +930,7 @@
 .lv-came {
   position: fixed;
   right: 24px;
+  overflow-y: auto;
   z-index: 40;
   width: 420px;
   max-width: calc(100vw - 32px);

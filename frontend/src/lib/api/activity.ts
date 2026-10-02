@@ -103,6 +103,8 @@ export interface ActivityLine {
   from_run?: { run_id: string; number: number | null } | null;
   /** M10: the "Started from run #12 · brought …" line — it links "See what came along". */
   came_along?: boolean;
+  /** M10: "Saved 3 new memories from this run" — the page links Review (Toolkit › Memory › Inbox). */
+  review_memories?: boolean;
 }
 
 /** M3: the run this one resumed (docs/superpowers/plans/api/resume.md). */

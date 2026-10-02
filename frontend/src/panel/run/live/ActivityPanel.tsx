@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { StopRunDialog } from "../../../components/StopRunDialog";
 import { Button, IconButton } from "../../../design-system/components";
 import type { ActivityLine, PinnedCallout, RunActivity } from "../../../lib/api/activity";
+import { navigate } from "../../../lib/nav";
 import { clock, currentLineIds, duration } from "./liveFormat";
 import { CameAlong } from "./StartNext";
 import { StateGlyph } from "./StateGlyph";
@@ -124,6 +125,17 @@ function Line({
   } else if (line.came_along) {
     // M10: "Started from run #12 · brought …" (Next-Started).
     extra = <CameAlong runId={runId} />;
+  } else if (line.review_memories) {
+    // M10: "Saved 3 new memories from this run · review them in Toolkit" (Next-Finished).
+    extra = (
+      <button
+        type="button"
+        className="lv-linkbtn lv-linkbtn--accent"
+        onClick={() => navigate({ page: "memory", tab: "inbox" })}
+      >
+        Review
+      </button>
+    );
   } else if (line.kind === "edited" && r.file) {
     if (line.node_id) {
       extra = (

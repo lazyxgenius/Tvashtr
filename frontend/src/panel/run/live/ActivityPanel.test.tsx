@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ActivityLine, PinnedCallout, RunActivity } from "../../../lib/api/activity";
 import { ApiDetailError } from "../../../lib/api/runs";
+import { routeToHash } from "../../../lib/nav";
 import { ActivityPanel, type ActivityActions } from "./ActivityPanel";
 
 const T = (h: number, m: number, s: number) => new Date(2026, 9, 2, h, m, s).toISOString();
@@ -744,5 +745,26 @@ describe("ActivityPanel — M10 a run started from another (Next-Started)", () =
     expect(fetchMock).toHaveBeenCalledWith("/api/runs/r-14/carry", expect.anything());
     expect(pop).toHaveTextContent("Spec v3 · became this run’s starting spec");
     expect(pop).toHaveTextContent("Register every indicator on INDICATORS");
+  });
+});
+
+describe("ActivityPanel — M10 the memories a run saved (Next-Finished)", () => {
+  it("the line names how many and Review opens Toolkit › Memory › Inbox", () => {
+    const saved = line("run:memories", {
+      node_id: null,
+      label: "Run",
+      kind: "memories",
+      text: "Saved 3 new memories from this run · review them in Toolkit",
+      review_memories: true,
+      at: T(11, 3, 30),
+    });
+    render(
+      <ActivityPanel activity={{ ...activity(), lines: [saved] }} now={NOW} actions={actions()} />,
+    );
+    expect(
+      screen.getByText("Saved 3 new memories from this run · review them in Toolkit"),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    expect(window.location.hash).toBe(routeToHash({ page: "memory", tab: "inbox" }));
   });
 });

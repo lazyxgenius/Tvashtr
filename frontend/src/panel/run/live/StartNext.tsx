@@ -235,7 +235,8 @@ export function StartedFrom({
 
 /**
  * The Activity's "See what came along" (Next-CameAlong): what the run started from brought, read
- * from its carry snapshot. It opens above the line (the Activity list scrolls, so it is not inside).
+ * from its carry snapshot. As drawn, it opens over the top of the Activity panel, 8px down (the
+ * Activity list scrolls, so it is not inside), and scrolls itself when the window is short.
  */
 export function CameAlong({ runId }: { runId: string }) {
   const [at, setAt] = useState<number | null>(null);
@@ -254,7 +255,10 @@ export function CameAlong({ runId }: { runId: string }) {
         className="lv-linkbtn lv-linkbtn--accent"
         aria-haspopup="dialog"
         aria-expanded={open}
-        onClick={(e) => setAt(window.innerHeight - e.currentTarget.getBoundingClientRect().top)}
+        onClick={(e) => {
+          const panel = e.currentTarget.closest("section") ?? e.currentTarget;
+          setAt(Math.max(8, panel.getBoundingClientRect().top + 8));
+        }}
       >
         See what came along
       </button>
@@ -266,7 +270,7 @@ export function CameAlong({ runId }: { runId: string }) {
             role="dialog"
             aria-label={`What came along from ${run}`}
             className="lv-came"
-            style={{ bottom: at + 8 }}
+            style={{ top: at, maxHeight: `calc(100vh - ${at + 16}px)` }}
           >
             <div className="lv-came__head">
               <span className="lv-came__title">What came along from {run}</span>
