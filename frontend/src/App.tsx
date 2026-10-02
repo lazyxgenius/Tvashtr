@@ -729,6 +729,15 @@ export default function App({
   const nodeDrawerOpen = authoring ? selectedTeamNode !== null : selectedRunNode !== null;
   // M2: the run's Activity (null on the canvas), and the drawer tool a "View change" asks for.
   const activity = useRunActivity(authoring ? null : runId, terminal);
+  // M3: a resumed run's steps that were all carried — their cards say where they were done.
+  const activityAgents = activity?.agents;
+  const carriedOver = useMemo(
+    () =>
+      new Set(
+        (activityAgents ?? []).filter((a) => a.live_state === "carried_over").map((a) => a.node_id),
+      ),
+    [activityAgents],
+  );
   const [runTool, setRunTool] = useState<{ node: string; tool: "changes"; n: number } | null>(null);
   const docsOpen = docsDrawer !== null && !nodeDrawerOpen;
   // OQ-20: opening the Documents drawer closes the agent drawer (through its unsaved guard).
@@ -994,6 +1003,7 @@ export default function App({
               selectedNodeId={selectedNodeId}
               docChips={docChips}
               onOpenDoc={openChipDoc}
+              carriedOver={carriedOver}
             />
             {runBlock && (
               <RunBlockedBanner
