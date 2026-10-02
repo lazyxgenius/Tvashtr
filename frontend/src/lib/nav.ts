@@ -102,7 +102,10 @@ export type Route =
       resume?: boolean;
       /** M7: open the New test dialog on this round (the run view's "Make this a test"). */
       testFrom?: number;
-    };
+    }
+  // M8: "Compare versions" — a team's compare page; `compareId` opens that compare (running or
+  // its results); `tab` "versions" is the Versions tab.
+  | { page: "compare"; teamId: string; compareId?: string; tab?: "versions" };
 
 const ENGINES_TABS: EnginesTab[] = ["overview", "subscriptions", "keys"];
 const CONNECT_TARGETS: ConnectTarget[] = ["claude", "grok"];
@@ -239,6 +242,12 @@ export function parseRoute(hash: string): Route {
     }
     case "teams": {
       if (!b) return HOME;
+      if (c === "compare") {
+        const cmp: Extract<Route, { page: "compare" }> = { page: "compare", teamId: b };
+        if (parts[3]) cmp.compareId = parts[3];
+        if (q.get("tab") === "versions") cmp.tab = "versions";
+        return cmp;
+      }
       const route: Extract<Route, { page: "team" }> = { page: "team", teamId: b };
       if (c === "runs" && parts[3]) route.runId = parts[3];
       const docs = route.runId ? parts.slice(4) : parts.slice(2);
@@ -332,6 +341,10 @@ export function routeToHash(route: Route): string {
       const qs = q.toString();
       return qs ? `${path}?${qs}` : path;
     }
+    case "compare": {
+      const path = `#/teams/${enc(route.teamId)}/compare${route.compareId ? `/${enc(route.compareId)}` : ""}`;
+      return route.tab === "versions" ? `${path}?tab=versions` : path;
+    }
   }
 }
 
@@ -343,6 +356,8 @@ export function sectionOf(route: Route): "home" | "domains" | "engines" | "toolk
     case "engines":
     case "team":
       return route.page;
+    case "compare":
+      return "team";
     case "setup":
     case "welcome":
     case "download":
