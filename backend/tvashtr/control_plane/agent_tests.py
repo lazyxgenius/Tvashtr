@@ -17,7 +17,7 @@ import re
 import subprocess
 import tempfile
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
@@ -91,7 +91,18 @@ def _names_file(path: str, answer: str, files: list[str]) -> bool:
         return False
     if any(f.removeprefix("./") == want for f in files):
         return True
-    return want.casefold() in answer.casefold()
+    # The whole path: "a.py" isn't named by "data.py".
+    whole = re.compile(r"(?<![\w./-])" + re.escape(want) + r"(?![\w-])", re.IGNORECASE)
+    return whole.search(answer) is not None
+
+
+_VERDICTS = ("approved", "changes requested")
+
+
+def _verdict_of(answer: str) -> str | None:
+    """A reviewer's answer starts with its verdict ("Approved" / "Changes requested: …")."""
+    head = _norm(answer)
+    return next((v for v in _VERDICTS if head == v or head.startswith(v + ":")), None)
 
 
 def evaluate(checks: list[dict], answer: str, files: list[str], ai) -> list[dict]:
@@ -100,11 +111,13 @@ def evaluate(checks: list[dict], answer: str, files: list[str], ai) -> list[dict
     out = []
     for check in checks:
         kind, value = check["kind"], check["value"]
+        verdict = _verdict_of(answer) if _norm(value) in _VERDICTS else None
         if kind == "must_say":
-            met = _norm(value) in _norm(answer)
+            # A verdict word checks the verdict: "can't be approved" doesn't say Approved.
+            met = verdict == _norm(value) if verdict else _norm(value) in _norm(answer)
             reason = None if met else f"It didn’t say “{value}”."
         elif kind == "must_not_say":
-            met = _norm(value) not in _norm(answer)
+            met = verdict != _norm(value) if verdict else _norm(value) not in _norm(answer)
             reason = None if met else f"It said “{value}”."
         elif kind == "must_name_file":
             met = _names_file(value, answer, files)
@@ -276,7 +289,11 @@ def blocked_rounds(session, run: Run, invocations: list[AgentInvocation]) -> dic
     """Each round's reason it can't be a test (None ⇒ it can): a round that didn't finish, a folder
     that was on the person's computer, a change before it that has no checkpoint or is too large."""
     out: dict[int, str | None] = {}
-    folder_gone = bool(run.repo_path) and not run.github_repo and not is_work_tree(run.repo_path)
+    # A Desktop folder run's copy lives on one machine only for the run: never a test. A
+    # self-hosted run's own folder can be, while it's still there.
+    folder_gone = run.local_snapshot_id is not None or (
+        bool(run.repo_path) and not run.github_repo and not is_work_tree(run.repo_path)
+    )
     rows = cps = None
     for inv in invocations:
         if inv.status != "done":
@@ -972,28 +989,37 @@ def result_detail(owner_id: uuid.UUID, team_id: str, node_id: str, result_id: st
 # --------------------------------------------------------------------- Check the AI check
 
 
+def _closing(session, run: Run, inv: AgentInvocation) -> str | None:
+    """What a non-reviewer round answered: its closing message (a replay is checked on the same)."""
+    from tvashtr.control_plane.team_run import _closing_text
+
+    for kind, payload in session.execute(
+        select(RunEvent.kind, RunEvent.payload)
+        .where(RunEvent.run_id == str(run.id), RunEvent.invocation_id == inv.id)
+        .order_by(RunEvent.seq.desc())
+    ).all():
+        found = _closing_text(kind, payload)
+        if found is not None:
+            return found
+    return None
+
+
 def answers(owner_id: uuid.UUID, team_id: str, node_id: str, test_id: str) -> dict:
-    """Up to 20 distinct answers this agent gave — its replays' and its rounds' — newest first."""
+    """Up to 20 distinct answers this agent gave — its replays' and its rounds' — newest first.
+    Only real answers: a reviewer's verdict, else the round's closing message (never its brief)."""
     with session_scope() as session:
         node = _require_node(session, owner_id, team_id, node_id)
         _owned_test(session, node, test_id)
-        seen: set[str] = set()
-        out: list[dict] = []
-
-        def add(text: str | None, origin: str) -> None:
-            text = (text or "").strip()
-            if text and _norm(text) not in seen and len(out) < LABELS_MAX:
-                seen.add(_norm(text))
-                out.append({"text": text, "from": origin})
-
-        for answer, version in session.execute(
-            select(AgentTestResult.answer, AgentTestRun.version_number)
+        found: list[tuple[datetime, str, str]] = []
+        for answer, version, at in session.execute(
+            select(AgentTestResult.answer, AgentTestRun.version_number, AgentTestResult.ended_at)
             .join(AgentTestRun, AgentTestRun.id == AgentTestResult.test_run_id)
             .where(AgentTestRun.node_id == node.id, AgentTestResult.answer.is_not(None))
             .order_by(AgentTestResult.ended_at.desc().nulls_last())
             .limit(60)
         ).all():
-            add(answer, f"A replay on v{version}" if version else "A replay")
+            origin = f"A replay on v{version}" if version else "A replay"
+            found.append((at or datetime.min.replace(tzinfo=UTC), answer, origin))
         rounds = session.execute(
             select(AgentInvocation, Run)
             .join(AgentNode, AgentNode.id == AgentInvocation.node_id)
@@ -1010,14 +1036,26 @@ def answers(owner_id: uuid.UUID, team_id: str, node_id: str, test_id: str) -> di
             label = (
                 _answered(inv, True) if inv.outcome in ("approved", "changes_requested") else None
             )
-            text = inv.outcome_detail
             if label:
+                text = inv.outcome_detail
                 text = label if not text or label == "Approved" else f"{label}: {text}"
+            else:
+                text = _closing(session, run, inv)
+            if not text:
+                continue
             number = node_history._run_number(session, run)
-            add(
-                text,
-                f"Run #{number} · round {inv.iteration}" if number else f"Round {inv.iteration}",
+            origin = (
+                f"Run #{number} · round {inv.iteration}" if number else f"Round {inv.iteration}"
             )
+            found.append((inv.ended_at or inv.started_at, text, origin))
+        found.sort(key=lambda row: row[0], reverse=True)
+        seen: set[str] = set()
+        out: list[dict] = []
+        for _at, text, origin in found:
+            text = (text or "").strip()
+            if text and _norm(text) not in seen and len(out) < LABELS_MAX:
+                seen.add(_norm(text))
+                out.append({"text": text, "from": origin})
         return {"answers": out}
 
 
@@ -1087,6 +1125,14 @@ def judge(owner_id: uuid.UUID, team_id: str, node_id: str, test_id: str, body: d
 # ------------------------------------------------------------ the canvas, History and Save as vN
 
 
+def _live(run: AgentTestRun) -> bool:
+    """Running, and its worker heard from lately (a restart leaves a run "running" for nobody)."""
+    from tvashtr.control_plane.agent_test_runner import STALE_AFTER_S
+
+    fresh = datetime.now(UTC) - timedelta(seconds=STALE_AFTER_S)
+    return run.status == "running" and run.heartbeat_at > fresh
+
+
 def graph_tests(session, node_ids: list[uuid.UUID]) -> dict[uuid.UUID, dict]:
     """``{node_id: {total, passed, ran, running}}`` for the agents that have tests."""
     if not node_ids:
@@ -1132,7 +1178,7 @@ def graph_tests(session, node_ids: list[uuid.UUID]) -> dict[uuid.UUID, dict]:
     for node_id, total in totals.items():
         run, fin = latest.get(node_id), finished.get(node_id)
         running = None
-        if run is not None and run.status == "running":
+        if run is not None and _live(run):
             running = {"done": tally.get(run.id, (0, 0))[0], "total": run.total}
         out[node_id] = {
             "total": int(total),
@@ -1175,7 +1221,7 @@ def version_rows(session, team: TeamGraph) -> dict[int, dict]:
         row = out.setdefault(number, {"passed": 0, "total": 0, "running": False})
         row["passed"] += int(counts.get(run.id, 0))
         row["total"] += run.total
-        row["running"] = row["running"] or run.status == "running"
+        row["running"] = row["running"] or _live(run)
     return out
 
 

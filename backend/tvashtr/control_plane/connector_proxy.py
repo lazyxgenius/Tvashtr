@@ -92,13 +92,15 @@ def read_run_token(value: object, max_age: int = RUN_TOKEN_MAX_AGE_SECONDS) -> R
     with session_scope() as session:
         run = session.get(Run, run_id)
         row = session.get(ConnectorConnection, connection_id)
-        if (
-            run is None
-            or row is None
-            or row.status == "pending"
-            or run.owner_id != row.owner_id
-            or run.status in TERMINAL_STATUSES
-        ):
+        if run is not None:
+            owner, live = run.owner_id, run.status not in TERMINAL_STATUSES
+        else:
+            # M7: an agent-test replay signs its tokens with its own id while it runs.
+            from tvashtr.control_plane.agent_test_runner import live_replay_owner
+
+            owner = live_replay_owner(session, run_id)
+            live = owner is not None
+        if row is None or row.status == "pending" or not live or owner != row.owner_id:
             return None
     return RunGrant(
         run_id=str(run_id),

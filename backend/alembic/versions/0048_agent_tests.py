@@ -77,7 +77,22 @@ def upgrade() -> None:
     op.create_table(
         "agent_test_runs",
         sa.Column("id", sa.Uuid(), primary_key=True),
-        *_owned(),
+        sa.Column(
+            "owner_id", sa.Uuid(), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+        ),
+        # A run outlives its agent and team (its cost stays in the owner's spend).
+        sa.Column(
+            "team_id",
+            sa.Uuid(),
+            sa.ForeignKey("team_graphs.id", ondelete="SET NULL"),
+            nullable=True,
+        ),
+        sa.Column(
+            "node_id",
+            sa.Uuid(),
+            sa.ForeignKey("agent_nodes.id", ondelete="SET NULL"),
+            nullable=True,
+        ),
         sa.Column("version_number", sa.Integer(), nullable=True),
         sa.Column("status", sa.Text(), nullable=False),
         sa.Column("trigger", sa.Text(), nullable=False, server_default="manual"),

@@ -584,11 +584,12 @@ class AgentTestRun(Base):
     owner_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
-    team_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("team_graphs.id", ondelete="CASCADE"), nullable=False
+    # A run outlives its agent and team (SET NULL): its cost stays in the owner's spend.
+    team_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("team_graphs.id", ondelete="SET NULL"), nullable=True
     )
-    node_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("agent_nodes.id", ondelete="CASCADE"), nullable=False, index=True
+    node_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("agent_nodes.id", ondelete="SET NULL"), nullable=True, index=True
     )
     version_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
     status: Mapped[str] = mapped_column(Text, nullable=False)  # running | done | stopped | failed

@@ -565,14 +565,14 @@ def test_a_replay_past_ten_minutes_is_stopped(tmp_path, monkeypatch, inline):
     monkeypatch.setattr(agent_test_runner, "REPLAY_CAP_S", 0)
     monkeypatch.setattr(agent_test_runner, "_POLL_S", 0.05)
     monkeypatch.setattr(agent_test_runner, "close_run_sandboxes", closed.append)
-    release = __import__("threading").Event()
-    monkeypatch.setattr(agent_test_runner, "replay", lambda rid: release.wait(5) or {})
+    # The replay ends when it's told to (a sandbox closing under a remote agent ends its run).
+    monkeypatch.setattr(agent_test_runner, "replay", lambda rid, cancel: cancel.wait(5) or {})
     c.post(f"/api/teams/{team}/nodes/{rev['id']}/tests/run")
-    release.set()
     result = _tests(c, team, rev["id"])["run"]["results"][0]
     assert result["status"] == "failed"
     assert result["error"] == "It took more than 10 minutes, so it was stopped."
-    assert closed == [result["id"]]
+    # Its sandbox is closed (again, until the replay has ended), and only its own.
+    assert closed and set(closed) == {result["id"]}
 
 
 def test_a_replay_rebuilds_a_local_repo_at_its_base(tmp_path):
@@ -983,3 +983,323 @@ def test_an_ai_check_that_never_answered_doesnt_count(monkeypatch):
         "The AI check couldn’t answer, so it was skipped",
     )
     assert agent_tests.ai_status(owner)["left"] == 200
+
+
+# ------------------------------------------------- review fixes (M7 backend review, test-first)
+
+
+class PullAllAdapter(FakeAdapter):
+    """Like the Fly/Docker adapters with an unscoped pull: every file comes back "changed"."""
+
+    def __init__(self, write: dict | None = None, verdict_file=True, **kw):
+        super().__init__(**kw)
+        self.write, self.verdict_file = write or {}, verdict_file
+
+    def run(self, task, on_event=None):
+        ws = Path(task.workspace_dir)
+        for rel, body in self.write.items():
+            (ws / rel).parent.mkdir(parents=True, exist_ok=True)
+            (ws / rel).write_text(body)
+        out = super().run(task, on_event)
+        if not self.verdict_file:
+            (ws / "REVIEW_VERDICT.json").unlink()
+        every = [
+            str(p.relative_to(ws)) for p in ws.rglob("*") if p.is_file() and ".git" not in p.parts
+        ]
+        return AgentRunResult(**{**out.__dict__, "files_changed": every})
+
+
+def _use(monkeypatch, adapter):
+    monkeypatch.setattr(agent_test_runner, "resolve_adapter", lambda name: adapter)
+
+
+def test_a_replays_files_are_the_ones_it_changed_not_the_whole_pull(tmp_path, inline, monkeypatch):
+    c, owner, team = _account()
+    made = _run_with_rounds(c, owner, team, tmp_path)
+    eng = _node(c, team, "engineer")
+    _create(
+        c, team, eng["id"], made["ids"]["eng2"], {"kind": "must_name_file", "value": "core/rsi.py"}
+    )
+    _use(monkeypatch, PullAllAdapter(write={"tests/test_rsi.py": "def test(): pass\n"}))
+    c.post(f"/api/teams/{team}/nodes/{eng['id']}/tests/run")
+    result = _tests(c, team, eng["id"])["run"]["results"][0]
+    assert result["files"] == ["tests/test_rsi.py"]
+    assert result["status"] == "failed"  # it never touched core/rsi.py
+
+
+def test_a_reviewer_replay_with_no_verdict_fails(tmp_path, inline, monkeypatch):
+    c, owner, team = _account()
+    made = _run_with_rounds(c, owner, team, tmp_path)
+    rev = _node(c, team, "reviewer")
+    _create(c, team, rev["id"], made["ids"]["rev1"], SAY)
+    _use(monkeypatch, PullAllAdapter(verdict_file=False))
+    c.post(f"/api/teams/{team}/nodes/{rev['id']}/tests/run")
+    result = _tests(c, team, rev["id"])["run"]["results"][0]
+    assert result["status"] == "failed"
+    assert result["error"] == "It gave no verdict, so its checks didn’t run."
+
+
+def test_connector_and_domains_tokens_work_while_a_replay_runs(tmp_path, monkeypatch):
+    from connector_helpers import add_connection
+
+    from tvashtr.control_plane.connector_proxy import read_run_token, sign_run_token
+    from tvashtr.control_plane.node_tools import read_domains_token, sign_domains_token
+
+    c, owner, team = _account()
+    made = _run_with_rounds(c, owner, team, tmp_path)
+    rev = _node(c, team, "reviewer")
+    _create(c, team, rev["id"], made["ids"]["rev1"], SAY)
+    monkeypatch.setattr(agent_test_runner, "_spawn", lambda target, *a: None)
+    run = c.post(f"/api/teams/{team}/nodes/{rev['id']}/tests/run").json()["run"]
+    rid = run["results"][0]["id"]
+    conn = add_connection(owner)
+    token = sign_run_token(rid, rev["id"], conn, "read")
+    dtoken = sign_domains_token(rid, rev["id"], None)
+    assert read_run_token(token) is None and read_domains_token(dtoken) is None  # not started
+    agent_test_runner._take_slot(uuid.UUID(run["id"]), uuid.UUID(rid))
+    assert read_run_token(token).run_id == rid
+    assert read_domains_token(dtoken) == (owner, None)
+    other, other_owner = fresh_account("at-tok")
+    assert read_run_token(sign_run_token(rid, None, add_connection(other_owner), "read")) is None
+    c.post(f"/api/teams/{team}/nodes/{rev['id']}/tests/stop")
+    with session_scope() as session:
+        session.get(AgentTestResult, uuid.UUID(rid)).status = "failed"
+    assert read_run_token(token) is None and read_domains_token(dtoken) is None
+
+
+def test_a_round_of_a_desktop_folder_run_cant_be_a_test(tmp_path):
+    c, owner, team = _account()
+    made = _run_with_rounds(c, owner, team, tmp_path)
+    repo = tmp_path / "clone"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    with session_scope() as session:
+        run = session.get(Run, uuid.UUID(made["run_id"]))
+        run.repo_path, run.local_snapshot_id = str(repo), uuid.uuid4()
+    rev = _node(c, team, "reviewer")
+    resp = c.get(
+        f"/api/teams/{team}/nodes/{rev['id']}/tests/from-round",
+        params={"invocation_id": made["ids"]["rev1"]},
+    )
+    assert resp.status_code == 409
+    assert (
+        resp.json()["detail"]
+        == "Can’t make a test from this round (its folder was on your computer)"
+    )
+
+
+def test_a_stopped_or_capped_replay_still_records_its_cost_and_its_slot(
+    tmp_path, monkeypatch, inline
+):
+    import threading
+
+    c, owner, team = _account()
+    made = _run_with_rounds(c, owner, team, tmp_path)
+    rev = _node(c, team, "reviewer")
+    _create(c, team, rev["id"], made["ids"]["rev1"], SAY)
+    monkeypatch.setattr(agent_test_runner, "_POLL_S", 0.05)
+    started, capped = threading.Event(), threading.Event()
+    # The cap fires once the agent is running (as ten minutes into it would).
+    monkeypatch.setattr(
+        agent_test_runner, "_over_cap", lambda began: started.is_set() and not capped.set()
+    )
+    seen_running = []
+
+    class Slow(FakeAdapter):
+        def run(self, task, on_event=None):
+            started.set()
+            capped.wait(5)
+            with session_scope() as session:  # the cap has fired: its slot is still held
+                seen_running.append(agent_test_runner.replays_in_flight(session, owner))
+            return super().run(task, on_event)
+
+    _use(monkeypatch, Slow())
+    c.post(f"/api/teams/{team}/nodes/{rev['id']}/tests/run")
+    run = _tests(c, team, rev["id"])["run"]
+    assert run["results"][0]["error"] == "It took more than 10 minutes, so it was stopped."
+    assert run["results"][0]["cost_usd"] == pytest.approx(0.02)
+    assert run["cost_usd"] == pytest.approx(0.02)
+    assert seen_running == [1]
+
+
+def test_a_replay_stopped_before_its_agent_starts_never_starts_it(tmp_path, monkeypatch, inline):
+    c, owner, team = _account()
+    made = _run_with_rounds(c, owner, team, tmp_path)
+    rev = _node(c, team, "reviewer")
+    _create(c, team, rev["id"], made["ids"]["rev1"], SAY)
+    real = agent_test_runner._rebuild
+
+    def rebuild_then_stop(ws, base, diff, owner_id, marker):
+        real(ws, base, diff, owner_id, marker)
+        c.post(f"/api/teams/{team}/nodes/{rev['id']}/tests/stop")
+
+    monkeypatch.setattr(agent_test_runner, "_rebuild", rebuild_then_stop)
+    monkeypatch.setattr(agent_test_runner, "_POLL_S", 0.05)
+    c.post(f"/api/teams/{team}/nodes/{rev['id']}/tests/run")
+    run = _tests(c, team, rev["id"])["run"]
+    assert inline.tasks == []
+    assert (run["status"], run["results"][0]["status"]) == ("stopped", "stopped")
+
+
+def test_a_slot_freed_after_stop_doesnt_start_a_stopped_test(tmp_path, monkeypatch):
+    c, owner, team = _account()
+    made = _run_with_rounds(c, owner, team, tmp_path)
+    rev = _node(c, team, "reviewer")
+    _create(c, team, rev["id"], made["ids"]["rev1"], SAY)
+    monkeypatch.setattr(agent_test_runner, "_spawn", lambda target, *a: None)
+    run = c.post(f"/api/teams/{team}/nodes/{rev['id']}/tests/run").json()["run"]
+    c.post(f"/api/teams/{team}/nodes/{rev['id']}/tests/stop")
+    rid = uuid.UUID(run["results"][0]["id"])
+    assert agent_test_runner._take_slot(uuid.UUID(run["id"]), rid) is None
+    assert _tests(c, team, rev["id"])["run"]["results"][0]["status"] == "stopped"
+
+
+def test_a_quiet_run_isnt_shown_as_testing(tmp_path, monkeypatch):
+    c, owner, team = _account()
+    made = _run_with_rounds(c, owner, team, tmp_path)
+    rev = _node(c, team, "reviewer")
+    _create(c, team, rev["id"], made["ids"]["rev1"], SAY)
+    monkeypatch.setattr(agent_test_runner, "_spawn", lambda target, *a: None)
+    run = c.post(f"/api/teams/{team}/nodes/{rev['id']}/tests/run").json()["run"]
+    assert _node(c, team, "reviewer")["tests"]["running"] == {"done": 0, "total": 1}
+    with session_scope() as session:
+        session.get(AgentTestRun, uuid.UUID(run["id"])).heartbeat_at = datetime.now(
+            UTC
+        ) - timedelta(minutes=13)
+    assert _node(c, team, "reviewer")["tests"]["running"] is None
+    rows = c.get(f"/api/teams/{team}/versions").json()["versions"]
+    assert rows[0]["tests"]["running"] is False
+
+
+def test_run_all_with_unsaved_changes_to_the_agent_has_no_version(tmp_path, monkeypatch):
+    c, owner, team = _account()
+    made = _run_with_rounds(c, owner, team, tmp_path)
+    rev = _node(c, team, "reviewer")
+    _create(c, team, rev["id"], made["ids"]["rev1"], SAY)
+    c.get(f"/api/teams/{team}/versions")
+    c.patch(f"/api/teams/{team}/nodes/{rev['id']}", json={"prompt": "Be strict."})
+    monkeypatch.setattr(agent_test_runner, "_spawn", lambda target, *a: None)
+    run = c.post(f"/api/teams/{team}/nodes/{rev['id']}/tests/run").json()["run"]
+    assert run["version"] is None
+    c.post(f"/api/teams/{team}/nodes/{rev['id']}/tests/stop")
+    c.post(f"/api/teams/{team}/versions", json={})
+    assert c.post(f"/api/teams/{team}/nodes/{rev['id']}/tests/run").json()["run"]["version"] == 2
+
+
+def test_a_verdict_check_reads_the_verdict_and_file_names_match_whole():
+    def ai(value, answer):
+        return (None, None)
+
+    answer = "Changes requested: this can't be approved until data.py registers RSI"
+    out = agent_tests.evaluate(
+        [
+            {"kind": "must_say", "value": "Approved"},
+            {"kind": "must_not_say", "value": "Approved"},
+            {"kind": "must_say", "value": "changes requested"},
+            {"kind": "must_name_file", "value": "a.py"},
+            {"kind": "must_name_file", "value": "data.py"},
+        ],
+        answer,
+        [],
+        ai,
+    )
+    assert [o["met"] for o in out] == [False, True, True, False, True]
+
+
+def test_answers_to_label_are_what_the_rounds_answered_newest_first(tmp_path, monkeypatch, inline):
+    _ai(monkeypatch)
+    c, owner, team = _account()
+    made = _run_with_rounds(c, owner, team, tmp_path)
+    eng = _node(c, team, "engineer")
+    with session_scope() as session:
+        session.get(
+            AgentInvocation, made["ids"]["eng1"]
+        ).outcome_detail = "Built the feature — changed 1 file(s): core/rsi.py"
+        session.add(
+            RunEvent(
+                run_id=made["run_id"],
+                invocation_id=made["ids"]["eng1"],
+                seq=0,
+                kind="action",
+                payload={"tool_name": "finish", "message": "Added rsi() to core/rsi.py."},
+            )
+        )
+    test = _create(c, team, eng["id"], made["ids"]["eng2"], {"kind": "ai", "value": "names a file"})
+    texts = [
+        a["text"]
+        for a in c.get(f"/api/teams/{team}/nodes/{eng['id']}/tests/{test['id']}/answers").json()[
+            "answers"
+        ]
+    ]
+    assert "Added rsi() to core/rsi.py." in texts
+    assert not any(t.startswith("Built the feature") for t in texts)
+
+
+def test_a_repo_symlink_out_of_the_workspace_is_dropped(tmp_path):
+    secret = tmp_path / "secret.txt"
+    secret.write_text("DATABASE_URL=postgres://s3cret\n")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    (repo / "REPORT.md").symlink_to(secret)
+    (repo / "inside.md").write_text("ok\n")
+    (repo / "link.md").symlink_to("inside.md")
+    git = ["git", "-C", str(repo), "-c", "user.email=t@t", "-c", "user.name=t"]
+    subprocess.run([*git, "add", "-A"], check=True)
+    subprocess.run([*git, "commit", "-qm", "base"], check=True)
+    sha = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True, check=True
+    ).stdout.strip()
+    ws = tmp_path / "p" / "ws"
+    ws.parent.mkdir()
+    agent_test_runner._rebuild(
+        str(ws), {"kind": "repo", "repo_path": str(repo), "sha": sha}, None, uuid.uuid4(), "m"
+    )
+    assert not (ws / "REPORT.md").exists() and not (ws / "REPORT.md").is_symlink()
+    assert (ws / "link.md").read_text() == "ok\n"  # a link inside the workspace stays
+    result = AgentRunResult(status="completed", summary="", events=[], files_changed=[])
+    (ws / "REPORT.md").symlink_to(secret)  # one the agent made
+    assert "s3cret" not in agent_test_runner._answer(False, str(ws), result, "REPORT.md")
+
+
+def test_deleting_the_agent_keeps_its_replays_in_the_spend(tmp_path, inline):
+    c, owner, team = _account()
+    made = _run_with_rounds(c, owner, team, tmp_path)
+    rev = _node(c, team, "reviewer")
+    _create(c, team, rev["id"], made["ids"]["rev1"], SAY)
+    c.post(f"/api/teams/{team}/nodes/{rev['id']}/tests/run")
+    before = c.get("/api/spend").json()["month"]["total_usd"]
+    assert c.delete(f"/api/teams/{team}/nodes/{rev['id']}").status_code in (200, 204)
+    assert c.get("/api/spend").json()["month"]["total_usd"] == pytest.approx(before)
+
+
+def test_old_replay_workspaces_are_swept(tmp_path, monkeypatch):
+    import os
+    import tempfile
+
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    old = tmp_path / "tvashtr-test-old"
+    (old / "ws").mkdir(parents=True)
+    fresh = tmp_path / "tvashtr-test-new"
+    fresh.mkdir()
+    hours_ago = datetime.now(UTC).timestamp() - 3 * 3600
+    os.utime(old, (hours_ago, hours_ago))
+    agent_test_runner.sweep_workspaces()
+    assert not old.exists() and fresh.exists()
+
+
+def test_save_as_vn_never_fails_on_a_test_run_that_cant_start(tmp_path, monkeypatch):
+    c, owner, team = _account()
+    made = _run_with_rounds(c, owner, team, tmp_path)
+    rev = _node(c, team, "reviewer")
+    _create(c, team, rev["id"], made["ids"]["rev1"], SAY)
+    c.get(f"/api/teams/{team}/versions")
+    c.patch(f"/api/teams/{team}/nodes/{rev['id']}", json={"prompt": "Be strict."})
+
+    def boom(*a, **k):
+        raise RuntimeError("can't start new thread")
+
+    monkeypatch.setattr(agent_test_runner, "start", boom)
+    resp = c.post(f"/api/teams/{team}/versions", json={"run_tests": True})
+    assert resp.status_code == 201
+    assert resp.json()["number"] == 2 and resp.json()["tests_started"] == []

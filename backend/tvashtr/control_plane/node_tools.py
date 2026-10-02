@@ -159,7 +159,13 @@ def read_domains_token(value: object) -> tuple[uuid.UUID, set[str] | None] | Non
         return None
     with session_scope() as session:
         run = session.get(Run, run_id)
-        if run is None or run.owner_id is None or run.status in TERMINAL_STATUSES:
+        if run is None:
+            # M7: an agent-test replay signs its token with its own id while it runs.
+            from tvashtr.control_plane.agent_test_runner import live_replay_owner
+
+            owner = live_replay_owner(session, run_id)
+            return (owner, allowed) if owner is not None else None
+        if run.owner_id is None or run.status in TERMINAL_STATUSES:
             return None
         return run.owner_id, allowed
 

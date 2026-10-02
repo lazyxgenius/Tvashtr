@@ -3500,6 +3500,9 @@ def save_team_version(
                 started.append({"node_id": agent["node_id"], "run_id": run["id"]})
             except agent_tests.TestsError:
                 continue  # already running, or its tests were removed: the save still stands
+            except Exception as exc:  # noqa: BLE001 — R6: a test run never fails the save
+                logger.warning("starting tests after a save failed: %s", type(exc).__name__)
+                continue
     with db.session_scope() as session:
         team = _require_library_team(session, team_id, me)
         return {**versions.listing(session, team, me)["versions"][0], "tests_started": started}
