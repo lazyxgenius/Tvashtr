@@ -52,8 +52,10 @@ export function readImportNotice(teamId: string): ImportNotice | null {
 }
 
 /** Where a fix is made: a connector's sign-in → Toolkit › Connectors, a tool / skill / secret → its
- *  Toolkit page, a model's provider key → Engines. null: GitHub (the GitHub App install). */
+ *  Toolkit page, a model's provider key → Engines. null: GitHub (the GitHub App install), and a
+ *  graph that can't run (changed on the canvas the card sits on). */
 export function fixRoute(f: ImportFix): Route | null {
+  if (f.action === "open_team") return null;
   if (f.action === "open_engines") return { page: "engines", tab: "overview", fix: true };
   if (f.action === "open_domains") return { page: "domains" };
   if (f.action === "sign_in")
@@ -78,7 +80,8 @@ export function fixChips(fixes: readonly ImportFix[]): Map<string, string[]> {
       else if (f.key.startsWith("skill:")) n.skills += 1;
       else if (f.action === "open_engines") n.needs.push("Needs a model key");
       else if (f.action === "open_domains") n.needs.push("Needs a Domain");
-      else n.needs.push(`Needs ${f.action === "sign_in" ? providerWord(f.target) : f.target}`);
+      else
+        n.needs.push(`Needs ${f.action === "sign_in" ? providerWord(f.target ?? "") : f.target}`);
       byNode.set(id, n);
     }
   }

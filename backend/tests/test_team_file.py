@@ -218,7 +218,16 @@ def test_import_creates_a_new_team_with_its_fixes(client, monkeypatch):
     a, owner_a = fresh_account("tf-imp-a")
     team, _ = _rich_team(a, owner_a)
     b, owner_b = fresh_account("tf-imp-b")
-    reply = _import(b, _file(a, team)["content"], name="Imported squad")
+    # B holds a key for every model the file names: only the sign-in and the tool are left.
+    content = _file(a, team)["content"]
+    models = {
+        v for agent in yaml.safe_load(content)["agents"] for k, v in agent.items() if "model" in k
+    }
+    for provider in {m.split("/")[0] for m in models}:
+        r = b.post("/api/providers", json={"provider": provider, "api_key": "sk-test-1234"})
+        assert r.status_code in (200, 201), r.text
+    reply = _import(b, content, name="Imported squad")
+    assert not any(f["key"].startswith("model:") for f in reply["fixes"])
     assert reply["name"] == "Imported squad"
     fixes = {f["key"]: f for f in reply["fixes"]}
     assert fixes["connector:github"]["text"] == "Sign in to GitHub"
@@ -512,3 +521,35 @@ def test_a_query_domain_with_a_domain_you_have_is_not_a_fix(client):
     )
     keys = {r["key"] for r in _check(c, content)["checks"]}
     assert "graph" not in keys and "domain:docs" not in keys
+
+
+def test_a_graph_that_cant_run_is_fixed_on_its_canvas_and_the_note_says_so(client):
+    c, _ = fresh_account("tf-graph")
+    content = (
+        "tvashtr_team: 1\nname: T\nagents:\n  - id: pm\n    based_on: built-in/product-manager\n"
+        "    model: m\n  - id: engineer\n    based_on: built-in/engineer\n    model: m\n"
+        "gates:\n  - {id: spec-approval, after: pm, asks: you, kind: prd_approval}\n"
+        "ends:\n  - {id: ship, kind: ship}\n"
+        "routes:\n  - {from: pm, to: spec-approval}\n"
+        "  - {from: spec-approval, to: engineer, when: approved}\n"
+        "  - {from: engineer, to: ship}\n"
+    )
+    imported = _import(c, content)
+    graph = [f for f in imported["fixes"] if f["key"] == "graph"]
+    assert graph and graph[0]["action"] == "open_team"
+    assert not imported["note"].startswith("You can run the team now")
+    assert "can’t run" in imported["note"]
+
+
+def test_a_model_without_a_key_means_the_team_cant_run_yet(client):
+    c, _ = fresh_account("tf-nokey")
+    content = (
+        "tvashtr_team: 1\nname: T\nagents:\n  - id: pm\n    kind: thinker\n"
+        "    model: anthropic/claude-sonnet-4\nends:\n  - {id: ship, kind: ship}\n"
+        "routes:\n  - {from: pm, to: ship}\n"
+    )
+    imported = _import(c, content)
+    assert [f["action"] for f in imported["fixes"]] == ["open_engines"]
+    assert imported["note"] == (
+        "The team can’t run until each model has a key here, or you pick another model."
+    )

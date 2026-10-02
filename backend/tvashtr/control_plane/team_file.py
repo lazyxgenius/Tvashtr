@@ -1514,6 +1514,10 @@ def _fix_text(row: dict) -> str:
 
 
 def import_note(fixes: list[dict]) -> str | None:
+    if any(f["key"] == "graph" for f in fixes):
+        return "The team can’t run until the canvas is changed: “Can’t run yet” above it says what."
+    if any(f["key"].startswith("model:") for f in fixes):
+        return "The team can’t run until each model has a key here, or you pick another model."
     if any(f["key"] == "connector:github" for f in fixes):
         return "You can run the team now. It can’t open a pull request until GitHub is signed in."
     if fixes:

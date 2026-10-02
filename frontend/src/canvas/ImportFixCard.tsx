@@ -43,9 +43,12 @@ export function ImportFixCard({
       {fixes.map((f) => (
         <div key={f.key} className="cv-fixes__row">
           <span>
-            <CodeText text={f.text} code={f.action === "open_toolkit" ? [f.target] : []} />
+            <CodeText
+              text={f.text}
+              code={f.action === "open_toolkit" && f.target ? [f.target] : []}
+            />
           </span>
-          {f.action === "sign_in" ? (
+          {f.action === "open_team" ? null : f.action === "sign_in" ? (
             <Button variant="secondary" size="sm" className="cv-btn-flush" onClick={() => onFix(f)}>
               {f.target === "github" && <GithubIcon size={14} />}
               <span>Sign in</span>

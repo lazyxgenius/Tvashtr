@@ -101,5 +101,10 @@ Body `{"content": "…", "name": "Indicator sprint team (copy)"}`. Re-runs the c
  "note": "You can run the team now. It can’t open a pull request until GitHub is signed in."}
 ```
 Actions: `sign_in` (GitHub: the GitHub App install; a connector: Toolkit › Connectors), `open_toolkit`
-(a tool, skill or secret), `open_engines` (a model's provider key). `node_ids` are the new team's nodes
-that need it (their cards show "Needs GitHub" / "1 tool missing").
+(a tool, skill or secret), `open_engines` (a model's provider key), `open_domains` (a Query domain
+agent's Domain), `open_team` (the graph can't run yet: changed on the team's own canvas — no button).
+`node_ids` are the new team's nodes that need it (their cards show "Needs GitHub" / "1 tool missing").
+`note`, the first that applies: a graph that can't run → "The team can’t run until the canvas is
+changed: “Can’t run yet” above it says what."; a model without a key → "The team can’t run until each
+model has a key here, or you pick another model."; GitHub → the line above; any other fix → "You can
+run the team now; fix these before it needs them."; none → null.
