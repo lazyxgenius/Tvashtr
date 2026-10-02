@@ -275,6 +275,17 @@ class Settings(BaseSettings):
         default=None,
         validation_alias=AliasChoices("TVASHTR_FORCE_HANG_ROLE", "force_hang_role"),
     )
+    # M3 Resume proof only: the node whose ``role_name`` matches fails its round
+    # ``force_fail_round`` at once (no LLM call) — in a run that is not itself a resume, so the
+    # resumed run gets past it. Unset ⇒ inert.
+    force_fail_role: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("TVASHTR_FORCE_FAIL_ROLE", "force_fail_role"),
+    )
+    force_fail_round: int = Field(
+        default=1,
+        validation_alias=AliasChoices("TVASHTR_FORCE_FAIL_ROUND", "force_fail_round"),
+    )
     # M-live: the condenser's TOKEN trigger. M-ctx0 gave every adapter
     # ``LLMSummarizingCondenser(keep_first=2, max_size=80)`` to stop a long transcript overrunning
     # the model's context window — but ``max_size`` counts EVENTS, and the SDK gates its

@@ -285,3 +285,25 @@ def test_a_step_that_was_never_resumable_is_refused_without_creating_anything(
             is None
         )
     assert IDEA
+
+
+def test_the_forced_failure_fails_one_round_of_one_role_and_never_in_a_resumed_run(
+    client, monkeypatch
+):
+    run_id = make_run(auth_user_id(), None, status="running")[0]
+    engineer = clone_node(_graph_of(run_id), "engineer")
+    pm = clone_node(_graph_of(run_id), "pm")
+    assert team_run._forced_failure(run_id, engineer, 2) is None  # unset: inert
+    monkeypatch.setattr(get_settings(), "force_fail_role", "engineer")
+    monkeypatch.setattr(get_settings(), "force_fail_round", 2)
+    failed = team_run._forced_failure(run_id, engineer, 2)
+    assert failed["status"] == "failed" and failed["total_tokens"] == 0
+    assert team_run._forced_failure(run_id, engineer, 1) is None
+    assert team_run._forced_failure(run_id, pm, 2) is None
+    with session_scope() as session:
+        session.execute(
+            update(Run)
+            .where(Run.workflow_id == run_id)
+            .values(resumed_from_run_id=uuid.UUID(make_run(auth_user_id(), None)[0]))
+        )
+    assert team_run._forced_failure(run_id, engineer, 2) is None

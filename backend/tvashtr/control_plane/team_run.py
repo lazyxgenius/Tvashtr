@@ -1296,6 +1296,37 @@ def _forced_hang(run_id: str, node_id: str | None, invocation_id: int) -> dict |
     }
 
 
+def _forced_failure(run_id: str, node_id: str | None, iteration: int) -> dict | None:
+    """The Resume proof harness (``TVASHTR_FORCE_FAIL_ROLE`` + ``TVASHTR_FORCE_FAIL_ROUND``): that
+    role's round fails at once like a model that never answered — no adapter, no LLM — in a run that
+    is not itself a resume. ``None`` for every other step, and always when the setting is unset."""
+    settings = get_settings()
+    if not settings.force_fail_role or node_id is None or iteration != settings.force_fail_round:
+        return None
+    with session_scope() as session:
+        node_role = session.execute(
+            select(AgentNode.role_name).where(AgentNode.id == uuid.UUID(str(node_id)))
+        ).scalar_one_or_none()
+        resumed = session.execute(
+            select(Run.resumed_from_run_id).where(Run.id == uuid.UUID(run_id))
+        ).scalar_one_or_none()
+    if node_role != settings.force_fail_role or resumed is not None:
+        return None
+    return {
+        "status": "failed",
+        "outcome": None,
+        "reasons": None,
+        "files_changed": [],
+        "report": None,
+        "error": "the model didn't answer after 3 tries (forced failure)",
+        "context_manifest": None,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+        "cost_usd": 0.0,
+    }
+
+
 def _forced_review_outcome(iteration: int) -> dict | None:
     """The forced-revisions harness, factored out of the agent step as a pure + importable helper
     (P1.8a) so it stays directly unit-testable and the offline workflow tests can drive the loop
@@ -1531,6 +1562,9 @@ def agent_run_step(
     hung = _forced_hang(run_id, node_id, invocation_id)
     if hung is not None:
         return hung
+    failed = _forced_failure(run_id, node_id, iteration)
+    if failed is not None:
+        return failed
 
     # M-ctx1 (C2/C4): assemble the instruction via the pure compiler (the moved-out typed-parts
     # assembly — byte-identical on the small path). It preserves the EXACT prior conditional logic:
