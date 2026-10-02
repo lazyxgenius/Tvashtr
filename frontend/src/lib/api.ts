@@ -214,6 +214,8 @@ export interface RunRow {
   resumed_from?: { run_id: string; number: number | null; step_label: string } | null;
   // M5 (versions.md): the team version the run used (null: an ephemeral team, or before M5).
   team_version_number?: number | null;
+  // M10 (start-from-run.md): the run this one started from ("From run #12"), and what it brought.
+  started_from?: { run_id: string; number: number | null; summary: string } | null;
 }
 
 export interface CostRow {
