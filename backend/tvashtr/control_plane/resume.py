@@ -537,6 +537,9 @@ def create(
         resumed_from_step=invocation_id,
         # M5: the old run's snapshot, so the old run's version (R8: not the current team).
         team_version_number=run.team_version_number,
+        # M10: what the old run carried from the run it started from, so the steps that run
+        # again read it too.
+        carry=run.carry,
     )
     session.add(new)
     session.flush()

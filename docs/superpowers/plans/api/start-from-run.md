@@ -105,6 +105,12 @@ line as today. At the entry agent's first invocation: `"Read the spec from run #
 including “<the first>”"` (when carried). The run view's canvas card for the entry agent reads `"From spec v3 of run
 #12"` until the run has a spec of its own.
 
+Any run whose distilled memories still wait for review (`node_memories.source_run_id` = the run's workflow id, `status
+'pending_review'`) gets one run-level line near its end: `"Saved 3 new memories from this run · review them in
+Toolkit"` ("1 new memory" when one) — who `Run` (`node_id` null), `at` the newest such memory's `created_at`, kind
+`memories`, and a top-level `"review_memories": true` (the page adds the "Review" link to Toolkit › Memory › Inbox).
+No line when none wait.
+
 ### `GET /api/runs/{run_id}/log?format=text|jsonl` — Download the run log (Next-Log)
 
 An attachment (`run-12.txt` / `run-12.jsonl`), every step in order:
@@ -112,6 +118,45 @@ An attachment (`run-12.txt` / `run-12.jsonl`), every step in order:
 - **text** — a header `run #12 · <team> · <idea> · team setup v7`, then one line per Activity line (`HH:MM:SS  <who,
   padded>  <what>`) with its detail (the command, its output tail, its error) indented under it.
 - **jsonl** — one JSON object per run event, in order: `{"at", "agent", "round", "kind", "text", "detail"}`.
+  Built: "run event" is each Activity line (the run's events in plain words, the same lines as the text format):
+  `agent` = the line's label, `round` = its iteration, `kind` = its Activity kind, `detail` = the indented text
+  joined with `\n` (or `null`). Raw `run_events` rows are never exported — they hold the agents' own words, which
+  R9 and §2.5 keep out.
 
 Secrets are replaced with `••••` in both: `guardrails.mask_secrets` patterns AND every known secret value (the owner's
 stored provider keys, the GitHub token, the server's secret settings). It can't be loaded back (no import route).
+
+## As built (backend, M10)
+
+- `GET /next` when `available` is false: the same keys, `reason` set ("Only a run that finished can start the next
+  one", "Only a run on a GitHub repo can start the next one", "A compare run can’t start the next one", "The team this
+  run used is gone"), `run` filled, `spec`/`pr`/`team`/`default_start` null, lists empty, `pending_memories` 0.
+- A decision's title is what the gate asked about plus the decision: "Spec approved", "Ship rejected", "Shipping the last
+  build approved", "Going over the budget approved", "This step approved" (any other gate). A gate whose note is
+  `auto-approved` (`gates.wait_at_gate`'s automatic approval) is never a decision.
+- A summary is the agent's newest finished step's work brief (`agent_invocations.outcome_detail`); a reviewer's verdict
+  reads "Approved[: reasons]" / "Asked for changes[: reasons]"; masked, 600 characters at most.
+- `POST /next` body: `carry` booleans default to true (an omitted `carry` brings everything). 422 details: "Write the
+  next task first", the `reason` above, "This run has no pull request to start from", "The pull request was merged —
+  start from <default branch>". The new run takes only `idea`, `team_graph_id` (the library team), `github_repo` and
+  `base_ref` (`null` for "main": `POST /api/runs` resolves the repo's default branch) — budget, scope and Desktop
+  routing are `POST /api/runs`'s defaults. 201 `{"run_id", "number"}`.
+- `started_from` (run payloads), the Activity line, the canvas card and `GET /carry` need both
+  `started_from_run_id` and `carry`: once the old run is deleted (SET NULL) they read as a run that didn't start from
+  one; the agents still get the snapshot. The summary names the summaries too ("brought spec v3, 1 decision, 3
+  memories and 3 summaries"); nothing ticked reads "brought nothing".
+- The Activity line: `{"id": "run:from", "kind": "started", "came_along": true, "refs": {"run_id", "number"}, …}` —
+  `came_along` is a key of that line only. The entry agent's first-step lines are kind `read` with
+  `refs: {"files": [], "run_id"}`; one memory reads `Read 1 memory, “…”`. The canvas card: in
+  `GET /api/runs/{id}/graph` the entry node's `live.activity` reads "From spec v3 of run #12" while it has no
+  activity of its own and the run has no spec of its own (its `live_state` and `carried` stay as they are).
+- `GET /next` also carries `"entry_agent"`: the display name of the team's entry agent as the team is now (the agent
+  that updates the starting spec); `null` when not available.
+- `started_from` sits in `GET /api/runs/{id}`'s `run` object (beside `resumed_from`) and on each `GET /api/runs` row.
+- Compiled parts: `--- FROM RUN #12: THE PERSON'S DECISIONS ---` (`- Spec approved: <note>`), `--- FROM RUN #12:
+  WHAT THE AGENTS LEARNED ---` (`- <content>`), `--- FROM RUN #12: WHAT EACH AGENT DID ---` (`- Engineer: <text>`).
+  Resume (M3) copies `carry` to the resumed run, so the steps that run again read it too.
+- The log: `format` defaults to `text` (anything but `text`/`jsonl` is a 422); clock times are UTC; the header
+  leaves out the team and `team setup vN` when the run has none. Known secrets: the owner's provider keys, the GitHub
+  installation tokens this server holds for the owner's installations, every `SecretStr` server setting (values under 8
+  characters are left to the patterns); event texts are masked before any line is cut, then every field again.

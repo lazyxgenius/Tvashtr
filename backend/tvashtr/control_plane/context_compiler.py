@@ -124,6 +124,16 @@ _REMEMBER_PROTOCOL_BODY = (
 )
 
 
+# M10 (R9): what a run started from another one carries (``runs.carry``) — named parts right after
+# the idea. ``carried_spec`` only in the entry agent's first invocation (the walk passes the spec
+# only there); the other three in every invocation, each only when non-empty. ``carry=None`` (every
+# other run) ⇒ no part ⇒ byte-identical.
+_PART_CARRIED_SPEC = "carried_spec"
+_PART_CARRIED_DECISIONS = "carried_decisions"
+_PART_CARRIED_MEMORIES = "carried_memories"
+_PART_CARRIED_SUMMARIES = "carried_summaries"
+
+
 def _remember_protocol_text() -> str:
     """The agent-remember capture-protocol part text (header + verbatim body). A module fn so the
     executor + tests reference the SAME string."""
@@ -182,6 +192,11 @@ _STATIC_FIRST_NAMES = (
     _PART_WORKER_PROTOCOL,
     _PART_WORKER_FOCUS,
     _PART_IDEA,
+    # M10: what came along from the run this one started from sits right after the idea.
+    _PART_CARRIED_SPEC,
+    _PART_CARRIED_DECISIONS,
+    _PART_CARRIED_MEMORIES,
+    _PART_CARRIED_SUMMARIES,
     _PART_SPEC,
     # M-docs: the named read-documents part sits where spec sits — registered so ``_static_first``
     # never KeyErrors even if a reads_from node reached the large-spec handle path (it cannot today:
@@ -291,6 +306,41 @@ def _render_read_documents(read_documents: list[dict]) -> str:
     return "".join(f"\n\n--- DOCUMENT: {d['name']} ---\n{d['content']}" for d in read_documents)
 
 
+def _carried_parts(carry: dict) -> list[ContextPart]:
+    """M10: the parts a run started from another one carries (see ``_PART_CARRIED_SPEC``), in
+    order; a kind that is empty (unticked, or nothing to carry) adds no part."""
+    number = (carry.get("from") or {}).get("number")
+    source = f"run #{number}" if number else "an earlier run"
+    parts: list[ContextPart] = []
+    spec = carry.get("spec")
+    if spec and spec.get("text"):
+        version = spec.get("version")
+        which = f"spec v{version} of {source}" if version else f"the spec of {source}"
+        header = f"--- STARTING SPEC ({which}; update it for the new task) ---"
+        parts.append(_part(_PART_CARRIED_SPEC, f"\n\n{header}\n{spec['text']}"))
+    decisions = [
+        d["title"] + (f": {d['text']}" if d.get("text") else "")
+        for d in carry.get("decisions") or []
+    ]
+    for name, title, items in (
+        (_PART_CARRIED_DECISIONS, "THE PERSON'S DECISIONS", decisions),
+        (
+            _PART_CARRIED_MEMORIES,
+            "WHAT THE AGENTS LEARNED",
+            [m["content"] for m in carry.get("memories") or []],
+        ),
+        (
+            _PART_CARRIED_SUMMARIES,
+            "WHAT EACH AGENT DID",
+            [f"{s['agent']}: {s['text']}" for s in carry.get("summaries") or []],
+        ),
+    ):
+        if items:
+            body = "\n".join(f"- {item}" for item in items)
+            parts.append(_part(name, f"\n\n--- FROM {source.upper()}: {title} ---\n{body}"))
+    return parts
+
+
 def _static_first(parts: list[ContextPart]) -> list[ContextPart]:
     """Reorder present parts into :data:`_STATIC_FIRST_NAMES` order (each name appears at most
     once),
@@ -315,6 +365,7 @@ def compile_context(
     remember_enabled: bool = False,
     read_documents: list[dict] | None = None,
     handle_threshold: int = _SPEC_HANDLE_TOKEN_THRESHOLD,
+    carry: dict | None = None,
 ) -> CompiledContext:
     """Compile one node's typed context parts + assembled instruction (pure; see the module
     docstring). Preserves the EXACT pre-refactor conditional logic:
@@ -327,6 +378,9 @@ def compile_context(
     * ``grounding`` only for a brownfield run (``grounding`` truthy);
     * ``worker_protocol`` only for a brownfield WORKER (``grounding and not emits_outcome``);
     * ``worker_focus`` only for a brownfield worker on a sub-path scope (…``and subpath``).
+
+    M10 (R9): ``carry`` (a run's ``runs.carry`` snapshot, as the walk passes it) adds the named
+    ``carried_*`` parts right after the idea; ``None`` (the default) adds none — byte-identical.
 
     M-unify U1 (D2.5): ``edits_allowed=False`` appends ONE trailing ``capability_note`` part (the
     report-only instruction). ``edits_allowed`` defaults True (an edits-ON worker), so the worker
@@ -347,6 +401,8 @@ def compile_context(
     if memory:
         parts.append(_part(_PART_MEMORY, _render_memory(memory)))
     parts.append(_part(_PART_IDEA, f"\n\n--- ORIGINAL IDEA ---\n{idea}"))
+    if carry:  # M10: None (every run not started from another) ⇒ no part ⇒ byte-identical
+        parts.extend(_carried_parts(carry))
     if spec is not None:
         parts.append(_part(_PART_SPEC, f"\n\n--- PRD ---\n{spec}"))
     # M-docs: the named read documents (a node's ``config["reads_from"]``) REPLACE the default PRD

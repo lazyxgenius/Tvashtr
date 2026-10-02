@@ -459,6 +459,22 @@ ROUTES: dict[str, tuple[str, object]] = {
         "id",
         ["test_owner_scope_runs::test_b_cannot_read_or_resume_a_run"],
     ),
+    "GET /api/runs/{run_id}/next": (
+        "id",
+        ["test_start_from_run::test_start_from_routes_are_owner_scoped"],
+    ),
+    "POST /api/runs/{run_id}/next": (
+        "id",
+        ["test_start_from_run::test_start_from_routes_are_owner_scoped"],
+    ),
+    "GET /api/runs/{run_id}/carry": (
+        "id",
+        ["test_start_from_run::test_start_from_routes_are_owner_scoped"],
+    ),
+    "GET /api/runs/{run_id}/log": (
+        "id",
+        ["test_start_from_run::test_start_from_routes_are_owner_scoped"],
+    ),
     "POST /api/runs/{run_id}/nodes/{node_id}/switch-backup": (
         "id",
         ["test_owner_scope_runs::test_b_cannot_switch_a_node_to_its_backup"],

@@ -115,7 +115,35 @@ def run_fields(run: Run) -> dict:
         "retry_of_run_id": str(run.retry_of_run_id) if run.retry_of_run_id else None,
         # M5: the version of its library team the run started on (None before M5 / ephemeral).
         "team_version_number": run.team_version_number,
+        # M10: the run this one started from and what came along (None for every other run).
+        "started_from": started_from(run),
     }
+
+
+def started_from(run: Run) -> dict | None:
+    """``{run_id, number, summary}`` for a run started from another one, from its snapshot."""
+    if run.started_from_run_id is None or not run.carry:
+        return None
+    return {
+        "run_id": str(run.started_from_run_id),
+        "number": (run.carry.get("from") or {}).get("number"),
+        "summary": came_along(run.carry),
+    }
+
+
+def came_along(carry: dict) -> str:
+    """ "brought spec v3, 2 decisions and 3 memories" — names only what came along."""
+    spec = carry.get("spec")
+    parts = [f"spec v{spec['version']}" if spec.get("version") else "the spec"] if spec else []
+    for key, one in (("decisions", "decision"), ("memories", "memory"), ("summaries", "summary")):
+        n = len(carry.get(key) or [])
+        if n:
+            parts.append(f"{n} {one if n == 1 else key}")
+    if not parts:
+        return "brought nothing"
+    return "brought " + (
+        ", ".join(parts[:-1]) + " and " + parts[-1] if len(parts) > 1 else parts[0]
+    )
 
 
 def _is_loop_edge(edge: dict) -> bool:

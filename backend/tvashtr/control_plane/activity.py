@@ -22,8 +22,9 @@ import shlex
 import uuid
 from collections import OrderedDict
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
-from sqlalchemy import literal_column, or_, select
+from sqlalchemy import func, literal_column, or_, select
 from sqlalchemy.dialects.postgresql import JSONB
 
 from tvashtr.control_plane import live_state, run_views
@@ -36,6 +37,7 @@ from tvashtr.models import (
     Document,
     DocumentVersion,
     HumanTask,
+    NodeMemory,
     Run,
     RunEvent,
 )
@@ -519,10 +521,13 @@ def build(
     resumed_from: dict | None = None,
     start_node: str | None = None,
     number: int | None = None,
+    waiting_memories: tuple[int, datetime] | None = None,
 ) -> dict:
     """The Activity reply for one run (see the contract). ``events`` in ``(created_at, id)`` order;
     ``versions`` are ``(DocumentVersion, document name)`` pairs. M3: a resumed run's ``carried``
-    step rows (``resume.carried``) come first, one line each, then the Resumed line."""
+    step rows (``resume.carried``) come first, one line each, then the Resumed line. M10:
+    ``waiting_memories`` is ``(count, newest created_at)`` of the memories the run saved that still
+    wait for review."""
     from tvashtr.control_plane import resume  # lazy: resume imports this module
 
     carried = carried or []
@@ -542,6 +547,25 @@ def build(
     for ev in events:
         events_by_inv.setdefault(ev.invocation_id, []).append(ev)
     out = _Lines(labels)
+
+    # M10: a run started from another one says so first ("Started from run #12 · brought …"), with
+    # "See what came along" (``came_along``); its entry agent's first step reads what came along.
+    came = run_views.started_from(run) if getattr(run, "started_from_run_id", None) else None
+    entry_first = None
+    if came is not None:
+        carry = run.carry
+        roots = sorted(nid for nid in by_id if nid not in {e["target"] for e in edges})
+        entry_first = next((i.id for i in invs if roots and str(i.node_id) == roots[0]), None)
+        row = out.add(
+            "run:from",
+            run.created_at,
+            None,
+            None,
+            "started",
+            f"Started from {resume.run_ref(came['number'])} · {came['summary']}",
+            refs={"run_id": came["run_id"], "number": came["number"]},
+        )
+        row["came_along"] = True
 
     # The run starts. A resumed run starts with the steps it carries, then "Resumed from …".
     target = run_views.run_target(run)
@@ -600,6 +624,8 @@ def build(
                 if last_verdict is not None and last_verdict.outcome == "changes_requested":
                     text += " with the reviewer's notes"
             out.add(f"inv:{inv.id}:start", inv.started_at, nid, inv.iteration, "started", text)
+        if entry_first is not None and inv.id == entry_first:
+            _carried_reads(out, inv, nid, came, carry)
         open_step = inv.status == "running" and not ended
         _event_lines(out, inv, nid, events_by_inv.get(inv.id, []), open_step)
         end_at = inv.ended_at or inv.started_at
@@ -693,6 +719,20 @@ def build(
                 "name": doc,
             },
         )
+
+    # M10: the memories the run saved that still wait for review (the page links "Review").
+    if waiting_memories:
+        count, newest = waiting_memories
+        noun = "new memory" if count == 1 else "new memories"
+        row = out.add(
+            "run:memories",
+            newest,
+            None,
+            None,
+            "memories",
+            f"Saved {count} {noun} from this run · review them in Toolkit",
+        )
+        row["review_memories"] = True
 
     # The end: the pull request, then done / failed / stopped. The run ended at its last step close
     # or event — ``updated_at`` moves on any later write. (A step left open counts from its start.)
@@ -959,6 +999,39 @@ def build(
     }
 
 
+def _carried_reads(out: _Lines, inv, nid: str, came: dict, carry: dict) -> None:
+    """M10: the entry agent's first step reads what came along — "Read the spec from run #12 (v3)"
+    and "Read 3 memories, including “…”"."""
+    from tvashtr.control_plane import resume  # lazy: resume imports this module
+
+    ref = resume.run_ref(came["number"])
+    refs = {"files": [], "run_id": came["run_id"]}
+    spec = carry.get("spec")
+    if spec:
+        version = f" (v{spec['version']})" if spec.get("version") else ""
+        text = f"Read the spec from {ref}{version}"
+        out.add(
+            f"inv:{inv.id}:from:spec", inv.started_at, nid, inv.iteration, "read", text, refs=refs
+        )
+    memories = carry.get("memories") or []
+    if memories:
+        first = _cap(memories[0]["content"], 80)
+        text = (
+            f"Read 1 memory, “{first}”"
+            if len(memories) == 1
+            else f"Read {len(memories)} memories, including “{first}”"
+        )
+        out.add(
+            f"inv:{inv.id}:from:memories",
+            inv.started_at,
+            nid,
+            inv.iteration,
+            "read",
+            text,
+            refs=dict(refs),
+        )
+
+
 def _reachable(edges: list[dict], start: str) -> set[str]:
     """The nodes a resumed run will still run: its start node and what follows it (not across an
     escalation edge)."""
@@ -1009,10 +1082,14 @@ def _public(line: dict) -> dict:
 # ---------------------------------------------------------------------------------- the read
 
 
-def run_activity(session, run: Run, after: str | None = None, *, resume_info: bool = True) -> dict:
+def run_activity(
+    session, run: Run, after: str | None = None, *, resume_info: bool = True, mask=None
+) -> dict:
     """Read one (already owner-checked) run's rows and :func:`build` its Activity. M3: a resumed
     run's carried steps come from its seed; a Failed / Stalled callout gains its Resume point
-    (``resume_info`` False when :mod:`resume` itself reads the lines)."""
+    (``resume_info`` False when :mod:`resume` itself reads the lines). M10: ``mask`` (the run
+    log's) masks every event text before a line is made from it, so no cut leaves part of a
+    secret."""
     from tvashtr.control_plane import resume  # lazy: resume imports this module
 
     run_id = run.workflow_id
@@ -1041,6 +1118,19 @@ def run_activity(session, run: Run, after: str | None = None, *, resume_info: bo
         .where(RunEvent.run_id == run_id, RunEvent.kind.notin_(CONNECTOR_EVENT_KINDS))
         .order_by(RunEvent.created_at, RunEvent.id)
     ).all()
+    if mask is not None:
+        events = [
+            SimpleNamespace(
+                id=ev.id,
+                invocation_id=ev.invocation_id,
+                kind=ev.kind,
+                created_at=ev.created_at,
+                payload={
+                    k: mask(v) if isinstance(v, str) else v for k, v in (ev.payload or {}).items()
+                },
+            )
+            for ev in events
+        ]
     tasks = session.execute(select(HumanTask).where(HumanTask.run_id == run_id)).scalars().all()
     doc_filter = Document.run_id == run.id
     if run.pm_document_id is not None:
@@ -1060,6 +1150,13 @@ def run_activity(session, run: Run, after: str | None = None, *, resume_info: bo
         session, [i for nid, i in latest.items() if kinds.get(nid) in live_state.STEP_KINDS]
     )
     spent = run_views.spent_usd(run, run_views.live_costs(session, [run_id]))
+    waiting, newest = session.execute(
+        select(func.count(), func.max(NodeMemory.created_at)).where(
+            NodeMemory.owner_id == run.owner_id,
+            NodeMemory.source_run_id == run_id,
+            NodeMemory.status == "pending_review",
+        )
+    ).one()
     carried, resumed_from, start_node = resume.carried(session, run)
     reply = build(
         run,
@@ -1076,6 +1173,7 @@ def run_activity(session, run: Run, after: str | None = None, *, resume_info: bo
         resumed_from=resumed_from,
         start_node=start_node,
         number=resume.number(session, run),
+        waiting_memories=(waiting, newest) if waiting else None,
     )
     all_lines = reply.pop("_all_lines")
     pinned = reply["pinned"]
