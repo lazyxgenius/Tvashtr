@@ -34,7 +34,8 @@ Every new route is owner-scoped (another account → 404) and listed in `test_ow
   unchanged. Idempotent: a recovery that finds a `hidden_check_results` row does not run it again.
 - Where: in the run's OWN sandbox — Fly: the run's microVM (`_ensure_run_sandbox`, a fresh `/workspace/__check__` dir
   pushed from the host workspace, `execute_command`); docker: a fresh container from the host workspace; LOCAL (dev):
-  the host workspace with a process-group kill. Never on the control-plane host in hosted mode.
+  the host workspace with a process-group kill. Never on the hosted control plane (a Fly machine:
+  `FLY_MACHINE_ID` set) — a developer's hosted-mode stack on LOCAL runs it where its agents ran (the LOCAL e2e).
 - Limit 10 minutes (timed out ⇒ failed, "It took more than 10 minutes"); pass = exit code 0; the last 12 lines of output
   kept, masked by `guardrails.mask_secrets`. Built: on a timeout the tail ends with M7's "It took more than 10 minutes,
   so it was stopped."; a LOCAL check's shell gets only PATH/HOME/LANG/LC_ALL/TMPDIR/USER/SHELL from the server's

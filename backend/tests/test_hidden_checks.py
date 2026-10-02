@@ -250,9 +250,12 @@ def test_a_check_past_the_limit_fails_and_says_so(client, local_mode, monkeypatc
 
 
 def test_a_hosted_server_never_runs_a_check_on_itself(client, monkeypatch, tmp_path):
+    """The hosted control plane (a Fly machine) never runs a check on itself, even if its sandbox
+    were misconfigured to LOCAL."""
     settings = get_settings()
     monkeypatch.setattr(settings, "hosted_mode", True)
     monkeypatch.setattr(settings, "agent_sandbox_mode", "local")
+    monkeypatch.setenv("FLY_MACHINE_ID", "148e21ea7e5389")
     marker = tmp_path / "ran"
     run_id = _set_run(client, f"touch {marker}")
     try:
@@ -261,6 +264,25 @@ def test_a_hosted_server_never_runs_a_check_on_itself(client, monkeypatch, tmp_p
         row = _result(run_id)
         assert (row.passed, row.exit_code) == (False, None)
         assert row.output_tail == hidden_checks.NOT_HERE
+    finally:
+        _end([run_id])
+
+
+def test_a_hosted_dev_stack_on_the_local_sandbox_runs_the_check_where_its_agents_ran(
+    client, monkeypatch, tmp_path
+):
+    """Off Fly (a developer's hosted-mode stack, the LOCAL e2e), the agents themselves ran on this
+    machine, so the check runs there too (the brief's M9 e2e is a set compare on LOCAL)."""
+    settings = get_settings()
+    monkeypatch.setattr(settings, "hosted_mode", True)
+    monkeypatch.setattr(settings, "agent_sandbox_mode", "local")
+    monkeypatch.delenv("FLY_MACHINE_ID", raising=False)
+    marker = tmp_path / "ran"
+    run_id = _set_run(client, f"touch {marker}")
+    try:
+        hidden_checks.run_for(run_id, str(tmp_path), "greenfield")
+        assert marker.exists()
+        assert _result(run_id).passed is True
     finally:
         _end([run_id])
 

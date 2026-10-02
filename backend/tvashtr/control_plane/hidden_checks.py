@@ -162,7 +162,14 @@ def run_for(run_id: str, workspace: str | None, mode: str) -> None:
         return
     settings = get_settings()
     began = time.monotonic()
-    if settings.hosted_mode and settings.agent_sandbox_mode not in ("fly", "docker"):
+    # The hosted control plane (a Fly machine) never runs a check on itself; a developer's hosted
+    # stack on the LOCAL sandbox runs it where its agents ran.
+    on_fly_host = bool(os.environ.get("FLY_MACHINE_ID"))
+    if (
+        settings.hosted_mode
+        and on_fly_host
+        and settings.agent_sandbox_mode not in ("fly", "docker")
+    ):
         code, output, timed_out = None, NOT_HERE, False
     else:
         try:
