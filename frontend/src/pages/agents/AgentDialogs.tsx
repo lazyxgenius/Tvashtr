@@ -11,13 +11,9 @@ import {
   renameMyAgent,
   type SavedAgent,
 } from "../../lib/api/myAgents";
-import { ApiDetailError } from "../../lib/api/runs";
-import { deleteAgentText } from "../../lib/myAgentsFormat";
+import { deleteAgentText, serverWords } from "../../lib/myAgentsFormat";
 import { listTeams } from "../../lib/api/teams";
 import { navigate } from "../../lib/nav";
-
-const said = (err: unknown, fallback: string) =>
-  err instanceof ApiDetailError ? err.message : fallback;
 
 /** Agents-Rename: the name and what it's for; a taken name shows under Name. */
 export function RenameAgentDialog({
@@ -37,7 +33,7 @@ export function RenameAgentDialog({
     setBusy(true);
     setError(null);
     renameMyAgent(agent.id, { name: name.trim(), purpose }).then(onDone, (err: unknown) => {
-      setError(said(err, "Couldn’t save. Try again."));
+      setError(serverWords(err, "Couldn’t save. Try again."));
       setBusy(false);
     });
   };
@@ -69,6 +65,7 @@ export function RenameAgentDialog({
       <TextArea
         label="What it’s for"
         value={purpose}
+        maxLength={300}
         onChange={(e) => setPurpose(e.target.value)}
       />
     </VersionDialog>
@@ -90,7 +87,7 @@ export function DeleteAgentDialog({
   const remove = () => {
     setBusy(true);
     deleteMyAgent(agent.id).then(onDone, (err: unknown) => {
-      setError(said(err, "Couldn’t delete. Try again."));
+      setError(serverWords(err, "Couldn’t delete. Try again."));
       setBusy(false);
     });
   };
@@ -141,7 +138,7 @@ export function UseInTeamDialog({ agent, onClose }: { agent: SavedAgent; onClose
     addAgentToTeam(agent.id, teamId).then(
       (res) => navigate({ page: "team", teamId: res.team_id, node: res.node_id }),
       (err: unknown) => {
-        setError(said(err, "Couldn’t add it. Try again."));
+        setError(serverWords(err, "Couldn’t add it. Try again."));
         setBusy(false);
       },
     );

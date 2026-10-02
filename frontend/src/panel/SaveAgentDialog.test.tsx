@@ -141,6 +141,16 @@ describe("SaveAgentDialog (Agents-Save)", () => {
     expect(props.onSaved).not.toHaveBeenCalled();
   });
 
+  it("what it's for is at most 300 characters; a 5xx says the plain words", async () => {
+    mockApi({ "POST /api/my-agents": jsonError(500, "Traceback: boom") });
+    const { dialog, props } = renderDialog();
+    expect(within(dialog).getByLabelText("What it’s for")).toHaveAttribute("maxLength", "300");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save to My agents" }));
+    expect(await within(dialog).findByText("Couldn’t save. Try again.")).toBeVisible();
+    expect(within(dialog).queryByText(/boom/)).toBeNull();
+    expect(props.onSaved).not.toHaveBeenCalled();
+  });
+
   it("Cancel and the close button close it", () => {
     const { dialog, props } = renderDialog();
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));

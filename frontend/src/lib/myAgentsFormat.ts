@@ -1,6 +1,7 @@
 /** M6's small words (the Agents-* boards): a saved agent's menu meta, card lines and pills. */
 import { listNatural } from "../pages/home/homeFormat";
 import { getProviderCatalogue } from "./api";
+import { ApiDetailError } from "./api/runs";
 import type { SavedAgent } from "./api/myAgents";
 import { displayNameForSubscription, subscriptionProviderForModel } from "./engines";
 import { versionAge } from "./versionFormat";
@@ -66,4 +67,10 @@ export function deleteAgentText(a: SavedAgent): string {
   if (teams.length === 0) return gone;
   const keep = teams.length === 1 ? "keeps its agents" : "keep their agents";
   return `${gone} ${listNatural(teams)} ${keep} exactly as they are.`;
+}
+
+/** The server's own words for a request it refused (4xx); the plain fallback for anything else (a
+ *  5xx's detail can be a stack trace). */
+export function serverWords(err: unknown, fallback: string): string {
+  return err instanceof ApiDetailError && err.status < 500 && err.message ? err.message : fallback;
 }

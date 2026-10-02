@@ -4,8 +4,7 @@ import { useState } from "react";
 import { VersionDialog } from "../canvas/VersionDialogs";
 import { Button, Checkbox, Input, TextArea } from "../design-system/components";
 import { type AgentPart, type SavedAgent, saveMyAgent } from "../lib/api/myAgents";
-import { ApiDetailError } from "../lib/api/runs";
-import { nextVersionFor, providerName } from "../lib/myAgentsFormat";
+import { nextVersionFor, providerName, serverWords } from "../lib/myAgentsFormat";
 
 export interface SaveAgentDialogProps {
   teamId: string;
@@ -99,7 +98,7 @@ export function SaveAgentDialog({
         }),
       );
     } catch (err) {
-      setError(err instanceof ApiDetailError ? err.message : "Couldn’t save. Try again.");
+      setError(serverWords(err, "Couldn’t save. Try again."));
       setBusy(false);
     }
   };
@@ -134,6 +133,7 @@ export function SaveAgentDialog({
       <TextArea
         label="What it’s for"
         value={purpose}
+        maxLength={300}
         onChange={(e) => setPurpose(e.target.value)}
       />
       <div className="cv-save__parts" role="group" aria-label="Included">

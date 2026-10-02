@@ -327,3 +327,57 @@ describe("NodeEditor — M6 More › Save as my agent (Agents-More, Agents-Save)
     expect(within(dialog).getByText("Saved as version 1")).toBeInTheDocument();
   });
 });
+
+// The review's fixes (M6).
+describe("NodeEditor — M6 review fixes", () => {
+  const openMore = (drawer: HTMLElement) => {
+    fireEvent.click(within(drawer).getByRole("button", { name: "More actions" }));
+    return within(drawer).getByRole("menu", { name: "More actions" });
+  };
+  const memoryReads = () =>
+    fetchMock.mock.calls.filter((c) => String(c[0]).startsWith("/api/memories")).length;
+  /** Answer `url` (by method) with `reply`, everything else as before. */
+  const answer = (method: string, url: string, reply: () => Promise<Response>) => {
+    const base = fetchMock.getMockImplementation() as (u: string, i?: RequestInit) => unknown;
+    fetchMock.mockImplementation((input: string, init?: RequestInit) =>
+      input === url && (init?.method ?? "GET") === method ? reply() : base(input, init),
+    );
+  };
+
+  it("Save as my agent starts from the saved agent's CURRENT name (it was renamed)", async () => {
+    answer("GET", "/api/my-agents", () =>
+      json({ agents: [{ ...AGENTS[0], name: "Careful reviewer" }, AGENTS[1]] }),
+    );
+    const { drawer } = renderEditor({ node: based, nodes: [based] });
+    fireEvent.click(within(openMore(drawer)).getByRole("menuitem", { name: "Save as my agent" }));
+    const dialog = await screen.findByRole("dialog", { name: "Save Reviewer as my agent" });
+    expect(within(dialog).getByLabelText("Name")).toHaveValue("Careful reviewer");
+    expect(within(dialog).getByText("Saved as version 3")).toBeInTheDocument();
+  });
+
+  it("a server failure (5xx) says the plain words, not the server's", async () => {
+    answer("POST", "/api/teams/t1/nodes/n-rev/use-agent", () =>
+      json({ detail: "Traceback: boom" }, 500),
+    );
+    const { drawer } = renderEditor();
+    fireEvent.click(
+      within(await openTemplates(drawer)).getByRole("menuitem", { name: "Strict reviewer" }),
+    );
+    await waitFor(() =>
+      expect(toastOf(drawer)).toHaveTextContent("Couldn’t use Strict reviewer. Try again."),
+    );
+    expect(toastOf(drawer)).not.toHaveTextContent("boom");
+  });
+
+  it("reads the agent's memories again after a use and after its Undo", async () => {
+    const { drawer, props } = renderEditor();
+    await waitFor(() => expect(memoryReads()).toBe(2));
+    fireEvent.click(
+      within(await openTemplates(drawer)).getByRole("menuitem", { name: "Strict reviewer" }),
+    );
+    await waitFor(() => expect(memoryReads()).toBe(4));
+    fireEvent.click(within(toastOf(drawer)).getByRole("button", { name: "Undo" }));
+    await waitFor(() => expect(props.onSaved).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(memoryReads()).toBe(6));
+  });
+});

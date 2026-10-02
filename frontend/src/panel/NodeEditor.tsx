@@ -19,7 +19,7 @@ import {
   undoAgent,
 } from "../lib/api/myAgents";
 import { getNodeRuns, type NodeTemplate } from "../lib/api/nodes";
-import { ApiDetailError } from "../lib/api/runs";
+import { serverWords } from "../lib/myAgentsFormat";
 import type { EnginesTab, NodeTab, Route } from "../lib/nav";
 import { nodeDescription, nodeTitle } from "../lib/nodeNames";
 import { QueryDomainPanel } from "../pages/domains/QueryDomainDrawerBody";
@@ -379,23 +379,29 @@ function AgentEditor({
   };
   // M6 / R4: a saved agent applies at once (a server write; a dirty draft is saved or discarded
   // first through the guard), and the toast's Undo puts back what it replaced.
-  const failed = (err: unknown, fallback: string) =>
-    toast.show(err instanceof ApiDetailError ? err.message : fallback);
+  const failed = (err: unknown, fallback: string) => toast.show(serverWords(err, fallback));
   // The node changed on the server: reload the team, and the saved agents' "Used in" with it.
   const reloaded = async () => {
     await onSaved();
     setAgentsRev((r) => r + 1);
   };
+  // A use / Undo also copies / removes the saved agent's memories: read them again (without
+  // blanking the Memory tab's count while they load).
+  const reloadedWithMemories = async () => {
+    await reloaded();
+    await memories.change(() => Promise.resolve());
+  };
   const pickSavedAgent = (agent: SavedAgent) =>
     guard.request(() => {
       void applyAgentToNode(teamId, node.id, agent.id).then(
         async (res) => {
-          await reloaded();
+          await reloadedWithMemories();
           toast.show(res.text, {
             label: "Undo",
             onAction: () =>
-              void undoAgent(teamId, node.id, res.before).then(reloaded, (err: unknown) =>
-                failed(err, "Couldn’t undo. Try again."),
+              void undoAgent(teamId, node.id, res.before).then(
+                reloadedWithMemories,
+                (err: unknown) => failed(err, "Couldn’t undo. Try again."),
               ),
           });
         },
@@ -693,7 +699,9 @@ function AgentEditor({
         teamId={teamId}
         nodeId={node.id}
         agentName={name}
-        defaultName={basedOn?.name ?? name}
+        // The saved agent's name now (it may have been renamed since), so a re-save makes its
+        // next version.
+        defaultName={agents.find((a) => a.id === basedOn?.id)?.name ?? basedOn?.name ?? name}
         defaultPurpose={agents.find((a) => a.id === basedOn?.id)?.purpose ?? description}
         teamVersion={teamVersion}
         model={api.baseline.model}
