@@ -27,6 +27,7 @@ from tvashtr.control_plane.run_failure import node_label
 from tvashtr.models import (
     AgentInvocation,
     AgentNode,
+    Compare,
     Document,
     DocumentVersion,
     Run,
@@ -404,6 +405,10 @@ def points(session, run: Run, lines: list[dict] | None = None, *, confirm: bool 
         "stops_run": False,
         "points": [],
     }
+    if run.pair_id is not None and session.get(Compare, run.pair_id) is not None:
+        # M8 (R5): a resumed compare run would be an ordinary run — it would ship.
+        out["reason"] = "A compare run can’t be picked up again. Start a new compare instead."
+        return out
     child = (
         session.execute(
             select(Run)

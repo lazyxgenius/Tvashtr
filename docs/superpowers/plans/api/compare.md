@@ -29,6 +29,9 @@ Every route is owner-scoped (another account → 404, never 403), listed in `tes
     of a version, not the team's work.
   - `gate_auto_resolution_step`'s BODY also answers "approved" for a `gate:` topic of a compare run with
     `auto_approve` (budget breaches still ask a person). Its recorded output replays as before for runs in flight.
+  - A compare run is never resumed (a resumed run would be an ordinary run, and ship): `GET /api/runs/{id}/resume`
+    answers `available: false`, reason "A compare run can’t be picked up again. Start a new compare instead.",
+    `POST` 409s with it and the run view's failed / stopped callout offers no Resume.
 - R5 caps (R12: compare runs count fully, like any run): a compare starts BOTH runs together when the hosted
   ceilings have room for two (`_enforce_run_ceilings(launching=2)` succeeds); otherwise the compare is `waiting`
   (no run rows yet) and a plain daemon waiter (no DBOS; like M7's replays) starts both as soon as two slots are

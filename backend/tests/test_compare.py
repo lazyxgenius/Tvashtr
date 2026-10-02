@@ -14,7 +14,14 @@ from pathlib import Path
 import pytest
 from conftest import _seed_dummy_credentials, auth_user_id, maybe_write_entry_report
 from dbos import DBOS, SetWorkflowID
-from home_fixtures import add_cost, clone_node, fresh_account, library_team, make_run
+from home_fixtures import (
+    add_cost,
+    add_invocation,
+    clone_node,
+    fresh_account,
+    library_team,
+    make_run,
+)
 from sqlalchemy import select, text, update
 
 from tvashtr.config import get_settings
@@ -456,6 +463,33 @@ def test_only_a_compare_with_auto_approve_answers_its_gates(client, monkeypatch)
     assert team_run.load_graph_step(plain)["compare"] is None
     assert team_run.load_graph_step(ab)["compare"] is None
     _end([run_on, run_off, plain, ab])
+
+
+def test_a_compare_run_cannot_be_resumed(client):
+    """A resumed compare run would be an ordinary run (it would ship, wait on gates and distil
+    memory): Resume is refused for a failed side and a stopped one; their callouts offer none."""
+    owner = auth_user_id()
+    team = _two_versions(client)
+    cid = _seed_compare(team, owner, status="finished")
+    reason = "A compare run can’t be picked up again. Start a new compare instead."
+    for label, status, step, pinned_kind in (
+        ("A", "failed", "failed", "failed"),
+        ("B", "cancelled", "running", "stopped"),
+    ):
+        run_id, clone = make_run(
+            owner, team, status=status, pair_id=uuid.UUID(cid), pair_label=label
+        )
+        add_invocation(run_id, clone_node(clone, "pm"), step)  # the first step: a fresh start
+        with session_scope() as session:
+            inv = session.execute(
+                select(AgentInvocation.id).where(AgentInvocation.run_id == run_id)
+            ).scalar_one()
+        reply = client.get(f"/api/runs/{run_id}/resume").json()
+        assert (reply["available"], reply["reason"]) == (False, reason), reply
+        resp = client.post(f"/api/runs/{run_id}/resume", json={"invocation_id": inv})
+        assert (resp.status_code, resp.json()["detail"]) == (409, reason)
+        pinned = client.get(f"/api/runs/{run_id}/activity").json()["pinned"]
+        assert (pinned["kind"], pinned["resume"]) == (pinned_kind, None)
 
 
 # ------------------------------------------------------------------------------------ the queue
