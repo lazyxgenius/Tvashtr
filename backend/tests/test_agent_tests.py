@@ -370,7 +370,13 @@ def test_save_a_test_keeps_a_copy_of_what_it_got(tmp_path):
         diff = session.execute(select(AgentTest.diff).where(AgentTest.id == row.id)).scalar()
     assert b"return 50" in diff  # the workspace after Reviewer round 1 (= Engineer round 1)
     node = _node(c, team, "engineer")
-    assert node["tests"] == {"total": 1, "passed": None, "ran": None, "running": None}
+    assert node["tests"] == {
+        "total": 1,
+        "passed": None,
+        "ran": None,
+        "stopped": False,
+        "running": None,
+    }
 
 
 def test_saving_a_test_needs_a_name_and_a_check(tmp_path):
@@ -482,6 +488,7 @@ def test_run_all_replays_only_this_agent_once_per_test(tmp_path, inline):
         "total": 2,
         "passed": 1,
         "ran": 2,
+        "stopped": False,
         "running": None,
     }
     detail = c.get(

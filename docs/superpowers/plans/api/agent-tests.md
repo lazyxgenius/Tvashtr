@@ -166,8 +166,8 @@ limit ran out mid-way.
 - `GET /api/teams/{t}/nodes/{n}/runs` — each round gains `test_blocked: null | "<the 409 reason>"`
   (null ⇒ "Make this a test" is enabled).
 - `GET /api/teams/{team_id}/graph` — each agent node gains `tests: null | {"total": 6, "passed": 5 |
-  null, "ran": 6 | null, "running": null | {"done": 2, "total": 6}}` (the canvas chip "5 of 6 tests" /
-  "● Testing 3 of 6"; `passed` and `ran` (its total) are of the newest finished or stopped run, null when never run; the Tests tab
+  null, "ran": 6 | null, "stopped": false, "running": null | {"done": 2, "total": 6}}` (the canvas chip "5 of 6 tests" /
+  "● Testing 3 of 6"; `passed` and `ran` (its total) are of the newest finished or stopped run, null when never run; `stopped` ⇒ that run was stopped (the chip is neutral); the Tests tab
   count is `total`).
 - `GET /api/teams/{t}/versions` — gains `tests: null | {"count": 6, "agents": [{"node_id", "name":
   "Reviewer", "count": 6}], "sub": "You changed the Reviewer’s instructions. The Reviewer has 6

@@ -1138,6 +1138,7 @@ def graph_tests(session, node_ids: list[uuid.UUID]) -> dict[uuid.UUID, dict]:
             "total": int(total),
             "passed": tally.get(fin.id, (0, 0))[1] if fin else None,
             "ran": fin.total if fin else None,  # "2 of 6 tests" after a stopped run too
+            "stopped": bool(fin and fin.status == "stopped"),
             "running": running,
         }
     return out
