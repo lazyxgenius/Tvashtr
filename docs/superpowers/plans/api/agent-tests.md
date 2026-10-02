@@ -24,8 +24,11 @@ An AI check that can't run is **skipped, not failed**: `met: null` with `reason`
 replay finished and every check that ran is met.
 
 The answer a replay is checked on: a reviewer (an agent whose result routes the team) → its verdict,
-`"Approved"` or `"Changes requested: <reasons>"`; any other agent → its REPORT.md if it wrote one,
-else its closing message. `files` = the files it changed.
+`"Approved"` or `"Changes requested: <reasons>"` (a reviewer that writes no verdict fails: "It gave no
+verdict, so its checks didn’t run."); any other agent → its REPORT.md if it wrote one, else its closing
+message. `files` = the files it changed (worked out on the host, before vs after). A Must say / Must
+not say whose value is a verdict ("Approved", "Changes requested") checks the verdict itself, so
+"can't be approved" doesn't say Approved; a file name matches as a whole path.
 
 ## `GET /api/teams/{team_id}/nodes/{node_id}/tests` — the Tests tab
 
@@ -49,7 +52,7 @@ else its closing message. `files` = the files it changed.
   }],
   "run": null | {                                         // the newest test run of this agent
     "id": "…", "status": "running" | "done" | "stopped" | "failed",
-    "version": 7 | null,                                  // the team's version when it started ("On v7")
+    "version": 7 | null,                                  // "On v7"; null when the agent had changes no version holds
     "trigger": "manual" | "save",
     "total": 6, "done": 2, "passed": 2, "failed": 0,
     "cost_usd": 0.14, "started_at": "…", "ended_at": "…" | null, "elapsed_s": 100,
@@ -130,7 +133,8 @@ row number (1 = the first data row), name = the task's first line (≤ 120 chars
 → `{"run": <run>}`. Replays this agent's tests one after another on its current SAVED setup (the
 drawer saves or discards a draft first). 409 "The tests are already running" · 422 "Add a test first".
 A replay counts toward the owner's 3 concurrent runs only (R12); while all 3 are taken the run waits
-(`waiting_for_slot: true`). Each replay is stopped after 10 minutes. Model work is on the owner's keys;
+(`waiting_for_slot: true`). Each replay is stopped after 10 minutes; a stop or the cap reaches a
+replay before its agent starts, and its slot stays counted until it has really ended. Model work is on the owner's keys;
 AI checks on Tvashtr's.
 
 ## `POST /api/teams/{t}/nodes/{n}/tests/stop` → the run (`status: "stopped"`, unfinished results `stopped`).
