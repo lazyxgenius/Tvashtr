@@ -60,6 +60,16 @@ def stalled_message(label: str, after_s: float) -> str:
 _AGENT_KINDS = ("completion", "agent")
 
 
+def _can_interrupt(run_id: str) -> bool:
+    """M11: whether releasing the run's sandbox HERE would stop its agent — a docker or Fly sandbox
+    this process holds (the cache is per process: Fly's other machine, the LOCAL sandbox and a
+    Desktop runner can't be stopped from here). When it can't, a failure-path step ends as before
+    M11 (the run fails, its workflow cancelled) rather than being left running unstoppably."""
+    return get_settings().agent_sandbox_mode in ("docker", "fly") and sandbox_cache.holds_run(
+        run_id
+    )
+
+
 def _time_limit(config: dict | None, default: float) -> float:
     """An agent's own time limit (``config.time_limit_s``), else R1's ceiling."""
     limit = (config or {}).get("time_limit_s") if isinstance(config, dict) else None
@@ -181,7 +191,7 @@ def sweep_stalled_steps(now: datetime | None = None) -> list[str]:
         due = []
         for inv, node in rows:
             silent = live_state.stalled_for(live[inv.id], now)
-            path = node.id in with_path and node.kind in _AGENT_KINDS
+            path = node.id in with_path and node.kind in _AGENT_KINDS and _can_interrupt(inv.run_id)
             # An agent with a failure path also ends at its own time limit (R1's ceiling unless
             # set); without one, only the stall ceiling ends a step — exactly as before M11.
             limit = _time_limit(node.config, ceiling) if path else None

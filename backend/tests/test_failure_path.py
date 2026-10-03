@@ -550,3 +550,118 @@ def test_a_step_the_sweep_ended_keeps_the_sweeps_reason(client, monkeypatch, tmp
         assert step == [path, ("stalled", "Stopped responding: no update for 20 minutes")]
     else:
         assert [kind for kind, _ in step] == ["error", "failure_path"] and step[1] == path
+
+
+def _pending_any(run_id: str, role: str, timeout: float = 20.0, not_id: int | None = None) -> int:
+    """The pending task of ``role``'s gate, whichever visit it is (``gate:<run>:<node>[:<n>]``)."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        with session_scope() as session:
+            node_id = session.execute(
+                select(AgentNode.id)
+                .join(Run, Run.team_graph_id == AgentNode.team_graph_id)
+                .where(Run.workflow_id == run_id, AgentNode.role_name == role)
+            ).scalar_one()
+            task_id = session.execute(
+                select(HumanTask.id).where(
+                    HumanTask.run_id == run_id,
+                    HumanTask.topic.like(f"gate:{run_id}:{node_id}%"),
+                    HumanTask.status == "pending",
+                    HumanTask.id != (not_id or -1),
+                )
+            ).scalar_one_or_none()
+        if task_id is not None:
+            return task_id
+        time.sleep(0.2)
+    raise AssertionError(f"no pending task for {role}")
+
+
+def test_a_person_can_answer_the_retry_gate_on_every_visit(client, monkeypatch, tmp_path):
+    """The Engineer fails every round and its failure path retries it through "Ask me what to do":
+    each visit to the gate asks the person again (a fresh task), so approving retries and the run
+    never wedges on a gate it already answered; rejecting ends it at Stop."""
+    run_id = _new_run(_team(failure_to="ask_gate"))
+    _harness(monkeypatch, tmp_path, fail_round=1, every_round=True)
+    handle = _start(run_id)
+    prd = _pending_task(run_id, "prd_gate")
+    assert (
+        client.post(
+            f"/api/runs/{run_id}/tasks/{prd}/resolve", json={"decision": "approve"}
+        ).status_code
+        == 200
+    )
+    first = _pending_any(run_id, "ask_gate")
+    assert (
+        client.post(
+            f"/api/runs/{run_id}/tasks/{first}/resolve", json={"decision": "approve"}
+        ).status_code
+        == 200
+    )
+    second = _pending_any(run_id, "ask_gate", not_id=first)  # the second visit asks again
+    assert (
+        client.post(
+            f"/api/runs/{run_id}/tasks/{second}/resolve", json={"decision": "reject"}
+        ).status_code
+        == 200
+    )
+    result = handle.get_result()
+    assert result["status"] != "failed"
+    gate_rounds = [row[1] for row in _invocations(run_id) if row[0] == "ask_gate"]
+    assert gate_rounds == [1, 2]
+
+
+def test_a_failed_rounds_spend_is_metered_on_the_failure_path(client, monkeypatch, tmp_path):
+    """The adapters return the partial usage of a failed round: on the failure path it is metered
+    like any spend, so later rounds see the run's real budget."""
+    from tvashtr.metering import running_cost
+
+    run_id = _new_run(_team(failure_to="ask_gate"))
+    _harness(monkeypatch, tmp_path, fail_round=1)
+    real_forced = team_run._forced_failure
+
+    def _failed_with_spend(rid, node_id, iteration):
+        failed = real_forced(rid, node_id, iteration)
+        return failed and {**failed, "prompt_tokens": 900, "completion_tokens": 100,
+                           "total_tokens": 1000, "cost_usd": 0.25}  # fmt: skip
+
+    monkeypatch.setattr(team_run, "_forced_failure", _failed_with_spend)
+    monkeypatch.setenv("TVASHTR_AUTO_APPROVE_GATES", "1")
+    monkeypatch.setenv("TVASHTR_FORCE_REVISIONS", "0")
+    assert _start(run_id).get_result()["status"] == "completed"
+    assert running_cost(run_id) >= 0.25
+
+
+def test_a_swept_round_past_its_loop_limit_fails_the_run_with_the_sweeps_reason(
+    client, monkeypatch, tmp_path
+):
+    """Past its loop limit the walk no longer takes the path: a round the sweep ended fails the
+    run as R1 says (stalled, its reason), not with the engine's disconnect error."""
+    monkeypatch.setenv("TVASHTR_AUTO_APPROVE_GATES", "1")
+    run_id = _new_run(_team(failure_to="ask_gate", drop_escalation=True))
+    _harness(monkeypatch, tmp_path, fail_round=1, every_round=True)
+    message = "The Engineer stopped responding: no update for 20 minutes"
+    real_forced = team_run._forced_failure
+
+    calls: list[int] = []
+
+    def _swept_on_round_4(rid, node_id, iteration):
+        # (every_round: the harness passes round 1 each time — count the Engineer's rounds here)
+        failed = real_forced(rid, node_id, iteration)
+        if failed is not None:
+            calls.append(1)
+        if failed is not None and len(calls) == 4:
+            with session_scope() as session:
+                inv = session.execute(
+                    select(AgentInvocation).where(
+                        AgentInvocation.run_id == rid,
+                        AgentInvocation.node_id == uuid.UUID(node_id),
+                        AgentInvocation.iteration == 4,
+                    )
+                ).scalar_one()
+                inv.status, inv.outcome, inv.outcome_detail = "failed", "stalled", message
+        return failed
+
+    monkeypatch.setattr(team_run, "_forced_failure", _swept_on_round_4)
+    assert _start(run_id).get_result()["status"] == "failed"
+    run = _run(run_id)
+    assert (run.failure_code, run.failure_message) == (run_failure.STALLED, message)

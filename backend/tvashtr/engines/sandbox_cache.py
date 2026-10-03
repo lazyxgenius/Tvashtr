@@ -112,6 +112,12 @@ def live_container_ids() -> frozenset[str]:
         return frozenset(cs.container_id for cs in _CACHE.values() if cs.container_id)
 
 
+def holds_run(run_id: str) -> bool:
+    """Whether THIS process holds a live sandbox of ``run_id`` (the cache is per process)."""
+    with _LOCK:
+        return any(_run_id_of(k) == run_id for k in _CACHE)
+
+
 def close_run_sandboxes(run_id: str) -> None:
     """Tear down + evict EVERY cached sandbox for ``run_id`` (run-end teardown; run_id in, nothing
     out — no engine internals leak). Best-effort + idempotent: a failing ``close()`` is logged,

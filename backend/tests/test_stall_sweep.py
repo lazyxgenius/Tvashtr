@@ -25,6 +25,8 @@ def released(monkeypatch):
     calls: dict[str, list[str]] = {"cancel": [], "close": []}
     monkeypatch.setattr(stall_sweep, "_cancel_workflow", calls["cancel"].append)
     monkeypatch.setattr(stall_sweep, "_close_sandboxes", calls["close"].append)
+    # M11: this process holds every run's sandbox here (the cross-process case has its own test).
+    monkeypatch.setattr(stall_sweep, "_can_interrupt", lambda run_id: True)
     return calls
 
 
@@ -347,3 +349,41 @@ def test_without_a_failure_path_the_time_limit_changes_nothing(client, released)
     stall_sweep.sweep_stalled_steps(now=NOW)
     assert _state(run_id, inv_id)[:3] == ("running", None, "running")
     assert run_id not in released["close"] + released["cancel"]
+
+
+def test_a_failure_path_step_this_process_cannot_interrupt_ends_as_before(
+    client, released, monkeypatch
+):
+    """The sweep runs on a machine that does not hold the step's sandbox (Fly's other machine, the
+    LOCAL sandbox, a Desktop runner): releasing it could not stop the agent, so the step ends as it
+    did before M11 — the run fails and its workflow is cancelled — instead of leaving it wedged."""
+    monkeypatch.setattr(stall_sweep, "_can_interrupt", lambda run_id: False)
+    c, owner = fresh_account("sweep-remote")
+    run_id, _, inv_id = _step(owner, library_team(c), started_ago=3000, silent_for=1201, path=True)
+    assert run_id in stall_sweep.sweep_stalled_steps(now=NOW)
+    status, code, inv_status, outcome, _ = _state(run_id, inv_id)
+    assert (status, code, inv_status, outcome) == ("failed", "stalled", "failed", "stalled")
+    assert run_id in released["cancel"]
+
+
+def test_only_a_held_docker_or_fly_sandbox_can_be_interrupted(monkeypatch):
+    from types import SimpleNamespace
+
+    from tvashtr.engines import sandbox_cache
+
+    sandbox_cache.clear()
+    try:
+        for mode in ("local", "docker", "fly"):
+            monkeypatch.setattr(
+                stall_sweep, "get_settings", lambda m=mode: SimpleNamespace(agent_sandbox_mode=m)
+            )
+            assert stall_sweep._can_interrupt("r-held") is False  # nothing held in this process
+        sandbox_cache.put("r-held::n1", SimpleNamespace(close=lambda: None, container_id=None))
+        for mode, can in (("local", False), ("docker", True), ("fly", True)):
+            monkeypatch.setattr(
+                stall_sweep, "get_settings", lambda m=mode: SimpleNamespace(agent_sandbox_mode=m)
+            )
+            assert stall_sweep._can_interrupt("r-held") is can, mode
+            assert stall_sweep._can_interrupt("r-other") is False
+    finally:
+        sandbox_cache.clear()

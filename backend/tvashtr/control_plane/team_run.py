@@ -2653,6 +2653,7 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
     start_id = graph["start_node_id"]
     current: str | None = start_id
     iters_by_node: dict[str, int] = {}
+    gate_visits: dict[str, int] = {}  # M11: a gate the walk reaches again asks again
     workspace: str | None = None  # lazily created at the first agent node
     reviewer_feedback: str | None = None
     pm_document_id: str | None = None
@@ -2898,7 +2899,10 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                 # kept: the sweep's, when the stall sweep or the time limit ended it) and continue
                 # at the path's target instead of failing the run. Loop limits still apply: a
                 # round past the agent's limit fails the run as below. A pre-M11 graph has no
-                # failure edge, so its walk never enters here.
+                # failure edge, so its walk never enters here. The failed round's partial spend is
+                # metered first, as any spend is, so the next rounds see the run's real budget.
+                if result["total_tokens"] or result["cost_usd"]:
+                    persist_agent_cost_step(run_id, current, node["model"], result, n, inv_id)
                 close_invocation_step(
                     run_id,
                     current,
@@ -2923,23 +2927,28 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                 # ``outcome_detail`` so a failed node's REASON lives on the row the run inspector
                 # reads — not only in the transient ``DBOS.logger.error`` line below (run 6fd2c911
                 # stored no reason anywhere queryable).
+                # M11: a round the stall sweep (or the time limit) ended — one past its failure
+                # path's loop limit — fails the run as R1 says (stalled, the sweep's reason).
+                swept = _swept_reason(run_id, current, n)
                 close_invocation_step(
                     run_id,
                     current,
                     n,
                     "failed",
                     None,
-                    outcome_detail=result.get("error"),
+                    outcome_detail=swept or result.get("error"),
                     context_manifest=result.get("context_manifest"),
                 )
                 mark_run_failed_step(
                     run_id,
                     code=(
-                        run_failure.OVER_CONTEXT
+                        run_failure.STALLED
+                        if swept
+                        else run_failure.OVER_CONTEXT
                         if result["status"] == "over_context"
                         else run_failure.AGENT_ERROR
                     ),
-                    message=result.get("error"),
+                    message=swept or result.get("error"),
                     node_id=current,
                 )
                 DBOS.logger.error(
@@ -3207,14 +3216,19 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
             #    on crash-resume (no re-scan of a possibly-mutated tree).
             #  * any other / absent kind is the HUMAN-approval path (unchanged): pause on the
             #    durable recv, then route on the resolution.
-            open_invocation_step(run_id, current, 1)
+            # M11: a failure path can bring the walk back to the same gate (a retry through it);
+            # each visit is its own round and its own question. The first visit is exactly as before
+            # (round 1, topic ``gate:<run>:<node>``), so a recorded walk replays unchanged.
+            visit = gate_visits.get(current, 0) + 1
+            gate_visits[current] = visit
+            open_invocation_step(run_id, current, visit)
             cfg = node["config"] or {}
             if cfg.get("gate_kind") in GUARDRAIL_GATE_KINDS:
                 verdict = guardrail_gate_step(run_id, current, cfg["gate_kind"], workspace, cfg)
                 close_invocation_step(
                     run_id,
                     current,
-                    1,
+                    visit,
                     "done",
                     verdict["resolution"],
                     outcome_detail=verdict["reasons"],
@@ -3230,14 +3244,14 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                     suspend_fly_machine_step(run_id)
                 gate = wait_at_gate(
                     run_id,
-                    topic=f"gate:{run_id}:{current}",
+                    topic=f"gate:{run_id}:{current}" + (f":{visit}" if visit > 1 else ""),
                     kind=cfg.get("gate_kind", "gate_approval"),
                     priority="high_blocker",
                     blocking=True,
                     title=cfg["title"],
                     description=cfg["description"],
                 )
-                close_invocation_step(run_id, current, 1, "done", gate["resolution"])
+                close_invocation_step(run_id, current, visit, "done", gate["resolution"])
                 current = next_node(edges, current, gate["resolution"])
 
         elif kind == "terminal":
