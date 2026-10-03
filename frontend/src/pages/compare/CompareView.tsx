@@ -323,7 +323,10 @@ function Results({
   const r = c.results as NonNullable<Compare["results"]>;
   const [look, variant] = COMPARE_LOOK[c.status];
   const sub = [
-    "Same task, same repo, at the same time",
+    // M-desk-2 (Cmp-ResultsDesktop): Desktop lanes that shared a subscription took turns.
+    r.shared
+      ? "Same task, same repo, taking turns on your Desktop"
+      : "Same task, same repo, at the same time",
     c.ended_at && `finished ${versionAge(c.ended_at, Date.now(), true)}`,
     `${money(c.cost_usd)} in all`,
   ]

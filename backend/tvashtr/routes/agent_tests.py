@@ -57,15 +57,29 @@ class JudgeRequest(BaseModel):
 
 
 @router.get(BASE)
-def list_tests(team_id: str, node_id: str, current_user: CurrentUser) -> dict:
-    return _call(agent_tests.tests_view, _owner(current_user), team_id, node_id)
+def list_tests(
+    team_id: str, node_id: str, current_user: CurrentUser, desktop_target: bool = False
+) -> dict:
+    # M-desk-2 (E2): ``?desktop_target=1`` (Tvashtr Desktop) adds where its replays would run.
+    return _call(agent_tests.tests_view, _owner(current_user), team_id, node_id, desktop_target)
 
 
 @router.get(BASE + "/from-round")
 def test_from_round(
-    team_id: str, node_id: str, current_user: CurrentUser, invocation_id: Annotated[int, Query()]
+    team_id: str,
+    node_id: str,
+    current_user: CurrentUser,
+    invocation_id: Annotated[int, Query()],
+    desktop_target: bool = False,
 ) -> dict:
-    return _call(agent_tests.from_round, _owner(current_user), team_id, node_id, invocation_id)
+    return _call(
+        agent_tests.from_round,
+        _owner(current_user),
+        team_id,
+        node_id,
+        invocation_id,
+        desktop_target,
+    )
 
 
 @router.post(BASE, status_code=201)

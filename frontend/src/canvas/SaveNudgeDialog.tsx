@@ -3,6 +3,7 @@ import { useState } from "react";
 
 import { Button, Checkbox, Input } from "../design-system/components";
 import type { CheckSet, VersionTests } from "../lib/api/versions";
+import { isDesktopApp, onSubscriptions } from "../lib/desktopRepos";
 import { VersionDialog } from "./VersionDialogs";
 
 const usd = (n: number) => `$${n.toFixed(2)}`;
@@ -13,6 +14,8 @@ const usd = (n: number) => `$${n.toFixed(2)}`;
  * results show next to the version in History.
  * M9 Set-SaveCheck: when the team has task sets it also offers "Compare v8 with v7 on <set>" (ticked),
  * posted as `check_set` by "Save and check"; "Just save" clears both checks.
+ * M-desk-2 (Save-NudgeDesktop): from Tvashtr Desktop both post `desktop_target` (they run on the
+ * owner's subscriptions), and the option names the subscription when every changed agent is on one.
  */
 export function SaveNudgeDialog({
   current,
@@ -28,7 +31,12 @@ export function SaveNudgeDialog({
   tests: VersionTests | null;
   checkSets?: CheckSet[];
   onClose: () => void;
-  onSave: (body: { note?: string; run_tests?: boolean; check_set?: string }) => void;
+  onSave: (body: {
+    note?: string;
+    run_tests?: boolean;
+    check_set?: string;
+    desktop_target?: true;
+  }) => void;
 }) {
   const [note, setNote] = useState("");
   const [run, setRun] = useState(tests !== null);
@@ -38,6 +46,7 @@ export function SaveNudgeDialog({
   const e = tests?.estimate;
   const se = set?.estimate;
   const results = `Results show next to v${next} in History.`;
+  const on = onSubscriptions(tests?.desktop);
   return (
     <VersionDialog
       title={`Save as v${next}`}
@@ -61,6 +70,9 @@ export function SaveNudgeDialog({
                 ...(note.trim() ? { note: note.trim() } : {}),
                 ...(tests ? { run_tests: run } : {}),
                 ...(compare && set ? { check_set: set.id } : {}),
+                ...(isDesktopApp() && ((tests && run) || (compare && set))
+                  ? { desktop_target: true as const }
+                  : {}),
               })
             }
           >
@@ -87,7 +99,9 @@ export function SaveNudgeDialog({
             label={tests.option}
             description={
               e
-                ? `About ${e.minutes} min · about $${e.cost_usd.toFixed(2)} on your keys. ${results}`
+                ? on
+                  ? `About ${e.minutes} min on ${on}. ${results}`
+                  : `About ${e.minutes} min · about $${e.cost_usd.toFixed(2)} on your keys. ${results}`
                 : results
             }
             checked={run}

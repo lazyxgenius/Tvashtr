@@ -3,6 +3,7 @@
  * Tests tab, a test made from a round or from a file, Run all / Stop, a replay's result and Check the
  * AI check. Every word (metas, `last`, errors) is made server-side.
  */
+import { desktopQuery, type DesktopRoutes } from "../desktopRepos";
 import { apiRequest } from "./runs";
 
 export type CheckKind = "must_say" | "must_not_say" | "must_name_file" | "ai";
@@ -114,6 +115,8 @@ export interface AgentTests {
   last: string | null;
   estimate: TestEstimate | null;
   ai: AiChecks | null;
+  /** M-desk-2 (E2): read from Tvashtr Desktop, where its replays run. */
+  desktop?: DesktopRoutes;
 }
 
 /** The New test dialog's round. */
@@ -129,6 +132,8 @@ export interface FromRound {
   checks: TestCheck[];
   estimate: TestEstimate | null;
   ai: AiChecks | null;
+  /** M-desk-2 (E2): read from Tvashtr Desktop, where its replay runs. */
+  desktop?: DesktopRoutes;
 }
 
 /** How a file's column is used. */
@@ -208,7 +213,7 @@ const test = (v: unknown): AgentTest => {
 
 /** The Tests tab: the agent's tests, its newest test run, `last`, the estimate and AI checks. */
 export async function listTests(teamId: string, nodeId: string): Promise<AgentTests> {
-  const body = await apiRequest<unknown>("GET", base(teamId, nodeId));
+  const body = await apiRequest<unknown>("GET", `${base(teamId, nodeId)}${desktopQuery()}`);
   const b = isObj(body) ? body : {};
   return {
     tests: list(b.tests).filter(isObj).map(test),
@@ -216,6 +221,7 @@ export async function listTests(teamId: string, nodeId: string): Promise<AgentTe
     last: typeof b.last === "string" ? b.last : null,
     estimate: isObj(b.estimate) ? (b.estimate as unknown as TestEstimate) : null,
     ai: isObj(b.ai) ? (b.ai as unknown as AiChecks) : null,
+    ...(isObj(b.desktop) ? { desktop: b.desktop as unknown as DesktopRoutes } : {}),
   };
 }
 
@@ -227,7 +233,7 @@ export async function getFromRound(
 ): Promise<FromRound> {
   const r = await apiRequest<FromRound>(
     "GET",
-    `${base(teamId, nodeId)}/from-round?invocation_id=${invocationId}`,
+    `${base(teamId, nodeId)}/from-round?invocation_id=${invocationId}${desktopQuery("&")}`,
   );
   return { ...r, gets: gets(r.gets), checks: list(r.checks) };
 }

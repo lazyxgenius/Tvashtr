@@ -46,7 +46,7 @@ from tvashtr.control_plane import (
     task_sets,
     versions,
 )
-from tvashtr.control_plane.credential_gate import desktop_routed_subscriptions
+from tvashtr.control_plane.credential_gate import desktop_routed_subscriptions, desktop_routes
 from tvashtr.control_plane.graph_validity import graph_dicts, owner_domain_ids, validate_graph
 from tvashtr.control_plane.run_failure import node_label
 from tvashtr.control_plane.team_run import run_team
@@ -213,7 +213,7 @@ def _estimate(session, team: TeamGraph, numbers: list[int]) -> dict | None:
     }
 
 
-def page(session, team: TeamGraph, viewer: uuid.UUID) -> dict:
+def page(session, team: TeamGraph, viewer: uuid.UUID, desktop_target: bool = False) -> dict:
     top = versions.ensure_first(session, team, viewer)
     rows = (
         session.execute(
@@ -235,6 +235,16 @@ def page(session, team: TeamGraph, viewer: uuid.UUID) -> dict:
     ).scalar_one_or_none()
     if latest is not None:
         _refresh(session, latest)
+    # M-desk-2 (E2): asked from the Desktop, where each version's runs would run (routed as a
+    # Desktop compare's launch routes them, from the models of its stored graph).
+    fresh = desktop_jobs.fresh_subscription_ids(viewer) if desktop_target else set()
+
+    def where(v: TeamVersion) -> dict:
+        if not desktop_target:
+            return {}
+        models = [n.get("model") for n in (v.graph or {}).get("nodes") or []]
+        return {"desktop": desktop_routes(models, fresh_subscriptions=fresh)}
+
     return {
         "team": {"id": str(team.id), "name": team.name},
         "versions": [
@@ -244,6 +254,7 @@ def page(session, team: TeamGraph, viewer: uuid.UUID) -> dict:
                 "runs": runs.get(v.number, 0),
                 "summary": v.summary,
                 "current": v.number == top.number,
+                **where(v),
             }
             for v in rows
         ],
@@ -1515,4 +1526,6 @@ def _results(session, cmp: Compare, facts: dict, desktop: bool = False) -> dict:
     }
     if desktop and rows:
         out["note"] = WORK_LINE  # D3: under the table, beside its "Work time" row
+    if desktop:
+        out["shared"] = True  # M-desk-2 (E2): the subtitle says the lanes took turns
     return out

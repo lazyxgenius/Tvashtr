@@ -57,22 +57,33 @@ const dollars = (usd: number) => `$${usd.toFixed(2)}`;
 export const testsCount = (n: number) => plural(n, "test");
 
 /** The estimate box: "Replays only the Reviewer, on saved inputs. About $0.40 on your keys · 4 min.
- *  AI checks are included." (no numbers without an estimate; no AI line when they can't run). */
+ *  AI checks are included." (no numbers without an estimate; no AI line when they can't run).
+ *  M-desk-2 (Test-EstimateDesktop): `on` ("your Claude subscription", Desktop only) names the
+ *  subscription instead of keys: "…, on saved inputs, on your Claude subscription · about 4 min." */
 export function estimateText(
   agent: string,
   estimate: TestEstimate | null,
   ai: AiChecks | null,
+  on: string | null = null,
 ): string {
-  const about =
-    estimate && typeof estimate.minutes === "number"
-      ? ` About ${dollars(estimate.cost_usd)} on your keys · ${estimate.minutes} min.`
-      : "";
-  return `Replays only the ${agent}, on saved inputs.${about}${ai?.available === false ? "" : " AI checks are included."}`;
+  const timed = estimate && typeof estimate.minutes === "number";
+  const tail = ai?.available === false ? "" : " AI checks are included.";
+  if (on && timed)
+    return `Replays only the ${agent}, on saved inputs, on ${on} · about ${estimate.minutes} min.${tail}`;
+  const about = timed
+    ? ` About ${dollars(estimate.cost_usd)} on your keys · ${estimate.minutes} min.`
+    : "";
+  return `Replays only the ${agent}, on saved inputs.${about}${tail}`;
 }
 
-/** The New dialog's footer: "Replaying costs about $0.07 on your keys" (none without an estimate). */
-export const replayCostText = (estimate: TestEstimate | null) =>
-  estimate ? `Replaying costs about ${dollars(estimate.cost_usd)} on your keys` : null;
+/** The New dialog's footer: "Replaying costs about $0.07 on your keys" (none without an estimate).
+ *  M-desk-2: on the Desktop, "Replaying runs on your Claude subscription". */
+export const replayCostText = (estimate: TestEstimate | null, on: string | null = null) =>
+  estimate
+    ? on
+      ? `Replaying runs on ${on}`
+      : `Replaying costs about ${dollars(estimate.cost_usd)} on your keys`
+    : null;
 
 /** R7: "AI checks use a small model on Tvashtr’s key, …: 186 of 200 left this month. …". */
 export function aiChecksText(ai: AiChecks | null): string {

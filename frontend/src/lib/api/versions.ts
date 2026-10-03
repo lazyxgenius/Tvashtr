@@ -3,6 +3,7 @@
  * History › Versions, What changed, Restore and an agent's instruction history. Every word
  * (summaries, field names) is made server-side.
  */
+import { desktopQuery, type DesktopRoutes } from "../desktopRepos";
 import { apiRequest } from "./runs";
 
 /** One version in History (newest first). Line 2 of its row is `note` when set, else `summary`. */
@@ -57,6 +58,8 @@ export interface VersionTests {
   /** "Save and run the Reviewer’s 6 tests". */
   option: string;
   estimate: { cost_usd: number; minutes: number } | null;
+  /** M-desk-2 (E2): read from Tvashtr Desktop, where these tests run. */
+  desktop?: DesktopRoutes;
 }
 
 /** The chip and History › Versions. */
@@ -145,7 +148,7 @@ export interface InstructionEntry {
 const team = (teamId: string) => `/api/teams/${encodeURIComponent(teamId)}`;
 
 export function getVersions(teamId: string): Promise<TeamVersions> {
-  return apiRequest("GET", `${team(teamId)}/versions`);
+  return apiRequest("GET", `${team(teamId)}/versions${desktopQuery()}`);
 }
 
 /**
@@ -155,7 +158,7 @@ export function getVersions(teamId: string): Promise<TeamVersions> {
  */
 export function saveVersion(
   teamId: string,
-  body: { note?: string; run_tests?: boolean; check_set?: string } = {},
+  body: { note?: string; run_tests?: boolean; check_set?: string; desktop_target?: true } = {},
 ): Promise<
   TeamVersion & {
     tests_started?: { node_id: string; run_id: string }[];

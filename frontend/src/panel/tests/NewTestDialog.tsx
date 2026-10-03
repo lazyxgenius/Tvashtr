@@ -29,6 +29,7 @@ import {
   type FromRound,
   type TestCheck,
 } from "../../lib/api/agentTests";
+import { onSubscriptions } from "../../lib/desktopRepos";
 import { serverWords } from "../../lib/myAgentsFormat";
 import { GetsList } from "./GetsList";
 import "./tests.css";
@@ -107,7 +108,7 @@ export function NewTestDialog({
       sub={`${role}${runPart}${answered}. The test replays the ${role} on exactly what it got then.`}
       size="tt-dlg--new"
       onClose={onClose}
-      footNote={replayCostText(round.estimate)}
+      footNote={replayCostText(round.estimate, onSubscriptions(round.desktop))}
       actions={
         <>
           <Button variant="ghost" onClick={onClose}>

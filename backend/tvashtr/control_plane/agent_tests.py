@@ -511,7 +511,21 @@ def _require_node(session, owner_id, team_id, node_id) -> AgentNode:
     return node
 
 
-def from_round(owner_id: uuid.UUID, team_id: str, node_id: str, invocation_id) -> dict:
+def desktop_routes(session, owner_id: uuid.UUID, node_ids) -> dict:
+    """M-desk-2 (E2): where these agents' replays run from the Desktop, routed exactly as a run's
+    nodes are (:func:`credential_gate.desktop_routes` over the owner's FRESH subscriptions)."""
+    from tvashtr.control_plane import desktop_jobs
+    from tvashtr.control_plane.credential_gate import desktop_routes as routes
+
+    models = session.execute(select(AgentNode.model).where(AgentNode.id.in_(list(node_ids))))
+    return routes(
+        models.scalars(), fresh_subscriptions=desktop_jobs.fresh_subscription_ids(owner_id)
+    )
+
+
+def from_round(
+    owner_id: uuid.UUID, team_id: str, node_id: str, invocation_id, desktop_target: bool = False
+) -> dict:
     with session_scope() as session:
         node = _require_node(session, owner_id, team_id, node_id)
         found = _round(session, owner_id, node, invocation_id)
@@ -531,6 +545,8 @@ def from_round(owner_id: uuid.UUID, team_id: str, node_id: str, invocation_id) -
             "checks": checks,
             "estimate": {"cost_usd": est["cost_usd"]} if est else None,
             "ai": ai_status(owner_id),
+            # M-desk-2 (E2): asked from the Desktop, where its replay would run.
+            **({"desktop": desktop_routes(session, owner_id, [node.id])} if desktop_target else {}),
         }
 
 
@@ -955,7 +971,9 @@ def estimate(session, node: AgentNode, count: int) -> dict | None:
     return {"cost_usd": round(cost, 2), "minutes": max(1, round(secs / 60))}
 
 
-def tests_view(owner_id: uuid.UUID, team_id: str, node_id: str) -> dict:
+def tests_view(
+    owner_id: uuid.UUID, team_id: str, node_id: str, desktop_target: bool = False
+) -> dict:
     from tvashtr.control_plane import agent_test_runner
 
     with session_scope() as session:
@@ -984,6 +1002,8 @@ def tests_view(owner_id: uuid.UUID, team_id: str, node_id: str) -> dict:
             "last": _last_line(view) if view else None,
             "estimate": estimate(session, node, len(tests)),
             "ai": ai_status(owner_id),
+            # M-desk-2 (E2): asked from the Desktop, where its replays would run.
+            **({"desktop": desktop_routes(session, owner_id, [node.id])} if desktop_target else {}),
         }
 
 

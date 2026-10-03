@@ -3553,18 +3553,28 @@ class SaveVersionRequest(BaseModel):
     # M9 (R6): then compare the new version with the previous one on this task set of the team
     # (never blocks or fails the save; an unknown set is a 404 before anything is saved).
     check_set: str | None = Field(default=None, max_length=64)
+    # M-desk-2 (E1): saved from Tvashtr Desktop — the tests and the check above run on the owner's
+    # subscriptions, routed exactly as a Desktop run's nodes are.
+    desktop_target: bool = False
 
 
 @router.get("/api/teams/{team_id}/versions")
 def get_team_versions(
-    team_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]
+    team_id: str,
+    current_user: Annotated[UserOut, Depends(get_current_user)],
+    desktop_target: bool = False,
 ) -> dict:
     """M5 (R3): the header chip and History › Versions — the current version, the changes since
-    it, every version newest first. A team with none gets v1 = its current state. Owner-scoped."""
+    it, every version newest first. A team with none gets v1 = its current state. Owner-scoped.
+    M-desk-2 (E2): ``?desktop_target=1`` adds where the save's offered tests would run."""
     me = uuid.UUID(current_user.id)
     with db.session_scope() as session:
         team = _require_library_team(session, team_id, me)
-        return versions.listing(session, team, me)
+        listing = versions.listing(session, team, me)
+        if desktop_target and listing.get("tests"):
+            ids = [uuid.UUID(a["node_id"]) for a in listing["tests"]["agents"]]
+            listing["tests"]["desktop"] = agent_tests.desktop_routes(session, me, ids)
+        return listing
 
 
 @router.post("/api/teams/{team_id}/versions", status_code=201)
@@ -3592,7 +3602,12 @@ def save_team_version(
         for agent in offer["agents"]:
             try:
                 run = agent_test_runner.start(
-                    me, team_id, agent["node_id"], trigger="save", version=number
+                    me,
+                    team_id,
+                    agent["node_id"],
+                    trigger="save",
+                    version=number,
+                    **({"desktop_target": True} if body.desktop_target else {}),
                 )
                 started.append({"node_id": agent["node_id"], "run_id": run["id"]})
             except agent_tests.TestsError:
@@ -3604,7 +3619,13 @@ def save_team_version(
     if body.check_set is not None:
         try:
             made = compare.create(
-                me, team_id, a=number - 1, b=number, task_set_id=body.check_set, auto_approve=True
+                me,
+                team_id,
+                a=number - 1,
+                b=number,
+                task_set_id=body.check_set,
+                auto_approve=True,
+                **({"desktop_target": True} if body.desktop_target else {}),
             )
             check_started = {"compare_id": made["id"], "status": made["status"]}
         except HTTPException as exc:  # R6: a refused check never fails the save
