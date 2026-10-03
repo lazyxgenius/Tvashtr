@@ -1,0 +1,84 @@
+# Kept-elements inventory — m11-specgate (the run view of run #12 at its spec gate (status awaiting_human, the gate's task pending): the run bar, the Now bar, the Tasks for Human drawer, the canvas, the Activity with the pinned gate callout), captured on main 25291698 (before M11) with scripts/design-parity/shoot-app.mjs INVENTORY=1
+# Scenarios: scripts/design-parity/scenarios/canvas-extras.mjs (kept-m11-specgate-web / -desktop: Cnv-EditApprove's routes (runs-fixtures.mjs's Live-NeedsYou with the walk's gate task gate:r-12:n-prd), the clock at 10:43:46, nothing clicked), the same scenario file shot on
+#   main 25291698 (Vite :5352) and on m11-parity (Vite :5351). After the change every line must be present (superset).
+
+## kept-m11-specgate-desktop
+aside: 
+button: Account
+button: All
+button: Approval gate
+button: Approval gate Needs you Waiting for you 1m ago
+button: Approve
+button: Awaiting your approval Approve the spec before the Engineer builds Read the spec
+button: Back to teams
+button: Cancel run
+button: Documents 0
+button: Engineer
+button: Engineer Waiting Starts after your approval
+button: Fit View
+button: Hide activity
+button: Jump to live
+button: Notifications
+button: Open spec
+button: Product manager
+button: Product manager Done Wrote the spec (v2) 1m ago
+button: Reject
+button: Review the spec
+button: Reviewer
+button: Reviewer Waiting Starts after the Engineer
+button: Running…
+button: Ship Not yet
+button: Zoom In
+button: Zoom Out
+button: anthropic/claude-sonnet-4
+button: xai/grok-4.7
+header: 
+heading: Tasks for Human
+main: 
+section: Activity
+section: Now
+toolbar: Team
+
+## kept-m11-specgate-web
+aside: 
+button: Account
+button: All
+button: Approval gate
+button: Approval gate Needs you Waiting for you 1m ago
+button: Approve
+button: Awaiting your approval Approve the spec before the Engineer builds Read the spec
+button: Back to teams
+button: Cancel run
+button: Documents 0
+button: Engineer
+button: Engineer Waiting Starts after your approval
+button: Fit View
+button: Hide activity
+button: Jump to live
+button: Notifications
+button: Open spec
+button: Product manager
+button: Product manager Done Wrote the spec (v2) 1m ago
+button: Reject
+button: Review the spec
+button: Reviewer
+button: Reviewer Waiting Starts after the Engineer
+button: Running…
+button: Ship Not yet
+button: Zoom In
+button: Zoom Out
+button: anthropic/claude-sonnet-4
+button: xai/grok-4.7
+header: 
+heading: Tasks for Human
+main: 
+section: Activity
+section: Now
+toolbar: Team
+
+# After M11 (m11-parity, the same scenario):
+kept-m11-specgate: web 35/35, desktop 35/35 kept items present — none missing (after: the same lines, nothing added)
+# Web and Desktop inventories are equal, before and after.
+# With the waiting spec gate clicked on m11-parity (Cnv-EditApprove's shot, the spec drawer open) every line above is still
+#   present (35/35, desktop and web), adding "aside: Spec v2", its Spec versions / Close, the spec's headings, Approve as is and
+#   Approve with my edits. On main the click does nothing (run mode: a gate doesn't select).

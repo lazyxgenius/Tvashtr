@@ -1781,6 +1781,28 @@
   overflow: auto;
   padding: 16px 20px;
 }
+/* The spec as Cnv-EditApprove draws it in this drawer: a 20px title, 11.5px section eyebrows, 13.5px
+   text and 11.5px code (the doc viewer's own sizes stay as they are). */
+.sa-body .dv-md h1 {
+  font-size: 20px;
+  letter-spacing: normal;
+}
+.sa-body .dv-md h2,
+.sa-body .dv-md h3 {
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-500);
+}
+.sa-body .dv-md p,
+.sa-body .dv-md li {
+  font-size: 13.5px;
+}
+.sa-body .dv-md code {
+  font-size: 11.5px;
+}
 .sa-foot__approve {
   display: flex;
   gap: 8px;
