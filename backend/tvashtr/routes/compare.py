@@ -23,6 +23,9 @@ class CompareRequest(BaseModel):
     task: str | None = Field(default=None, max_length=20_000)
     task_set_id: str | None = Field(default=None, max_length=64)
     auto_approve: bool = True
+    # M-desk-routes (D1): started from Tvashtr Desktop — its runs route each model exactly as a
+    # run started there does (Claude/Grok nodes on the owner's subscriptions).
+    desktop_target: bool = False
 
 
 def _owner(user: UserOut) -> uuid.UUID:
@@ -63,6 +66,7 @@ def start_compare(team_id: str, body: CompareRequest, current_user: CurrentUser)
         task=body.task,
         task_set_id=body.task_set_id,
         auto_approve=body.auto_approve,
+        desktop_target=body.desktop_target,
     )
 
 
