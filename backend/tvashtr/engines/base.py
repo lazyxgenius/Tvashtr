@@ -47,6 +47,9 @@ class DesktopJobSpec:
     invocation_id: int | None
     owner_id: str
     provider: str
+    # M-desk-routes (D6): what the job is for — ``run_node`` (a run's node), or ``test_replay``
+    # (``run_id`` is then the agent test's replay id, not a Run).
+    purpose: str = "run_node"
 
 
 @dataclass(frozen=True)
