@@ -593,7 +593,8 @@ function SetResults({
   const [look, variant] = COMPARE_LOOK[c.status];
   const v = (side: "A" | "B") => c.sides.find((s) => s.label === side)?.version;
   const sub = [
-    `${set.count} ${set.count === 1 ? "task" : "tasks"} · run side by side`,
+    // M-desk-3 (Set-ResultsDesktop): Desktop lanes that shared a subscription took turns.
+    `${set.count} ${set.count === 1 ? "task" : "tasks"} · ${r.shared ? "taking turns on your Desktop" : "run side by side"}`,
     c.ended_at && `finished ${versionAge(c.ended_at, Date.now(), true)}`,
     `${money(c.cost_usd)} in all`,
   ]

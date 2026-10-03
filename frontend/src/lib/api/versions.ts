@@ -47,6 +47,8 @@ export interface CheckSet {
   name: string;
   count: number;
   estimate: { cost_usd: number; minutes: number } | null;
+  /** M-desk-3 (G1): read from Tvashtr Desktop, where this check runs (both versions' models). */
+  desktop?: DesktopRoutes;
 }
 
 /** M7 (R6): the changed agents that have tests (null: no nudge, Save as vN saves at once). */
