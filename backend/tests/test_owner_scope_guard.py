@@ -619,6 +619,13 @@ ROUTES: dict[str, tuple[str, object]] = {
             "test_owner_scope_teams::test_b_own_team_with_a_node_or_edge_is_404",
         ],
     ),
+    "PATCH /api/teams/{team_id}/edges/{edge_id}": (
+        "id",
+        [
+            "test_owner_scope_teams::test_b_gets_404_for_a_path_ids",
+            "test_owner_scope_teams::test_b_own_team_with_a_node_or_edge_is_404",
+        ],
+    ),
     "GET /api/teams/{team_id}/nodes/{node_id}/tests": (
         "id",
         ["test_agent_tests::test_agent_tests_are_owner_scoped"],
@@ -814,6 +821,10 @@ ROUTES: dict[str, tuple[str, object]] = {
             "test_owner_scope_teams::test_b_own_team_with_a_node_or_edge_is_404",
             "test_owner_scope_teams::test_node_runs_with_a_run_id_in_query_is_404",
         ],
+    ),
+    "PUT /api/teams/{team_id}/layout": (
+        "id",
+        ["test_owner_scope_teams::test_b_gets_404_for_a_path_ids"],
     ),
     "POST /api/teams/{team_id}/positions": (
         "id",

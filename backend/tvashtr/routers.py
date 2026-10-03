@@ -90,14 +90,20 @@ from tvashtr.control_plane.domains import (
     list_domain_templates,
     update_domain,
 )
-from tvashtr.control_plane.graph_validity import graph_dicts, owner_domain_ids, validate_graph
+from tvashtr.control_plane.graph_validity import (
+    AGENT_KINDS,
+    graph_dicts,
+    owner_domain_ids,
+    validate_graph,
+)
 from tvashtr.control_plane.local_repo import LocalRepoTarget
 from tvashtr.control_plane.mcp_secrets import delete_owner_mcp_secret
 from tvashtr.control_plane.node_templates import NODE_TEMPLATES
 from tvashtr.control_plane.resolution_warnings import record_resolution_warning
 from tvashtr.control_plane.run_diff import compute_run_diff
 from tvashtr.control_plane.run_explain import build_system_prompt
-from tvashtr.control_plane.team_run import run_team
+from tvashtr.control_plane.run_failure import node_label
+from tvashtr.control_plane.team_run import FAILURE_EDGE, run_team
 from tvashtr.control_plane.teams import (
     account_default_model,
     blank_template,
@@ -236,6 +242,9 @@ class ABRunRequest(BaseModel):
 class ResolveTaskRequest(BaseModel):
     decision: Literal["approve", "reject"]
     note: str | None = None
+    # M11 "Approve with my edits": the full text of the spec as the person edited it — saved as the
+    # spec's next version (author: the person) and the gate approved, in one call.
+    edited_spec: str | None = None
 
 
 class AddDocumentVersionRequest(BaseModel):
@@ -339,6 +348,10 @@ class UpdateTeamNodeRequest(BaseModel):
     # ``True``/absent = today's default (the latest spec). Stored as ``config["reads_default"]``;
     # an explicit null clears it back to the default.
     reads_default: bool | None = None
+    # M11 (R13): the agent's time limit in seconds (5 / 10 / 20 / 30 / 60 minutes; absent = 20
+    # minutes, R1's ceiling). Running longer, an agent with a failure path takes it. Stored as
+    # ``config["time_limit_s"]``; an explicit null clears it.
+    time_limit_s: Literal[300, 600, 1200, 1800, 3600] | None = None
 
 
 class CreateTeamRequest(BaseModel):
@@ -427,13 +440,41 @@ class CreateEdgeRequest(BaseModel):
     (``conditions: null``); ``branch`` → ``{"when": label}`` (a gate's approved/rejected, or a
     worker's verdict label — ``label`` REQUIRED); ``loop_back`` → ``{"loop_limit": N}`` (the bounded
     catch-all rework edge — ``loop_limit`` defaults to 3); ``escalation`` → ``edge_type=
-    "escalation"`` (the cap-exhaustion exit out of a looping worker)."""
+    "escalation"`` (the cap-exhaustion exit out of a looping worker); M11 ``failure`` →
+    ``edge_type="failure"`` (the path the walk takes when the agent fails or times out — one per
+    agent, never out of a gate, Ship, Stop or Query domain)."""
 
     source_node_id: str
     target_node_id: str
-    role: Literal["forward", "branch", "loop_back", "escalation"]
+    role: Literal["forward", "branch", "loop_back", "escalation", "failure"]
     label: str | None = None
     loop_limit: int | None = None
+
+
+class UpdateEdgeRequest(BaseModel):
+    """M11 "Use this path…": change an edge's use — the same roles as :class:`CreateEdgeRequest`
+    (Always = ``forward``, When the agent says… = ``branch`` + ``label``, If it fails or times out
+    = ``failure``)."""
+
+    role: Literal["forward", "branch", "loop_back", "escalation", "failure"]
+    label: str | None = None
+    loop_limit: int | None = None
+
+
+class LayoutGroup(BaseModel):
+    """M11 (R14): one group on the canvas — a labelled frame around some nodes, maybe folded."""
+
+    id: str = Field(min_length=1, max_length=64)
+    label: str
+    node_ids: list[str] = Field(default_factory=list, max_length=500)
+    folded: bool = False
+
+
+class LayoutRequest(BaseModel):
+    """M11 (R14): the canvas's groups (``PUT /api/teams/{id}/layout``). Layout only — never a
+    version, never read by the walk."""
+
+    groups: list[LayoutGroup] = Field(max_length=100)
 
 
 class PositionsRequest(BaseModel):
@@ -3738,6 +3779,8 @@ def get_team_graph(
                 for n in nodes
             ],
             "edges": [_edge_to_dict(e) for e in edges],
+            # M11 (R14, additive): the canvas's groups.
+            "layout": graph.layout or {"groups": []},
         }
 
 
@@ -3921,6 +3964,13 @@ def update_team_node(
                 cfg.pop("reads_default", None)
             else:
                 cfg["reads_default"] = bool(body.reads_default)
+            node.config = cfg
+        if "time_limit_s" in body.model_fields_set:  # M11: same rule — null clears
+            cfg = dict(node.config or {})
+            if body.time_limit_s is None:
+                cfg.pop("time_limit_s", None)
+            else:
+                cfg["time_limit_s"] = body.time_limit_s
             node.config = cfg
         _apply_node_identity(node, body)
         session.flush()
@@ -4206,7 +4256,7 @@ def _create_identity_config(body: CreateNodeRequest, preset: dict | None) -> dic
     return identity or None
 
 
-def _edge_columns(body: CreateEdgeRequest) -> tuple[str, dict | None]:
+def _edge_columns(body: CreateEdgeRequest | UpdateEdgeRequest) -> tuple[str, dict | None]:
     """Map an edge ``role`` to ``(edge_type, conditions)``. 400 if a branch carries no label."""
     if body.role == "forward":
         return "work", None
@@ -4216,7 +4266,22 @@ def _edge_columns(body: CreateEdgeRequest) -> tuple[str, dict | None]:
         return "work", {"when": body.label}
     if body.role == "loop_back":
         return "work", {"loop_limit": body.loop_limit or _DEFAULT_LOOP_LIMIT}
+    if body.role == "failure":
+        return FAILURE_EDGE, None
     return "escalation", None
+
+
+def _check_failure_path(session, source: AgentNode, edge_id: uuid.UUID | None = None) -> None:
+    """M11 (R13): a failure path leaves an agent, and an agent has one. 422 out of a gate, Ship,
+    Stop or Query domain; 409 when ``source`` already has one (other than ``edge_id``)."""
+    if source.kind not in AGENT_KINDS:
+        raise HTTPException(status_code=422, detail="Only an agent can have a failure path.")
+    others = session.execute(
+        select(Edge.id).where(Edge.source_node_id == source.id, Edge.edge_type == FAILURE_EDGE)
+    ).scalars()
+    if any(other != edge_id for other in others):
+        label = node_label(source.role_name, source.kind, source.config)
+        raise HTTPException(status_code=409, detail=f"The {label} already has a failure path")
 
 
 @router.post("/api/teams/{team_id}/nodes")
@@ -4288,6 +4353,8 @@ def create_team_edge(
         )
         if source not in on_team or target not in on_team:
             raise HTTPException(status_code=404, detail="edge endpoint not in the team")
+        if edge_type == FAILURE_EDGE:
+            _check_failure_path(session, session.get(AgentNode, source))
         edge = Edge(
             team_graph_id=graph.id,
             source_node_id=source,
@@ -4296,6 +4363,35 @@ def create_team_edge(
             conditions=conditions,
         )
         session.add(edge)
+        session.flush()
+        return _edge_to_dict(edge)
+
+
+@router.patch("/api/teams/{team_id}/edges/{edge_id}")
+def update_team_edge(
+    team_id: str,
+    edge_id: str,
+    body: UpdateEdgeRequest,
+    current_user: Annotated[UserOut, Depends(get_current_user)],
+) -> dict:
+    """M11 "Use this path…": change a library-team edge's use (its ``role`` → ``edge_type`` and
+    ``conditions``, as :func:`create_team_edge` maps them). 400 on a malformed id / a label-less
+    branch; 404 if the team is not a library team or the edge is not one of its edges; for
+    ``failure``, 422 out of a gate / Ship / Stop / Query domain and 409 when the agent already has
+    another failure path. Returns the edge."""
+    try:
+        eid = uuid.UUID(edge_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="invalid edge id") from exc
+    with db.session_scope() as session:
+        graph = _require_library_team(session, team_id, uuid.UUID(current_user.id))
+        edge = session.execute(select(Edge).where(Edge.id == eid)).scalar_one_or_none()
+        if edge is None or edge.team_graph_id != graph.id:
+            raise HTTPException(status_code=404, detail="edge not found in the team")
+        edge_type, conditions = _edge_columns(body)
+        if edge_type == FAILURE_EDGE:
+            _check_failure_path(session, session.get(AgentNode, edge.source_node_id), edge.id)
+        edge.edge_type, edge.conditions = edge_type, conditions
         session.flush()
         return _edge_to_dict(edge)
 
@@ -4345,6 +4441,47 @@ def update_team_positions(
     return {"updated": updated}
 
 
+_GROUP_LABEL_MAX = 60
+
+
+@router.put("/api/teams/{team_id}/layout")
+def update_team_layout(
+    team_id: str,
+    body: LayoutRequest,
+    current_user: Annotated[UserOut, Depends(get_current_user)],
+) -> dict:
+    """M11 (R14): store the canvas's groups — ``{"groups": [{id, label, node_ids, folded}]}``.
+    Node ids not in the team are dropped; 422 for a node in two groups, two groups with one id or a
+    label that isn't 1–60 characters. Layout only: never a version, never read by the walk. 400 on
+    a malformed id; 404 if not a library team. Returns the stored layout."""
+    groups: list[dict] = []
+    for group in body.groups:
+        label = group.label.strip()
+        if not 1 <= len(label) <= _GROUP_LABEL_MAX:
+            raise HTTPException(
+                status_code=422, detail=f"A group's name is 1 to {_GROUP_LABEL_MAX} characters."
+            )
+        groups.append({**group.model_dump(), "label": label})
+    if len({g["id"] for g in groups}) != len(groups):
+        raise HTTPException(status_code=422, detail="Two groups have the same id.")
+    with db.session_scope() as session:
+        graph = _require_library_team(session, team_id, uuid.UUID(current_user.id))
+        on_team = {
+            str(nid)
+            for nid in session.execute(
+                select(AgentNode.id).where(AgentNode.team_graph_id == graph.id)
+            ).scalars()
+        }
+        grouped: set[str] = set()
+        for group in groups:
+            group["node_ids"] = list(dict.fromkeys(n for n in group["node_ids"] if n in on_team))
+            if grouped & set(group["node_ids"]):
+                raise HTTPException(status_code=422, detail="A node can be in one group only.")
+            grouped |= set(group["node_ids"])
+        graph.layout = {"groups": groups}
+        return graph.layout
+
+
 @router.get("/api/teams/{team_id}/validate")
 def validate_team(
     team_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]
@@ -4375,6 +4512,8 @@ def _humantask_to_dict(task: HumanTask) -> dict:
         "resolution_note": task.resolution_note,
         "created_at": task.created_at.isoformat(),
         "resolved_at": task.resolved_at.isoformat() if task.resolved_at else None,
+        # M11 (additive): the spec version saved with "Approve with my edits", else null.
+        "edited_version": task.edited_version,
     }
 
 
@@ -4407,9 +4546,15 @@ def resolve_task(
     This endpoint is a pure signal: it validates the task is pending and calls
     ``DBOS.send``. The workflow's ``close_gate_step`` is the single writer that
     marks the ``HumanTask`` resolved, so the table can't disagree with the run.
+
+    M11 "Approve with my edits": with ``edited_spec`` the spec is first saved as its next version
+    by the person (the P1.7 steering save path — the next agent re-reads it), the task notes that
+    version (``edited_version``), and then the approval is signalled. 422 for an edited spec on a
+    reject, a blank one, or a gate whose run has no spec yet.
     """
+    owner_id = uuid.UUID(current_user.id)
     with db.session_scope() as session:
-        _require_owned_run(session, run_id, uuid.UUID(current_user.id))
+        run = _require_owned_run(session, run_id, owner_id)
         task = session.execute(
             select(HumanTask).where(HumanTask.id == task_id, HumanTask.run_id == run_id)
         ).scalar_one_or_none()
@@ -4420,6 +4565,32 @@ def resolve_task(
         if task.topic is None:
             raise HTTPException(status_code=409, detail="task has no gate topic to signal")
         topic = task.topic
+        spec_id = run.pm_document_id
+
+    edited_version = None
+    if body.edited_spec is not None:
+        if body.decision != "approve":
+            raise HTTPException(status_code=422, detail="Edits go with an approval.")
+        if not body.edited_spec.strip():
+            raise HTTPException(status_code=422, detail="The spec can’t be empty.")
+        if spec_id is None:
+            raise HTTPException(status_code=422, detail="This gate has no spec to edit.")
+        try:
+            saved = document_views.add_human_version(
+                spec_id, owner_id, body.edited_spec, note=APPROVED_WITH_EDITS_NOTE
+            )
+        except document_views.RunFinished as exc:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "run_finished", "message": document_views.RUN_FINISHED_MESSAGE},
+            ) from exc
+        edited_version = saved["version_no"]
+        with db.session_scope() as session:
+            session.execute(
+                update(HumanTask)
+                .where(HumanTask.id == task_id)
+                .values(edited_version=edited_version)
+            )
 
     resolution = _DECISION_TO_RESOLUTION[body.decision]
     DBOS.send(run_id, {"resolution": resolution, "note": body.note}, topic=topic)
@@ -4429,7 +4600,11 @@ def resolve_task(
         "decision": body.decision,
         "resolution": resolution,
         "signaled": True,
+        "edited_version": edited_version,  # M11 (additive): the spec version saved, else null
     }
+
+
+APPROVED_WITH_EDITS_NOTE = "Approved with your edits"
 
 
 @router.post("/api/runs/{run_id}/tasks/{task_id}/acknowledge")
