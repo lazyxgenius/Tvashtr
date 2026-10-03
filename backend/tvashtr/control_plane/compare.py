@@ -706,8 +706,9 @@ def _work_seconds(session, run: Run) -> int:
     ponytail: a job handed back by a Desktop restart keeps only its last claim, so its time worked
     before the restart reads as queued; per-claim timestamps if restarts mid-compare matter."""
     now = _now()
-    queued = {
-        inv_id: (claimed or finished or now) - created
+    ended_run = run.status in run_views.TERMINAL_STATUSES
+    jobs = {
+        inv_id: (created, claimed, finished)
         for inv_id, created, claimed, finished in session.execute(
             select(
                 DesktopNodeJob.invocation_id,
@@ -730,8 +731,12 @@ def _work_seconds(session, run: Run) -> int:
             AgentNode.kind.in_(("agent", "completion")),
         )
     ).all():
-        span = (ended or now) - started - queued.get(inv_id, timedelta(0))
-        total += max(span.total_seconds(), 0.0)
+        created, claimed, finished = jobs.get(inv_id, (None, None, None))
+        # A stopped run's open step is never closed: it ends where its job ended, else adds
+        # nothing — never the wall clock (the lane's time must not grow after it has ended).
+        end = ended or ((finished or started) if ended_run else now)
+        queued = (claimed or finished or end) - created if created else timedelta(0)
+        total += max((end - started - queued).total_seconds(), 0.0)
     return int(total)
 
 
@@ -854,7 +859,9 @@ def view(owner_id: uuid.UUID, compare_id: str) -> dict:
             return _set_view(session, cmp, listed)
         runs = {r.pair_label: r for r in listed}
         team = session.get(TeamGraph, cmp.team_graph_id)
-        desktop = _is_desktop(session, cmp)
+        # D3 is about lanes that share a subscription: a Desktop compare none of whose runs was
+        # routed to the Desktop (e.g. on held keys) reads as a website one.
+        desktop = _is_desktop(session, cmp) and any(r.desktop_subscriptions for r in listed)
         extras = run_views.run_extras(session, list(runs.values()), include_progress=True)
         live = run_views.live_costs(session, [r.workflow_id for r in runs.values()])
         sides, facts = [], {}

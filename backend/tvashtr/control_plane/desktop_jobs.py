@@ -375,9 +375,30 @@ def job_ended(run_id: str, purpose: str = RUN_NODE) -> bool:
 
 
 def claim_next(owner_id: uuid.UUID, providers: list[str]) -> dict | None:
-    """Hand the owner's oldest queued job for a free provider to their runner (or ``None``)."""
+    """Hand the owner's oldest queued job for a free provider to their runner (or ``None``).
+
+    M-desk-routes: a replay or an Ask may have no waiter left (its server restarted, or nobody
+    reads the answer any more), so the offline rule is applied to them here: a claim gone quiet
+    past the offline window never holds its plan, and an Ask the chat stopped polling is never
+    handed out. A run's node keeps its own waiter (the adapter) and is left as it was."""
     now = _now()
+    offline_since = now - timedelta(seconds=get_settings().desktop_runner_offline_seconds)
     with session_scope() as session:
+        session.execute(
+            update(DesktopNodeJob)
+            .where(
+                DesktopNodeJob.owner_id == owner_id,
+                DesktopNodeJob.status == "claimed",
+                DesktopNodeJob.purpose.in_((TEST_REPLAY, ASK)),
+                func.coalesce(
+                    DesktopNodeJob.heartbeat_at,
+                    DesktopNodeJob.claimed_at,
+                    DesktopNodeJob.created_at,
+                )
+                < offline_since,
+            )
+            .values(status="expired", error=OFFLINE_ERROR, finished_at=now)
+        )
         busy = set(
             session.execute(
                 select(DesktopNodeJob.provider).where(
@@ -405,6 +426,9 @@ def claim_next(owner_id: uuid.UUID, providers: list[str]) -> dict | None:
             .all()
         )
         for job in queued:
+            if job.purpose == ASK and (job.heartbeat_at or job.created_at) < offline_since:
+                job.status, job.error, job.finished_at = "expired", OFFLINE_ERROR, now
+                continue  # nobody is waiting for this answer any more
             if not _alive(session, job.purpose, job.run_id):
                 job.status = "expired"
                 job.error = ended_error(job.purpose)

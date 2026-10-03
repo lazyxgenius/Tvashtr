@@ -747,3 +747,143 @@ def test_migration_0053_is_additive_and_round_trips():
             assert "run_node" in default  # every existing job reads as a run's node
         finally:
             tx.rollback()
+
+
+# ------------------------------------------------------- review fixes: no job without a waiter
+
+
+def _age(job_id: str, **values) -> None:
+    with session_scope() as session:
+        session.execute(
+            update(DesktopNodeJob).where(DesktopNodeJob.id == uuid.UUID(job_id)).values(**values)
+        )
+
+
+def test_a_claimed_ask_whose_desktop_died_never_wedges_that_plan(client, monkeypatch):
+    """An Ask (or a replay whose server restarted) has no waiter: a claim gone quiet past the
+    offline window is expired by the next poll, so the plan's next job is handed out."""
+    c, owner = fresh_account("desk-wedge")
+    run_id, engineer = _asked_run(c, owner)
+    _connect_desktop(c, "claude")
+    ask_id = _ask(c, run_id, engineer).json()["ask_id"]
+    assert c.post("/api/desktop-runner/claim", json={"providers": ["claude"]}).json()["job"]
+    stale = datetime.now(UTC) - timedelta(minutes=10)
+    _age(ask_id, heartbeat_at=stale, claimed_at=stale)  # its Desktop crashed mid-answer
+    replay = desktop_jobs.enqueue_job(
+        owner_id=owner,
+        run_id=str(uuid.uuid4()),
+        node_id="n",
+        iteration=1,
+        invocation_id=None,
+        provider="grok",
+        model=GROK,
+        instruction="x",
+        workspace_dir="/tmp",
+        sidecars=[],
+        purpose="test_replay",
+    )
+    _age(replay, status="claimed", heartbeat_at=stale, claimed_at=stale)
+    run_node_run, _clone = make_run(owner, None, status="running", desktop_target=True)
+    nxt = desktop_jobs.enqueue_job(
+        owner_id=owner,
+        run_id=run_node_run,
+        node_id="eng",
+        iteration=1,
+        invocation_id=1,
+        provider="claude",
+        model=CLAUDE,
+        instruction="build",
+        workspace_dir="/tmp",
+        sidecars=[],
+    )
+    got = c.post("/api/desktop-runner/claim", json={"providers": ["claude"]}).json()["job"]
+    assert got is not None and got["id"] == nxt
+    for jid in (ask_id, replay):
+        [job] = _jobs(id=uuid.UUID(jid))
+        assert (job.status, job.error) == ("expired", desktop_jobs.OFFLINE_ERROR)
+
+
+def test_an_ask_nobody_reads_is_never_handed_to_a_later_desktop(client):
+    """The chat's 2 s poll is a queued Ask's waiter: one nobody has polled for the offline window
+    expires instead of spending the subscription on an answer nobody reads."""
+    c, owner = fresh_account("desk-unread")
+    run_id, engineer = _asked_run(c, owner)
+    _connect_desktop(c, "claude")
+    old = datetime.now(UTC) - timedelta(minutes=10)
+    unread = _ask(c, run_id, engineer).json()["ask_id"]
+    _age(unread, created_at=old)
+    read = _ask(c, run_id, engineer).json()["ask_id"]
+    _age(read, created_at=old)
+    desktop_jobs.heartbeat(owner, ["claude"])  # the Desktop is here, offering Claude
+    assert c.get(f"/api/runs/{run_id}/nodes/{engineer}/asks/{read}").json()["status"] == "queued"
+    got = c.post("/api/desktop-runner/claim", json={"providers": ["claude"]}).json()["job"]
+    assert got is not None and got["id"] == read  # the polled one waits its turn
+    [job] = _jobs(id=uuid.UUID(unread))
+    assert (job.status, job.error) == ("expired", desktop_jobs.OFFLINE_ERROR)
+
+
+# ---------------------------------------------------------- review fixes: work time when ended
+
+
+def test_a_stopped_desktop_lanes_work_time_stops_growing(client, monkeypatch):
+    from tvashtr.control_plane import compare
+
+    c, owner = fresh_account("desk-stopped")
+    run_id, clone = make_run(owner, None, status="cancelled", desktop_target=True)
+    engineer = clone_node(clone, "engineer")
+    start = datetime.now(UTC) - timedelta(minutes=30)
+    with session_scope() as session:
+        inv = AgentInvocation(  # its close step was cancelled: never ended
+            run_id=run_id,
+            node_id=uuid.UUID(engineer),
+            iteration=1,
+            status="running",
+            started_at=start,
+        )
+        session.add(inv)
+        session.flush()
+        inv_id = inv.id
+    job = desktop_jobs.enqueue_job(
+        owner_id=owner,
+        run_id=run_id,
+        node_id=engineer,
+        iteration=1,
+        invocation_id=inv_id,
+        provider="claude",
+        model=CLAUDE,
+        instruction="x",
+        workspace_dir="/tmp",
+        sidecars=[],
+    )
+    _age(
+        job,
+        status="expired",
+        created_at=start,
+        claimed_at=start + timedelta(minutes=2),
+        finished_at=start + timedelta(minutes=7),
+    )
+    with session_scope() as session:
+        run = session.get(Run, uuid.UUID(run_id))
+        first = compare._work_seconds(session, run)
+        monkeypatch.setattr(compare, "_now", lambda: datetime.now(UTC) + timedelta(hours=3))
+        later = compare._work_seconds(session, run)
+    assert first == later == 300  # claimed at +2m, ended (expired) at +7m
+
+
+def test_a_desktop_compare_with_no_lane_on_the_desktop_keeps_time(client, monkeypatch):
+    """D3's Work time is for lanes that share a subscription: a Desktop compare whose models route
+    to no subscription (here: on held keys) keeps the Time row and adds no line."""
+    c, _owner = fresh_account("desk-keys")
+    team = _desk_versions(c)
+    for provider in ("anthropic", "xai"):
+        c.post("/api/providers", json={"provider": provider, "api_key": f"sk-{provider}"})
+    resp, _started, _waiters = _post(c, team, monkeypatch, desktop_target=True)  # no Desktop
+    assert resp.status_code == 201, resp.text
+    cid = resp.json()["id"]
+    runs = _runs_of(cid)
+    assert [(r.desktop_target, r.desktop_subscriptions) for r in runs] == [(True, []), (True, [])]
+    with session_scope() as session:
+        session.execute(update(Run).where(Run.pair_id == uuid.UUID(cid)).values(status="completed"))
+    results = c.get(f"/api/compares/{cid}").json()["results"]
+    assert next(r for r in results["rows"] if r["key"] == "time")["label"] == "Time"
+    assert "note" not in results

@@ -14,6 +14,8 @@ Desktop picks up (or whose Desktop goes quiet) expires with the existing offline
 import uuid
 from datetime import UTC, datetime, timedelta
 
+from sqlalchemy import update
+
 from tvashtr.config import get_settings
 from tvashtr.control_plane import desktop_jobs
 from tvashtr.control_plane.credential_gate import desktop_routed_subscriptions
@@ -118,6 +120,13 @@ def view(owner_id: uuid.UUID, run_id: str, node_id: str, ask_id: str) -> dict:
             or job.node_id != node_id
         ):
             raise AskNotFound(ask_id)
+        # The chat's poll is a queued Ask's waiter (its heartbeat): one nobody polls any more is
+        # expired by the runner's next claim instead of answered for nobody.
+        session.execute(
+            update(DesktopNodeJob)
+            .where(DesktopNodeJob.id == aid, DesktopNodeJob.status == "queued")
+            .values(heartbeat_at=datetime.now(UTC))
+        )
     _settle(desktop_jobs.get_job(ask_id))
     job = desktop_jobs.get_job(ask_id)
     status = _STATUS.get(job["status"], "failed")
