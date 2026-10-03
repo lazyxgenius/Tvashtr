@@ -57,6 +57,23 @@ const since = (iso: string, now: number) =>
 
 /** A line's small square icon, in its tone (M3: a carried step's arrow, the Resumed line's). */
 export function LineIcon({ line }: { line: ActivityLine }) {
+  // M11 (Cnv-FailPathRun): the Run line for a failure path taken, a square on the darker panel.
+  if (line.kind === "failure_path")
+    return (
+      <span className="lv-line__icon lv-line__icon--path">
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          aria-hidden="true"
+        >
+          <rect width="14" height="14" x="5" y="5" rx="2" />
+        </svg>
+      </span>
+    );
   const state =
     line.kind === "carried" || line.came_along
       ? "carried_over"
