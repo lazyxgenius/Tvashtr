@@ -16,6 +16,8 @@ const usd = (n: number) => `$${n.toFixed(2)}`;
  * posted as `check_set` by "Save and check"; "Just save" clears both checks.
  * M-desk-2 (Save-NudgeDesktop): from Tvashtr Desktop both post `desktop_target` (they run on the
  * owner's subscriptions), and the option names the subscription when every changed agent is on one.
+ * M-desk-3 (Set-SaveCheckDesktop): so do the set check (every model of both versions) and, with both
+ * ticked and both on subscriptions, the footnote.
  */
 export function SaveNudgeDialog({
   current,
@@ -47,6 +49,8 @@ export function SaveNudgeDialog({
   const se = set?.estimate;
   const results = `Results show next to v${next} in History.`;
   const on = onSubscriptions(tests?.desktop);
+  const setOn = onSubscriptions(set?.desktop);
+  const bothOn = onSubscriptions(tests?.desktop, set?.desktop);
   return (
     <VersionDialog
       title={`Save as v${next}`}
@@ -55,7 +59,11 @@ export function SaveNudgeDialog({
       size="cv-vdlg cv-vdlg--save"
       onClose={onClose}
       footNote={
-        run && compare && e && se ? `About ${usd(e.cost_usd + se.cost_usd)} for both checks` : null
+        run && compare && e && se
+          ? bothOn
+            ? `Both checks run on ${bothOn}`
+            : `About ${usd(e.cost_usd + se.cost_usd)} for both checks`
+          : null
       }
       actions={
         <>
@@ -125,7 +133,7 @@ export function SaveNudgeDialog({
           description={[
             `${set.count} ${set.count === 1 ? "task" : "tasks"}`,
             se && `about ${se.minutes} min`,
-            se && `about ${usd(se.cost_usd)}`,
+            se && (setOn ? `on ${setOn}` : `about ${usd(se.cost_usd)}`),
             "nothing ships",
           ]
             .filter(Boolean)
