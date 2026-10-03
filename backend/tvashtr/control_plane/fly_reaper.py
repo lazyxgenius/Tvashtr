@@ -45,6 +45,7 @@ from dbos import DBOS
 from sqlalchemy import select
 
 from tvashtr.config import get_settings
+from tvashtr.control_plane.scheduling import scheduled
 from tvashtr.db import session_scope
 from tvashtr.engines.fly_machines import FlyApiError, FlyMachines
 from tvashtr.models import Run
@@ -162,7 +163,7 @@ def _periodic_fly_sweep(scheduled_time: datetime, actual_time: datetime) -> None
 # ---------------------------------------------------------------------------------------------
 # REGISTRATION IS GATED ON FLY MODE — and the gate is on the DECORATOR, not just the body.
 #
-# This is not belt-and-braces, it is load-bearing. ``DBOS.scheduled`` registers a POLLER at import
+# This is not belt-and-braces, it is load-bearing. ``scheduled`` registers a POLLER at import
 # time; ``DBOS.launch()`` then starts it as a daemon thread — and ``make test`` launches DBOS, via
 # conftest's session-scoped ``with TestClient(app)``. Registering unconditionally would therefore
 # arm a real 10-minute cron inside the offline suite: every time a test session happened to span a
@@ -174,4 +175,4 @@ def _periodic_fly_sweep(scheduled_time: datetime, actual_time: datetime) -> None
 # In docker/local mode this module therefore registers NOTHING and costs nothing but its import.
 # ---------------------------------------------------------------------------------------------
 if get_settings().agent_sandbox_mode == "fly":
-    periodic_fly_sweep = DBOS.scheduled("*/10 * * * *")(DBOS.workflow()(_periodic_fly_sweep))
+    periodic_fly_sweep = scheduled("*/10 * * * *")(DBOS.workflow()(_periodic_fly_sweep))

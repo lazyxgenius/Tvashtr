@@ -510,7 +510,7 @@ def test_a_non_uuid_app_name_reads_as_absent_and_is_reapable():
 def test_the_periodic_sweeper_is_not_registered_outside_fly_mode():
     """Registration is gated on the DECORATOR, not just the body — and this is load-bearing.
 
-    ``DBOS.scheduled`` registers a poller at import that ``DBOS.launch()`` starts as a thread, and
+    The cron decorator registers a poller at import that ``DBOS.launch()`` starts as a thread, and
     ``make test`` launches DBOS (conftest's session-scoped ``with TestClient(app)``). Registering
     unconditionally would arm a real 10-minute cron inside the offline suite, enqueueing genuine
     workflow rows into the shared system database whenever a session happened to span a ``*/10``

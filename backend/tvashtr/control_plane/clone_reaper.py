@@ -52,6 +52,7 @@ from dbos import DBOS
 from sqlalchemy import select
 
 from tvashtr.config import get_settings
+from tvashtr.control_plane.scheduling import scheduled
 from tvashtr.db import session_scope
 from tvashtr.models import Run
 
@@ -202,7 +203,7 @@ def _periodic_clone_sweep(scheduled_time: datetime, actual_time: datetime) -> No
 # REGISTRATION IS GATED ON FLY MODE — and the gate is on the DECORATOR, not just the body.
 #
 # Identical in kind to ``fly_reaper``'s gate, and load-bearing for the same reason:
-# ``DBOS.scheduled`` registers a POLLER at import time, and ``DBOS.launch()`` then starts it as a
+# ``scheduled`` registers a POLLER at import time, and ``DBOS.launch()`` then starts it as a
 # daemon thread — which ``make test`` does, via conftest's session-scoped ``with TestClient(app)``.
 # Registering unconditionally would arm a real 10-minute cron inside the offline suite: any session
 # that spanned a ``*/10`` boundary would enqueue a genuine workflow row into the shared system
@@ -217,4 +218,4 @@ def _periodic_clone_sweep(scheduled_time: datetime, actual_time: datetime) -> No
 # is exactly when the boot sweep fires.
 # ---------------------------------------------------------------------------------------------
 if get_settings().agent_sandbox_mode == "fly":
-    periodic_clone_sweep = DBOS.scheduled("*/10 * * * *")(DBOS.workflow()(_periodic_clone_sweep))
+    periodic_clone_sweep = scheduled("*/10 * * * *")(DBOS.workflow()(_periodic_clone_sweep))
