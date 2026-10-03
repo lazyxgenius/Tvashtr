@@ -333,6 +333,13 @@ def _approved_with_edits(version: int) -> str:
     return f"Approved with your edits · spec v{version}"
 
 
+def _shown_name(node) -> str | None:
+    """The name a node shows on the canvas when it has its own (a gate's title, "Ask me what to
+    do"); ``None`` for the role or kind label the Activity uses elsewhere."""
+    title = (getattr(node, "config", None) or {}).get("title") if node is not None else None
+    return title.strip() if isinstance(title, str) and title.strip() else None
+
+
 def _retry_text(p: dict) -> str:
     lead = _RETRY_LEAD.get(p.get("reason"), _RETRY_LEAD["busy"])
     wait = float(p.get("wait_s") or 0)
@@ -680,7 +687,7 @@ def build(
                     None,
                     "failure_path",
                     f"The {labels.get(nid, 'agent')} failed, so the run takes its failure path "
-                    f"to {labels.get(target, 'its next step')}",
+                    f"to {_shown_name(by_id.get(target)) or labels.get(target, 'its next step')}",
                     "warn",
                     {"node_id": nid, "target_node_id": target},
                 )

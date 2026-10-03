@@ -413,7 +413,7 @@ def test_a_failing_agent_with_a_failure_path_continues_to_its_target(client, mon
     assert texts[failed_at + 1] == (
         "Run",
         "failure_path",
-        "The Engineer failed, so the run takes its failure path to Gate approval",
+        "The Engineer failed, so the run takes its failure path to Ask me what to do",
     )
     path_line = act["lines"][failed_at + 1]
     assert path_line["tone"] == "warn" and path_line["node_id"] is None
@@ -544,7 +544,7 @@ def test_a_step_the_sweep_ended_keeps_the_sweeps_reason(client, monkeypatch, tmp
     step += [(ln["kind"], ln["text"]) for ln in lines if ln["kind"] == "stalled"]
     path = (
         "failure_path",
-        "The Engineer failed, so the run takes its failure path to Gate approval",
+        "The Engineer failed, so the run takes its failure path to Ask me what to do",
     )
     if swept == "stalled":  # its own stall line, then the path — no second "Failed:" line
         assert step == [path, ("stalled", "Stopped responding: no update for 20 minutes")]
