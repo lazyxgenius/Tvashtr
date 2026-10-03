@@ -815,3 +815,25 @@ describe("ActivityPanel — M10 the memories a run saved (Next-Finished)", () =>
     expect(window.location.hash).toBe(routeToHash({ page: "memory", tab: "inbox" }));
   });
 });
+
+describe("ActivityPanel — M11 a run takes its failure path (Cnv-FailPathRun)", () => {
+  it("the Run line says where the run went, with the boards' square icon", () => {
+    const took = line("run:failure_path", {
+      node_id: null,
+      label: "Run",
+      kind: "failure_path",
+      text: "The Engineer failed, so the run takes its failure path to Ask me what to do",
+      at: T(10, 59, 5),
+    });
+    const { container } = render(
+      <ActivityPanel activity={{ ...activity(), lines: [took] }} now={NOW} actions={actions()} />,
+    );
+    expect(
+      screen.getByText(
+        "The Engineer failed, so the run takes its failure path to Ask me what to do",
+      ),
+    ).toBeInTheDocument();
+    const icon = container.querySelector(".lv-line__icon--path");
+    expect(icon?.querySelector("rect")).not.toBeNull();
+  });
+});

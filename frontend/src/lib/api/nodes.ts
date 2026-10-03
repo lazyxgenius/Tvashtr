@@ -165,6 +165,8 @@ export interface AgentPatch {
   skills?: unknown[] | null;
   tool_config?: Record<string, unknown> | null;
   memory_remember_enabled?: boolean;
+  /** M11 (R13): the agent's time limit in seconds (5 / 10 / 20 / 30 / 60 minutes; default 20). */
+  time_limit_s?: number;
 }
 
 /** Why a node save failed, so the drawer can show the server's own words. */

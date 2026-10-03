@@ -591,6 +591,20 @@
   stroke-dasharray: 5 4;
 }
 
+/* M11 (Cnv-FailPath): the failure path "If it fails or times out" — a dashed red line and pill. */
+.react-flow__edge.rf-edge--failure .react-flow__edge-path {
+  stroke: #c25a4b;
+  stroke-width: 1.6;
+  stroke-dasharray: 6 5;
+}
+.rf-edge__label.rf-edge__label--failure {
+  padding: 1px 8px;
+  font-size: 10.5px;
+  color: #8f3b2f;
+  background: var(--red-100);
+  border-color: #e5bfb7;
+}
+
 /* ---- Topology editing (P1.8d): palette, edge-role editor, validity flags ---- */
 
 /* F1b: the palette relocated to the design's compact top-left "+" that opens an "Add to canvas"
@@ -1081,4 +1095,315 @@
 .rf-node__tests--live {
   background: var(--coral-100);
   color: var(--coral-700);
+}
+
+/* ---- M11 (Cnv-FailPath / -FailPathOne / -TimeLimit): an agent's path menu "Use this path…" ---- */
+.cv-pmenu-anchor {
+  position: absolute;
+  z-index: 40;
+}
+.cv-pmenu {
+  position: relative;
+  width: 270px;
+  box-sizing: border-box;
+  padding: 6px;
+  background: var(--surface-card);
+  border: 1px solid var(--border-hairline);
+  border-radius: 12px;
+  box-shadow: var(--shadow-pop);
+}
+.cv-pmenu__head {
+  padding: 8px 10px 4px;
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-500);
+}
+.cv-pmenu__item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  color: var(--ink-800);
+  text-align: left;
+  cursor: pointer;
+}
+.cv-pmenu__item:hover:not(:disabled):not(.cv-pmenu__item--on),
+.cv-pmenu__item:focus-visible {
+  outline: none;
+  background: var(--panel-300);
+}
+.cv-pmenu__item--on {
+  background: var(--coral-100);
+}
+.cv-pmenu__item:disabled {
+  color: var(--ink-400, #9c9a92);
+  cursor: default;
+}
+.cv-pmenu__icon {
+  display: inline-flex;
+  color: var(--ink-600);
+}
+.cv-pmenu__item:disabled .cv-pmenu__icon {
+  color: var(--ink-400, #9c9a92);
+}
+.cv-pmenu__item--danger,
+.cv-pmenu__item--danger .cv-pmenu__icon {
+  color: #8f3b2f;
+}
+.cv-pmenu__end {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--ink-500);
+  white-space: nowrap;
+}
+.cv-pmenu__sep {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--line-200);
+}
+.cv-pmenu__sub {
+  position: relative;
+}
+.cv-pmenu.cv-pmenu--limits {
+  position: absolute;
+  left: calc(100% + 12px);
+  top: -6px;
+  z-index: 1;
+  width: 232px;
+}
+.cv-pmenu__note {
+  padding: 8px 10px 4px;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink-600);
+}
+.cv-pmenu__check {
+  display: inline-flex;
+  width: 14px;
+  color: var(--coral-700);
+}
+
+/* ---- M11 (Cnv-Tidy / Cnv-Group): Tidy and Group, beside the "Add to canvas" + (kept as it is) ---- */
+.cv-tools {
+  position: absolute;
+  top: 15px;
+  left: 64px;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 12px;
+  background: var(--surface-card);
+  border: 1px solid var(--border-hairline);
+  box-shadow: var(--shadow-raise);
+}
+.cv-tools__wrap {
+  position: relative;
+  display: inline-flex;
+}
+.cv-tools__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-700);
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.cv-tools__btn:hover:not(:disabled):not([aria-pressed="true"]) {
+  background: var(--panel-300);
+}
+.cv-tools__btn[aria-pressed="true"] {
+  background: var(--coral-100);
+  color: var(--coral-700);
+  font-weight: 600;
+}
+.cv-tools__btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+/* The dark explainer: Tidy's on hover (below its button), "Groups are labels" over a new group. */
+.cv-tip {
+  position: absolute;
+  z-index: 30;
+  width: 300px;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--ink-900);
+  color: var(--cream-100);
+  box-shadow: var(--shadow-pop);
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  font-weight: 400;
+  line-height: 1.55;
+  white-space: normal;
+  text-align: left;
+  pointer-events: none;
+}
+.cv-tip__title {
+  display: block;
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+.cv-tip::after {
+  content: "";
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: var(--ink-900);
+  transform: rotate(45deg);
+}
+.cv-tip--below {
+  top: calc(100% + 11px);
+  left: -4px;
+  visibility: hidden;
+}
+.cv-tip--below::after {
+  top: -6px;
+  left: 34px;
+}
+.cv-tools__wrap:hover .cv-tip--below,
+.cv-tools__btn:focus-visible + .cv-tip--below {
+  visibility: visible;
+}
+.cv-tip--above {
+  bottom: calc(100% + 14px);
+  left: 0;
+  width: 320px;
+}
+.cv-tip--above::after {
+  bottom: -6px;
+  left: 40px;
+}
+/* A group's frame and its head; inside the canvas's viewport, under the nodes and paths. */
+.cv-group {
+  position: absolute;
+  z-index: -1;
+  box-sizing: border-box;
+  border: 1.5px dashed var(--coral-200);
+  border-radius: 18px;
+  background: rgba(217, 119, 87, 0.04);
+  pointer-events: none;
+}
+.cv-group__head {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+  pointer-events: all;
+}
+.cv-group__label {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  box-sizing: border-box;
+  padding: 0 10px;
+  border-radius: 8px;
+  background: var(--surface-card);
+  border: 1.5px solid var(--coral-200);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-900);
+  cursor: pointer;
+}
+.cv-group__label--edit {
+  border-color: var(--coral-500);
+  box-shadow: 0 0 0 4px rgba(217, 119, 87, 0.14);
+  outline: none;
+  cursor: text;
+}
+.cv-group__summary {
+  font-family: var(--font-ui);
+  font-size: 12px;
+  color: var(--ink-600);
+}
+.cv-group__fold {
+  display: inline-flex;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink-500);
+  cursor: pointer;
+}
+/* Cnv-GroupFolded: the folded group's box. */
+.cv-group-fold {
+  width: 300px;
+  height: 56px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 10px 0 14px;
+  border: 1.5px dashed var(--coral-200);
+  border-radius: 14px;
+  background: rgba(217, 119, 87, 0.04);
+  font-family: var(--font-ui);
+}
+.cv-group-fold .react-flow__handle {
+  opacity: 0;
+}
+.cv-group-fold__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.cv-group-fold__label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-900);
+}
+.cv-group-fold__line {
+  font-size: 12px;
+  color: var(--ink-600);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Cnv-Tidy: where the nodes were, dashed, each tied to where it went. */
+.cv-ghost {
+  position: absolute;
+  z-index: -1;
+  box-sizing: border-box;
+  border: 1.5px dashed var(--line-400);
+  border-radius: 12px;
+  background: rgba(246, 244, 236, 0.6);
+  pointer-events: none;
+}
+.cv-ghost__lines {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: -1;
+  width: 1px;
+  height: 1px;
+  overflow: visible;
+  pointer-events: none;
+}
+.cv-ghost__lines path {
+  fill: none;
+  stroke: #c7c4ba;
+  stroke-width: 1.4;
+  stroke-dasharray: 4 4;
 }

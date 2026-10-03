@@ -1155,6 +1155,7 @@ function AgentEditor({
       );
   }
 
+  const testsCount = tests.value ? tests.value.tests.length : (node.tests?.total ?? 0);
   const header = (
     <NodeHeader
       glyph={glyph}
@@ -1168,6 +1169,8 @@ function AgentEditor({
           onOpenFocus={focus ? undefined : () => onFocusChange(true)}
           onRename={() => setRenaming(true)}
           onOpenDocs={() => onTabChange("docs")}
+          onTest={() => onTabChange("tests")}
+          testCount={testsCount}
           onSaveAsAgent={openSaveAgent}
           onDelete={() => setDeleting(true)}
         />
@@ -1191,7 +1194,7 @@ function AgentEditor({
       onChange={onTabChange}
       skillsCount={skillsAndToolsCount(draft.skills, draft.toolConfig)}
       memoryCount={memories.count}
-      testsCount={tests.value ? tests.value.tests.length : (node.tests?.total ?? 0)}
+      testsCount={testsCount}
     />
   );
   // M7: on Tests the delete confirm takes the footer's place (Test-RowMenu); with a clean draft the

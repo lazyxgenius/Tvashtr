@@ -151,8 +151,9 @@ function capabilityLabel(d: AgentNodeData): string {
 /** One handle scheme for EVERY node kind: a source + a target on all four sides, so the
  *  canvas can route any branch by geometry (`pickHandles`). Left + right stay visible (the
  *  primary flow axis, one dot a side — today's look); top + bottom are hidden anchors (the
- *  arc/arrowhead carries the meaning). The loop-back arc uses the bottom pair. */
-function NodeHandles() {
+ *  arc/arrowhead carries the meaning). The loop-back arc uses the bottom pair. M11: a folded group's
+ *  box uses them too, so the paths into and out of the group meet it. */
+export function NodeHandles() {
   return (
     <>
       <Handle type="source" position={Position.Left} id="s-left" />

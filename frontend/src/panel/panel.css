@@ -1733,3 +1733,55 @@
   line-height: 1.5;
   color: var(--ink-500);
 }
+
+/* ---- M11 (Cnv-EditApprove): a spec approval gate's drawer — the spec in the steering editor ---- */
+.nd-drawer.sa-drawer {
+  width: 440px;
+}
+.sa-head {
+  flex: none;
+  padding: 18px 20px 14px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border-bottom: 1px solid var(--line-200);
+}
+.sa-head__titles {
+  flex: 1;
+  min-width: 0;
+}
+.sa-head__title {
+  font-family: var(--font-display);
+  font-size: 19px;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+.sa-head__sub {
+  margin-top: 3px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink-500);
+}
+.sa-head__edits {
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  white-space: nowrap;
+  background: var(--coral-100);
+  color: var(--coral-700);
+}
+.sa-head__actions {
+  display: flex;
+  gap: 2px;
+}
+.sa-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px 20px;
+}
+.sa-foot__approve {
+  display: flex;
+  gap: 8px;
+}

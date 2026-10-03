@@ -148,19 +148,25 @@ describe("NodeEditor — M7 Tests tab", () => {
     expect(tablist.closest(".nd-tabs")).not.toHaveClass("nd-tabs--scroll");
     fireEvent.click(within(tablist).getByRole("tab", { name: /Tests/ }));
     expect(props.onTabChange).toHaveBeenCalledWith("tests");
-    // Kept: the header's More menu, unchanged.
+    // Kept: the header's More menu, with M11's "Test this agent" (its count) before Save as my agent.
     fireEvent.click(within(drawer).getByRole("button", { name: "More actions" }));
+    const menu = within(drawer).getByRole("menu", { name: "More actions" });
     expect(
-      within(within(drawer).getByRole("menu", { name: "More actions" }))
+      within(menu)
         .getAllByRole("menuitem")
         .map((m) => m.textContent),
     ).toEqual([
       "Open in focus view",
       "Rename",
       "Open its documents",
+      "Test this agent6 tests",
       "Save as my agent",
       "Delete agentIts arrows are removed too",
     ]);
+    // M11 (Cnv-TestAgent): Test this agent opens the Tests tab.
+    vi.mocked(props.onTabChange).mockClear();
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Test this agent" }));
+    expect(props.onTabChange).toHaveBeenCalledWith("tests");
   });
 
   it("no tests: the tab has no count and the drawer no footer", async () => {

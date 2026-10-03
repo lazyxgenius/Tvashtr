@@ -273,6 +273,11 @@
   background: var(--coral-100);
   color: var(--coral-700);
 }
+/* M11 (Cnv-FailPathRun): the run took a failure path. */
+.lv-line__icon--path {
+  background: var(--panel-400);
+  color: var(--ink-600);
+}
 .lv-line__who {
   font-size: 12.5px;
   font-weight: 600;

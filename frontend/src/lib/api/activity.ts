@@ -56,7 +56,9 @@ export type LineKind =
   | "message"
   // M3: a step carried from the run this one resumed, and the Run line saying where it resumed.
   | "carried"
-  | "resumed";
+  | "resumed"
+  // M11 (R13): "The Engineer failed, so the run takes its failure path to <target>".
+  | "failure_path";
 
 export interface ActivityRefs {
   files?: string[];

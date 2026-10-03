@@ -1,4 +1,12 @@
-import { FileText, Maximize2, MoreHorizontal, Pencil, Save, Trash } from "lucide-react";
+import {
+  FileText,
+  FlaskConical,
+  Maximize2,
+  MoreHorizontal,
+  Pencil,
+  Save,
+  Trash,
+} from "lucide-react";
 
 import { IconButton, Menu, type MenuEntry } from "../design-system/components";
 
@@ -7,12 +15,15 @@ const icon = { size: 15, strokeWidth: 1.6, "aria-hidden": true } as const;
 /**
  * The header's ⋯ menu (PANEL-23, Flow-More-1): Open in focus view, Rename, Open its documents and
  * Delete agent ("Its arrows are removed too"); M6 adds Save as my agent (Agents-More). The menu opens 240px wide under the header's
- * buttons, 20px in from the drawer's right edge (panel.css).
+ * buttons, 20px in from the drawer's right edge (panel.css). M11 (Cnv-TestAgent) adds "Test this
+ * agent" with its test count, right before Save as my agent; it opens the Tests tab.
  */
 export function NodeMoreMenu({
   onOpenFocus,
   onRename,
   onOpenDocs,
+  onTest,
+  testCount = 0,
   onSaveAsAgent,
   onDelete,
 }: {
@@ -20,6 +31,9 @@ export function NodeMoreMenu({
   onOpenFocus?: () => void;
   onRename: () => void;
   onOpenDocs: () => void;
+  /** M11: "Test this agent" (omitted: no such item). */
+  onTest?: () => void;
+  testCount?: number;
   /** M6: "Save as my agent" (omitted: no such item). */
   onSaveAsAgent?: () => void;
   onDelete: () => void;
@@ -42,6 +56,17 @@ export function NodeMoreMenu({
       icon: <FileText {...icon} />,
       onSelect: onOpenDocs,
     },
+    ...(onTest
+      ? [
+          {
+            key: "test",
+            label: "Test this agent",
+            icon: <FlaskConical {...icon} />,
+            end: testCount > 0 ? `${testCount} ${testCount === 1 ? "test" : "tests"}` : undefined,
+            onSelect: onTest,
+          },
+        ]
+      : []),
     ...(onSaveAsAgent
       ? [
           {

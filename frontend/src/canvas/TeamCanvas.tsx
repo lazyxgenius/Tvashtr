@@ -17,6 +17,7 @@ import {
   ReactFlow,
   useNodesState,
   useReactFlow,
+  ViewportPortal,
 } from "@xyflow/react";
 
 import type {
@@ -38,22 +39,49 @@ import {
   deriveTerminalState,
 } from "../lib/status";
 import { startsAfter } from "../panel/run/live/liveFormat";
-import { closesLoop, type ValidityFlags, validityFlags } from "../lib/topology";
+import { branchLabelsOf, closesLoop, type ValidityFlags, validityFlags } from "../lib/topology";
+import type { EdgeUse, TeamGroup } from "../lib/api/canvas";
+import { useToast } from "../design-system/components";
+import { EdgeMenu } from "./EdgeMenu";
 import { AgentNodeCard, type AgentNodeData } from "./AgentNodeCard";
 import type { RunDoc } from "../lib/api/docs";
 import { AuthoringContext } from "./authoringContext";
 import { CanvasEmpty } from "./CanvasEmpty";
+import { FoldedGroupNode, GroupFrame, TidyGhosts } from "./CanvasGroups";
+import { CanvasTools } from "./CanvasTools";
 import { type EdgeConfirm, EdgeRoleEditor, type PendingConnect } from "./EdgeRoleEditor";
-import { buildEdges } from "./edges";
+import { buildEdges, pickHandles } from "./edges";
+import {
+  addGroup,
+  type Box,
+  defaultSize,
+  foldAnchor,
+  foldedLine,
+  frameBox,
+  loopSummary,
+} from "./groups";
 import { NodePalette } from "./NodePalette";
 import { NodePicker } from "./NodePicker";
 import { ReworkEdge } from "./ReworkEdge";
+import { tidyLayout } from "./tidy";
 import { WorkEdge } from "./WorkEdge";
 
-const nodeTypes = { agentNode: AgentNodeCard };
+const nodeTypes = { agentNode: AgentNodeCard, groupFold: FoldedGroupNode };
 const edgeTypes = { rework: ReworkEdge, work: WorkEdge };
 
 const NONE_CARRIED: ReadonlySet<string> = new Set();
+const NO_GROUPS: TeamGroup[] = [];
+
+/** A canvas node's box: where it is and how big it draws (measured, else its kind's size). */
+function boxOf(n: Node<AgentNodeData>): Box {
+  const d = defaultSize(n.data.kind);
+  return {
+    x: n.position.x,
+    y: n.position.y,
+    width: n.measured?.width ?? d.width,
+    height: n.measured?.height ?? d.height,
+  };
+}
 
 const EMPTY_FLAGS: ValidityFlags = {
   nodeErrors: new Map(),
@@ -205,6 +233,12 @@ export function TeamCanvas({
   onOpenDoc,
   carriedOver = NONE_CARRIED,
   fixChips,
+  onEdgeUse,
+  onTimeLimit,
+  onMoveNodes,
+  groups = NO_GROUPS,
+  onGroupsChange,
+  onOpenGate,
 }: {
   graph: GraphData | null;
   run: RunRow | null;
@@ -239,6 +273,17 @@ export function TeamCanvas({
   carriedOver?: ReadonlySet<string>;
   /** M4: an imported team's fix chips by node id (File-Imported). */
   fixChips?: ReadonlyMap<string, readonly string[]>;
+  /** M11 (R13): "Use this path…" on an agent's path (authoring). `label`: a branch's outcome word. */
+  onEdgeUse?: (edgeId: string, use: EdgeUse, label?: string) => void;
+  /** M11 (R13): the agent's time limit, in seconds. */
+  onTimeLimit?: (nodeId: string, seconds: number) => void;
+  /** M11 (R14): Tidy (and its Undo) moved these nodes; layout only, never a version. */
+  onMoveNodes?: (positions: Record<string, NodePosition>) => void;
+  /** M11 (R14): the team's groups (authoring) and a change to them. */
+  groups?: TeamGroup[];
+  onGroupsChange?: (groups: TeamGroup[]) => void;
+  /** M11 (run view): a gate waiting for you was clicked. */
+  onOpenGate?: (nodeId: string) => void;
 }) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<AgentNodeData>>([]);
   const [pending, setPending] = useState<PendingConnect | null>(null);
@@ -250,6 +295,7 @@ export function TeamCanvas({
   const nodeHoverTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const edgeHoverTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [addPicker, setAddPicker] = useState<{ nodeId: string; x: number; y: number } | null>(null);
+  const [pathMenu, setPathMenu] = useState<{ edgeId: string; x: number; y: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // The graph-validity flags, with the launch refusal's offending nodes folded into the SAME
@@ -339,6 +385,103 @@ export function TeamCanvas({
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reason: rebuild ONLY when the topology (topoKey) changes; run/workflowStatus/tasks/flags + the hover flag refresh in place below so the per-poll refetch + a drag don't rebuild and reset positions.
   }, [topoKey, setNodes]);
+
+  // M11 (R14): groups (authoring). A folded group is one box node at its leftmost agent; its agents
+  // hide and the paths into and out of the group meet the box. Runs after the rebuild above.
+  const shownGroups = editable ? groups : NO_GROUPS;
+  const groupsRef = useRef({ shownGroups, onGroupsChange });
+  groupsRef.current = { shownGroups, onGroupsChange };
+  const changeGroups = useCallback((make: (gs: TeamGroup[]) => TeamGroup[]) => {
+    const { shownGroups: gs, onGroupsChange: save } = groupsRef.current;
+    save?.(make(gs));
+  }, []);
+  const setFolded = useCallback(
+    (id: string, folded: boolean) =>
+      changeGroups((gs) => gs.map((g) => (g.id === id ? { ...g, folded } : g))),
+    [changeGroups],
+  );
+  const folds = useMemo(() => {
+    if (!graph) return [];
+    return shownGroups.flatMap((g) => {
+      if (!g.folded) return [];
+      const members = graph.nodes.filter((n) => g.node_ids.includes(n.id));
+      const at = foldAnchor(members.map((n) => ({ ...n.position, ...defaultSize(n.kind) })));
+      if (!at) return [];
+      return [{ g, at, line: foldedLine(members.length, loopSummary(g, graph)) }];
+    });
+  }, [graph, shownGroups]);
+  useEffect(() => {
+    setNodes((nds) => {
+      const hide = new Set(folds.flatMap((f) => f.g.node_ids));
+      if (folds.length === 0 && !nds.some((n) => n.hidden || n.type === "groupFold")) return nds;
+      const kept = nds
+        .filter((n) => n.type !== "groupFold")
+        .map((n) => (Boolean(n.hidden) === hide.has(n.id) ? n : { ...n, hidden: hide.has(n.id) }));
+      return [
+        ...kept,
+        ...folds.map((f) => ({
+          id: `group:${f.g.id}`,
+          type: "groupFold",
+          position: f.at,
+          measured: nds.find((n) => n.id === `group:${f.g.id}`)?.measured,
+          draggable: false,
+          selectable: false,
+          deletable: false,
+          connectable: false,
+          data: {
+            label: f.g.label,
+            line: f.line,
+            onUnfold: () => setFolded(f.g.id, false),
+          } as unknown as AgentNodeData,
+        })),
+      ];
+    });
+  }, [folds, setNodes, setFolded]);
+
+  // Group: the selected agents get a frame, named inline (blank or Escape: no group).
+  const [naming, setNaming] = useState<TeamGroup | null>(null);
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const selectedIds = nodes.filter((n) => n.selected && n.type !== "groupFold").map((n) => n.id);
+
+  // Tidy (Cnv-Tidy): positions only; the dashed boxes show where the nodes were while its toast is
+  // up, and the toast's one Undo puts them back.
+  const toast = useToast();
+  const [ghosts, setGhosts] = useState<{ id: string; from: Box; to: Box }[] | null>(null);
+  const ghostTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(ghostTimer.current), []);
+  const tidy = () => {
+    if (!graph) return;
+    const real = nodes.filter((n) => n.type !== "groupFold");
+    const before = Object.fromEntries(real.map((n) => [n.id, n.position]));
+    const after = tidyLayout(
+      real.map((n) => ({ ...boxOf(n), id: n.id, kind: n.data.kind, position: n.position })),
+      graph.edges,
+    );
+    const place = (to: Record<string, NodePosition>) => {
+      setNodes((nds) => nds.map((n) => (to[n.id] ? { ...n, position: to[n.id] } : n)));
+      onMoveNodes?.(to);
+    };
+    place(after);
+    clearTimeout(ghostTimer.current);
+    setGhosts(
+      real
+        .filter((n) => after[n.id].x !== n.position.x || after[n.id].y !== n.position.y)
+        .map((n) => ({ id: n.id, from: boxOf(n), to: { ...boxOf(n), ...after[n.id] } })),
+    );
+    ghostTimer.current = setTimeout(() => setGhosts(null), 8000);
+    toast({
+      message: "Tidied the layout",
+      duration: 8000,
+      action: {
+        label: "Undo",
+        onClick: () => {
+          place(before);
+          clearTimeout(ghostTimer.current);
+          setGhosts(null);
+        },
+      },
+    });
+  };
 
   // Refresh each node's state (+ validity flags) on every poll/edit, preserving dragged positions.
   useEffect(() => {
@@ -433,15 +576,53 @@ export function TeamCanvas({
   // F-canvas-fidelity-2: the edge set is built by the pure `buildEdges` (canvas/edges.ts) — every edge
   // now ends in a state-colored arrowhead (Part 2). `handleEdgeHover` routes the edge's own hover
   // through the 450ms leave grace (Part 1), and the trash deletes via the existing handler.
-  const edges: Edge[] = useMemo(
-    () =>
-      graph
-        ? buildEdges(graph, flags, editable, hoveredEdgeId, handleEdgeHover, (id) =>
-            onDeleteEdges?.([id]),
-          )
-        : [],
-    [graph, flags, editable, hoveredEdgeId, handleEdgeHover, onDeleteEdges],
+  const edges: Edge[] = useMemo(() => {
+    if (!graph) return [];
+    const built = buildEdges(graph, flags, editable, hoveredEdgeId, handleEdgeHover, (id) =>
+      onDeleteEdges?.([id]),
+    );
+    if (folds.length === 0) return built;
+    // M11: a folded group's paths meet its box; the ones inside it go with its agents.
+    const box = new Map<string, { id: string; at: NodePosition }>();
+    for (const f of folds)
+      for (const id of f.g.node_ids) box.set(id, { id: `group:${f.g.id}`, at: f.at });
+    const at = (id: string) => graph.nodes.find((n) => n.id === id)?.position ?? { x: 0, y: 0 };
+    return built.flatMap((e) => {
+      const s = box.get(e.source);
+      const t = box.get(e.target);
+      if (!s && !t) return [e];
+      if (s && t && s.id === t.id) return [];
+      return [
+        {
+          ...e,
+          type: "work",
+          source: s?.id ?? e.source,
+          target: t?.id ?? e.target,
+          ...pickHandles(s?.at ?? at(e.source), t?.at ?? at(e.target)),
+        },
+      ];
+    });
+  }, [graph, flags, editable, hoveredEdgeId, handleEdgeHover, onDeleteEdges, folds]);
+
+  // M11 (R13): an agent's path opens "Use this path…" where it was clicked. A gate's, Ship's, Stop's
+  // or Query domain's path, a loop-back and a loop's escalation exit keep today's behaviour.
+  const handleEdgeClick = useCallback(
+    (event: ReactMouseEvent, clicked: Edge) => {
+      const ge = graph?.edges.find((x) => x.id === clicked.id);
+      const src = graph?.nodes.find((n) => n.id === ge?.source_node_id);
+      if (!ge || !src || (src.kind !== "agent" && src.kind !== "completion")) return;
+      if (ge.conditions?.loop_limit != null || ge.edge_type === "escalation") return;
+      const rect = containerRef.current?.getBoundingClientRect();
+      setPathMenu({
+        edgeId: ge.id,
+        x: event.clientX - (rect?.left ?? 0),
+        y: event.clientY - (rect?.top ?? 0),
+      });
+    },
+    [graph],
   );
+  const menuEdge = pathMenu ? graph?.edges.find((x) => x.id === pathMenu.edgeId) : undefined;
+  const menuAgent = menuEdge && graph?.nodes.find((n) => n.id === menuEdge.source_node_id);
 
   // F1b: provided just above <ReactFlow> so the custom node cards (rendered deep in React Flow's
   // subtree) reach the inline affordance callbacks without threading them through node data (which
@@ -501,6 +682,7 @@ export function TeamCanvas({
           onNodeMouseEnter={editable ? handleNodeEnter : undefined}
           onNodeMouseLeave={editable ? handleNodeLeave : undefined}
           onNodeClick={(_event, node) => {
+            if (node.type === "groupFold") return;
             const data = node.data;
             const isAgent = data.kind === "agent" || data.kind === "completion";
             // Author mode (F1c Decision 4): EVERY kind opens the drawer — agent/completion the editor,
@@ -508,7 +690,10 @@ export function TeamCanvas({
             // (gate/terminal stay non-selecting; their approvals live in the left Tasks drawer).
             if (editable) onSelectNodeId?.(node.id);
             else if (isAgent) onSelectNode?.(node.id);
+            // M11 (Cnv-EditApprove): a gate waiting for you opens its approval drawer.
+            else if (data.kind === "gate" && data.gateState === "awaiting") onOpenGate?.(node.id);
           }}
+          onEdgeClick={editable && onEdgeUse ? handleEdgeClick : undefined}
           onPaneClick={() => {
             if (editable) onSelectNodeId?.(null);
             else onSelectNode?.(null);
@@ -529,8 +714,62 @@ export function TeamCanvas({
               nodeColor={() => "var(--stone-400)"}
             />
           )}
+          {editable && graph && (
+            <ViewportPortal>
+              {[...shownGroups.filter((g) => !g.folded), ...(naming ? [naming] : [])].map((g) => {
+                const summary = loopSummary(g, graph);
+                const box = frameBox(
+                  nodes.filter((n) => g.node_ids.includes(n.id) && !n.hidden).map(boxOf),
+                  summary !== null,
+                );
+                if (!box) return null;
+                const isNew = g === naming;
+                return (
+                  <GroupFrame
+                    key={g.id}
+                    box={box}
+                    label={g.label}
+                    summary={summary}
+                    editing={isNew || renaming === g.id}
+                    isNew={isNew}
+                    onCommit={(label) => {
+                      if (isNew) changeGroups((gs) => addGroup(gs, { ...g, label }));
+                      else if (label !== g.label)
+                        changeGroups((gs) => gs.map((x) => (x.id === g.id ? { ...x, label } : x)));
+                      setNaming(null);
+                      setRenaming(null);
+                    }}
+                    onCancel={() => {
+                      setNaming(null);
+                      setRenaming(null);
+                    }}
+                    onEdit={() => setRenaming(g.id)}
+                    onFold={() => setFolded(g.id, true)}
+                  />
+                );
+              })}
+              {ghosts && <TidyGhosts moves={ghosts} />}
+            </ViewportPortal>
+          )}
         </ReactFlow>
         {editable && onAddNode && <NodePalette onAdd={onAddNode} disabled={busy} />}
+        {editable && graph && onMoveNodes && (
+          <CanvasTools
+            onTidy={tidy}
+            tidyOn={ghosts !== null}
+            onGroup={() =>
+              setNaming({
+                id: crypto.randomUUID(),
+                label: "",
+                node_ids: selectedIds,
+                folded: false,
+              })
+            }
+            groupOn={naming !== null}
+            canGroup={selectedIds.length > 0 && onGroupsChange !== undefined}
+            disabled={busy}
+          />
+        )}
         {editable && pending && onCreateEdge && (
           <EdgeRoleEditor
             pending={pending}
@@ -541,6 +780,40 @@ export function TeamCanvas({
               setPending(null);
             }}
             onCancel={() => setPending(null)}
+          />
+        )}
+        {editable && graph && pathMenu && menuEdge && menuAgent && onEdgeUse && (
+          <EdgeMenu
+            x={pathMenu.x}
+            y={pathMenu.y}
+            use={
+              menuEdge.edge_type === "failure"
+                ? "failure"
+                : menuEdge.conditions?.when
+                  ? "branch"
+                  : "forward"
+            }
+            agentName={nodeTitle(menuAgent)}
+            hasOtherFailure={graph.edges.some(
+              (x) =>
+                x.id !== menuEdge.id &&
+                x.source_node_id === menuEdge.source_node_id &&
+                x.edge_type === "failure",
+            )}
+            timeLimitS={(menuAgent.config as { time_limit_s?: number } | null)?.time_limit_s}
+            onUse={(use) =>
+              onEdgeUse(
+                menuEdge.id,
+                use,
+                use === "branch"
+                  ? (menuEdge.conditions?.when ??
+                      branchLabelsOf(graph.edges, menuEdge.source_node_id)[0])
+                  : undefined,
+              )
+            }
+            onTimeLimit={(s) => onTimeLimit?.(menuAgent.id, s)}
+            onDelete={() => onDeleteEdges?.([menuEdge.id])}
+            onClose={() => setPathMenu(null)}
           />
         )}
         {!graph && <CanvasEmpty />}

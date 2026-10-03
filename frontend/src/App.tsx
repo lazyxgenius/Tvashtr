@@ -87,9 +87,18 @@ import {
   type SubscriptionStatus,
 } from "./lib/engines";
 import { patchAgentNode } from "./lib/api/nodes";
+import {
+  type EdgeUse,
+  patchTeamEdge,
+  saveTeamLayout,
+  type TeamGroup,
+  type TeamLayout,
+} from "./lib/api/canvas";
 import type { EdgeConfirm } from "./canvas/EdgeRoleEditor";
 import { nextDropPosition, withLayout } from "./lib/topology";
 import { requestHomeAction } from "./lib/homeActions";
+import { nodeTitle } from "./lib/nodeNames";
+import { SpecApproveDrawer } from "./panel/run/SpecApproveDrawer";
 import { retryPrefill } from "./pages/home/composerTarget";
 import { isRunTerminal } from "./lib/status";
 
@@ -98,6 +107,8 @@ import { isRunTerminal } from "./lib/status";
 // inline `[]` re-fires that effect on every render, which (with React Flow's async re-measure +
 // fitView) closes into an infinite render loop. One module-level constant kills the loop's fuel.
 const EMPTY_TASKS: HumanTask[] = [];
+// M11: the same reason for a team with no groups.
+const NO_GROUPS: TeamGroup[] = [];
 
 // M-accounts Slice A: optional props so AuthGate can thread the logged-in identity + a logout
 // handler into the top bar. Slice B adds `teamId` (open this dashboard-selected team) + a
@@ -260,6 +271,8 @@ export default function App({
     [setDocRoute],
   );
   const [focusNodeId, setFocusNodeId] = useState<string | null>(null);
+  // M11 (Cnv-EditApprove): the run view's spec approval drawer, by its gate node.
+  const [specGate, setSpecGate] = useState<string | null>(null);
   // The toolbar's Documents drawer (DOCS-12): the run it shows. Never beside an agent drawer (OQ-20).
   const [docsDrawer, setDocsDrawer] = useState<{ runId: string } | null>(null);
   // M4: the toolbar's Team file panel (authoring), what an import left to fix (File-Imported, kept
@@ -513,6 +526,37 @@ export default function App({
     [currentTeamId, loadTeam],
   );
 
+  // M11 (R13): "Use this path…" and an agent's time limit. A refusal ("The Engineer already has a
+  // failure path") is said in the server's words.
+  const canvasEdit = useCallback(
+    async (save: (teamId: string) => Promise<unknown>) => {
+      if (!currentTeamId) return;
+      setEditBusy(true);
+      try {
+        await save(currentTeamId);
+        await loadTeam(currentTeamId);
+      } catch (e) {
+        if (mountedRef.current)
+          toast({ message: e instanceof Error ? e.message : String(e), tone: "error" });
+      } finally {
+        if (mountedRef.current) setEditBusy(false);
+      }
+    },
+    [currentTeamId, loadTeam, toast],
+  );
+  const handleEdgeUse = useCallback(
+    (edgeId: string, use: EdgeUse, label?: string) =>
+      void canvasEdit((t) =>
+        patchTeamEdge(t, edgeId, label ? { role: use, label } : { role: use }),
+      ),
+    [canvasEdit],
+  );
+  const handleTimeLimit = useCallback(
+    (nodeId: string, seconds: number) =>
+      void canvasEdit((t) => patchAgentNode(t, nodeId, { time_limit_s: seconds })),
+    [canvasEdit],
+  );
+
   // An Agent at the start (`root_not_thinker`): the palette has no Thinker and the drawer no
   // capability control, so the callout's one fix flips that node to a thinker (the backend allows it).
   const handleMakeThinker = useCallback(
@@ -532,16 +576,48 @@ export default function App({
   );
 
   // Persist a node's dragged position (best-effort, no reload — validity is layout-independent).
-  // Mirror it into local state so the canvas stays consistent without a refetch/snap.
-  const handleMoveNode = useCallback(
-    (id: string, position: NodePosition) => {
+  // Mirror it into local state so the canvas stays consistent without a refetch/snap. M11: Tidy and
+  // its Undo move every node at once, the same way (positions only, never a version — R14).
+  const handleMoveNodes = useCallback(
+    (positions: Record<string, NodePosition>) => {
       if (!currentTeamId) return;
       setTeamGraph((tg) =>
-        tg ? { ...tg, nodes: tg.nodes.map((n) => (n.id === id ? { ...n, position } : n)) } : tg,
+        tg
+          ? {
+              ...tg,
+              nodes: tg.nodes.map((n) =>
+                positions[n.id] ? { ...n, position: positions[n.id] } : n,
+              ),
+            }
+          : tg,
       );
-      void saveTeamPositions(currentTeamId, { [id]: position }).catch(() => {});
+      void saveTeamPositions(currentTeamId, positions).catch(() => {});
     },
     [currentTeamId],
+  );
+  const handleMoveNode = useCallback(
+    (id: string, position: NodePosition) => handleMoveNodes({ [id]: position }),
+    [handleMoveNodes],
+  );
+  // M11 (R14): the team's groups, stored with its layout (never a version, never read by the walk).
+  // Shown at once; the server's stored layout replaces it, and a refusal reloads the team.
+  const handleGroupsChange = useCallback(
+    (groups: TeamGroup[]) => {
+      if (!currentTeamId) return;
+      const team = currentTeamId;
+      const put = (layout: TeamLayout) =>
+        setTeamGraph((tg) => (tg && tg.team_graph_id === team ? { ...tg, layout } : tg));
+      put({ groups });
+      saveTeamLayout(team, { groups }).then(
+        (stored) => mountedRef.current && put(stored),
+        (e: unknown) => {
+          if (!mountedRef.current) return;
+          toast({ message: e instanceof Error ? e.message : String(e), tone: "error" });
+          void loadTeam(team);
+        },
+      );
+    },
+    [currentTeamId, loadTeam, toast],
   );
 
   // Author-canvas node selection (a card-body click / the pane-click deselect / the drawer's Close).
@@ -1060,6 +1136,32 @@ export default function App({
       setPlace({ node: nodeId, tab: "runs", focus: false });
     });
   const specId = run?.pm_document_id;
+  // M11 (Cnv-EditApprove): a spec approval gate waiting for you opens its drawer (the spec in the
+  // steering editor; Reject / Approve as is / Approve with my edits). It goes once the gate does.
+  const specTaskOf = (nodeId: string | null) =>
+    runId && specId && nodeId
+      ? pendingBlockers.find(
+          (t) => t.kind === "prd_approval" && t.topic === `gate:${runId}:${nodeId}`,
+        )
+      : undefined;
+  const specTask = authoring ? undefined : specTaskOf(specGate);
+  const openGate = (nodeId: string) => {
+    if (!specTaskOf(nodeId)) return;
+    setDocsDrawer(null);
+    setSelectedNodeId(null);
+    setSpecGate(nodeId);
+  };
+  const specNext = (() => {
+    const out = graph?.edges.find(
+      (e) =>
+        e.source_node_id === specGate &&
+        e.conditions?.when !== "rejected" &&
+        e.edge_type !== "escalation" &&
+        e.edge_type !== "failure",
+    );
+    const next = graph?.nodes.find((n) => n.id === out?.target_node_id);
+    return next && (next.kind === "agent" || next.kind === "completion") ? nodeTitle(next) : null;
+  })();
   const liveActions: ActivityActions = {
     onViewChange: (nodeId) => openRunNodeTool(nodeId, "changes"),
     onOpenDocument: (docId) => openRunDoc(docId),
@@ -1265,13 +1367,19 @@ export default function App({
               workflowStatus={workflowStatus}
               tasks={authoring ? EMPTY_TASKS : tasks}
               focusNodeId={focusNodeId}
-              panelOpen={docsOpen ? "docs" : nodeDrawerOpen || teamFileOpen || historyPanelOpen}
+              panelOpen={
+                docsOpen
+                  ? "docs"
+                  : nodeDrawerOpen || teamFileOpen || historyPanelOpen || specTask !== undefined
+              }
               onSelectNode={(id) => {
                 if (id) setDocsDrawer(null);
                 if (id) setFileOpen(false);
                 if (id) setHistoryOpen(false);
+                if (id) setSpecGate(null);
                 setSelectedNodeId(id);
               }}
+              onOpenGate={openGate}
               editable={authoring}
               teamNodes={teamGraph?.nodes ?? []}
               validity={validity}
@@ -1290,6 +1398,11 @@ export default function App({
               onOpenDoc={openChipDoc}
               carriedOver={carriedOver}
               fixChips={authoring ? fixChipsByNode : undefined}
+              onEdgeUse={handleEdgeUse}
+              onTimeLimit={handleTimeLimit}
+              onMoveNodes={handleMoveNodes}
+              groups={teamGraph?.layout?.groups ?? NO_GROUPS}
+              onGroupsChange={handleGroupsChange}
             />
             {runBlock && (
               <RunBlockedBanner
@@ -1416,6 +1529,30 @@ export default function App({
                   offTeam={offTeam(selectedRunNode)}
                 />
               )}
+          {specTask && specId && runId && (
+            <SpecApproveDrawer
+              key={specTask.id}
+              runId={runId}
+              taskId={specTask.id}
+              docId={specId}
+              nextAgent={specNext}
+              busy={acting}
+              onReject={() => void handleResolve(specTask.id, "reject")}
+              onApprove={() => void handleResolve(specTask.id, "approve")}
+              onApproved={() => {
+                // As Approve does: the gate turns approved at once, and the run is read again.
+                resolvedIdsRef.current.add(specTask.id);
+                setTasks((ts) =>
+                  ts.map((t) =>
+                    t.id === specTask.id ? { ...t, status: "resolved", resolution: "approved" } : t,
+                  ),
+                );
+                void pull();
+              }}
+              onVersions={() => openRunDoc(specId)}
+              onClose={() => setSpecGate(null)}
+            />
+          )}
           {/* Over a focus view, the viewer mounts after it (once the team is in), so the viewer is
             the top overlay that owns Escape and Tab — a reload on the address included. */}
           {docRoute && !(authoring && selectedNodeId && place.focus && !teamGraph) && (
