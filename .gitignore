@@ -62,3 +62,9 @@ artifacts/
 # never print it, never commit it. Recreate with `make demo-proof-login`.
 .playwright/
 .superpowers/
+
+# ---- Video (demo film, prompts/video-v0.md): media and third-party tools never in git ----
+video/out/
+video/takes/
+video/vendor/
+video/node_modules/
