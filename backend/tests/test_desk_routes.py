@@ -815,7 +815,7 @@ def test_an_ask_nobody_reads_is_never_handed_to_a_later_desktop(client):
     _connect_desktop(c, "claude")
     old = datetime.now(UTC) - timedelta(minutes=10)
     unread = _ask(c, run_id, engineer).json()["ask_id"]
-    _age(unread, created_at=old)
+    _age(unread, created_at=old - timedelta(minutes=1))  # the older one: claim reaches it first
     read = _ask(c, run_id, engineer).json()["ask_id"]
     _age(read, created_at=old)
     desktop_jobs.heartbeat(owner, ["claude"])  # the Desktop is here, offering Claude
