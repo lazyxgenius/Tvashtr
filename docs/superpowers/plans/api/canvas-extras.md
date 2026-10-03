@@ -81,8 +81,8 @@ Shapes for the frontend:
   - the step that took its failure path keeps its `Failed: …` line (kind `error`; a stalled step keeps its own
     `stalled` line instead), followed by `{id: "inv:<invocation>:failure_path", node_id: null (label "Run"),
     iteration: null, kind: "failure_path", tone: "warn", text: "The <agent> failed, so the run takes its failure path
-    to <target>", refs: {node_id, target_node_id}}` — `<target>` is the node's usual label (`node_label`: a gate by its
-    kind, e.g. "Approval", "Escalation", "Gate approval");
+    to <target>", refs: {node_id, target_node_id}}` — `<target>` named as the canvas shows it: the node's own title when
+    it has one (a gate's "Ask me what to do", Cnv-FailPathRun), else its usual label (`node_label`);
   - the gate's decided line: `{id: "task:<id>:done", kind: "gate_approved", text: "Approved with your edits · spec
     v3", refs: {task_id, title, edited_version: 3}}`; the gate's agent row `activity` reads the same; the spec version
     the approval saved gets no separate "You edited the spec (v3)" line.
@@ -103,8 +103,17 @@ What differs from the contract above, and why:
 3. **Which failures:** the agent-failure branch of the walk — an engine error, an over-context breach, a step the
    sweep ended (stall ceiling or time limit). Not over budget (that stops the run as before) and not an entry agent
    that wrote no REPORT.md (fails as before).
-4. **Local sandbox mode:** releasing the sandbox interrupts a docker / Fly agent at once; a local (in-process) agent
-   is not interrupted — its step returns failed when it next returns, then the path is taken.
+4. **Only where the sweep can stop the agent** (review B): the sweep ends a step along its failure path only when this
+   process holds the run's docker / Fly sandbox (`sandbox_cache.holds_run`), whose release stops the agent at once.
+   Otherwise — a LOCAL (in-process) agent, a run on Fly's other machine, a Desktop runner — the stalled or timed-out
+   step ends as before M11 (the run fails, its workflow cancelled) rather than being left running. An engine error is
+   unaffected: the walk takes the path wherever the agent runs.
+6. **Review fixes:** each visit to a gate on a failure path asks again (its own task and signal topic, `gate:<run>:<node>:
+   <visit>` from the second visit); a failed round's spend is metered before the path is taken; a round past its loop
+   limit that the sweep ended fails the run with the sweep's reason (`stalled`). Frontend: "When the agent says…" on a
+   path with no outcome word asks for the word first (the existing "Routing label" editor); Tidy lays the main path out
+   from forward edges alone, then places what only a failure path reaches after its agent with the main path held
+   still; the agent drawer's routing line leaves failure paths out (as escalation arrows).
 5. Validity codes (errors): `failure_not_agent`, `failure_twice`, `failure_dead_end`. Failure edges are also left out
    of the pipeline strip / the run's progress strip (like escalation edges) and of a Query domain step's "slot".
    A team file accepts and exports `type: failure`; a version's change rows say "… · if it fails" for one.
