@@ -149,7 +149,20 @@ async function runEvents(runId) {
 }
 const textOf = (e) => String((e.payload || {}).text || (e.payload || {}).error || "");
 
+/** The stack answering on :8000 and :5173 must be THIS checkout's — never another session's. */
+function ownStack() {
+  const { execSync } = require("node:child_process");
+  const cwdOf = (port) => {
+    const pids = execSync(`lsof -nP -iTCP:${port} -sTCP:LISTEN -t || true`).toString().split(/\s+/).filter(Boolean);
+    return pids.map((pid) => execSync(`lsof -a -p ${pid} -d cwd -Fn || true`).toString().split("\n").find((l) => l.startsWith("n"))?.slice(1) || "");
+  };
+  const cwds = [...cwdOf(8000), ...cwdOf(5173)];
+  return { ok: cwds.length >= 2 && cwds.every((c) => c.startsWith(repoRoot + path.sep)), cwds };
+}
+
 async function main() {
+  const own = ownStack();
+  check("the backend (:8000) and Vite (:5173) are this checkout's", own.ok, own.cwds.join(" | ") || "nothing listening");
   const login = await api("POST", "/api/auth/login", { email: EMAIL, password: PASSWORD });
   check("node-side session on the LOCAL backend", login.status === 200, `HTTP ${login.status}`);
   const provs = (await api("GET", "/api/providers")).json.providers.map((p) => p.provider);
@@ -159,6 +172,14 @@ async function main() {
   try {
     const signIn = await inPage(page, "POST", "/api/auth/login", { email: EMAIL, password: PASSWORD });
     check("signed in through the Desktop's own origin", signIn.status === 200, `HTTP ${signIn.status}`);
+    // A fresh local account has this Mac's first-run setup unfinished, and the app holds every
+    // address on #/setup until it is: finish it the way "Skip for now" does (this account only).
+    // The plan-usage consent is left to the operator.
+    const me = await inPage(page, "GET", "/api/auth/me");
+    await page.evaluate(async (id) => {
+      const s = await window.tvashtrDesktop.setup.get(id);
+      if (!s || !s.finishedAt) await window.tvashtrDesktop.setup.update(id, { finishedAt: new Date().toISOString() });
+    }, me.json.id);
     await page.reload();
     await page.waitForLoadState("domcontentloaded");
     const fresh = await waitFor(
