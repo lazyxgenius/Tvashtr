@@ -484,6 +484,8 @@ function TestRow({
         </span>
       </div>
       <div className="tt-row__meta">{test.meta}</div>
+      {/* M-desk-routes (Test-RunningDesktop): queued behind another job of its plan. */}
+      {result?.waiting && <div className="tt-row__waiting">{result.waiting}</div>}
       {open && (
         <div className="tt-detail">
           {unmet && (
