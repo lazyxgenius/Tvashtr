@@ -147,6 +147,15 @@ describe("routingOf (PANEL-34/35/38)", () => {
     });
   });
 
+  it("a failure path isn't routing (M11: it's never used in ordinary routing)", () => {
+    const edges = [e("1", "engineer", "reviewer"), e("2", "engineer", "gate", null, "failure")];
+    expect(routingOf("engineer", "", nodes, edges)).toEqual({
+      kind: "then",
+      targets: ["Reviewer"],
+    });
+    expect(routingOf("engineer", "", nodes, [edges[1]])).toEqual({ kind: "none" });
+  });
+
   it("contractInSync needs every label", () => {
     expect(contractInSync('"a" and "b"', ["a", "b"])).toBe(true);
     expect(contractInSync('"a"', ["a", "b"])).toBe(false);

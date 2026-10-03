@@ -101,9 +101,13 @@ describe("TeamCanvas — M11 the path menu", () => {
     expect(fail).toHaveTextContent("it has one");
     expect(m.queryByRole("menuitem", { name: /Time limit/ })).toBeNull();
     fireEvent.click(m.getByRole("menuitem", { name: /When the agent says…/ }));
-    // No outcome word yet on this agent's paths: the server picks it (no label sent).
-    expect(p.onEdgeUse).toHaveBeenCalledWith("e-fwd", "branch", undefined);
+    // No outcome word on this path yet: the canvas's own path editor asks for one (a branch needs
+    // its word — the server refuses one without), and only then is the path changed.
     expect(screen.queryByRole("menu", { name: "Use this path" })).toBeNull();
+    expect(p.onEdgeUse).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText("Routing label"), { target: { value: "PASS" } });
+    fireEvent.click(screen.getByRole("button", { name: "When it outputs “PASS” →" }));
+    expect(p.onEdgeUse).toHaveBeenCalledWith("e-fwd", "branch", "PASS");
   });
 
   it("Time limit opens its choices beside the menu; a pick saves the agent's limit", () => {

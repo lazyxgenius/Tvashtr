@@ -173,10 +173,7 @@ test("M11 approve with my edits: one click saves the edited spec as the next ver
     .toBe("awaiting_human");
 
   // The waiting spec gate on the run's canvas opens the spec with its editor (Cnv-EditApprove).
-  await page
-    .locator(".react-flow__node", { hasText: /Spec approval|Approval gate|Approve the spec/ })
-    .first()
-    .click();
+  await page.locator(".react-flow__node", { hasText: "PRD approval" }).first().click();
   const drawer = page.getByRole("complementary", { name: /^Spec v\d+$/ });
   await expect(drawer).toBeVisible({ timeout: 30_000 });
   await expect(drawer.getByRole("button", { name: "Reject" })).toBeVisible();

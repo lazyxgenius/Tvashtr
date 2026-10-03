@@ -32,34 +32,33 @@ export function tidyLayout(nodes: TidyNode[], edges: GraphEdge[]): Record<string
       e.edge_type !== "failure" &&
       e.conditions?.loop_limit == null,
   );
-  const forwardIn = new Set(forward.map((e) => e.target_node_id));
-  const order = [
-    ...forward,
-    ...edges.filter(
-      (e) =>
-        e.edge_type === "failure" &&
-        ids.has(e.source_node_id) &&
-        ids.has(e.target_node_id) &&
-        !forwardIn.has(e.target_node_id),
-    ),
-  ];
-  const targets = new Set(order.map((e) => e.target_node_id));
+  const failure = edges.filter(
+    (e) => e.edge_type === "failure" && ids.has(e.source_node_id) && ids.has(e.target_node_id),
+  );
+  const targets = new Set([...forward, ...failure].map((e) => e.target_node_id));
   const sorted = [...nodes].sort(byPlace);
   const layer = new Map<string, number>();
   for (const n of sorted) if (!targets.has(n.id)) layer.set(n.id, 0);
-  // Longest path by relaxation; a pass count of N bounds it even if a cycle slipped through.
-  for (let pass = 0; pass < nodes.length; pass++) {
-    let moved = false;
-    for (const e of order) {
-      const from = layer.get(e.source_node_id);
-      if (from === undefined) continue;
-      if ((layer.get(e.target_node_id) ?? -1) < from + 1 && from + 1 < nodes.length) {
-        layer.set(e.target_node_id, from + 1);
-        moved = true;
+  // Longest path by relaxation; a pass count of N bounds it even if a cycle slipped through. Nodes
+  // in `frozen` never move.
+  const relax = (order: GraphEdge[], frozen: Set<string>) => {
+    for (let pass = 0; pass < nodes.length; pass++) {
+      let moved = false;
+      for (const e of order) {
+        const from = layer.get(e.source_node_id);
+        if (from === undefined || frozen.has(e.target_node_id)) continue;
+        if ((layer.get(e.target_node_id) ?? -1) < from + 1 && from + 1 < nodes.length) {
+          layer.set(e.target_node_id, from + 1);
+          moved = true;
+        }
       }
+      if (!moved) break;
     }
-    if (!moved) break;
-  }
+  };
+  // The main path from forward edges alone; then what only a failure path reaches follows its agent,
+  // the main path held still (a failure path that loops back can't push it right).
+  relax(forward, new Set());
+  relax([...failure, ...forward], new Set(layer.keys()));
 
   // Columns: each layer's gates, then the rest. Rows: the node's place within its layer.
   const layers = new Map<number, TidyNode[]>();

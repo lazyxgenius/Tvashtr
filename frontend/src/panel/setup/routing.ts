@@ -43,7 +43,10 @@ export function routingOf(
     const n = nodes.find((x) => x.id === id);
     return n ? nodeTitle(n) : "";
   };
-  const out = edges.filter((e) => e.source_node_id === nodeId && e.edge_type !== "escalation");
+  // Escalation arrows and M11 failure paths are never ordinary routing.
+  const out = edges.filter(
+    (e) => e.source_node_id === nodeId && e.edge_type !== "escalation" && e.edge_type !== "failure",
+  );
   if (out.length === 0) return { kind: "none" };
   const branches = out
     .filter((e) => e.conditions?.when)

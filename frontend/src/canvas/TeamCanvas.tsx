@@ -39,7 +39,7 @@ import {
   deriveTerminalState,
 } from "../lib/status";
 import { startsAfter } from "../panel/run/live/liveFormat";
-import { branchLabelsOf, closesLoop, type ValidityFlags, validityFlags } from "../lib/topology";
+import { closesLoop, type ValidityFlags, validityFlags } from "../lib/topology";
 import type { EdgeUse, TeamGroup } from "../lib/api/canvas";
 import { useToast } from "../design-system/components";
 import { EdgeMenu } from "./EdgeMenu";
@@ -287,6 +287,8 @@ export function TeamCanvas({
 }) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<AgentNodeData>>([]);
   const [pending, setPending] = useState<PendingConnect | null>(null);
+  // M11: "When the agent says…" on a path with no outcome word asks for it in the same editor.
+  const [relabel, setRelabel] = useState<{ edgeId: string; pending: PendingConnect } | null>(null);
   const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
   // F-canvas-fidelity-2 Part 1: the hover-out grace. A node/edge stays "hovered" for ~450ms after the
   // mouse leaves, so its +/trash affordances stay rendered + clickable long enough to slide onto them
@@ -787,6 +789,18 @@ export function TeamCanvas({
             onCancel={() => setPending(null)}
           />
         )}
+        {editable && relabel && onEdgeUse && (
+          <EdgeRoleEditor
+            pending={relabel.pending}
+            nodes={teamNodes}
+            edges={graph?.edges ?? []}
+            onConfirm={(c) => {
+              onEdgeUse(relabel.edgeId, c.role === "branch" ? "branch" : "forward", c.label);
+              setRelabel(null);
+            }}
+            onCancel={() => setRelabel(null)}
+          />
+        )}
         {editable && graph && pathMenu && menuEdge && menuAgent && onEdgeUse && (
           <EdgeMenu
             x={pathMenu.x}
@@ -806,16 +820,29 @@ export function TeamCanvas({
                 x.edge_type === "failure",
             )}
             timeLimitS={(menuAgent.config as { time_limit_s?: number } | null)?.time_limit_s}
-            onUse={(use) =>
-              onEdgeUse(
-                menuEdge.id,
-                use,
-                use === "branch"
-                  ? (menuEdge.conditions?.when ??
-                      branchLabelsOf(graph.edges, menuEdge.source_node_id)[0])
-                  : undefined,
-              )
-            }
+            onUse={(use) => {
+              const word = menuEdge.conditions?.when;
+              if (use === "branch" && !word) {
+                // A branch needs its own word (never a sibling's): ask, then change the path.
+                const src = graph.nodes.find((n) => n.id === menuEdge.source_node_id);
+                const tgt = graph.nodes.find((n) => n.id === menuEdge.target_node_id);
+                setPathMenu(null);
+                if (src && tgt)
+                  setRelabel({
+                    edgeId: menuEdge.id,
+                    pending: {
+                      source: src.id,
+                      target: tgt.id,
+                      sourceKind: src.kind,
+                      sourceLabel: src.role_name,
+                      targetLabel: tgt.role_name,
+                      closesLoop: false,
+                    },
+                  });
+                return;
+              }
+              onEdgeUse(menuEdge.id, use, use === "branch" ? word : undefined);
+            }}
             onTimeLimit={(s) => onTimeLimit?.(menuAgent.id, s)}
             onDelete={() => onDeleteEdges?.([menuEdge.id])}
             onClose={() => setPathMenu(null)}

@@ -79,7 +79,9 @@ test("failure path: the Engineer fails, the run takes its failure path to a gate
   await page.goto(`/#/teams/${team}`);
   const label = page.getByText("If it fails or times out").first();
   await expect(label).toBeVisible({ timeout: 30_000 });
-  await label.click();
+  // The label lets clicks through to its path (pointer-events: none): click the path under it.
+  const box = (await label.boundingBox())!;
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
   const menu = page.getByRole("menu");
   await expect(menu).toContainText("Use this path…");
   await expect(menu).toContainText("Time limit");

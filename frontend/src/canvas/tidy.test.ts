@@ -78,4 +78,21 @@ describe("tidyLayout", () => {
     expect(tidyLayout([...nodes].reverse(), [...edges].reverse())).toEqual(out);
     expect(tidyLayout(nodes, edges)).toEqual(out);
   });
+
+  it("a failure path that loops back (retry or stop) doesn't move the main path", () => {
+    // The boards' "retry or stop" gate: approving it sends the run back to the Engineer.
+    const retry = [
+      ...edges.filter((x) => x.id !== "5"),
+      e("again", "ask", "eng", { conditions: { when: "approved" } }),
+      e("halt", "ask", "stop", { conditions: { when: "rejected" } }),
+    ];
+    const got = tidyLayout(nodes, retry);
+    const order = ["pm", "gate", "eng", "rev", "ship"];
+    for (let i = 1; i < order.length; i++)
+      expect(got[order[i]].x).toBeGreaterThan(got[order[i - 1]].x);
+    expect(got.eng).toEqual(out.eng);
+    expect(got.ask.x).toBeGreaterThan(got.eng.x);
+    expect(got.stop.x).toBeGreaterThan(got.ask.x);
+    expect(tidyLayout([...nodes].reverse(), [...retry].reverse())).toEqual(got);
+  });
 });

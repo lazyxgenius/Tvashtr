@@ -25,7 +25,8 @@ export function loopSummary(group: TeamGroup, graph: GraphData): string | null {
     const n = graph.nodes.find((x) => x.id === id);
     return n ? nodeTitle(n) : id;
   };
-  return `${name(loop.target_node_id)} ⇄ ${name(loop.source_node_id)} · up to ${loop.conditions?.loop_limit} rounds`;
+  const rounds = loop.conditions?.loop_limit;
+  return `${name(loop.target_node_id)} ⇄ ${name(loop.source_node_id)} · up to ${rounds} round${rounds === 1 ? "" : "s"}`;
 }
 
 /** A folded group's line (Cnv-GroupFolded): "2 agents · Engineer ⇄ Reviewer · up to 3 rounds". */
