@@ -79,6 +79,8 @@ beforeEach(() => {
     if (url === "/api/teams/team-1/compare" && method === "POST")
       return reply({ id: "cmp-9", status: "running" }, 201);
     if (url === "/api/teams/team-1/compare") return reply(START);
+    // M-desk-2 (E2): the Desktop reads the Compare tab with ?desktop_target=1.
+    if (url === "/api/teams/team-1/compare?desktop_target=1") return reply(START);
     if (url.startsWith("/api/recent-tasks")) return reply({ tasks: [] });
     if (/^\/api\/compares\/cmp-\d+$/.test(url)) return reply(compare);
     return reply({});
