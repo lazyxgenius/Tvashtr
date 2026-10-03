@@ -1211,6 +1211,14 @@ def _set_view(session, cmp: Compare, runs: list[Run]) -> dict:
             "current_version": current,
             "restore": winner if winner is not None and winner != current else None,
         }
+        # M-desk-3 (G2): as a one-task compare's (``view``), Desktop lanes that shared a
+        # subscription took turns, and the subtitle says so.
+        subs = {
+            label: {s for g in groups if label in g for s in g[label].desktop_subscriptions or []}
+            for label in LABELS
+        }
+        if _is_desktop(session, cmp) and subs["A"] & subs["B"]:
+            results["shared"] = True
     return {
         **head,
         "set": {

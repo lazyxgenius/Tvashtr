@@ -105,6 +105,18 @@ def check_sets(session, team: TeamGraph, current: int) -> list[dict]:
     ]
 
 
+def check_desktop(session, team: TeamGraph, current: int, owner_id: uuid.UUID) -> dict:
+    """M-desk-3 (G1): where a set check started from the Desktop would run — routed over the
+    models of BOTH versions it compares (the current one and the new one, the team's graph now),
+    as a Desktop compare's launch routes them (:func:`credential_gate.desktop_routes`)."""
+    from tvashtr.control_plane import desktop_jobs
+    from tvashtr.control_plane.credential_gate import desktop_routes
+
+    graphs = (versions._version(session, team, current).graph, versions.capture(session, team))
+    models = [n.get("model") for g in graphs for n in (g or {}).get("nodes") or []]
+    return desktop_routes(models, fresh_subscriptions=desktop_jobs.fresh_subscription_ids(owner_id))
+
+
 def _view(session, ts: TaskSet, team: TeamGraph) -> dict:
     from tvashtr.control_plane import compare  # compare imports this module
 

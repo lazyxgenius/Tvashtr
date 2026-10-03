@@ -3566,7 +3566,10 @@ def get_team_versions(
 ) -> dict:
     """M5 (R3): the header chip and History › Versions — the current version, the changes since
     it, every version newest first. A team with none gets v1 = its current state. Owner-scoped.
-    M-desk-2 (E2): ``?desktop_target=1`` adds where the save's offered tests would run."""
+    M-desk-2 (E2): ``?desktop_target=1`` adds where the save's offered tests would run.
+    M-desk-3 (G1): ... and where each offered set check would run."""
+    from tvashtr.control_plane import task_sets  # lazy, as the save below imports it
+
     me = uuid.UUID(current_user.id)
     with db.session_scope() as session:
         team = _require_library_team(session, team_id, me)
@@ -3574,6 +3577,11 @@ def get_team_versions(
         if desktop_target and listing.get("tests"):
             ids = [uuid.UUID(a["node_id"]) for a in listing["tests"]["agents"]]
             listing["tests"]["desktop"] = agent_tests.desktop_routes(session, me, ids)
+        if desktop_target and listing.get("check_sets"):
+            # Every set check compares the same two versions, so they all run in the same place.
+            where = task_sets.check_desktop(session, team, listing["current"], me)
+            for offered in listing["check_sets"]:
+                offered["desktop"] = where
         return listing
 
 
