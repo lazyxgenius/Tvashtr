@@ -33,8 +33,11 @@ export function NodeChat({ runId, nodeId }: { runId: string | null; nodeId: stri
     try {
       const { answer } = await askNode(runId, nodeId, history);
       setMessages((prev) => [...prev, { role: "assistant", content: answer }]);
-    } catch {
-      setError("Couldn't get an answer — try again.");
+    } catch (err) {
+      // A Desktop Ask that couldn't be answered says why (e.g. Tvashtr Desktop went offline).
+      setError(
+        (err as { askError?: string } | null)?.askError ?? "Couldn't get an answer — try again.",
+      );
     } finally {
       setPending(false);
     }
