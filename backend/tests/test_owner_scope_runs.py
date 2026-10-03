@@ -29,6 +29,7 @@ from tvashtr.models import (
     AgentInvocation,
     AgentNode,
     CostRecord,
+    DesktopNodeJob,
     GithubInstallation,
     HumanTask,
     InboxDismissal,
@@ -303,6 +304,51 @@ def test_b_cannot_ask_a_node_of_a_run(w, monkeypatch):
     # B's own run with B's own node is served: the mixed 404 above is A's node, not B's run.
     own = w.b.post(f"/api/runs/{w.b_run}/nodes/{w.b_engineer}/ask", json=body)
     assert own.status_code == 200, own.text
+
+
+def _desktop_ask(owner, run_id: str, node_id: str) -> str:
+    """An Ask of ``node_id`` answered on ``owner``'s Desktop (M-desk-routes D5), answered."""
+    from tvashtr.control_plane import desktop_jobs
+
+    ask_id = desktop_jobs.enqueue_job(
+        owner_id=owner,
+        run_id=run_id,
+        node_id=node_id,
+        iteration=0,
+        invocation_id=None,
+        provider="claude",
+        model="anthropic/claude-sonnet-5",
+        instruction="Why?",
+        workspace_dir="",
+        sidecars=[],
+        purpose="ask",
+        attempt_key=f"ask:{uuid.uuid4().hex}",
+    )
+    with session_scope() as session:
+        job = session.get(DesktopNodeJob, uuid.UUID(ask_id))
+        job.status, job.result_text = "completed", f"answer {uuid.uuid4().hex}"
+    return ask_id
+
+
+def test_b_cannot_read_an_ask_of_a_run(w):
+    """M-desk-routes: a Desktop Ask's answer is A's alone — B's GET of it (on A's run, or on B's
+    own run) is a 404 that leaks nothing; A reads it; B reads B's own."""
+    ask = _desktop_ask(w.a_id, w.run, w.engineer)
+    with session_scope() as session:
+        answer = session.get(DesktopNodeJob, uuid.UUID(ask)).result_text
+    url = f"/api/runs/{w.run}/nodes/{w.engineer}/asks/{ask}"
+    for theirs in (url, f"/api/runs/{w.b_run}/nodes/{w.engineer}/asks/{ask}"):
+        resp = w.b.get(theirs)
+        _assert_refused(resp, w)
+        assert answer not in resp.text
+    mine = w.a.get(url)
+    assert mine.status_code == 200, mine.text
+    assert mine.json()["answer"] == answer
+    b_ask = _desktop_ask(w.b_id, w.b_run, w.b_engineer)
+    own = w.b.get(f"/api/runs/{w.b_run}/nodes/{w.b_engineer}/asks/{b_ask}")
+    assert own.status_code == 200, own.text
+    # A's Ask under B's own run and node is still not B's.
+    _assert_refused(w.b.get(f"/api/runs/{w.b_run}/nodes/{w.b_engineer}/asks/{ask}"), w)
 
 
 # ---------------------------------------------------------------------------- switch to backup
