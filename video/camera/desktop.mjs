@@ -153,17 +153,24 @@ export async function subscriptionBadge(page, sub, want = "Connected", timeoutMs
   return text;
 }
 
-/** A team from the two-node template with explicit models, made through the Desktop's session. */
-export async function makeTeam(page, name, pmModel, engModel) {
+/**
+ * The team named `name` — made from the two-node template when missing — with the PM on `pmModel`
+ * and the Engineer on `engModel`, through the Desktop's own session. Returns its id and the
+ * PATCH status of each model it set.
+ */
+export async function makeTeam(page, name, pmModel, engModel, { reuse = false } = {}) {
   return page.evaluate(
-    async ({ name, pmModel, engModel }) => {
+    async ({ name, pmModel, engModel, reuse }) => {
       const j = (r) => r.json();
-      const team = await fetch("/api/teams", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ template: "two_node", name }),
-      }).then(j);
-      const id = team.team_graph_id;
+      const teams = reuse ? (await fetch("/api/teams").then(j)).teams : [];
+      const found = teams.find((t) => t.name === name);
+      const id = found
+        ? found.team_graph_id
+        : (await fetch("/api/teams", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ template: "two_node", name }),
+          }).then(j)).team_graph_id;
       const graph = await fetch(`/api/teams/${id}/graph`).then(j);
       const nodes = [];
       for (const n of graph.nodes) {
@@ -178,15 +185,23 @@ export async function makeTeam(page, name, pmModel, engModel) {
       }
       return { id, nodes };
     },
-    { name, pmModel, engModel },
+    { name, pmModel, engModel, reuse },
   );
 }
 
-/** The team named `name` (made from the two-node template with these models when missing). */
-export async function ensureTeam(page, name, pmModel, engModel) {
-  const teams = await page.evaluate(async () => (await (await fetch("/api/teams")).json()).teams);
-  const found = teams.find((t) => t.name === name);
-  return found ? { id: found.team_graph_id, nodes: [] } : makeTeam(page, name, pmModel, engModel);
+/** The team named `name`, reused when it exists (its models set as given). */
+export const ensureTeam = (page, name, pmModel, engModel) =>
+  makeTeam(page, name, pmModel, engModel, { reuse: true });
+
+/** Wait until the server counts the Desktop runner's heartbeats fresh for Claude and Grok. */
+export async function waitRunnerFresh(api, tries = 40) {
+  for (let i = 0; i < tries; i += 1) {
+    const { json } = await api("GET", "/api/engines/subscriptions");
+    const by = Object.fromEntries((json.subscriptions || []).map((s) => [s.provider, s]));
+    if (by.claude?.runner_fresh && by.grok?.runner_fresh) return by;
+    await sleep(1500);
+  }
+  return null;
 }
 
 /** Keep the Desktop window on top (an occluded window may drop frames) — or let it go. */
@@ -239,18 +254,21 @@ export async function openNodeSettings(page, roleTitle) {
  * (null with `dry`, which stops before Launch). On Desktop the picker is "Pick a folder" and the
  * GitHub App repos sit under their own heading in its "Folders" list.
  */
-export async function launchFromComposer(page, { teamName, idea, repo = REPO, steps, dry = false }) {
-  const step = steps || (async (_label, fn) => fn());
-  await step("click Run this team", () =>
-    page.getByRole("button", { name: "Run this team", exact: true }).click(),
-  );
+export async function launchFromComposer(
+  page,
+  { teamName, idea, repo = REPO, step = (_kind, _label, _loc, fn) => fn(), typeDelay = 0, dry = false },
+) {
+  const runBtn = page.getByRole("button", { name: "Run this team", exact: true });
+  await step("click", "Run this team", runBtn, () => runBtn.click());
   const composer = page.locator("section[aria-label='Start a run']");
   await composer.waitFor({ timeout: 30000 });
   await composer.locator(".hm-picker--team", { hasText: teamName }).waitFor({ timeout: 30000 });
-  await step("type the task", () =>
-    composer.getByRole("textbox", { name: "What should the team build?" }).fill(idea),
+  const box = composer.getByRole("textbox", { name: "What should the team build?" });
+  await step("type", "the task", box, () =>
+    typeDelay ? box.pressSequentially(idea, { delay: typeDelay }) : box.fill(idea),
   );
-  await step("open the repo picker", () => composer.locator(".hm-picker--repo").click());
+  const picker = composer.locator(".hm-picker--repo");
+  await step("click", "the repo picker", picker, () => picker.click());
   const repoPop = page.getByRole("dialog", { name: /^Pick a (repo|folder)$/ });
   await repoPop.waitFor({ timeout: 30000 });
   const option = repoPop
@@ -259,14 +277,15 @@ export async function launchFromComposer(page, { teamName, idea, repo = REPO, st
       has: page.locator(".hm-picker__code", { hasText: new RegExp(`^${repo}$`) }),
     });
   await option.waitFor({ timeout: 60000 });
-  await step("pick the repo", () => option.click());
+  await step("click", repo, option, () => option.click());
   await composer.locator(".hm-picker--repo", { hasText: repo }).waitFor({ timeout: 30000 });
   if (dry) return null;
+  const launch = composer.getByRole("button", { name: "Launch", exact: true });
   const [req] = await Promise.all([
     page.waitForRequest((r) => r.url().endsWith("/api/runs") && r.method() === "POST", {
       timeout: 120000,
     }),
-    step("click Launch", () => composer.getByRole("button", { name: "Launch", exact: true }).click()),
+    step("click", "Launch", launch, () => launch.click()),
   ]);
   const body = JSON.parse(req.postData() || "{}");
   const res = await req.response();
@@ -274,11 +293,12 @@ export async function launchFromComposer(page, { teamName, idea, repo = REPO, st
 }
 
 /** Approves a waiting gate on the run view if one is showing; returns its title or null. */
-export async function approveVisibleGate(page) {
+export async function approveVisibleGate(page, step = (_kind, _label, _loc, fn) => fn()) {
   const card = page.locator("article.tv-task").filter({ hasText: "Awaiting your approval" }).first();
   if ((await card.count()) === 0) return null;
   const title = (await card.locator(".tv-task__title").first().innerText()).trim();
-  await card.getByRole("button", { name: "Approve", exact: true }).click();
+  const approve = card.getByRole("button", { name: "Approve", exact: true });
+  await step("click", "Approve", approve, () => approve.click());
   await card.waitFor({ state: "detached", timeout: 60000 }).catch(() => {});
   return title;
 }
