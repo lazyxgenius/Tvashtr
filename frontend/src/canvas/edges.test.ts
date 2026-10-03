@@ -80,6 +80,18 @@ describe("buildEdges — every edge carries a state-colored arrowhead (Part 2)",
     expect(byId.done.markerEnd).toMatchObject({ color: "var(--sage-500)" });
   });
 
+  it("M11: draws a failure path (edge_type failure) dashed red with its label (Cnv-FailPath)", () => {
+    const g: GraphData = {
+      ...graph,
+      edges: [edge({ id: "fail", source_node_id: "b", target_node_id: "f", edge_type: "failure" })],
+    };
+    const [fail] = buildEdges(g, NO_FLAGS, true, null, noop, noop);
+    expect(fail.type).toBe("work");
+    expect(fail.className).toBe("rf-edge--failure");
+    expect(fail.markerEnd).toMatchObject({ type: MarkerType.ArrowClosed, color: "#c25a4b" });
+    expect(fail.data).toMatchObject({ label: "If it fails or times out", failure: true });
+  });
+
   it("keeps the branch (reject) muted and the rework (loop-back) coral", () => {
     expect(byId.reject.markerEnd).toMatchObject({ color: "var(--branch-stroke)" });
     expect(byId.rework.markerEnd).toMatchObject({ color: "var(--rework-stroke)" });

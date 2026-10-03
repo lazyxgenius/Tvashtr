@@ -16,6 +16,8 @@ export interface WorkEdgeData {
   editable?: boolean;
   hovered?: boolean;
   label?: string;
+  /** M11: the failure path's label pill (Cnv-FailPath: red, not the neutral branch pill). */
+  failure?: boolean;
   onHover?: (hovered: boolean) => void;
   onDelete?: () => void;
 }
@@ -55,7 +57,7 @@ export function WorkEdge({
       <EdgeLabelRenderer>
         {d.label && (
           <div
-            className="rf-edge__label nodrag nopan"
+            className={`rf-edge__label${d.failure ? " rf-edge__label--failure" : ""} nodrag nopan`}
             style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
           >
             {d.label}

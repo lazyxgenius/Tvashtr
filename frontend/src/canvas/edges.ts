@@ -111,6 +111,21 @@ export function buildEdges(
       posById[e.source_node_id],
       posById[e.target_node_id],
     );
+    // M11 (R13, Cnv-FailPath): the failure path — dashed red, labelled "If it fails or times out".
+    if (e.edge_type === "failure") {
+      return {
+        id: e.id,
+        source: e.source_node_id,
+        target: e.target_node_id,
+        sourceHandle,
+        targetHandle,
+        type: "work",
+        className: `rf-edge--failure${invalid}`,
+        markerEnd: { type: MarkerType.ArrowClosed, color: "#c25a4b", width: 14, height: 14 },
+        animated: false,
+        data: { ...authoring, label: "If it fails or times out", failure: true },
+      };
+    }
     let className: string;
     let markerEnd;
     if (e.conditions?.when === "rejected") {
