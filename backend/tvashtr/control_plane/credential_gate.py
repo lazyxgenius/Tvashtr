@@ -79,3 +79,11 @@ def desktop_routed_subscriptions(
         if sub
     }
     return sorted(routed)
+
+
+def desktop_routes(models: Iterable[str | None], *, fresh_subscriptions: set[str]) -> dict:
+    """M-desk-2 (E2): where a Desktop launch of ``models`` runs — the subscriptions it routes to
+    (as :func:`desktop_routed_subscriptions`) and whether EVERY model is on one (none on a key)."""
+    named = [m.strip() for m in models if (m or "").strip()]
+    routed = [_runner_sub(m, fresh_subscriptions, True) for m in named]
+    return {"subscriptions": sorted({s for s in routed if s}), "all": bool(named) and all(routed)}

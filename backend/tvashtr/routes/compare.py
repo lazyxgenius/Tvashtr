@@ -33,12 +33,13 @@ def _owner(user: UserOut) -> uuid.UUID:
 
 
 @router.get("/api/teams/{team_id}/compare")
-def compare_tab(team_id: str, current_user: CurrentUser) -> dict:
+def compare_tab(team_id: str, current_user: CurrentUser, desktop_target: bool = False) -> dict:
     """The Compare tab: the versions, previous vs current, the target, the estimate and the newest
-    compare of the team."""
+    compare of the team. M-desk-2 (E2): ``?desktop_target=1`` adds where each version would run."""
     owner = _owner(current_user)
     with session_scope() as session:
-        return compare.page(session, compare._require_team(session, team_id, owner), owner)
+        team = compare._require_team(session, team_id, owner)
+        return compare.page(session, team, owner, desktop_target)
 
 
 @router.get("/api/teams/{team_id}/compare/changes")
