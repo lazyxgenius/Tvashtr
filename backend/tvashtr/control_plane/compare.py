@@ -707,6 +707,17 @@ def _work_seconds(session, run: Run) -> int:
     before the restart reads as queued; per-claim timestamps if restarts mid-compare matter."""
     now = _now()
     ended_run = run.status in run_views.TERMINAL_STATUSES
+    last_line = (
+        dict(
+            session.execute(
+                select(RunEvent.invocation_id, func.max(RunEvent.created_at))
+                .where(RunEvent.run_id == run.workflow_id, RunEvent.invocation_id.is_not(None))
+                .group_by(RunEvent.invocation_id)
+            ).all()
+        )
+        if ended_run
+        else {}
+    )
     jobs = {
         inv_id: (created, claimed, finished)
         for inv_id, created, claimed, finished in session.execute(
@@ -732,15 +743,17 @@ def _work_seconds(session, run: Run) -> int:
         )
     ).all():
         created, claimed, finished = jobs.get(inv_id, (None, None, None))
-        # A stopped run's open step is never closed: it ends where its job ended, else adds
-        # nothing — never the wall clock (the lane's time must not grow after it has ended).
-        end = ended or ((finished or started) if ended_run else now)
+        # A stopped run's open step is never closed: it ends where its job ended, else at its last
+        # line — never the wall clock (the lane's time must not grow after it has ended).
+        end = ended or ((finished or last_line.get(inv_id) or started) if ended_run else now)
         queued = (claimed or finished or end) - created if created else timedelta(0)
         total += max((end - started - queued).total_seconds(), 0.0)
     return int(total)
 
 
-def _lane(session, run: Run, extras: dict, live: dict, desktop: bool = False) -> dict:
+def _lane(
+    session, run: Run, extras: dict, live: dict, desktop: bool = False, *, work: bool = False
+) -> dict:
     """One run's lane and the facts its results row needs (a Desktop lane's work time too)."""
     act = activity.run_activity(session, run, resume_info=False)
     lines, agents = act["lines"], act["agents"]
@@ -796,7 +809,7 @@ def _lane(session, run: Run, extras: dict, live: dict, desktop: bool = False) ->
             "retries": host.get("retry", 0),
             "stalls": host.get("stalled", 0),
             "files": _files(run) if status != "running" and status != "needs_you" else None,
-            "work": _work_seconds(session, run) if desktop else None,
+            "work": _work_seconds(session, run) if work else None,
         },
     }
 
@@ -859,9 +872,17 @@ def view(owner_id: uuid.UUID, compare_id: str) -> dict:
             return _set_view(session, cmp, listed)
         runs = {r.pair_label: r for r in listed}
         team = session.get(TeamGraph, cmp.team_graph_id)
-        # D3 is about lanes that share a subscription: a Desktop compare none of whose runs was
-        # routed to the Desktop (e.g. on held keys) reads as a website one.
-        desktop = _is_desktop(session, cmp) and any(r.desktop_subscriptions for r in listed)
+        desktop = _is_desktop(session, cmp)
+        # D3: lanes that share a subscription take turns, so they count work time; lanes with no
+        # subscription in common (e.g. one on held keys) never wait for each other — Time stays.
+        shared = (
+            desktop
+            and len(listed) == 2
+            and bool(
+                set(listed[0].desktop_subscriptions or [])
+                & set(listed[1].desktop_subscriptions or [])
+            )
+        )
         extras = run_views.run_extras(session, list(runs.values()), include_progress=True)
         live = run_views.live_costs(session, [r.workflow_id for r in runs.values()])
         sides, facts = [], {}
@@ -880,7 +901,7 @@ def view(owner_id: uuid.UUID, compare_id: str) -> dict:
                     "gate_task_id": None,
                 }
             else:
-                lane = _lane(session, run, extras[run.id], live, desktop)
+                lane = _lane(session, run, extras[run.id], live, desktop, work=shared)
                 facts[label] = lane.pop("_facts")
             sides.append({"label": label, "version": number, **lane})
         ended = cmp.status in ("finished", "stopped")
@@ -888,7 +909,7 @@ def view(owner_id: uuid.UUID, compare_id: str) -> dict:
         if ended:
             # M9: "One task is a small sample · Compare on <set>".
             results = {
-                **_results(session, cmp, facts, desktop),
+                **_results(session, cmp, facts, shared),
                 "sample": task_sets.sample(session, team.id),
             }
         return {

@@ -539,6 +539,11 @@ def release_job(owner_id: uuid.UUID, job_id: str) -> dict:
         job = _owned_job(session, owner_id, job_id)
         if job.status != "claimed":
             raise JobConflict(NOT_CLAIMED_ERROR)
+        if job.purpose == ASK:
+            # M-desk-routes: an Ask's only waiter is the chat that is closing with this Desktop, so
+            # it ends here (offline wording) rather than be answered again for nobody.
+            job.status, job.error, job.finished_at = "expired", OFFLINE_ERROR, _now()
+            return {"job_id": str(job.id), "status": "expired"}
         job.status = "queued"
         job.claimed_at = None
         job.heartbeat_at = None

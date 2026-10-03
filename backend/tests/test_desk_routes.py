@@ -611,7 +611,10 @@ def test_a_desktop_ask_no_desktop_picks_up_expires_with_the_offline_wording(clie
     assert claimed is None  # an expired Ask is never handed out
 
 
-def test_a_released_ask_job_writes_nothing_into_the_asked_run(client):
+def test_a_released_ask_ends_and_writes_nothing_into_the_asked_run(client):
+    """Desktop quitting or restarting hands its jobs back; an Ask's only waiter is the chat that
+    just closed with it, so a released Ask ends (offline wording) instead of being answered again
+    for nobody — and its run gains no note."""
     c, owner = fresh_account("desk-ask-rel")
     run_id, engineer = _asked_run(c, owner)
     _connect_desktop(c, "claude")
@@ -620,10 +623,11 @@ def test_a_released_ask_job_writes_nothing_into_the_asked_run(client):
     before = _events_of(run_id)
     resp = c.post(f"/api/desktop-runner/jobs/{ask_id}/release")
     assert resp.status_code == 200, resp.text
-    assert resp.json() == {"job_id": ask_id, "status": "queued"}
+    assert resp.json() == {"job_id": ask_id, "status": "expired"}
+    [job] = _jobs(id=uuid.UUID(ask_id))
+    assert (job.status, job.error) == ("expired", desktop_jobs.OFFLINE_ERROR)
     assert _events_of(run_id) == before
-    again = c.post("/api/desktop-runner/claim", json={"providers": ["claude"]}).json()["job"]
-    assert again["id"] == ask_id
+    assert c.post("/api/desktop-runner/claim", json={"providers": ["claude"]}).json()["job"] is None
 
 
 def test_a_runner_never_gets_a_snapshot_of_a_job_without_a_workspace(client, tmp_path):
@@ -882,6 +886,63 @@ def test_a_desktop_compare_with_no_lane_on_the_desktop_keeps_time(client, monkey
     cid = resp.json()["id"]
     runs = _runs_of(cid)
     assert [(r.desktop_target, r.desktop_subscriptions) for r in runs] == [(True, []), (True, [])]
+    with session_scope() as session:
+        session.execute(update(Run).where(Run.pair_id == uuid.UUID(cid)).values(status="completed"))
+    results = c.get(f"/api/compares/{cid}").json()["results"]
+    assert next(r for r in results["rows"] if r["key"] == "time")["label"] == "Time"
+    assert "note" not in results
+
+
+def test_a_stopped_lanes_open_step_without_a_job_ends_at_its_last_line(client):
+    """A step on a held key (no Desktop job) that a Stop left open counts up to its last line."""
+    from tvashtr.control_plane import compare
+
+    c, owner = fresh_account("desk-open")
+    run_id, clone = make_run(owner, None, status="cancelled", desktop_target=True)
+    engineer = clone_node(clone, "engineer")
+    start = datetime.now(UTC) - timedelta(minutes=40)
+    with session_scope() as session:
+        inv = AgentInvocation(
+            run_id=run_id,
+            node_id=uuid.UUID(engineer),
+            iteration=1,
+            status="running",
+            started_at=start,
+        )
+        session.add(inv)
+        session.flush()
+        session.add(
+            RunEvent(
+                run_id=run_id,
+                invocation_id=inv.id,
+                seq=3,
+                kind="message",
+                payload={"source": "agent", "text": "still editing"},
+                created_at=start + timedelta(minutes=20),
+            )
+        )
+    with session_scope() as session:
+        assert compare._work_seconds(session, session.get(Run, uuid.UUID(run_id))) == 1200
+
+
+def test_lanes_that_share_no_subscription_keep_the_time_row(client, monkeypatch):
+    """D3's line is about lanes taking turns on ONE subscription: v1 on the Desktop, v2 on held keys
+    (no subscription in common) keeps the website's Time row and adds no line."""
+    c, _owner = fresh_account("desk-noshare")
+    team = _desk_team(c)
+    assert c.get(f"/api/teams/{team}/versions").status_code == 200  # v1: Claude + Grok
+    c.post("/api/providers", json={"provider": "openai", "api_key": "sk-openai"})
+    for n in _graph(c, team)["nodes"]:
+        if n.get("model"):
+            resp = c.patch(f"/api/teams/{team}/nodes/{n['id']}", json={"model": "openai/gpt-4.1"})
+            assert resp.status_code == 200, resp.text
+    assert c.post(f"/api/teams/{team}/versions", json={}).status_code == 201  # v2: OpenAI key
+    _connect_desktop(c, "claude", "grok")
+    resp, _started, _waiters = _post(c, team, monkeypatch, desktop_target=True)
+    assert resp.status_code == 201, resp.text
+    cid = resp.json()["id"]
+    runs = _runs_of(cid)
+    assert [r.desktop_subscriptions for r in runs] == [["claude", "grok"], []]
     with session_scope() as session:
         session.execute(update(Run).where(Run.pair_id == uuid.UUID(cid)).values(status="completed"))
     results = c.get(f"/api/compares/{cid}").json()["results"]
