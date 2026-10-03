@@ -42,7 +42,8 @@ export TVASHTR_AGENT_SANDBOX=local
 unset TVASHTR_AUTO_APPROVE_GATES  # M8: a compare approves its own gates (R5)
 export TVASHTR_FORCE_REVISIONS=0
 # The first run's Engineer round 1 fails at once (no LLM call); the resumed run is never forced.
-unset TVASHTR_FORCE_FAIL_ROLE TVASHTR_FORCE_FAIL_ROUND TVASHTR_FORCE_HANG_ROLE
+# M11: scripts/failure_path_e2e.sh keeps its forced Engineer failure (KEEP_FORCED_FAILURE=1).
+[[ -n "${KEEP_FORCED_FAILURE:-}" ]] || unset TVASHTR_FORCE_FAIL_ROLE TVASHTR_FORCE_FAIL_ROUND TVASHTR_FORCE_HANG_ROLE
 # The review_loop Engineer + Reviewer models come from TVASHTR_AGENT_MODEL; the PM from DEFAULT_MODEL.
 # The model is this launcher's (TVASHTR_E2E_MODEL), whatever .env pins.
 export TVASHTR_E2E_PROVIDER="${TVASHTR_E2E_PROVIDER:-openai}"

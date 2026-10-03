@@ -153,3 +153,80 @@ test("J3 live steering: a human rewrites the PRD at the gate in the document vie
     DEFAULT_LINE,
   );
 });
+
+test("M11 approve with my edits: one click saves the edited spec as the next version and approves the gate", async ({
+  page,
+}) => {
+  test.setTimeout(32 * 60 * 1000);
+  const SENTINEL = `Approved with a human's edits via Tvashtr ${Date.now()}`;
+  await openSeededTeam(page);
+  const api = page.request;
+  await expect(page.getByRole("button", { name: "Run this team" })).toBeEnabled({
+    timeout: 30_000,
+  });
+  await openComposerFromCanvas(page, "My team");
+  const { runId } = await launchFromComposer(page);
+  expect(runId, "the Start control returns a run_id").toBeTruthy();
+  console.log(`[steering-e2e] (approve with edits) run_id = ${runId}`);
+  await expect
+    .poll(() => runStatus(api, runId), { timeout: 12 * 60 * 1000, intervals: [2000] })
+    .toBe("awaiting_human");
+
+  // The waiting spec gate on the run's canvas opens the spec with its editor (Cnv-EditApprove).
+  await page
+    .locator(".react-flow__node", { hasText: /Spec approval|Approval gate|Approve the spec/ })
+    .first()
+    .click();
+  const drawer = page.getByRole("complementary", { name: /^Spec v\d+$/ });
+  await expect(drawer).toBeVisible({ timeout: 30_000 });
+  await expect(drawer.getByRole("button", { name: "Reject" })).toBeVisible();
+  const prose = drawer.locator(".dv-editor .ProseMirror");
+  await expect(prose).not.toBeEmpty({ timeout: 30_000 });
+  await prose.click();
+  await page.keyboard.press("Meta+a");
+  await page.keyboard.press("Backspace");
+  await page.keyboard.type(
+    "Create a file named greeting.txt at the repository root. It must contain exactly this single line and nothing else:",
+  );
+  await page.keyboard.press("Enter");
+  await page.keyboard.type(SENTINEL);
+  await expect(drawer.getByText(/^\d+ edits?$/)).toBeVisible();
+  await drawer.getByRole("button", { name: "Approve with my edits" }).click();
+
+  // One click: the gate is approved and the Activity says so, naming the new version.
+  await expect
+    .poll(
+      async () => {
+        const res = await api.get(`/api/runs/${runId}/activity`);
+        const body = (await res.json()) as { lines?: { text: string }[] };
+        return (body.lines ?? []).some((l) =>
+          /^Approved with your edits · spec v\d+$/.test(l.text),
+        );
+      },
+      { timeout: 60_000, intervals: [2000] },
+    )
+    .toBe(true);
+
+  // The run ships the human's edit (escalation gates, if the Reviewer cycles to the cap, approved).
+  const deadline = Date.now() + 18 * 60 * 1000;
+  let status = await runStatus(api, runId);
+  while (Date.now() < deadline) {
+    status = await runStatus(api, runId);
+    if (status === "completed") break;
+    if (TERMINAL_BAD.includes(status)) throw new Error(`run ended '${status}' before shipping`);
+    const approve = page.getByRole("button", { name: "Approve", exact: true });
+    if ((await approve.count()) > 0)
+      await approve
+        .first()
+        .click()
+        .catch(() => {});
+    await page.waitForTimeout(3000);
+  }
+  expect(status, "the run approved with edits should ship (completed)").toBe("completed");
+  const shipped = await shippedFile(api, runId, "greeting.txt");
+  expect(
+    shipped as string,
+    "shipped greeting.txt reflects the edit approved in one click",
+  ).toContain(SENTINEL);
+  console.log("[steering-e2e] approve with my edits: shipped the edited spec");
+});
