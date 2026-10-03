@@ -10,12 +10,17 @@
  * SIGKILL), nothing of the job may still run, and the run must offer "Resume from here" (not used).
  *
  *   node video/camera/stall-probe.mjs      → video/out/v0/stall-probe/ (screens + result.json)
+ *
+ * With --force-hang the backend also runs with TVASHTR_FORCE_HANG_ROLE=pm: the PM waits host-side
+ * like a model that never answers (it never reaches the Desktop runner), nothing is paused, the
+ * PM's card is watched, and the run is cancelled at the end if the sweep did not end it.
  */
 import fs from "node:fs";
 import path from "node:path";
 import * as D from "./desktop.mjs";
 
-const OUT = path.join(D.repoRoot, "video", "out", "v0", "stall-probe");
+const FORCE_HANG = process.argv.includes("--force-hang");
+const OUT = path.join(D.repoRoot, "video", "out", "v0", FORCE_HANG ? "stall-probe-force-hang" : "stall-probe");
 const PM_MODEL = process.env.STALL_PM_MODEL || "deepseek/deepseek-chat";
 const ENG_MODEL = process.env.STALL_ENG_MODEL || "xai/grok-4.7";
 const IDEA =
@@ -64,25 +69,30 @@ try {
   await page.locator("section[aria-label='Activity']").waitFor({ timeout: 60000 });
   await D.frontmost(app);
 
-  // PM (host) → PRD gate → the Engineer's Desktop job: pause its CLI the moment it is running.
-  const job = await D.waitFor(
-    async () => {
-      await D.approveVisibleGate(page);
-      return D.processTree(electronPid).find((p) => JOB.test(p.command)) || null;
-    },
-    { timeoutMs: 15 * 60 * 1000, everyMs: 250, what: "the Engineer's Desktop job" },
-  );
-  const tree = [job, ...D.processTree(job.pid)];
-  for (const p of tree) process.kill(p.pid, "SIGSTOP");
-  paused = tree.map((p) => p.pid);
-  result.pausedAt = new Date().toISOString();
-  result.paused = tree.map((p) => ({ pid: p.pid, command: p.command.replace(/\s+--prompt-file.*$/, " --prompt-file …") }));
-  log(`SIGSTOP ${paused.join(",")} (${result.paused[0].command})`);
+  if (FORCE_HANG) {
+    result.pausedAt = new Date().toISOString(); // the hang starts with the PM's step
+    log("force-hang: the PM waits host-side; nothing is paused");
+  } else {
+    // PM (host) → PRD gate → the Engineer's Desktop job: pause its CLI the moment it is running.
+    const job = await D.waitFor(
+      async () => {
+        await D.approveVisibleGate(page);
+        return D.processTree(electronPid).find((p) => JOB.test(p.command)) || null;
+      },
+      { timeoutMs: 15 * 60 * 1000, everyMs: 250, what: "the Engineer's Desktop job" },
+    );
+    const tree = [job, ...D.processTree(job.pid)];
+    for (const p of tree) process.kill(p.pid, "SIGSTOP");
+    paused = tree.map((p) => p.pid);
+    result.pausedAt = new Date().toISOString();
+    result.paused = tree.map((p) => ({ pid: p.pid, command: p.command.replace(/\s+--prompt-file.*$/, " --prompt-file …") }));
+    log(`SIGSTOP ${paused.join(",")} (${result.paused[0].command})`);
+  }
   await D.sleep(3000);
   result.screens.paused = path.relative(D.repoRoot, path.join(OUT, "00-paused.png"));
   await page.screenshot({ path: path.join(OUT, "00-paused.png") });
 
-  const engineer = D.nodeCard(page, "Engineer");
+  const engineer = D.nodeCard(page, FORCE_HANG ? "Product manager" : "Engineer");
   const stateShot = async (label, file, test, timeoutMs) => {
     const t0 = Date.now();
     const seen = await D.waitFor(test, { timeoutMs, everyMs: 1000, what: label }).then(() => true, () => false);
@@ -100,6 +110,12 @@ try {
   }, 300000);
   const r = (await api("GET", `/api/runs/${result.runId}`)).json;
   result.run = { status: r.run?.status, failure: r.run?.failure || null };
+  if (FORCE_HANG && r.run?.status === "running") {
+    const c = await api("POST", `/api/runs/${result.runId}/cancel`);
+    result.cancelled = c.status;
+    log(`the sweep did not end it: cancelled the run (HTTP ${c.status})`);
+    await D.sleep(5000);
+  }
 
   // Stop the paused process: SIGTERM (delivered once continued), then SIGKILL if needed.
   for (const pid of paused) if (alive(pid)) process.kill(pid, "SIGTERM");
