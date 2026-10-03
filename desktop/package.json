@@ -1,6 +1,6 @@
 {
   "name": "tvashtr-desktop",
-  "version": "0.23.0",
+  "version": "0.24.0",
   "private": true,
   "description": "Tvashtr Desktop v1 — Electron shell around the existing React/Vite frontend (hosted API).",
   "main": "electron/main.cjs",
