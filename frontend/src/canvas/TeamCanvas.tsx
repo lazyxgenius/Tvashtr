@@ -416,7 +416,12 @@ export function TeamCanvas({
       if (folds.length === 0 && !nds.some((n) => n.hidden || n.type === "groupFold")) return nds;
       const kept = nds
         .filter((n) => n.type !== "groupFold")
-        .map((n) => (Boolean(n.hidden) === hide.has(n.id) ? n : { ...n, hidden: hide.has(n.id) }));
+        // A folded agent is also deselected, so no selection box is left over the fold.
+        .map((n) =>
+          Boolean(n.hidden) === hide.has(n.id)
+            ? n
+            : { ...n, hidden: hide.has(n.id), selected: hide.has(n.id) ? false : n.selected },
+        );
       return [
         ...kept,
         ...folds.map((f) => ({

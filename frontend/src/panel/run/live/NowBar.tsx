@@ -76,6 +76,7 @@ export function NowBar({
   graph,
   status,
   now = Date.now(),
+  editing = null,
   onSelect,
 }: {
   agents: ActivityAgent[];
@@ -83,6 +84,8 @@ export function NowBar({
   /** The run's status: once it ended, an agent it never reached says so. */
   status?: string;
   now?: number;
+  /** M11 (Cnv-EditApprove): the gate whose spec you are editing in its drawer. */
+  editing?: string | null;
   onSelect: (nodeId: string) => void;
 }) {
   const ended = RUN_TERMINAL.has(status ?? "");
@@ -133,7 +136,11 @@ export function NowBar({
                 </span>
               </span>
               <span className="lv-chip__line">
-                {notReached ? "" : chipLine(a, graph, agentsById, now, ended)}
+                {notReached
+                  ? ""
+                  : a.node_id === editing
+                    ? "Waiting for you · you are editing the spec"
+                    : chipLine(a, graph, agentsById, now, ended)}
               </span>
             </span>
             <span className="lv-chip__ago">{ago(a, now)}</span>

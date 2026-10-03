@@ -117,6 +117,19 @@ describe("NowBar", () => {
     expect(screen.getByRole("button", { name: /^Ship/ })).toHaveTextContent("Not yet");
   });
 
+  it("a gate whose spec you are editing says so (Cnv-EditApprove)", () => {
+    const waitingGate = AGENTS.map(
+      (a): ActivityAgent =>
+        a.node_id === "n-prd" ? { ...a, live_state: "needs_you", activity: "Waiting for you" } : a,
+    );
+    render(
+      <NowBar agents={waitingGate} graph={GRAPH} now={NOW} editing="n-prd" onSelect={() => {}} />,
+    );
+    expect(screen.getByRole("button", { name: /^Approval gate/ })).toHaveTextContent(
+      "Waiting for you · you are editing the spec",
+    );
+  });
+
   it("leaves out the Stop ending", () => {
     render(<NowBar agents={AGENTS} graph={GRAPH} now={NOW} onSelect={() => {}} />);
     expect(screen.queryByRole("button", { name: /^Stop/ })).toBeNull();

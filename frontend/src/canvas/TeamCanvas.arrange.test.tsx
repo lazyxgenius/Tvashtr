@@ -166,6 +166,30 @@ describe("TeamCanvas — M11 groups", () => {
     expect(onGroupsChange).toHaveBeenLastCalledWith([loop({ folded: true })]);
   });
 
+  it("folding drops the selection of the agents it hides (no selection box left over the fold)", () => {
+    const props = { onMoveNodes: vi.fn(), onGroupsChange: vi.fn(), onAddNode: vi.fn() };
+    const view = (groups: TeamGroup[]) => (
+      <ToastProvider>
+        <TeamCanvas
+          graph={graph}
+          run={null}
+          workflowStatus={null}
+          tasks={NO_TASKS}
+          editable
+          groups={groups}
+          {...props}
+        />
+      </ToastProvider>
+    );
+    const { container, rerender } = render(view([loop()]));
+    const eng = () => container.querySelector('[data-id="n-eng"]') as HTMLElement;
+    fireEvent.click(eng());
+    expect(eng()).toHaveClass("selected");
+    rerender(view([loop({ folded: true })]));
+    rerender(view([loop()]));
+    expect(eng()).not.toHaveClass("selected");
+  });
+
   it("a folded group is one box; its agents hide, the paths in meet the box; Unfold opens it", () => {
     const { onGroupsChange, container } = setup([loop({ folded: true })]);
     const box = screen.getByRole("group", { name: "Review loop, folded" });

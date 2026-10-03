@@ -1145,6 +1145,8 @@ export default function App({
         )
       : undefined;
   const specTask = authoring ? undefined : specTaskOf(specGate);
+  // The Now bar says "you are editing the spec" while the drawer holds an edit (Cnv-EditApprove).
+  const [specEditing, setSpecEditing] = useState(false);
   const openGate = (nodeId: string) => {
     if (!specTaskOf(nodeId)) return;
     setDocsDrawer(null);
@@ -1327,6 +1329,7 @@ export default function App({
             agents={activity.agents}
             graph={graph}
             status={activity.status}
+            editing={specTask && specEditing ? specGate : null}
             onSelect={(nodeId) => openRunNodeTool(nodeId, null)}
           />
         ))}
@@ -1532,6 +1535,7 @@ export default function App({
           {specTask && specId && runId && (
             <SpecApproveDrawer
               key={specTask.id}
+              onEditing={setSpecEditing}
               runId={runId}
               taskId={specTask.id}
               docId={specId}

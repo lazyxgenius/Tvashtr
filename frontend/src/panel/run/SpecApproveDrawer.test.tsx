@@ -63,6 +63,31 @@ const edit = (markdown: string) => {
   });
 };
 
+describe("SpecApproveDrawer — M11 editing", () => {
+  it("tells the page while there is an edit (the Now bar says you are editing)", async () => {
+    const onEditing = vi.fn();
+    render(
+      <SpecApproveDrawer
+        runId="run-1"
+        taskId={7}
+        docId="doc-1"
+        nextAgent="Engineer"
+        onReject={vi.fn()}
+        onApprove={vi.fn()}
+        onApproved={vi.fn()}
+        onVersions={vi.fn()}
+        onClose={vi.fn()}
+        onEditing={onEditing}
+      />,
+    );
+    await waitFor(() => expect(document.querySelector(".ProseMirror")).not.toBeNull());
+    edit(SPEC.replace("Default length: 20", "Default length: 14, the usual default"));
+    await waitFor(() => expect(onEditing).toHaveBeenLastCalledWith(true));
+    edit(SPEC);
+    await waitFor(() => expect(onEditing).toHaveBeenLastCalledWith(false));
+  });
+});
+
 describe("SpecApproveDrawer — M11 Approve with my edits", () => {
   it("the spec v2 in the editor, what an edit becomes, and the three choices", async () => {
     setup();

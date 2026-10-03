@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import { Check, FileText, History, X } from "lucide-react";
 
@@ -63,6 +63,7 @@ export function SpecApproveDrawer({
   onApproved,
   onVersions,
   onClose,
+  onEditing,
 }: {
   runId: string;
   taskId: number;
@@ -77,6 +78,8 @@ export function SpecApproveDrawer({
   /** "Spec versions": the document viewer, with the spec's versions. */
   onVersions: () => void;
   onClose: () => void;
+  /** Whether there is an edit now (the Now bar says "you are editing the spec"). */
+  onEditing?: (editing: boolean) => void;
 }) {
   const doc = useLoaded(docId, () => getDocument(docId));
   const latest = doc.value?.versions.at(-1) ?? null;
@@ -85,6 +88,11 @@ export function SpecApproveDrawer({
   const [error, setError] = useState<string | null>(null);
   const edits = edit ? editCount(edit.baseline, edit.markdown) : 0;
   const n = latest?.version_no ?? 0;
+  const editing = edits > 0;
+  useEffect(() => {
+    onEditing?.(editing);
+  }, [editing, onEditing]);
+  useEffect(() => () => onEditing?.(false), [onEditing]);
 
   const approveEdited = async () => {
     if (!edit || edits === 0 || saving) return;
