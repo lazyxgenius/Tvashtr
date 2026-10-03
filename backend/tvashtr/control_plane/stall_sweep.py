@@ -28,6 +28,7 @@ from sqlalchemy import func, select, update
 
 from tvashtr.config import get_settings
 from tvashtr.control_plane import live_state, run_failure
+from tvashtr.control_plane.scheduling import scheduled
 from tvashtr.db import session_scope
 from tvashtr.engines import sandbox_cache
 from tvashtr.metering import running_cost
@@ -234,9 +235,10 @@ def _periodic_stall_sweep(scheduled_time: datetime, actual_time: datetime) -> No
         logger.warning("stall sweep failed", exc_info=True)
 
 
-# Registered at import (before ``DBOS.launch()``) only when enabled: the offline suite launches DBOS
-# through the app and turns it off, so no real cron runs during ``make test``.
+# Registered at import (before ``DBOS.launch()``) only when enabled, through ``scheduled`` so its
+# ticks run on this version: the offline suite launches DBOS through the app and turns it off, so
+# no real cron runs during ``make test``.
 if get_settings().stall_sweep_enabled:
-    periodic_stall_sweep = DBOS.scheduled(get_settings().stall_sweep_cron)(
+    periodic_stall_sweep = scheduled(get_settings().stall_sweep_cron)(
         DBOS.workflow()(_periodic_stall_sweep)
     )

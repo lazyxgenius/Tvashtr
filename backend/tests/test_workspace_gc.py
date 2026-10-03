@@ -703,7 +703,7 @@ def test_the_boot_sweep_actually_runs_during_lifespan_startup():
 
 
 def test_the_periodic_sweep_is_not_registered_outside_fly_mode():
-    """THE CRON GATE. ``DBOS.scheduled`` registers a poller at IMPORT time and ``DBOS.launch()``
+    """THE CRON GATE. The cron decorator registers a poller at IMPORT time and ``DBOS.launch()``
     starts it — which ``make test`` does, via conftest's session-scoped ``with TestClient(app)``.
     Registering unconditionally would arm a real 10-minute cron inside the offline suite and enqueue
     genuine workflow rows at random, depending on wall-clock start time — the stale-PENDING wedge
