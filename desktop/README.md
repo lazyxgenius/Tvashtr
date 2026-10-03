@@ -96,4 +96,9 @@ opens the vendor's own login in Terminal. See [`../docs/desktop-v1.md`](../docs/
 | `npm test` | All desktop tests (`scripts/*.test.cjs`, node's built-in runner). |
 | `node scripts/live-subscription-gate.mjs run` | LIVE gate against a LOCAL backend (`TVASHTR_API_BASE=http://localhost:8000`): Engines → team → Run → PR. |
 | `node scripts/live-subscription-gate.mjs offline` | Quit Desktop mid-node → the node fails "Tvashtr Desktop went offline". |
+| `node scripts/live-subscription-gate.mjs dry` | Every check up to Launch (sign-in, setup, Engines, team, composer) — starts no run. |
+
+The gate runs the Desktop in a fresh profile each time (signed out, first-run setup skipped without
+ticking the plan consent). Check the CLIs from a plain Terminal: inside a Claude desktop-app session
+`claude auth status` reports that app's sign-in, not the CLI's own one the runner uses.
 

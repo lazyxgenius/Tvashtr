@@ -6,14 +6,21 @@
  *
  *   node desktop/scripts/live-subscription-gate.mjs run      # Engines → team → Run → gate → PR
  *   node desktop/scripts/live-subscription-gate.mjs offline  # quit Desktop mid-node → offline error
+ *   node desktop/scripts/live-subscription-gate.mjs dry      # every check up to Launch; no run
  *
  * Needs: `make backend` on :8000, Vite on :5173 proxying /api → :8000 (see desktop/README.md),
  * `make seed` + scripts/demo_proof_seed.py (operator + its GitHub installation), the operator
- * signed in to `claude` and `grok` on this Mac. The Electron app is launched with a Dock-style PATH
- * and WITH the parent shell's API-key / Claude Code session variables still set — the runner must
- * strip them. Screenshots + a JSON summary land in artifacts/desktop-subs/ (gitignored).
+ * signed in to `claude` and `grok` on this Mac (check with `claude auth status` from a plain
+ * Terminal). The Electron app is launched with a Dock-style PATH and WITH the parent shell's
+ * API-key / Claude Code session variables still set — the runner must strip them — in a fresh
+ * profile, so every gate run starts signed out and goes through the Desktop's first-run setup.
+ * Screenshots + a JSON summary land in artifacts/desktop-subs/ (gitignored).
+ *
+ * TVASHTR_SUBS_PM_MODEL / TVASHTR_SUBS_ENG_MODEL pick the two nodes' models (xai/… runs on the
+ * Grok subscription, anthropic/… on the Claude one); the subscription checks follow them.
  */
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
@@ -36,7 +43,7 @@ const ENG_MODEL = process.env.TVASHTR_SUBS_ENG_MODEL || "anthropic/claude-sonnet
 const IDEA =
   process.env.TVASHTR_SUBS_IDEA ||
   (PHASE === "offline"
-    ? // Long enough that Desktop is quit while the Claude node is still working (it never ships).
+    ? // Long enough that Desktop is quit while the Engineer is still working (it never ships).
       "Write a thorough ARCHITECTURE.md (at least 1500 words) that documents every package and " +
       "module in the repository, how they fit together, and how data flows between them."
     : "Add a short 'Built with Tvashtr' line at the very end of README.md. Change nothing else.");
@@ -50,6 +57,28 @@ const ELECTRON_BIN = path.join(
   "MacOS",
   "Electron",
 );
+// A fresh profile per gate run: signed out, default zoom, setup not done — never the state of the
+// profile the operator uses day to day. The offline phase's relaunch reuses it (still signed in).
+const PROFILE = fs.mkdtempSync(path.join(os.tmpdir(), "tvashtr-subs-gate-"));
+// Only a Claude desktop-app shell sets these (a terminal or the Dock doesn't), and the runner keeps
+// them, so they stay out of Electron.
+const HOST_ONLY_ENV = [
+  "ANTHROPIC_BASE_URL",
+  "CLAUDE_AGENT_SDK_VERSION",
+  "CLAUDE_EFFORT",
+  "CLAUDE_PID",
+  "CLAUDE_PREVIEW_CLASSIFIER_FLOOR",
+];
+// The subscription a model runs on, by its provider prefix.
+const SUBSCRIPTIONS = {
+  xai: { id: "grok", name: "Grok", cli: "Grok Build" },
+  anthropic: { id: "claude", name: "Claude", cli: "Claude Code" },
+};
+const subscriptionOf = (model) => SUBSCRIPTIONS[String(model).split("/")[0]];
+const PM_SUB = subscriptionOf(PM_MODEL);
+const ENG_SUB = subscriptionOf(ENG_MODEL);
+const SUBS = [PM_SUB, ENG_SUB].filter((s, i, all) => s && all.findIndex((x) => x?.id === s.id) === i);
+const SUB_PROVIDERS = Object.keys(SUBSCRIPTIONS).filter((p) => SUBS.includes(SUBSCRIPTIONS[p]));
 
 fs.mkdirSync(OUT, { recursive: true });
 const summary = { phase: PHASE, started: new Date().toISOString(), checks: [] };
@@ -81,6 +110,8 @@ async function api(method, p, body) {
   return { status: res.status, json };
 }
 
+let current = null; // the running Desktop, closed on any exit before its profile is removed
+
 async function launchDesktop(tag) {
   // Dock-style PATH + the leaky parent env (CLAUDECODE, CLAUDE_CODE_*, any API keys) on purpose.
   const env = {
@@ -90,7 +121,14 @@ async function launchDesktop(tag) {
     TVASHTR_API_BASE: API,
     ELECTRON_ENABLE_LOGGING: "1",
   };
-  const app = await electron.launch({ executablePath: ELECTRON_BIN, args: [desktopRoot], env, cwd: desktopRoot });
+  for (const k of HOST_ONLY_ENV) delete env[k];
+  const app = await electron.launch({
+    executablePath: ELECTRON_BIN,
+    args: [desktopRoot, `--user-data-dir=${PROFILE}`],
+    env,
+    cwd: desktopRoot,
+  });
+  current = app;
   const mainLog = fs.createWriteStream(path.join(OUT, `electron-main-${tag}.log`), { flags: "a" });
   app.process().stdout.on("data", (d) => mainLog.write(d));
   app.process().stderr.on("data", (d) => mainLog.write(d));
@@ -98,6 +136,8 @@ async function launchDesktop(tag) {
   await page.waitForLoadState("domcontentloaded");
   return { app, page };
 }
+
+const nav = (page) => page.locator('nav[aria-label="Dashboard"]');
 
 async function signIn(page) {
   const status = await page.evaluate(
@@ -116,6 +156,19 @@ async function signIn(page) {
   await page.waitForLoadState("domcontentloaded");
 }
 
+async function finishSetup(page) {
+  // A fresh profile opens the Desktop's first-run setup. Skip the Engines step (no consent is
+  // ticked), let each run pick its target, and finish: the account has teams, so Project is last.
+  await page.waitForURL(/#\/setup\//, { timeout: 30000 });
+  if (page.url().includes("#/setup/engines")) {
+    await page.getByRole("button", { name: "Skip for now" }).click();
+  }
+  await page.getByRole("radio", { name: "Decide when I launch a run" }).click();
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  await nav(page).waitFor({ timeout: 60000 });
+  log("Desktop setup finished (Skip for now → Decide when I launch a run)");
+}
+
 async function shot(page, name) {
   const file = path.join(OUT, name);
   await page.screenshot({ path: file });
@@ -124,18 +177,19 @@ async function shot(page, name) {
 }
 
 async function openEngines(page) {
-  await page.locator('nav[aria-label="Dashboard"] button', { hasText: "Engines" }).click();
-  await page.getByRole("heading", { name: "Subscriptions" }).waitFor({ timeout: 30000 });
+  await nav(page).locator("button", { hasText: "Engines" }).click();
+  await nav(page).locator("button", { hasText: "Subscriptions" }).click();
+  await page.locator("section[aria-labelledby='tv-engines-subs']").waitFor({ timeout: 30000 });
 }
 
-async function cardState(page, name, want = "Connected", timeoutMs = 30000) {
-  // The shelf renders its default cards first and fills them in once the Desktop answers — wait
-  // for the loaded state instead of reading the placeholder.
-  const card = page.locator(".tv-engines__card", { has: page.locator(".tv-engines__card-name", { hasText: name }) });
+async function cardState(page, sub, want = "Connected", timeoutMs = 30000) {
+  // The page renders its cards before the Desktop answers — wait for the loaded state instead of
+  // reading the placeholder.
+  const badges = page.locator(`article.eng-sub[data-sub="${sub}"] .eng-sub__badges`);
   const deadline = Date.now() + timeoutMs;
   let text = "";
   while (Date.now() < deadline) {
-    text = (await card.locator(".tv-engines__pill").innerText()).trim();
+    text = (await badges.innerText().catch(() => "")).trim();
     if (text === want) return text;
     await sleep(500);
   }
@@ -146,7 +200,7 @@ async function waitMirrorFresh() {
   for (let i = 0; i < 40; i += 1) {
     const { json } = await api("GET", "/api/engines/subscriptions");
     const by = Object.fromEntries((json.subscriptions || []).map((s) => [s.provider, s]));
-    if (by.claude?.runner_fresh && by.grok?.runner_fresh) return by;
+    if (SUBS.every((s) => by[s.id]?.runner_fresh)) return by;
     await sleep(1500);
   }
   return null;
@@ -180,33 +234,48 @@ async function makeTeam(page, name) {
   );
 }
 
-async function openTeam(page, name) {
-  await page.reload(); // the Home team list was fetched before the team was created
-  await page.waitForLoadState("domcontentloaded");
-  await page.locator('nav[aria-label="Dashboard"] button', { hasText: "Home" }).click();
-  await page.getByRole("button", { name: `Open ${name}`, exact: true }).first().click();
-  await page.getByRole("button", { name: "Run this team" }).waitFor({ timeout: 60000 });
+function nodeCard(page, title) {
+  return page
+    .locator(".react-flow__node")
+    .filter({ has: page.locator(".rf-node__role", { hasText: new RegExp(`^${title}$`) }) });
 }
 
-async function launchRun(page, tag) {
-  await page.getByRole("button", { name: "Run this team" }).click();
-  await page.getByLabel("Feature request").fill(IDEA);
-  const repoGroup = page.getByRole("group", { name: "Work on a GitHub repo" });
-  await repoGroup.getByRole("button", { name: "On" }).click();
-  const select = page.locator('select[aria-label="Repository"]');
-  await select.waitFor({ timeout: 30000 });
-  await select.selectOption(REPO);
-  await shot(page, `${tag}-launch-panel.png`);
+async function launchRun(page, tag, teamName) {
+  // "Run this team" opens Home's composer with this team picked. On Desktop the target picker is
+  // "Pick a folder"; the GitHub App repos sit under their own heading in its "Folders" list.
+  await page.getByRole("button", { name: "Run this team", exact: true }).click();
+  const composer = page.locator("section[aria-label='Start a run']");
+  await composer.locator(".hm-picker--team", { hasText: teamName }).waitFor({ timeout: 30000 });
+  await composer.getByRole("textbox", { name: "What should the team build?" }).fill(IDEA);
+  await composer.locator(".hm-picker--repo").click();
+  const option = page
+    .getByRole("dialog", { name: /^Pick a (repo|folder)$/ })
+    .getByRole("listbox", { name: /^(Repos|Folders)$/ })
+    .locator("[role='option']", { has: page.locator(".hm-picker__code", { hasText: new RegExp(`^${REPO}$`) }) });
+  await option.waitFor({ timeout: 60000 });
+  await option.click();
+  await composer.locator(".hm-picker--repo", { hasText: REPO }).waitFor({ timeout: 30000 });
+  await shot(page, `${tag}-launch-composer.png`);
+  if (PHASE === "dry") return null;
   const [req] = await Promise.all([
     page.waitForRequest((r) => r.url().endsWith("/api/runs") && r.method() === "POST"),
-    page.getByRole("button", { name: "Run", exact: true }).click(),
+    composer.getByRole("button", { name: "Launch", exact: true }).click(),
   ]);
   const body = JSON.parse(req.postData() || "{}");
   check("Run posts a desktop-targeted launch", body.desktop_target === true, JSON.stringify(body));
   const res = await req.response();
   const json = await res.json();
-  check("the server accepted it (no API key for anthropic/xai held)", res.status() === 200, JSON.stringify(json).slice(0, 300));
+  check(
+    `the server accepted it (no API key for ${SUB_PROVIDERS.join("/")} held)`,
+    res.status() === 200,
+    JSON.stringify(json).slice(0, 300),
+  );
   return json.run_id;
+}
+
+async function openRun(page, teamId, runId) {
+  await page.goto(`${DEV_URL}/#/teams/${teamId}/runs/${runId}`);
+  await page.locator("section[aria-label='Activity']").waitFor({ timeout: 60000 });
 }
 
 async function events(runId) {
@@ -229,64 +298,87 @@ function textOf(e) {
   return String(p.text || p.error || p.observation || p.action || "");
 }
 
+const startedOn = (sub) => new RegExp(`Running on this computer with your own ${sub.cli}`);
+const WORKFLOW_DONE = ["SUCCESS", "ERROR", "CANCELLED", "MAX_RECOVERY_ATTEMPTS_EXCEEDED"];
+
 async function main() {
+  if (!["run", "offline", "dry"].includes(PHASE)) throw new Error(`unknown phase: ${PHASE}`);
+  check("PM and Engineer each run on a subscription", Boolean(PM_SUB && ENG_SUB), `${PM_MODEL} · ${ENG_MODEL}`);
   const login = await api("POST", "/api/auth/login", { email: EMAIL, password: PASSWORD });
   check("node-side session on the local backend", login.status === 200, `HTTP ${login.status}`);
   const provs = (await api("GET", "/api/providers")).json.providers.map((p) => p.provider);
-  check("the account holds NO anthropic or xai API key", !provs.includes("anthropic") && !provs.includes("xai"), provs.join(","));
+  check(
+    `the account holds NO ${SUB_PROVIDERS.join(" or ")} API key`,
+    SUB_PROVIDERS.every((p) => !provs.includes(p)),
+    provs.join(","),
+  );
 
   let { app, page } = await launchDesktop(PHASE);
-  const note = page.getByRole("note", { name: /subscriptions on this computer/i });
-  await note.waitFor({ timeout: 30000 });
-  check("the disclosure shows at Desktop launch", (await note.innerText()).includes("never sees or stores your login"));
-  summary.launchShot = await shot(page, `${PHASE}-01-launch-disclosure.png`);
+  summary.launchShot = await shot(page, `${PHASE}-01-launch.png`);
   await signIn(page);
-  await openEngines(page);
+  await finishSetup(page);
   const mirror = await waitMirrorFresh();
-  check("the Desktop pushed status + its runner heartbeats (mirror fresh)", Boolean(mirror), JSON.stringify(mirror && { claude: mirror.claude, grok: mirror.grok }));
-  await page.reload();
-  await openEngines(page);
-  const claude = await cardState(page, "Claude");
-  const grok = await cardState(page, "Grok");
-  check("Engines: Claude — Connected", claude === "Connected", claude);
-  check("Engines: Grok — Connected", grok === "Connected", grok);
   check(
-    "Engines: the disclosure is on the cards",
-    await page.getByRole("note", { name: "How subscriptions work" }).isVisible(),
+    "the Desktop pushed status + its runner heartbeats (mirror fresh)",
+    Boolean(mirror),
+    JSON.stringify(mirror && Object.fromEntries(SUBS.map((s) => [s.id, mirror[s.id]]))),
   );
+  await page.reload(); // what the app read before the first heartbeat is stale
+  await openEngines(page);
+  const disclosure = page.getByRole("note").filter({ hasText: "Tvashtr never sees or stores your login" });
+  const shown = await disclosure.waitFor({ timeout: 30000 }).then(() => true, () => false);
+  check("Engines: the disclosure shows (exact wording)", shown);
+  for (const sub of SUBS) {
+    const state = await cardState(page, sub.id);
+    check(`Engines: ${sub.name} — Connected`, state === "Connected", state);
+  }
+  const checkIn = (await page.getByRole("note", { name: "Tvashtr Desktop check-in" }).innerText()).trim();
+  check("Engines: Tvashtr Desktop is checking in", /is open and checking in/.test(checkIn), checkIn);
   summary.enginesShot = await shot(page, `${PHASE}-02-engines-connected.png`);
 
   const teamName = `M-subs-desktop ${PHASE} ${new Date().toISOString().slice(11, 19)}`;
   const team = await makeTeam(page, teamName);
   summary.team = team;
-  check("2-node team: PM on xai/…, Engineer on anthropic/…", team.nodes.every((n) => n.status === 200), JSON.stringify(team.nodes));
-  await openTeam(page, teamName);
-  await page.getByText("Engineer", { exact: false }).first().click();
-  const label = page.getByText("via your Claude subscription · runs on this computer");
-  await label.waitFor({ timeout: 30000 });
-  check("node picker: 'via your Claude subscription · runs on this computer'", true);
-  summary.pickerShot = await shot(page, `${PHASE}-03-node-picker.png`);
+  check(
+    `2-node team: PM on ${PM_MODEL}, Engineer on ${ENG_MODEL}`,
+    team.nodes.length === 2 && team.nodes.every((n) => n.status === 200),
+    JSON.stringify(team.nodes),
+  );
+  await page.goto(`${DEV_URL}/#/teams/${team.id}`);
+  await nodeCard(page, "Engineer").locator(".rf-node__model").click();
+  const label = `Your ${ENG_SUB.name} subscription · runs on this computer`;
+  await page.getByRole("complementary", { name: "Engineer settings" }).getByText(label).waitFor({ timeout: 30000 });
+  check(`Engineer settings: '${label}'`, true);
+  summary.pickerShot = await shot(page, `${PHASE}-03-engineer-model.png`);
   await page.keyboard.press("Escape");
+  const run = page.getByRole("button", { name: "Run this team", exact: true });
+  check("Run this team is enabled (the subscriptions cover both nodes)", await run.isEnabled());
 
-  const runId = await launchRun(page, `${PHASE}-04`);
+  const runId = await launchRun(page, `${PHASE}-04`, teamName);
+  if (PHASE === "dry") {
+    check(`the composer is ready to launch at ${REPO} (dry: stops before Launch)`, true);
+    return;
+  }
   summary.runId = runId;
   log("run", runId);
+  await openRun(page, team.id, runId);
 
-  // The PM (Grok) runs first, then the PRD gate.
-  const approve = page.getByRole("button", { name: "Approve", exact: true });
-  await approve.waitFor({ timeout: 20 * 60 * 1000 });
+  // The PM runs first, then the PRD gate.
+  const gate = page.locator("article.tv-task").filter({ hasText: "Awaiting your approval" }).first();
+  await gate.waitFor({ timeout: 20 * 60 * 1000 });
   summary.gateShot = await shot(page, `${PHASE}-05-pm-done-gate.png`);
   let evs = await events(runId);
-  const grokRan = evs.find((e) => /Running on this computer with your own Grok Build/.test(textOf(e)));
-  check("the Grok node ran the user's own `grok` CLI", Boolean(grokRan), grokRan && textOf(grokRan));
-  await approve.click();
+  const pmRan = evs.find((e) => startedOn(PM_SUB).test(textOf(e)));
+  check(`the PM ran the user's own ${PM_SUB.cli}`, Boolean(pmRan), pmRan && textOf(pmRan));
+  await gate.getByRole("button", { name: "Approve", exact: true }).click();
 
   if (PHASE === "offline") {
-    await waitFor(
-      async () => (await events(runId)).find((e) => /Running on this computer with your own Claude Code/.test(textOf(e))),
-      { timeoutMs: 10 * 60 * 1000, everyMs: 1000, what: "the Claude job to start on this Desktop" },
-    );
-    summary.midNodeShot = await shot(page, `${PHASE}-06-claude-running.png`);
+    await waitFor(async () => (await events(runId)).find((e) => startedOn(ENG_SUB).test(textOf(e))), {
+      timeoutMs: 10 * 60 * 1000,
+      everyMs: 1000,
+      what: `the ${ENG_SUB.cli} job to start on this Desktop`,
+    });
+    summary.midNodeShot = await shot(page, `${PHASE}-06-engineer-running.png`);
     log("quitting Tvashtr Desktop mid-node");
     await app.close();
     const failed = await waitFor(
@@ -306,19 +398,17 @@ async function main() {
       JSON.stringify(summary.offline),
     );
     ({ app, page } = await launchDesktop(`${PHASE}-relaunch`));
-    await page.locator('nav[aria-label="Dashboard"] button', { hasText: "Home" }).click().catch(() => {});
-    await page.getByRole("button", { name: new RegExp(`runs for ${teamName}`) }).first().click().catch(() => {});
-    await page.getByRole("button", { name: /Open run:/ }).first().click().catch(() => {});
-    await sleep(4000);
-    await page.getByText("Engineer", { exact: false }).first().click().catch(() => {});
+    await nav(page).waitFor({ timeout: 60000 }); // the same profile: still signed in, setup done
+    await openRun(page, team.id, runId);
+    await nodeCard(page, "Engineer").click().catch(() => {});
     await sleep(2000);
     summary.offlineShot = await shot(page, `${PHASE}-07-offline-failed.png`);
-    await app.close();
   } else {
     const done = await waitFor(
       async () => {
         const r = (await api("GET", `/api/runs/${runId}`)).json;
-        return r.run && ["completed", "failed", "rejected", "cancelled", "over_budget"].includes(r.run.status) ? r : null;
+        const terminal = r.run && ["completed", "failed", "rejected", "cancelled", "over_budget"].includes(r.run.status);
+        return terminal && WORKFLOW_DONE.includes(r.workflow_status) ? r : null;
       },
       { timeoutMs: 30 * 60 * 1000, everyMs: 5000, what: "the run to reach a terminal status" },
     );
@@ -334,11 +424,22 @@ async function main() {
       grokFinished: pick(/Grok Build finished/),
       sentToDesktop: pick(/Sent to your Tvashtr Desktop/),
     };
-    summary.run = { status: done.run.status, pr_url: done.run.pr_url, ship_commit_sha: done.run.ship_commit_sha, ship_branch: done.run.ship_branch };
-    check("the Claude node's own output says it used the subscription (apiKeySource: none)", summary.evidence.claudeAuth.some((t) => /apiKeySource: none/.test(t)), summary.evidence.claudeAuth.join(" | "));
+    summary.run = {
+      status: done.run.status,
+      pr_url: done.run.pr_url,
+      ship_commit_sha: done.run.ship_commit_sha,
+      ship_branch: done.run.ship_branch,
+      failure: done.run.failure || null,
+    };
+    if (SUBS.some((s) => s.id === "claude")) {
+      check(
+        "the Claude node's own output says it used the subscription (apiKeySource: none)",
+        summary.evidence.claudeAuth.some((t) => /apiKeySource: none/.test(t)),
+        summary.evidence.claudeAuth.join(" | "),
+      );
+    }
     check("run reached terminal status completed", done.run.status === "completed", JSON.stringify(summary.run));
     check("the run opened a PR (or shipped a commit)", Boolean(done.run.pr_url || done.run.ship_commit_sha), JSON.stringify(summary.run));
-    await app.close();
   }
 }
 
@@ -351,8 +452,10 @@ main()
     summary.error = String(err && err.stack ? err.stack : err);
     console.error(err);
   })
-  .finally(() => {
+  .finally(async () => {
     summary.finished = new Date().toISOString();
+    await current?.close().catch(() => {});
+    fs.rmSync(PROFILE, { recursive: true, force: true });
     fs.writeFileSync(path.join(OUT, `summary-${PHASE}.json`), JSON.stringify(summary, null, 2));
     log("summary", path.relative(repoRoot, path.join(OUT, `summary-${PHASE}.json`)), summary.ok ? "OK" : "FAILED");
     process.exit(summary.ok ? 0 : 1);
