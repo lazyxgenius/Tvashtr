@@ -740,6 +740,7 @@ export interface NodeAsk {
 }
 
 export const ASK_POLL_MS = 2000;
+const ASK_POLL_BLIPS = 30; // server errors in a row before an Ask gives up (about a minute)
 
 // Mode A ("Ask the node"): a stateless chat about what ONE node did during a run. The client holds
 // the whole history and sends it each turn; the server assembles the node's recorded trail into a
@@ -765,11 +766,16 @@ export async function askNode(
   if (!res.ok) throw new Error(`POST ask ${nodeId} -> ${res.status}`);
   const got = (await res.json()) as AskAnswer | { ask_id: string };
   if (!("ask_id" in got)) return got;
+  let blips = 0;
   for (;;) {
     await new Promise((resolve) => setTimeout(resolve, ASK_POLL_MS));
     const poll = await fetch(`/api/runs/${runId}/nodes/${nodeId}/asks/${got.ask_id}`);
-    if (poll.status === 404) throw new Error(`GET ask ${got.ask_id} -> 404`);
-    if (!poll.ok) continue; // a blip: ask again in 2 s
+    if (poll.status === 401) unauthorizedHandler?.(); // the session ended: the gate takes over
+    // A refusal (4xx) won't change; a server error is asked again for about a minute (a restart).
+    if (!poll.ok && (poll.status < 500 || ++blips > ASK_POLL_BLIPS))
+      throw new Error(`GET ask ${got.ask_id} -> ${poll.status}`);
+    if (!poll.ok) continue;
+    blips = 0;
     const ask = (await poll.json()) as NodeAsk;
     if (ask.status === "completed") return { answer: ask.answer ?? "" };
     if (ask.status === "failed") {

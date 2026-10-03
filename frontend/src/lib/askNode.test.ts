@@ -81,4 +81,29 @@ describe("askNode", () => {
     await expect(askNode("r1", "n1", HISTORY)).resolves.toEqual({ answer: "On a key." });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  it("a poll refused (4xx) ends the Ask with an error instead of polling forever", async () => {
+    document.documentElement.dataset.tvashtrDesktop = "true";
+    const fetchMock = vi.fn<Fetch>((url) =>
+      url === URL_ASK ? reply({ ask_id: "ask-1", status: "queued" }, 202) : reply({}, 403),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const caught = askNode("r1", "n1", HISTORY).catch((e: unknown) => e);
+    await vi.advanceTimersByTimeAsync(ASK_POLL_MS);
+    expect(await caught).toBeInstanceOf(Error);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("a server that keeps failing (5xx) is asked again for about a minute, then gives up", async () => {
+    document.documentElement.dataset.tvashtrDesktop = "true";
+    const fetchMock = vi.fn<Fetch>((url) =>
+      url === URL_ASK ? reply({ ask_id: "ask-1", status: "queued" }, 202) : reply({}, 502),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const caught = askNode("r1", "n1", HISTORY).catch((e: unknown) => e);
+    await vi.advanceTimersByTimeAsync(ASK_POLL_MS * 10);
+    expect(fetchMock.mock.calls.length).toBe(11); // still asking after a blip
+    await vi.advanceTimersByTimeAsync(ASK_POLL_MS * 30);
+    expect(await caught).toBeInstanceOf(Error);
+  });
 });
