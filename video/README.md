@@ -96,6 +96,7 @@ the run view's regions (`now`, `activity`) — the reel places its zoom from the
 
 ```bash
 node video/reel/build-reel.mjs              # video/takes/v0/scene-3-2 → video/out/v0/test-reel.mp4
+REEL_START=32 node video/reel/build-reel.mjs   # pick the 20 s window (V0: where the Activity feed changes)
 node video/reel/build-reel.mjs --rehearse   # a stand-in clip → video/out/v0/test-reel-rehearsal.mp4
 ```
 
@@ -117,11 +118,23 @@ caffeinate -dimsu node video/camera/stall-probe.mjs        # backend started wit
 node video/camera/testreel-cursor.mjs
 ```
 
+## V0 results
+
+- Gate + take (run 3, `c0680459`): every check PASS, PR https://github.com/lazyxgenius/trade_mcp/pull/50;
+  take `video/takes/v0/scene-3-2/take.mp4` 69.5 s, 2880×1800, 6 steps in `take.json`.
+- Reel: `video/out/v0/test-reel.mp4` 1920×1080, 30 fps, 20.00 s (`REEL_START=32`), PDD QA pass
+  (audio waived: 0–20 s declared silent).
+- Next take: a fresh profile shows a one-time "Get a notification when a run needs you?" prompt
+  over the run view after the first launch — dismiss it (Not now) before filming. The PM's Grok
+  phase emits few Activity rows; film the Engineer's phase for a busier feed.
+
 ## What didn't work (V0)
 
-- `desktop/scripts/live-subscription-gate.mjs` no longer runs: it predates the Desktop setup wizard
-  and the Engines/launch revamp (its launch disclosure, Engines shelf and launch-panel locators are
-  gone). `camera/subs-gate.mjs` keeps every check on the current UI.
+- `desktop/scripts/live-subscription-gate.mjs` no longer ran on `main`: it predated the Desktop setup
+  wizard and the Engines/launch revamp. `camera/subs-gate.mjs` keeps every check on the current UI;
+  the product script is fixed separately on branch `fix/desktop-subs-gate-current-ui`.
+- The Claude CLI's own sign-in had expired; inside a Claude desktop-app shell `claude auth status`
+  still said logged in (it reads that app's sign-in). Check from a plain Terminal.
 - `./pdd render` refuses a silent master (see The reel).
 - Testreel attaches to an Electron page only after `page.setViewportSize` (Electron pages have no
   Playwright viewport), which emulates the page at 1×, and it needs `recordVideo`: its cursor works,

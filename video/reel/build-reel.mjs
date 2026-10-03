@@ -38,7 +38,9 @@ function take() {
     const dir = path.join(ROOT, "video", "takes", "v0", "scene-3-2");
     const t = JSON.parse(fs.readFileSync(path.join(dir, "take.json"), "utf8"));
     const open = t.steps.find((s) => s.label === "Open run");
-    const from = open ? open.t + 1 : (t.regions.activity?.t ?? 0);
+    // REEL_START picks the window by hand (e.g. where the Activity feed changes); default: just
+    // after "Open run".
+    const from = process.env.REEL_START ? Number(process.env.REEL_START) : open ? open.t + 1 : (t.regions.activity?.t ?? 0);
     const start = Math.max(0, Math.min(from, t.seconds - SECONDS));
     return { clip: path.join(dir, t.clip), start, loop: false, target: t.regions.activity, label: "Activity panel" };
   }
