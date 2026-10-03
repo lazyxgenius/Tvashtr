@@ -48,6 +48,11 @@ if [[ -f "$ROOT/.env" ]]; then
   set +a
   rm -f "$_env_filtered"
 fi
+# A provider whose account can't serve right now (e.g. out of credit) can be left out of the LOCAL
+# leg by name — TVASHTR_PROOF_SKIP_KEYS="OPENAI_API_KEY GEMINI_API_KEY": set EMPTY (the seed's own
+# .env loader only fills unset names, and skips empty keys), so the seed imports only the others and
+# the seats default to those. Unset by default (no change).
+for _k in ${TVASHTR_PROOF_SKIP_KEYS:-}; do export "$_k="; done
 
 DEPLOY_URL="${TVASHTR_DEPLOY_URL:-https://tvashtr.fly.dev}"
 export TVASHTR_PROOF_LEG="$LEG"
