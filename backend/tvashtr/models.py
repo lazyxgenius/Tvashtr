@@ -555,6 +555,21 @@ class Compare(Base):
     item_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
+class CompareDesktopTarget(Base):
+    """M-desk-routes (migration ``0053``, D2): the compare was started from Tvashtr Desktop, so
+    every run it launches — now, from the queue, or a set's later task — is desktop-targeted, its
+    subscriptions routed at that launch. A row's presence is the flag (no row: the website)."""
+
+    __tablename__ = "compare_desktop_targets"
+
+    compare_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("compares.id", ondelete="CASCADE"), primary_key=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
 class TaskSet(Base):
     """M9 (migration ``0050``): a library team's named list of tasks to compare versions on. The
     name is unique per team ignoring case."""
@@ -738,6 +753,9 @@ class AgentTestRun(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # M-desk-routes (migration ``0053``, D4): started from Tvashtr Desktop — a replay whose agent's
+    # model is Desktop-routed then runs on the owner's subscription (NULL: the website).
+    desktop_target: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
 
 class AgentTestResult(Base):
@@ -1034,6 +1052,12 @@ class DesktopNodeJob(Base):
     claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # M-desk-routes (migration ``0053``, D6): ``run_node`` (a run's node — every job before 0053),
+    # ``test_replay`` (``run_id`` is the replay's result id, never a Run) or ``ask`` (``run_id`` is
+    # the asked run, ``invocation_id`` NULL). Only ``run_node`` jobs write ``run_events``.
+    purpose: Mapped[str | None] = mapped_column(
+        Text, nullable=True, server_default="run_node", default="run_node"
+    )
 
 
 class DesktopRunnerHeartbeat(Base):
