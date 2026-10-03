@@ -493,7 +493,9 @@ export default [
     (d) => historyRoutes(d, WORSE),
     callout("v8 did worse on Indicators"),
   ),
-  // M-desk-3: the Desktop boards; their `-web` renders are the website's words, unchanged.
+  // M-desk-3: the Desktop boards. Set-SaveCheckDesktop-web is the website's dialog, unchanged (the
+  // website never asks where the checks run); Set-ResultsDesktop is a Desktop compare, so both its
+  // renders say the lanes took turns (the website's own set results are Set-Results).
   ...canvasBoard("Set-SaveCheckDesktop", deskSaveRoutes, async (p) => {
     const dialog = await saveAs(p);
     await dialog.getByLabel("What changed (optional)").fill("Engineer on GPT-4.1; Reviewer names files");
