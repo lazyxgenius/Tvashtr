@@ -112,8 +112,8 @@ Headless commands (verified with `--help` + live runs):
 - Claude Code: `claude -p --output-format stream-json --verbose --model <m> --permission-mode acceptEdits --permission-prompts none --restricted --safe-mode --no-session-persistence` (prompt on stdin). Its `init` event reports `apiKeySource: none` on a subscription login.
 - Grok Build: `grok --prompt-file <f> --output-format streaming-json -m <m> --cwd <dir> --tools read_file,search_replace,write,list_dir,grep,todo_write --allow Edit --allow Read --allow Grep --sandbox workspace`.
 
-Live gate: `node desktop/scripts/live-subscription-gate.mjs run|offline` (Playwright `_electron`,
-local backend only — see the script header). Codex: status/Connect only; it does not run nodes yet.
+Live gate: `node desktop/scripts/live-subscription-gate.mjs run|offline|dry` (Playwright
+`_electron`, local backend only, a fresh Desktop profile per run — see the script header). Codex: status/Connect only; it does not run nodes yet.
 
 ## Distribution (Option 3)
 
