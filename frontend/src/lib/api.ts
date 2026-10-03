@@ -10,6 +10,7 @@ import type { RunTarget } from "./api/runs";
 // The leaf module, never `./api/connectors`: that one imports `./api/runs`, which extends
 // `ApiError` from this file when it loads (a cycle that throws for any entry loading this first).
 import { parseRoundConnectors, type RoundConnectors } from "./api/roundConnectors";
+import { isDesktopApp } from "./desktopRepos";
 import { isFeedEvent } from "./events";
 
 // Absolute API origin when set at build time. Empty = same-origin relative paths (preferred).
@@ -730,22 +731,59 @@ export interface AskAnswer {
   answer: string;
 }
 
+/** M-desk-routes (D5): a Desktop Ask, polled at `GET …/asks/{ask_id}` until it has its answer. */
+export interface NodeAsk {
+  ask_id: string;
+  status: "queued" | "running" | "completed" | "failed";
+  answer: string | null;
+  error: string | null;
+}
+
+export const ASK_POLL_MS = 2000;
+const ASK_POLL_BLIPS = 30; // server errors in a row before an Ask gives up (about a minute)
+
 // Mode A ("Ask the node"): a stateless chat about what ONE node did during a run. The client holds
 // the whole history and sends it each turn; the server assembles the node's recorded trail into a
 // system message and answers ONLY from it. Owner-scoped server-side (404 on a foreign/absent run),
 // and NOT attributed to the run's cost. Mirrors resolveTask's POST-with-path-ids shape.
+//
+// M-desk-routes (D5): asked from Tvashtr Desktop (`desktop_target`), a node on a Claude/Grok
+// subscription is answered by the owner's own CLI there: the POST answers 202 `{ask_id}`, and this
+// polls `GET …/asks/{ask_id}` every 2 s until the answer (or its error, thrown as `askError`)
+// arrives — the caller just keeps waiting, exactly as for a website answer.
+// ponytail: the poll outlives an unmounted chat until the Ask ends; pass a signal if that matters.
 export async function askNode(
   runId: string,
   nodeId: string,
   messages: AskMessage[],
 ): Promise<AskAnswer> {
+  const desktop = isDesktopApp();
   const res = await fetch(`/api/runs/${runId}/nodes/${nodeId}/ask`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ messages }),
+    body: JSON.stringify(desktop ? { messages, desktop_target: true } : { messages }),
   });
   if (!res.ok) throw new Error(`POST ask ${nodeId} -> ${res.status}`);
-  return (await res.json()) as AskAnswer;
+  const got = (await res.json()) as AskAnswer | { ask_id: string };
+  if (!("ask_id" in got)) return got;
+  let blips = 0;
+  for (;;) {
+    await new Promise((resolve) => setTimeout(resolve, ASK_POLL_MS));
+    const poll = await fetch(`/api/runs/${runId}/nodes/${nodeId}/asks/${got.ask_id}`);
+    if (poll.status === 401) unauthorizedHandler?.(); // the session ended: the gate takes over
+    // A refusal (4xx) won't change; a server error is asked again for about a minute (a restart).
+    if (!poll.ok && (poll.status < 500 || ++blips > ASK_POLL_BLIPS))
+      throw new Error(`GET ask ${got.ask_id} -> ${poll.status}`);
+    if (!poll.ok) continue;
+    blips = 0;
+    const ask = (await poll.json()) as NodeAsk;
+    if (ask.status === "completed") return { answer: ask.answer ?? "" };
+    if (ask.status === "failed") {
+      throw Object.assign(new Error(ask.error ?? `ask ${got.ask_id} failed`), {
+        askError: ask.error ?? undefined,
+      });
+    }
+  }
 }
 
 // ---- The team library (P1.8b: multiple persistent teams + a drop-and-edit template library) ----

@@ -67,6 +67,8 @@ export interface TestResult {
   checks: CheckResult[];
   error: string | null;
   cost_usd: number;
+  /** M-desk-routes (D4): a Desktop replay queued behind another job of its plan — its line. */
+  waiting?: string | null;
 }
 
 export interface TestRun {
@@ -262,9 +264,18 @@ export function importTestFile(
   return apiRequest("POST", `${base(teamId, nodeId)}/file`, file);
 }
 
-/** Run all N (409 "The tests are already running", 422 "Add a test first"). */
-export async function runTests(teamId: string, nodeId: string): Promise<TestRun | null> {
-  const r = await apiRequest<{ run: unknown }>("POST", `${base(teamId, nodeId)}/run`);
+/** Run all N (409 "The tests are already running", 422 "Add a test first"). From Tvashtr Desktop
+ *  (`desktop_target`), replays of Desktop-routed agents run on the owner's subscriptions. */
+export async function runTests(
+  teamId: string,
+  nodeId: string,
+  opts: { desktop_target?: boolean } = {},
+): Promise<TestRun | null> {
+  const r = await apiRequest<{ run: unknown }>(
+    "POST",
+    `${base(teamId, nodeId)}/run`,
+    opts.desktop_target ? { desktop_target: true } : undefined,
+  );
   return run(r?.run);
 }
 

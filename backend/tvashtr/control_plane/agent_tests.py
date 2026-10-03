@@ -35,6 +35,7 @@ from tvashtr.models import (
     AgentTestRun,
     AiCheckUsage,
     CostRecord,
+    DesktopNodeJob,
     DocumentVersion,
     Edge,
     Run,
@@ -802,6 +803,7 @@ def _run_view(session, run: AgentTestRun) -> dict:
         .all()
     )
     done, ok, bad = _counts(results)
+    waiting = _desktop_waiting(session, run, results)
     since = None
     if run.status == "done" and run.version_number is not None:
         prev = session.execute(
@@ -840,12 +842,46 @@ def _run_view(session, run: AgentTestRun) -> dict:
         "stopping": bool(run.stop_requested) and run.status == "running",
         "error": run.error,
         "since": since,
-        "results": [_result_view(r) for r in results],
+        "results": [_result_view(r, waiting.get(r.id)) for r in results],
     }
 
 
-def _result_view(r: AgentTestResult) -> dict:
+def _desktop_waiting(session, run: AgentTestRun, results: list[AgentTestResult]) -> dict:
+    """M-desk-routes D4: ``{result id: line}`` for each running replay whose Desktop job waits
+    behind another job of its plan — the run view's existing "one job at a time" line."""
+    if not run.desktop_target or run.status != "running":
+        return {}
+    running = {str(r.id): r.id for r in results if r.status == "running"}
+    if not running:
+        return {}
+    from tvashtr.engines.desktop_runner_adapter import _DISPLAY
+
+    queued = session.execute(
+        select(DesktopNodeJob.run_id, DesktopNodeJob.provider).where(
+            DesktopNodeJob.run_id.in_(list(running)),
+            DesktopNodeJob.purpose == "test_replay",
+            DesktopNodeJob.status == "queued",
+        )
+    ).all()
+    busy = set(
+        session.execute(
+            select(DesktopNodeJob.provider).where(
+                DesktopNodeJob.owner_id == run.owner_id, DesktopNodeJob.status == "claimed"
+            )
+        ).scalars()
+    )
     return {
+        running[rid]: (
+            f"Waiting for your {_DISPLAY.get(provider, (provider, provider))[1]} subscription "
+            "— one job at a time."
+        )
+        for rid, provider in queued
+        if provider in busy
+    }
+
+
+def _result_view(r: AgentTestResult, waiting: str | None = None) -> dict:
+    view = {
         "id": str(r.id),
         "test_id": str(r.test_id) if r.test_id else None,
         "name": r.name,
@@ -856,6 +892,9 @@ def _result_view(r: AgentTestResult) -> dict:
         "error": r.error,
         "cost_usd": round(float(r.cost_usd or 0), 4),
     }
+    if waiting:  # D4: queued behind another Desktop job of its plan
+        view["waiting"] = waiting
+    return view
 
 
 def _last_line(view: dict) -> str | None:

@@ -117,9 +117,23 @@ def import_test_file(
     )
 
 
+class RunTestsRequest(BaseModel):
+    # M-desk-routes (D1, D4): started from Tvashtr Desktop — a replay whose agent's model is
+    # Desktop-routed runs on the owner's subscription. Optional: the website posts no body.
+    desktop_target: bool = False
+
+
 @router.post(BASE + "/run", status_code=202)
-def run_tests(team_id: str, node_id: str, current_user: CurrentUser) -> dict:
-    return {"run": _call(agent_test_runner.start, _owner(current_user), team_id, node_id)}
+def run_tests(
+    team_id: str,
+    node_id: str,
+    current_user: CurrentUser,
+    body: RunTestsRequest | None = None,
+) -> dict:
+    owner = _owner(current_user)
+    if body is not None and body.desktop_target:
+        return {"run": _call(agent_test_runner.start, owner, team_id, node_id, desktop_target=True)}
+    return {"run": _call(agent_test_runner.start, owner, team_id, node_id)}
 
 
 @router.post(BASE + "/stop")

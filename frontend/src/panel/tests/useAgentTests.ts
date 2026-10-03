@@ -12,6 +12,7 @@ import {
   stopTests,
   type TestRun,
 } from "../../lib/api/agentTests";
+import { isDesktopApp } from "../../lib/desktopRepos";
 
 export const TESTS_POLL_MS = 2000;
 
@@ -120,7 +121,7 @@ export function useAgentTests(
   }, []);
   const reload = useCallback(() => setRev((r) => r + 1), []);
   const runAll = useCallback(async () => {
-    putRun(await runTests(teamId, nodeId));
+    putRun(await runTests(teamId, nodeId, isDesktopApp() ? { desktop_target: true } : {}));
   }, [teamId, nodeId, putRun]);
   const stop = useCallback(async () => {
     putRun(await stopTests(teamId, nodeId));

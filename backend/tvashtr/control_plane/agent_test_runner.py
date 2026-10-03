@@ -12,6 +12,10 @@ heard from for :data:`STALE_AFTER_S` reads as failed (:func:`end_if_stale`). Eac
   runs only (R12, :func:`replays_in_flight`); while all slots are taken it waits;
 * is stopped after :data:`REPLAY_CAP_S` (its sandbox closed);
 * runs on the owner's key for the agent's model (its backup model when it has no key for that).
+
+M-desk-routes (D4): tests started from Tvashtr Desktop replay an agent whose model is Desktop-routed
+(a FRESH Claude/Grok subscription, exactly as a run routes it) as a ``test_replay`` Desktop job on
+the rebuilt workspace — no API key; the cap counts from when the Desktop starts the job.
 """
 
 from __future__ import annotations
@@ -31,20 +35,21 @@ from pathlib import Path
 from sqlalchemy import func, select, text, update
 
 from tvashtr.config import get_settings
-from tvashtr.control_plane import agent_tests, checkpoints, github_app, versions
+from tvashtr.control_plane import agent_tests, checkpoints, desktop_jobs, github_app, versions
 from tvashtr.control_plane.context_compiler import (
     compile_context,
     resolve_context_budget,
     resolve_fallback_model,
     resolve_reads_from,
 )
+from tvashtr.control_plane.credential_gate import desktop_routed_subscriptions
 from tvashtr.control_plane.credentials import NoCredentialError, resolve_owner_api_key
 from tvashtr.control_plane.node_skills import build_skills
 from tvashtr.control_plane.node_tools import build_mcp_config
 from tvashtr.control_plane.shipping import init_workspace_repo
 from tvashtr.control_plane.worktree import build_repo_grounding, is_work_tree
 from tvashtr.db import session_scope
-from tvashtr.engines.base import AgentTask
+from tvashtr.engines.base import AgentTask, DesktopJobSpec
 from tvashtr.engines.registry import resolve_adapter
 from tvashtr.engines.sandbox_cache import close_run_sandboxes, session_key_for
 from tvashtr.models import AgentNode, AgentTest, AgentTestResult, AgentTestRun, Run, TeamGraph
@@ -92,9 +97,10 @@ def start(
     *,
     trigger: str = "manual",
     version: int | None = None,
+    desktop_target: bool = False,
 ) -> dict:
     """Start "Run all N" for one library agent; returns the run view. 409 when its tests are already
-    running, 422 when it has none."""
+    running, 422 when it has none. ``desktop_target``: started from Tvashtr Desktop (D4)."""
     with session_scope() as session:
         node = agent_tests._require_node(session, owner_id, team_id, node_id)
         session.execute(
@@ -133,6 +139,7 @@ def start(
             status="running",
             trigger=trigger,
             total=len(tests),
+            **({"desktop_target": True} if desktop_target else {}),
         )
         session.add(run)
         session.flush()
@@ -418,13 +425,23 @@ def _replay_with_cap(run_id: uuid.UUID, result_id: uuid.UUID) -> dict:
     worker = threading.Thread(target=target, daemon=True, name="agent-test-replay")
     worker.start()
     began = time.monotonic()
+    desk_began: float | None = None  # D4: a Desktop replay's cap starts when the Desktop does
     while worker.is_alive():
         worker.join(timeout=_POLL_S)
         if not worker.is_alive():
             break
         _beat(run_id)
         stopped = _stop_asked(run_id)
-        if stopped or _over_cap(began):
+        job = desktop_jobs.replay_job(str(result_id))
+        if job is not None and desk_began is None and job["status"] != "queued":
+            desk_began = time.monotonic()
+        if job is None:
+            over = _over_cap(began)
+        else:
+            over = desk_began is not None and _over_cap(desk_began)
+        if stopped or over:
+            if job is not None:  # a Desktop replay: its job ends here, so its adapter returns
+                desktop_jobs.expire_replay_jobs(str(result_id))
             cancel.set()
             # ponytail: a LOCAL-mode agent can't be interrupted from here; past GIVE_UP_S it runs
             # out its own iteration cap in the background. Docker/Fly sandboxes close at once.
@@ -467,6 +484,19 @@ def _finish_result(run_id: uuid.UUID, result_id: uuid.UUID, outcome: dict) -> No
 
 
 # ------------------------------------------------------------------------------- one replay
+
+
+def _desktop_subscription(desktop_target: bool, owner_id: uuid.UUID, model: str) -> str | None:
+    """D4: the subscription a Desktop replay's model runs on — routed exactly as a run's (a FRESH
+    Claude/Grok subscription; the primary model only, as ``team_run``) — or None: the key path."""
+    if not desktop_target:
+        return None
+    routed = desktop_routed_subscriptions(
+        [model],
+        fresh_subscriptions=desktop_jobs.fresh_subscription_ids(owner_id),
+        desktop_target=True,
+    )
+    return routed[0] if routed else None
 
 
 def _model_and_key(owner_id: uuid.UUID, model: str, fallback: str | None) -> tuple[str, str]:
@@ -638,6 +668,7 @@ def replay(result_id: uuid.UUID, cancel: threading.Event | None = None) -> dict:
     the cap came before its agent started)."""
     from tvashtr.control_plane.team_run import (
         REPORT_FILENAME,
+        _desktop_instruction,
         _engine_for_sandbox_mode,
         _remove_spec_handle,
         _resolve_pull_paths,
@@ -666,6 +697,7 @@ def replay(result_id: uuid.UUID, cancel: threading.Event | None = None) -> dict:
             "edits_allowed": bool(node.edits_allowed),
         }
         owner_id, test_run_id = run.owner_id, run.id
+        desktop_target = bool(run.desktop_target)
     replay_id = str(result_id)
     emits = node_emits_outcome(edges, setup["id"])
     base = inputs.get("base") or {"kind": "empty"}
@@ -709,23 +741,55 @@ def replay(result_id: uuid.UUID, cancel: threading.Event | None = None) -> dict:
             )
         if compiled.handle_used:
             _write_spec_handle(ws, compiled.spec_doc)
-        model, key = _model_and_key(
-            owner_id, setup["model"], resolve_fallback_model(setup["config"])
-        )
-        task = AgentTask(
-            instruction=compiled.instruction,
-            workspace_dir=ws,
-            model=model,
-            llm_api_key=key,
-            workspace_mode="brownfield" if grounding is not None else "greenfield",
-            pull_paths=_resolve_pull_paths(
-                edits_allowed=setup["edits_allowed"], emits_outcome=emits
-            ),
-            mcp_config=build_mcp_config(setup["tool_config"], replay_id, node_id=setup["id"]),
-            skills=build_skills(setup["skills"], ws, replay_id),
-            session_key=session_key_for(replay_id, setup["id"]),
-        )
-        adapter = resolve_adapter(_engine_for_sandbox_mode(settings.agent_sandbox_mode))
+        desk = _desktop_subscription(desktop_target, owner_id, setup["model"])
+        if desk is None:
+            model, key = _model_and_key(
+                owner_id, setup["model"], resolve_fallback_model(setup["config"])
+            )
+            task = AgentTask(
+                instruction=compiled.instruction,
+                workspace_dir=ws,
+                model=model,
+                llm_api_key=key,
+                workspace_mode="brownfield" if grounding is not None else "greenfield",
+                pull_paths=_resolve_pull_paths(
+                    edits_allowed=setup["edits_allowed"], emits_outcome=emits
+                ),
+                mcp_config=build_mcp_config(setup["tool_config"], replay_id, node_id=setup["id"]),
+                skills=build_skills(setup["skills"], ws, replay_id),
+                session_key=session_key_for(replay_id, setup["id"]),
+            )
+            adapter = resolve_adapter(_engine_for_sandbox_mode(settings.agent_sandbox_mode))
+        else:
+            # D4: the owner's own CLI on their Desktop runs it, on this rebuilt workspace — no key,
+            # skills folded into the instruction and no MCP tools (as a Desktop node of a run).
+            # ponytail: a replay queued over SWEEP_AFTER_S can lose its workspace to a later
+            # start's sweep; touch the parent while it waits if queues get that long.
+            model = setup["model"]
+            task = AgentTask(
+                instruction=_desktop_instruction(
+                    replay_id, compiled.instruction, setup["skills"], setup["tool_config"]
+                ),
+                workspace_dir=ws,
+                model=model,
+                llm_api_key=None,
+                workspace_mode="brownfield" if grounding is not None else "greenfield",
+                pull_paths=_resolve_pull_paths(
+                    edits_allowed=setup["edits_allowed"], emits_outcome=emits
+                ),
+                mcp_config={},
+                skills=[],
+                desktop=DesktopJobSpec(
+                    run_id=replay_id,
+                    node_id=setup["id"],
+                    iteration=int(inputs.get("iteration") or 1),
+                    invocation_id=None,
+                    owner_id=str(owner_id),
+                    provider=desk,
+                    purpose=desktop_jobs.TEST_REPLAY,
+                ),
+            )
+            adapter = resolve_adapter("desktop-runner")
         before = _snapshot(ws, index)
         if (cancel is not None and cancel.is_set()) or _stop_asked(test_run_id):
             raise ReplayStopped()
@@ -738,8 +802,11 @@ def replay(result_id: uuid.UUID, cancel: threading.Event | None = None) -> dict:
         if outcome.status != "completed":
             return {"error": f"It didn’t finish: {outcome.error or outcome.status}"}
         _drop_escaping_links(ws)
+        answer = _answer(emits, ws, outcome, REPORT_FILENAME)
+        if desk is not None and not answer:
+            answer = (outcome.summary or "").strip()  # the CLI's final text
         return {
-            "answer": _answer(emits, ws, outcome, REPORT_FILENAME),
+            "answer": answer,
             "files": _changed(ws, before, index),
         }
     finally:

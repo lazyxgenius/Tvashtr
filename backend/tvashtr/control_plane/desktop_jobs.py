@@ -47,6 +47,12 @@ from tvashtr.models import (
 
 OFFLINE_ERROR = "Tvashtr Desktop went offline — reopen it and retry."
 RUN_ENDED_ERROR = "The run ended before Tvashtr Desktop finished this node."
+REPLAY_ENDED_ERROR = "The test stopped before Tvashtr Desktop finished it."
+
+# M-desk-routes (D6): what a job is for. Only a run's node lives and dies with its run and writes
+# into its run log; a replay lives while its test runs; an Ask (usually about a finished run) is
+# claimable whatever its run's status, and expires only by the offline rules.
+RUN_NODE, TEST_REPLAY, ASK = "run_node", "test_replay", "ask"
 
 # Run statuses after which a queued/claimed job must never run.
 _TERMINAL_RUN_STATUSES = frozenset({"completed", "failed", "rejected", "cancelled", "over_budget"})
@@ -239,6 +245,8 @@ def enqueue_job(
     instruction: str,
     workspace_dir: str,
     sidecars: list[str],
+    purpose: str = RUN_NODE,
+    attempt_key: str | None = None,
 ) -> str:
     """Queue a node job, or return the EXISTING one for this (run, node, iteration).
 
@@ -246,10 +254,13 @@ def enqueue_job(
     ``workspace_dir``, so the job records THIS machine. Re-entering for an existing job means DBOS
     recovered the workflow (possibly onto another machine, where ``ensure_run_workspace`` has just
     re-materialized the workspace): a still-active job's workspace + machine follow it there, so the
-    runner's next snapshot is served from the live copy. A finished job is never touched."""
+    runner's next snapshot is served from the live copy. A finished job is never touched.
+
+    M-desk-routes: ``purpose`` (D6) and an explicit ``attempt_key`` for jobs that are not a run's
+    node attempt (an Ask passes a fresh one, so a new question never finds an old answer)."""
     if provider not in RUNNER_SUBSCRIPTIONS:
         raise ValueError(f"no Desktop runner for subscription {provider!r}")
-    attempt_key = f"{node_id}:{iteration}"
+    attempt_key = attempt_key or f"{node_id}:{iteration}"
     machine_id = this_machine_id()
     with session_scope() as session:
         stmt = pg_insert(DesktopNodeJob).values(
@@ -267,6 +278,7 @@ def enqueue_job(
             sidecars=list(sidecars),
             status="queued",
             created_at=_now(),
+            purpose=purpose,
         )
         session.execute(
             stmt.on_conflict_do_update(
@@ -309,10 +321,84 @@ def run_ended(run_id: str) -> bool:
     return status is None or status in _TERMINAL_RUN_STATUSES
 
 
-def claim_next(owner_id: uuid.UUID, providers: list[str]) -> dict | None:
-    """Hand the owner's oldest queued job for a free provider to their runner (or ``None``)."""
-    now = _now()
+def _is_run_node(purpose: str | None) -> bool:
+    return purpose in (None, RUN_NODE)
+
+
+def _replay_live(session, replay_id: str) -> bool:
+    """A replay's job may run while its result is running in a running, un-stopped test run whose
+    worker still beats (``agent_test_runner``'s own liveness rule)."""
+    from tvashtr.control_plane.agent_test_runner import STALE_AFTER_S
+    from tvashtr.models import AgentTestResult, AgentTestRun
+
+    try:
+        rid = uuid.UUID(replay_id)
+    except ValueError:
+        return False
+    return (
+        session.execute(
+            select(AgentTestResult.id)
+            .join(AgentTestRun, AgentTestRun.id == AgentTestResult.test_run_id)
+            .where(
+                AgentTestResult.id == rid,
+                AgentTestResult.status == "running",
+                AgentTestRun.status == "running",
+                AgentTestRun.stop_requested.is_(False),
+                AgentTestRun.heartbeat_at > _now() - timedelta(seconds=STALE_AFTER_S),
+            )
+        ).first()
+        is not None
+    )
+
+
+def _alive(session, purpose: str | None, run_id: str) -> bool:
+    """Whether a job may (still) run — the per-purpose rule (D6). A run's node: its run hasn't
+    ended (unchanged). A replay: :func:`_replay_live`. An Ask: always (D5)."""
+    if purpose == ASK:
+        return True
+    if purpose == TEST_REPLAY:
+        return _replay_live(session, run_id)
+    status = _run_status(session, run_id)
+    return status is not None and status not in _TERMINAL_RUN_STATUSES
+
+
+def ended_error(purpose: str | None) -> str:
+    return REPLAY_ENDED_ERROR if purpose == TEST_REPLAY else RUN_ENDED_ERROR
+
+
+def job_ended(run_id: str, purpose: str = RUN_NODE) -> bool:
+    """The adapter's per-poll check: :func:`run_ended` for a run's node (unchanged)."""
+    if _is_run_node(purpose):
+        return run_ended(run_id)
     with session_scope() as session:
+        return not _alive(session, purpose, run_id)
+
+
+def claim_next(owner_id: uuid.UUID, providers: list[str]) -> dict | None:
+    """Hand the owner's oldest queued job for a free provider to their runner (or ``None``).
+
+    M-desk-routes: a replay or an Ask may have no waiter left (its server restarted, or nobody
+    reads the answer any more), so the offline rule is applied to them here: a claim gone quiet
+    past the offline window never holds its plan, and an Ask the chat stopped polling is never
+    handed out. A run's node keeps its own waiter (the adapter) and is left as it was."""
+    now = _now()
+    offline_since = now - timedelta(seconds=get_settings().desktop_runner_offline_seconds)
+    with session_scope() as session:
+        session.execute(
+            update(DesktopNodeJob)
+            .where(
+                DesktopNodeJob.owner_id == owner_id,
+                DesktopNodeJob.status == "claimed",
+                DesktopNodeJob.purpose.in_((TEST_REPLAY, ASK)),
+                func.coalesce(
+                    DesktopNodeJob.heartbeat_at,
+                    DesktopNodeJob.claimed_at,
+                    DesktopNodeJob.created_at,
+                )
+                < offline_since,
+            )
+            .values(status="expired", error=OFFLINE_ERROR, finished_at=now)
+        )
         busy = set(
             session.execute(
                 select(DesktopNodeJob.provider).where(
@@ -340,10 +426,12 @@ def claim_next(owner_id: uuid.UUID, providers: list[str]) -> dict | None:
             .all()
         )
         for job in queued:
-            status = _run_status(session, job.run_id)
-            if status is None or status in _TERMINAL_RUN_STATUSES:
+            if job.purpose == ASK and (job.heartbeat_at or job.created_at) < offline_since:
+                job.status, job.error, job.finished_at = "expired", OFFLINE_ERROR, now
+                continue  # nobody is waiting for this answer any more
+            if not _alive(session, job.purpose, job.run_id):
                 job.status = "expired"
-                job.error = RUN_ENDED_ERROR
+                job.error = ended_error(job.purpose)
                 job.finished_at = now
                 continue
             job.status = "claimed"
@@ -375,17 +463,21 @@ def _owned_job(session, owner_id: uuid.UUID, job_id: str) -> DesktopNodeJob:
 
 def record_events(owner_id: uuid.UUID, job_id: str, events: list[dict]) -> dict:
     """Persist the runner's events into the node's run log (idempotent per seq) — also the job's
-    heartbeat. ``cancelled`` tells the runner to stop (job expired / run ended)."""
+    heartbeat. ``cancelled`` tells the runner to stop (job expired / run ended).
+
+    M-desk-routes: a replay's or an Ask's events are only its heartbeat — never ``run_events`` rows
+    (an Ask's ``run_id`` is a real run that must not gain lines; a replay's is no run at all)."""
     with session_scope() as session:
         job = _owned_job(session, owner_id, job_id)
-        run_status = _run_status(session, job.run_id)
-        if job.status != "claimed" or run_status is None or run_status in _TERMINAL_RUN_STATUSES:
+        if job.status != "claimed" or not _alive(session, job.purpose, job.run_id):
             if job.status in _ACTIVE_JOB_STATUSES:
                 job.status = "expired"
-                job.error = RUN_ENDED_ERROR
+                job.error = ended_error(job.purpose)
                 job.finished_at = _now()
             return {"ok": True, "cancelled": True}
         job.heartbeat_at = _now()
+        if not _is_run_node(job.purpose):
+            return {"ok": True, "cancelled": False}
         run_id, invocation_id = job.run_id, job.invocation_id
         releases = _release_count(session, run_id, invocation_id)
     sink = make_run_event_sink(
@@ -412,7 +504,7 @@ def submit_result(
             raise JobConflict(f"job is {job.status}")
         job.status = "completed" if status == "completed" else "failed"
         job.result_text = final_text
-        job.patch = patch
+        job.patch = None if job.purpose == ASK else patch  # an Ask's answer is its text only (D5)
         job.error = error if job.status == "failed" else None
         job.usage = usage
         job.finished_at = _now()
@@ -447,6 +539,11 @@ def release_job(owner_id: uuid.UUID, job_id: str) -> dict:
         job = _owned_job(session, owner_id, job_id)
         if job.status != "claimed":
             raise JobConflict(NOT_CLAIMED_ERROR)
+        if job.purpose == ASK:
+            # M-desk-routes: an Ask's only waiter is the chat that is closing with this Desktop, so
+            # it ends here (offline wording) rather than be answered again for nobody.
+            job.status, job.error, job.finished_at = "expired", OFFLINE_ERROR, _now()
+            return {"job_id": str(job.id), "status": "expired"}
         job.status = "queued"
         job.claimed_at = None
         job.heartbeat_at = None
@@ -462,6 +559,8 @@ def release_job(owner_id: uuid.UUID, job_id: str) -> dict:
         beat.last_seen_at = now
         beat.providers = sorted({*(beat.providers or []), job.provider})
         run_id, invocation_id, released_id = job.run_id, job.invocation_id, str(job.id)
+        if not _is_run_node(job.purpose):  # no run log to note it in (M-desk-routes)
+            return {"job_id": released_id, "status": "queued"}
         releases = _release_count(session, run_id, invocation_id)
     seq = RUNNER_SEQ_OFFSET + (releases + 1) * RUNNER_CLAIM_SEQS - 1
     make_run_event_sink(run_id, invocation_id)(
@@ -514,6 +613,34 @@ def mark_applied(job_id: str, files_changed: list[str]) -> None:
         )
 
 
+def replay_job(replay_id: str) -> dict | None:
+    """The Desktop job of an agent test's replay (M-desk-routes D4), or ``None`` (not a Desktop
+    replay, or not queued yet)."""
+    with session_scope() as session:
+        job = session.execute(
+            select(DesktopNodeJob)
+            .where(DesktopNodeJob.run_id == replay_id, DesktopNodeJob.purpose == TEST_REPLAY)
+            .order_by(DesktopNodeJob.created_at.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+        return _job_dict(job) if job is not None else None
+
+
+def expire_replay_jobs(replay_id: str, error: str = REPLAY_ENDED_ERROR) -> None:
+    """A stopped or capped replay's Desktop job ends now: its waiting adapter returns, and the
+    runner's next events post is told to stop the CLI."""
+    with session_scope() as session:
+        session.execute(
+            update(DesktopNodeJob)
+            .where(
+                DesktopNodeJob.run_id == replay_id,
+                DesktopNodeJob.purpose == TEST_REPLAY,
+                DesktopNodeJob.status.in_(_ACTIVE_JOB_STATUSES),
+            )
+            .values(status="expired", error=error, finished_at=_now())
+        )
+
+
 # --------------------------------------------------------------------------------- snapshot
 
 
@@ -523,13 +650,20 @@ def build_snapshot(owner_id: uuid.UUID, job_id: str) -> bytes:
 
     Raises :class:`WorkspaceElsewhere` when the job names ANOTHER Fly machine than this one. The
     recorded machine is authoritative even if a directory exists here: the path is per-run, so a
-    copy on this disk can only be a stale one left by an earlier machine hop."""
+    copy on this disk can only be a stale one left by an earlier machine hop.
+
+    M-desk-routes: an Ask's workspace is empty (D5) — a tarball of nothing, never a server path."""
     with session_scope() as session:
         job = _owned_job(session, owner_id, job_id)
         if job.status != "claimed":
             raise JobConflict(f"job is {job.status}")
         workspace = job.workspace_dir
         holder = job.workspace_machine_id
+        purpose = job.purpose
+    if purpose == ASK:
+        return _empty_snapshot()
+    if not workspace:  # never Path(""): that is this server's own working directory
+        raise JobConflict("this job has no workspace")
     here = this_machine_id()
     if holder and here and holder != here:
         raise WorkspaceElsewhere(holder)
@@ -555,6 +689,16 @@ def build_snapshot(owner_id: uuid.UUID, job_id: str) -> bytes:
     if len(data) > limit:
         raise SnapshotTooLarge(f"workspace snapshot is {len(data)} bytes (limit {limit})")
     return data
+
+
+def _empty_snapshot() -> bytes:
+    """A gzipped tarball holding only the workspace root — what an empty workspace snapshots to."""
+    root = tarfile.TarInfo(".")
+    root.type, root.mode = tarfile.DIRTYPE, 0o755
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        tar.addfile(root)
+    return buf.getvalue()
 
 
 # --------------------------------------------------------------------------------- patch

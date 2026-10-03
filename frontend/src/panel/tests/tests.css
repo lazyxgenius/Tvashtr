@@ -300,6 +300,13 @@
   font-size: 12px;
   color: var(--ink-500);
 }
+/* M-desk-routes (Test-RunningDesktop): a Desktop replay waiting for its plan. */
+.tt-row__waiting {
+  padding-left: 23px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink-600);
+}
 .tt-detail {
   margin: 6px 0 2px 23px;
   padding-top: 8px;

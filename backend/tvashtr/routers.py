@@ -25,6 +25,7 @@ from tvashtr.control_plane import (
     activity,
     agent_test_runner,
     agent_tests,
+    desktop_asks,
     desktop_jobs,
     document_views,
     domain_read,
@@ -219,6 +220,8 @@ class AskMessage(BaseModel):
 
 class AskRequest(BaseModel):
     messages: list[AskMessage]
+    # M-desk-routes (D1, D5): asked from Tvashtr Desktop — a Desktop-routed node answers there.
+    desktop_target: bool = False
 
 
 class RepoInspectRequest(BaseModel):
@@ -1786,6 +1789,7 @@ def ask_node(
     node_id: str,
     body: AskRequest,
     current_user: Annotated[UserOut, Depends(get_current_user)],
+    response: Response,
 ) -> dict:
     """Mode A — "Ask the node": a stateless, owner-scoped chat about what ONE node did in a run.
 
@@ -1796,7 +1800,11 @@ def ask_node(
     into a SYSTEM message (``run_explain.build_system_prompt``) that pins the model to that record,
     and answers with the node's OWN model + the run-owner's BYOK key. The spend is metered with
     ``workflow_id=None`` — this meta-question is deliberately NOT attributed to the run's ledger. It
-    never touches the executor/engines; it only READS the run's recorded rows + the gateway."""
+    never touches the executor/engines; it only READS the run's recorded rows + the gateway.
+
+    M-desk-routes (D5): asked from Tvashtr Desktop (``desktop_target``) about a node whose model is
+    Desktop-routed, it is answered by the owner's own CLI there instead: 202 ``{ask_id, status}``,
+    then ``GET …/asks/{ask_id}`` (no key, not metered). Any other Ask is unchanged."""
     if not body.messages:
         raise HTTPException(status_code=422, detail="messages must be non-empty")
     if len(body.messages) > _ASK_MAX_MESSAGES:
@@ -1842,6 +1850,20 @@ def ask_node(
     multimodal = resolve_multimodal(node_config)
 
     system_prompt = build_system_prompt(run_id=run_id, node_id=node_id)
+
+    if body.desktop_target:
+        provider = desktop_asks.routed_subscription(owner_id, model)
+        if provider is not None:
+            response.status_code = 202
+            return desktop_asks.start(
+                owner_id=owner_id,
+                run_id=run_id,
+                node_id=node_id,
+                provider=provider,
+                model=model,
+                system_prompt=system_prompt,
+                messages=[{"role": m.role, "content": m.content} for m in body.messages],
+            )
 
     try:
         api_key = resolve_owner_api_key(owner_id, model)
@@ -1898,6 +1920,24 @@ def ask_node(
         idempotency_key=f"node-ask:{run_id}:{node_id}:{uuid.uuid4().hex}",
     )
     return {"answer": result.text}
+
+
+@router.get("/api/runs/{run_id}/nodes/{node_id}/asks/{ask_id}")
+def get_node_ask(
+    run_id: str,
+    node_id: str,
+    ask_id: str,
+    current_user: Annotated[UserOut, Depends(get_current_user)],
+) -> dict:
+    """M-desk-routes (D5): a Desktop Ask's status, answer or error (polled every 2 s). Owner-scoped:
+    another account's run or Ask is a 404, like an Ask that doesn't exist."""
+    owner_id = uuid.UUID(current_user.id)
+    with db.session_scope() as session:
+        _require_owned_run(session, run_id, owner_id)
+    try:
+        return desktop_asks.view(owner_id, run_id, node_id, ask_id)
+    except desktop_asks.AskNotFound:
+        raise HTTPException(status_code=404, detail="ask not found") from None
 
 
 @router.get("/api/runs/{run_id}/graph")

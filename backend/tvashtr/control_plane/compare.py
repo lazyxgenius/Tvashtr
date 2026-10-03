@@ -39,12 +39,14 @@ from tvashtr.control_plane import (
     activity,
     agent_test_runner,
     checkpoints,
+    desktop_jobs,
     github_app,
     resume,
     run_views,
     task_sets,
     versions,
 )
+from tvashtr.control_plane.credential_gate import desktop_routed_subscriptions
 from tvashtr.control_plane.graph_validity import graph_dicts, owner_domain_ids, validate_graph
 from tvashtr.control_plane.run_failure import node_label
 from tvashtr.control_plane.team_run import run_team
@@ -57,6 +59,8 @@ from tvashtr.models import (
     AgentTestResult,
     AgentTestRun,
     Compare,
+    CompareDesktopTarget,
+    DesktopNodeJob,
     GithubInstallation,
     HiddenCheckResult,
     Run,
@@ -86,6 +90,11 @@ _CELL_STATUS = {**_SIDE_STATUS, "awaiting_human": "running"}
 _ENDED = ("finished", "failed", "stopped")
 _FILE = re.compile(rb"^diff --git a/(.+?) b/", re.MULTILINE)
 _BUSY = "This team already has a compare running. Stop it first."
+# D3 (M-desk-routes): a Desktop compare's lanes share the owner's subscription and take turns.
+WORK_LINE = (
+    "On your Desktop, both versions share your subscription and take turns, so this counts "
+    "working time only."
+)
 
 
 def _now() -> datetime:
@@ -277,8 +286,9 @@ def changes(session, team: TeamGraph, a: int, b: int) -> dict:
 # ---------------------------------------------------------------------------------- launching
 
 
-def _check_runnable(snapshot: uuid.UUID, owner_id: uuid.UUID) -> None:
-    """The launch pre-flight of ``POST /api/runs`` on one side's snapshot (422s)."""
+def _check_runnable(snapshot: uuid.UUID, owner_id: uuid.UUID, desktop_target: bool = False) -> None:
+    """The launch pre-flight of ``POST /api/runs`` on one side's snapshot (422s) — a Desktop
+    compare's as a Desktop launch's (a fresh Claude/Grok subscription covers its provider)."""
     from tvashtr.routers import _launch_preflight  # the router mounts after this module
 
     with session_scope() as session:
@@ -290,7 +300,7 @@ def _check_runnable(snapshot: uuid.UUID, owner_id: uuid.UUID) -> None:
             status_code=422,
             detail={"message": "team graph is not runnable", "errors": verdict["errors"]},
         )
-    _launch_preflight(owner_id, str(snapshot), False)
+    _launch_preflight(owner_id, str(snapshot), desktop_target)
 
 
 def _authorise(owner_id: uuid.UUID, target: dict | None) -> tuple[str | None, str | None]:
@@ -323,6 +333,11 @@ def _authorise(owner_id: uuid.UUID, target: dict | None) -> tuple[str | None, st
     return target["repo"], target["base_ref"] or match[1].get("default_branch") or "main"
 
 
+def _is_desktop(session, cmp: Compare) -> bool:
+    """D2: started from Tvashtr Desktop (its ``compare_desktop_targets`` row)."""
+    return session.get(CompareDesktopTarget, cmp.id) is not None
+
+
 def _drop(snapshots) -> None:
     with session_scope() as session:
         session.execute(delete(TeamGraph).where(TeamGraph.id.in_(list(snapshots))))
@@ -343,7 +358,11 @@ def _launch(
     workflows after the commit — ONE task per call and per transaction (the module note).
 
     M9: a set compare's ``item`` gives the runs their task (``idea``), the branch they start from
-    (its ``starts_from``, else the target's) and ``task_set_item_id``. Never its hidden check."""
+    (its ``starts_from``, else the target's) and ``task_set_item_id``. Never its hidden check.
+
+    M-desk-routes (D2): a Desktop compare's runs are desktop-targeted, each side's subscriptions
+    routed at THIS launch from its own snapshot's models, exactly as ``POST /api/runs`` routes a
+    Desktop launch (``team_run`` then reads them off the run — no executor change)."""
     from tvashtr.routers import _enforce_run_ceilings  # the router mounts after this module
 
     session.execute(
@@ -359,6 +378,8 @@ def _launch(
         return None
     team = session.get(TeamGraph, cmp.team_graph_id)
     cap = team.budget_usd if team.budget_usd is not None else get_settings().default_run_budget_usd
+    desktop = _is_desktop(session, cmp)
+    fresh = desktop_jobs.fresh_subscription_ids(cmp.owner_id) if desktop else set()
     idea, base_ref = cmp.task, cmp.base_ref
     if item is not None:
         idea = item.task
@@ -369,6 +390,17 @@ def _launch(
             session, team, versions._version(session, team, number).graph
         )
         run_id = uuid.uuid4()
+        routing = {}
+        if desktop:
+            models = session.execute(
+                select(AgentNode.model).where(AgentNode.team_graph_id == snapshot)
+            ).scalars()
+            routing = {
+                "desktop_target": True,
+                "desktop_subscriptions": desktop_routed_subscriptions(
+                    models, fresh_subscriptions=fresh, desktop_target=True
+                ),
+            }
         session.add(
             Run(
                 id=run_id,
@@ -385,6 +417,7 @@ def _launch(
                 pair_id=cmp.id,
                 pair_label=label,
                 task_set_item_id=item.id if item is not None else None,
+                **routing,
             )
         )
         ids.append(str(run_id))
@@ -445,6 +478,7 @@ def create(
     task: str | None = None,
     task_set_id: str | None = None,
     auto_approve: bool,
+    desktop_target: bool = False,
 ) -> dict:
     task = (task or "").strip()
     with session_scope() as session:
@@ -480,7 +514,7 @@ def create(
         snapshots = {k: versions.run_snapshot(session, team, g) for k, g in graphs.items()}
     try:
         for snapshot in snapshots.values():
-            _check_runnable(snapshot, owner_id)
+            _check_runnable(snapshot, owner_id, desktop_target)
         repo, base_ref = _authorise(owner_id, target)
         with session_scope() as session:
             if tasks is not None:
@@ -507,6 +541,9 @@ def create(
             )
             session.add(cmp)
             session.flush()
+            if desktop_target:
+                session.add(CompareDesktopTarget(compare_id=cmp.id))
+                session.flush()
             first = _pending(session, cmp, [])[0]
             started = _launch(session, cmp, snapshots, item=first)
             cid, status = cmp.id, cmp.status
@@ -662,8 +699,62 @@ def _files(run: Run) -> int | None:
     )
 
 
-def _lane(session, run: Run, extras: dict, live: dict) -> dict:
-    """One run's lane and the facts its results row needs."""
+def _work_seconds(session, run: Run) -> int:
+    """D3: a Desktop lane's work time — the sum of its agent steps' working time, without the time
+    each step's job waited in the Desktop queue (lanes sharing a subscription take turns).
+
+    ponytail: a job handed back by a Desktop restart keeps only its last claim, so its time worked
+    before the restart reads as queued; per-claim timestamps if restarts mid-compare matter."""
+    now = _now()
+    ended_run = run.status in run_views.TERMINAL_STATUSES
+    last_line = (
+        dict(
+            session.execute(
+                select(RunEvent.invocation_id, func.max(RunEvent.created_at))
+                .where(RunEvent.run_id == run.workflow_id, RunEvent.invocation_id.is_not(None))
+                .group_by(RunEvent.invocation_id)
+            ).all()
+        )
+        if ended_run
+        else {}
+    )
+    jobs = {
+        inv_id: (created, claimed, finished)
+        for inv_id, created, claimed, finished in session.execute(
+            select(
+                DesktopNodeJob.invocation_id,
+                DesktopNodeJob.created_at,
+                DesktopNodeJob.claimed_at,
+                DesktopNodeJob.finished_at,
+            ).where(
+                DesktopNodeJob.run_id == run.workflow_id,
+                DesktopNodeJob.purpose == desktop_jobs.RUN_NODE,
+                DesktopNodeJob.invocation_id.is_not(None),
+            )
+        ).all()
+    }
+    total = 0.0
+    for inv_id, started, ended in session.execute(
+        select(AgentInvocation.id, AgentInvocation.started_at, AgentInvocation.ended_at)
+        .join(AgentNode, AgentNode.id == AgentInvocation.node_id)
+        .where(
+            AgentInvocation.run_id == run.workflow_id,
+            AgentNode.kind.in_(("agent", "completion")),
+        )
+    ).all():
+        created, claimed, finished = jobs.get(inv_id, (None, None, None))
+        # A stopped run's open step is never closed: it ends where its job ended, else at its last
+        # line — never the wall clock (the lane's time must not grow after it has ended).
+        end = ended or ((finished or last_line.get(inv_id) or started) if ended_run else now)
+        queued = (claimed or finished or end) - created if created else timedelta(0)
+        total += max((end - started - queued).total_seconds(), 0.0)
+    return int(total)
+
+
+def _lane(
+    session, run: Run, extras: dict, live: dict, desktop: bool = False, *, work: bool = False
+) -> dict:
+    """One run's lane and the facts its results row needs (a Desktop lane's work time too)."""
     act = activity.run_activity(session, run, resume_info=False)
     lines, agents = act["lines"], act["agents"]
     status = _SIDE_STATUS.get(run.status, "stopped")
@@ -691,7 +782,7 @@ def _lane(session, run: Run, extras: dict, live: dict) -> dict:
         word = result = "Stopped"
     current = None
     if status in ("running", "needs_you"):
-        current = _current(agents)
+        current = _current(agents, desktop)
     elif status in ("finished", "failed", "stopped"):
         current = {"label": word, "text": f"in round {rounds}" if rounds else ""}
     pinned = act["pinned"]
@@ -718,19 +809,33 @@ def _lane(session, run: Run, extras: dict, live: dict) -> dict:
             "retries": host.get("retry", 0),
             "stalls": host.get("stalled", 0),
             "files": _files(run) if status != "running" and status != "needs_you" else None,
+            "work": _work_seconds(session, run) if work else None,
         },
     }
 
 
-def _current(agents: list[dict]) -> dict | None:
+def _current(agents: list[dict], desktop: bool = False) -> dict | None:
     """The step a running run is on: ``{"label": "Engineer", "text": "round 3"}``, a gate
-    ``{"label": <gate>, "text": "waiting for you"}``, or None."""
+    ``{"label": <gate>, "text": "waiting for you"}``, or None.
+
+    D3: on a Desktop lane, a step waiting for the Desktop (its newest line a Tvashtr note, e.g.
+    "Waiting for your Claude subscription — one job at a time.") shows that line."""
+
+    def queued(a: dict) -> bool:
+        return desktop and a["live_state"] == "waiting" and bool(a.get("activity"))
+
     busy = next(
-        (a for a in agents if a["live_state"] not in ("waiting", "done", "failed", "stopped")),
+        (
+            a
+            for a in agents
+            if a["live_state"] not in ("waiting", "done", "failed", "stopped") or queued(a)
+        ),
         None,
     )
     if busy is None:
         return None
+    if queued(busy):
+        return {"label": busy["label"], "text": busy["activity"]}
     return {
         "label": busy["label"],
         "text": "waiting for you"
@@ -767,6 +872,17 @@ def view(owner_id: uuid.UUID, compare_id: str) -> dict:
             return _set_view(session, cmp, listed)
         runs = {r.pair_label: r for r in listed}
         team = session.get(TeamGraph, cmp.team_graph_id)
+        desktop = _is_desktop(session, cmp)
+        # D3: lanes that share a subscription take turns, so they count work time; lanes with no
+        # subscription in common (e.g. one on held keys) never wait for each other — Time stays.
+        shared = (
+            desktop
+            and len(listed) == 2
+            and bool(
+                set(listed[0].desktop_subscriptions or [])
+                & set(listed[1].desktop_subscriptions or [])
+            )
+        )
         extras = run_views.run_extras(session, list(runs.values()), include_progress=True)
         live = run_views.live_costs(session, [r.workflow_id for r in runs.values()])
         sides, facts = [], {}
@@ -785,7 +901,7 @@ def view(owner_id: uuid.UUID, compare_id: str) -> dict:
                     "gate_task_id": None,
                 }
             else:
-                lane = _lane(session, run, extras[run.id], live)
+                lane = _lane(session, run, extras[run.id], live, desktop, work=shared)
                 facts[label] = lane.pop("_facts")
             sides.append({"label": label, "version": number, **lane})
         ended = cmp.status in ("finished", "stopped")
@@ -793,7 +909,7 @@ def view(owner_id: uuid.UUID, compare_id: str) -> dict:
         if ended:
             # M9: "One task is a small sample · Compare on <set>".
             results = {
-                **_results(session, cmp, facts),
+                **_results(session, cmp, facts, shared),
                 "sample": task_sets.sample(session, team.id),
             }
         return {
@@ -1266,7 +1382,9 @@ def _row(key: str, label: str, a: str, b: str, better=None, difference: str = ""
     }
 
 
-def _rows(fa: dict, fb: dict, tested: tuple | None, cmp: Compare, both: bool) -> list[dict]:
+def _rows(
+    fa: dict, fb: dict, tested: tuple | None, cmp: Compare, both: bool, desktop: bool = False
+) -> list[dict]:
     def mark(key, label, a, b, x, y, *, lower, near=0.0, diff=None):
         better = _better(x, y, lower=lower, near=near) if both else None
         difference = ""
@@ -1274,6 +1392,7 @@ def _rows(fa: dict, fb: dict, tested: tuple | None, cmp: Compare, both: bool) ->
             difference = "same" if abs(y - x) <= near else diff(y - x)
         return _row(key, label, a, b, better, difference)
 
+    time_key = "work" if desktop else "elapsed"  # D3: a Desktop compare counts working time
     if both and fa["approved"] != fb["approved"]:
         # Approval first: "Approved" beats "Finished" (never approved) whatever the rounds.
         better = "a" if fa["approved"] else "b"
@@ -1304,11 +1423,11 @@ def _rows(fa: dict, fb: dict, tested: tuple | None, cmp: Compare, both: bool) ->
         ),
         mark(
             "time",
-            "Time",
-            activity._span(fa["elapsed"]),
-            activity._span(fb["elapsed"]),
-            fa["elapsed"],
-            fb["elapsed"],
+            "Work time" if desktop else "Time",
+            activity._span(fa[time_key]),
+            activity._span(fb[time_key]),
+            fa[time_key],
+            fb[time_key],
             lower=True,
             near=59,
             diff=lambda d: _signed(d, lambda s: f"{round(s / 60)}m"),
@@ -1359,7 +1478,7 @@ def _rows(fa: dict, fb: dict, tested: tuple | None, cmp: Compare, both: bool) ->
     return rows
 
 
-def _results(session, cmp: Compare, facts: dict) -> dict:
+def _results(session, cmp: Compare, facts: dict, desktop: bool = False) -> dict:
     team = session.get(TeamGraph, cmp.team_graph_id)
     current = versions.latest(session, team).number
     va, vb = f"v{cmp.version_a}", f"v{cmp.version_b}"
@@ -1370,7 +1489,7 @@ def _results(session, cmp: Compare, facts: dict) -> dict:
     else:
         fa, fb = facts["A"], facts["B"]
         both = fa["status"] == fb["status"] == "finished"
-        rows = _rows(fa, fb, _agent_tests(session, cmp), cmp, both)
+        rows = _rows(fa, fb, _agent_tests(session, cmp), cmp, both, desktop)
         wins = Counter(r["better"] for r in rows)
         if cmp.status == "stopped":
             headline = "You stopped this compare"
@@ -1388,9 +1507,12 @@ def _results(session, cmp: Compare, facts: dict) -> dict:
                 winner = cmp.version_a if ok == va else cmp.version_b
         else:
             headline = "Neither version finished this task"
-    return {
+    out = {
         "headline": headline,
         "rows": rows,
         "current_version": current,
         "restore": winner if winner is not None and winner != current else None,
     }
+    if desktop and rows:
+        out["note"] = WORK_LINE  # D3: under the table, beside its "Work time" row
+    return out

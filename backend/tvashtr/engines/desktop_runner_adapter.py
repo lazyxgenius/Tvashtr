@@ -71,6 +71,7 @@ class DesktopRunnerAdapter:
             instruction=task.instruction,
             workspace_dir=task.workspace_dir,
             sidecars=list(SIDECARS),
+            purpose=spec.purpose,
         )
         emit(
             EngineEvent(
@@ -95,9 +96,10 @@ class DesktopRunnerAdapter:
             if status in ("failed", "expired"):
                 return _failed(job["error"] or f"{cli} did not finish this node.")
 
-            if desktop_jobs.run_ended(spec.run_id):
-                if desktop_jobs.expire_job(job_id, desktop_jobs.RUN_ENDED_ERROR):
-                    return _failed(desktop_jobs.RUN_ENDED_ERROR)
+            if desktop_jobs.job_ended(spec.run_id, spec.purpose):
+                ended = desktop_jobs.ended_error(spec.purpose)
+                if desktop_jobs.expire_job(job_id, ended):
+                    return _failed(ended)
                 continue
 
             now = datetime.now(UTC)
