@@ -76,9 +76,12 @@ test("failure path: the Engineer fails, the run takes its failure path to a gate
   expect(valid.errors, "the team with a failure path is runnable").toEqual([]);
 
   // The canvas draws the path and its menu shows the choice (Cnv-FailPath).
+  // A reload: the page is already on this team, and its graph was edited through the API.
   await page.goto(`/#/teams/${team}`);
+  await page.reload();
   const label = page.getByText("If it fails or times out").first();
   await expect(label).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("Can’t run yet.")).toHaveCount(0);
   // The label lets clicks through to its path (pointer-events: none): click the path under it.
   const box = (await label.boundingBox())!;
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
