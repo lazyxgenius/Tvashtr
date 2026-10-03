@@ -1132,6 +1132,8 @@
   background: transparent;
   font-family: var(--font-ui);
   font-size: 13px;
+  /* The board's rows are 32 high (two-line "When the agent says…" 48): a button's own line height. */
+  line-height: normal;
   color: var(--ink-800);
   text-align: left;
   cursor: pointer;
@@ -1314,8 +1316,9 @@
 .cv-group__label {
   display: inline-flex;
   align-items: center;
+  /* Cnv-Group: 28px inside its border (30 high at 1x), as wide as its words. */
   height: 28px;
-  box-sizing: border-box;
+  box-sizing: content-box;
   padding: 0 10px;
   border-radius: 8px;
   background: var(--surface-card);
@@ -1327,6 +1330,8 @@
   cursor: pointer;
 }
 .cv-group__label--edit {
+  field-sizing: content;
+  min-width: 48px;
   border-color: var(--coral-500);
   box-shadow: 0 0 0 4px rgba(217, 119, 87, 0.14);
   outline: none;
