@@ -4,6 +4,7 @@ import type { SubscriptionProviderId, SubscriptionSource, SubscriptionStatus } f
 
 export type { SubscriptionProviderId, SubscriptionStatus } from "./engines";
 
+import type { TeamLayout } from "./api/canvas";
 import type { DomainCitation } from "./api/domains";
 import type { RunTarget } from "./api/runs";
 // The leaf module, never `./api/connectors`: that one imports `./api/runs`, which extends
@@ -965,6 +966,8 @@ export interface TeamGraphData {
   name?: string;
   nodes: TeamGraphNode[];
   edges: GraphEdge[];
+  /** M11 (R14): the team's groups — labels only, never a version, never read by the walk. */
+  layout?: TeamLayout | null;
 }
 
 // One row in the teams rail — a library team summary (the rail lists these; the canvas loads the
