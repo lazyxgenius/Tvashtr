@@ -33,8 +33,8 @@
 # GATE: size/type MET for every new M11 element but one — after this sweep's fix (baf99055) the path menu, its Time limit choices, Tidy and
 #   Group, Tidy's tip and toast, the group's label field, summary and note, the folded group, the failure path's pill and Activity line and
 #   the spec drawer are at 0 size/type drift on every render (web and Desktop); every other drift item is an existing element or a pairing
-#   covered by a waiver (W1–W3 as m2.txt, W7 as m5.txt, W15–W18 below). Open: TO FIX 1 — Cnv-GroupFolded's lit 'Group' 600→500 (the board
-#   keeps Cnv-Group's naming state; a rule, not a size) — and TO FIX 2–5 (two words not built, a layout, a behaviour) for the lead.
+#   covered by a waiver (W1–W3 as m2.txt, W7 as m5.txt, W15–W18 below). The helper's TO FIX 1–5 are RULED (LEAD RULINGS below): 1 the
+#   board corrected, 2 built, 3 and 4 waived (app governs), 5 fixed — size/type MET for every new M11 element.
 #   At 0 drift, box for box where measured (Desktop; x,y w×h): the path menu's rows 256x32 13/400 ('Always', 'If it fails or times out',
 #   'Time limit' with '10 min' 11.5px 35x14, 'Delete this path'), 'When the agent says…' 256x48 two lines with 'an outcome' 11.5px 64x14,
 #   'it has one' 11.5px 53x14 (Cnv-FailPathOne), 'Use this path…' 11.5/600; the Time limit choices 218 wide: the note 'If the Engineer works
@@ -71,7 +71,19 @@
 #   "Approve with my edits" is the board's spec drawer, opened by clicking the waiting spec gate on the run canvas; the board's tracked-changes
 #      marks are not built (the reused steering editor shows the edit count only): 'Default length:', the struck '20' and '14, the usual
 #      default' are one line in the app ("Default length: 14, the usual default"), "not found" ×3 on Cnv-EditApprove.
-# TO FIX (for the lead; measured on the Desktop render, the web render is the same 30px lower):
+# LEAD RULINGS (feat/m11-canvas-extras, after m11-parity; the two affected boards re-shot on Vite :5353):
+#   1 → BOARD CORRECTED: Cnv-GroupFolded was drawn from Cnv-Group and kept its naming state (Group lit, the "Groups are labels" tip); the
+#      app shows those only while a new group is named, which Cnv-Group draws. The board now draws the folded state alone (Team Setup
+#      v1790994010-3905). Re-shot: 25/32 matched · 1 drift (the Unfold button 32→34, W16: the canvas's 1.05× zoom) · 7 not found (the
+#      canvas cards' words and the toolbar's 'Add agent' / 'More for this team', by rule).
+#   2 → BUILT: the Now bar's gate line reads "Waiting for you · you are editing the spec" while the spec drawer holds an edit (NowBar
+#      `editing`, SpecApproveDrawer `onEditing`; tests). Re-shot: Cnv-EditApprove 73/89 · 4 drift (W1–W3, existing) · it matches.
+#   3 → WAIVER (app governs, brief 2.3): run-view drawers dock in the canvas area above the full-width Activity (M2's layout, as the
+#      run node drawer does); the board runs the spec drawer full height over a narrowed Activity. Its parts are at 0 drift.
+#   4 → WAIVER (R20): "Not reached" is an ENDED run's word for an agent it never got to; while the run waits at its failure path's gate
+#      the Reviewer is Waiting (M2's word), not "Not reached" as the board draws.
+#   5 → FIXED: a fold deselects the agents it hides, so no selection box is left over the folded group (TeamCanvas; test).
+# TO FIX as the helper reported them (measured on the Desktop render, the web render is the same 30px lower):
 #   1. state — Cnv-GroupFolded draws Cnv-Group's toolbar state after the fold: Group lit (12.5/600, coral) and the dark note "Groups are
 #      labels / They help you read a big team and can be folded away. They don’t change how work flows." at (488,232), though no group is
 #      being named. The app lights Group and shows the note only while a new group is being named (CanvasTools `groupOn` = naming; GroupFrame's
@@ -151,8 +163,7 @@
 #   approval" —, Cnv-FailPathRun's '15m ago', 'Round 1 · changes requested', '9m ago', 'Nothing shipped' — reads "Not yet"); Cnv-FailPathRun's
 #   '10:56:31' / 'Model busy. Trying again in 10 s · 1 of 3' (behind "Show 21 earlier steps": the last six, M2); Cnv-EditApproved's stale
 #   'Needs you' / 'Starts after your approval' (note). Each web render's 'Tvashtr — the living canvas' and 'Tvashtr Desktop' by rule.
-# Not found in app (new, real): Cnv-GroupFolded's note ×2 (TO FIX 1), 'Waiting for you · you are editing the spec' (TO FIX 2), 'Not
-#   reached' (TO FIX 4). Nothing beyond the boards was built.
+# Not found in app (new, real): none after the rulings (1 board corrected, 2 built, 4 waived by R20). Nothing beyond the boards was built.
 Cnv-FailPath desktop: matched 37/48 design items · 0 with size/type drift · 21 only moved · 11 not found in app
 Cnv-FailPath web: matched 35/48 design items · 0 with size/type drift · 21 only moved · 13 not found in app
 Cnv-FailPathOne desktop: matched 36/47 design items · 0 with size/type drift · 20 only moved · 11 not found in app
