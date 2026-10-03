@@ -114,6 +114,8 @@ What differs from the contract above, and why:
    path with no outcome word asks for the word first (the existing "Routing label" editor); Tidy lays the main path out
    from forward edges alone, then places what only a failure path reaches after its agent with the main path held
    still; the agent drawer's routing line leaves failure paths out (as escalation arrows).
+7. **"The run ends as its path ends"** means as any run does at that ending: at a Stop the run's status is `rejected`
+   and its Stop step `stopped` (P1.1's Stop, unchanged); at Ship it ships.
 5. Validity codes (errors): `failure_not_agent`, `failure_twice`, `failure_dead_end`. Failure edges are also left out
    of the pipeline strip / the run's progress strip (like escalation edges) and of a Query domain step's "slot".
    A team file accepts and exports `type: failure`; a version's change rows say "… · if it fails" for one.
