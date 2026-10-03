@@ -1,0 +1,90 @@
+# Kept-elements inventory — m11-canvas (the team canvas of "Indicator sprint team" v7 with 1 change: the toolbar (Back to teams, Run this team, the version chip, Save as v8, Documents, Compare, Team file), the canvas's "Add to canvas" + (and, open, its five add options), the cards with the Engineer's failure path to "Ask me what to do" → Stop, the zoom controls), captured on main 25291698 (before M11) with scripts/design-parity/shoot-app.mjs INVENTORY=1
+# Scenarios: scripts/design-parity/scenarios/canvas-extras.mjs (kept-m11-canvas-web / -desktop: Cnv-FailPath's canvas (versions.mjs's teamRoutes with the failure path), no menu; kept-m11-canvas-add-web / -desktop: the same with the mouse on "Add to canvas" (it opens on hover): Agent · Gate · Ship · Stop · Query domain, named by their titles), the same scenario file shot on
+#   main 25291698 (Vite :5352) and on m11-parity (Vite :5351). After the change every line must be present (superset).
+
+## kept-m11-canvas-desktop
+button: Account
+button: Add to canvas
+button: Back to teams
+button: Compare
+button: Documents 0
+button: Fit View
+button: Run this team
+button: Save as v8
+button: Set this node’s model
+button: Team file
+button: Version history
+button: Zoom In
+button: Zoom Out
+header: 
+main: 
+toolbar: Team
+
+## kept-m11-canvas-web
+button: Account
+button: Add to canvas
+button: Back to teams
+button: Compare
+button: Documents 0
+button: Fit View
+button: Run this team
+button: Save as v8
+button: Set this node’s model
+button: Team file
+button: Version history
+button: Zoom In
+button: Zoom Out
+header: 
+main: 
+toolbar: Team
+
+## kept-m11-canvas-add-desktop
+button: A blank agent (reads & writes files; start it from a template)
+button: A human approval checkpoint
+button: Account
+button: Add to canvas
+button: An ending that commits & ships
+button: An ending that stops without shipping
+button: Ask a Domain with citations (PolyRAG)
+button: Back to teams
+button: Compare
+button: Documents 0
+button: Fit View
+button: Run this team
+button: Save as v8
+button: Set this node’s model
+button: Team file
+button: Version history
+button: Zoom In
+button: Zoom Out
+header: 
+main: 
+toolbar: Team
+
+## kept-m11-canvas-add-web
+button: A blank agent (reads & writes files; start it from a template)
+button: A human approval checkpoint
+button: Account
+button: Add to canvas
+button: An ending that commits & ships
+button: An ending that stops without shipping
+button: Ask a Domain with citations (PolyRAG)
+button: Back to teams
+button: Compare
+button: Documents 0
+button: Fit View
+button: Run this team
+button: Save as v8
+button: Set this node’s model
+button: Team file
+button: Version history
+button: Zoom In
+button: Zoom Out
+header: 
+main: 
+toolbar: Team
+
+# After M11 (m11-parity, the same scenario):
+kept-m11-canvas: web 16/16, desktop 16/16 kept items present — none missing (after: 19 each, added "button: Group", "button: Tidy", "toolbar: Arrange")
+kept-m11-canvas-add: web 21/21, desktop 21/21 kept items present — none missing (after: 24 each, added "button: Group", "button: Tidy", "toolbar: Arrange")
+# Web and Desktop inventories are equal, before and after.

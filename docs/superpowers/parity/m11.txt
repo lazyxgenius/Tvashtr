@@ -1,0 +1,201 @@
+# M11 — Canvas extras: parity record, branch m11-parity (= feat/m11-canvas-extras 31079615 + baf99055), 2026-10-03.
+# Design: the Claude Design "Team Setup" canvas export: Cnv-FailPath, Cnv-FailPathOne, Cnv-TimeLimit, Cnv-Tidy, Cnv-Group, Cnv-GroupFolded,
+#   Cnv-TestAgent, Cnv-EditApprove, Cnv-EditApproved, Cnv-FailPathRun. Shot with shoot-design.mjs at 1440x900, FONT_CACHE_DIR
+#   …/scratchpad/font-cache: 10 design shots, 10 fonts-ok.
+# App: Vite :5351 on the m11-parity worktree (its own cacheDir), no backend. scripts/design-parity/scenarios/canvas-extras.mjs answers the
+#   contract's shapes (docs/superpowers/plans/api/canvas-extras.md) with the boards' data. The canvas boards are versions.mjs's canvas (team
+#   "Indicator sprint team" v7: Product manager → Spec approval → Engineer ⇄ Reviewer, up to 3 rounds → Ship): Cnv-FailPath / -FailPathOne /
+#   -TimeLimit add the palette's gate (routers.py: role "gate", gate kind "approval") titled "Ask me what to do" (→ Stop) under the Engineer, the
+#   Engineer's failure edge to it (`edge_type: "failure"`), the Engineer's `config.time_limit_s` 600 and "1 change since v7"; Cnv-Tidy places
+#   the five nodes where the board's dashed boxes are; Cnv-Group / -GroupFolded answer PUT /api/teams/t-ind/layout with what was sent (the
+#   stored layout); Cnv-TestAgent is agent-tests.mjs's canvas with the Reviewer's six tests and its chip the count ("6 tests"). The run boards
+#   are runs-fixtures.mjs's run #12 "Add an RSI indicator": Cnv-EditApprove at Live-NeedsYou's spec gate with the walk's task (kind
+#   prd_approval, topic gate:r-12:n-prd: team_run.wait_at_gate), the gate's live line the server's ("Waiting for you", activity.py), the spec
+#   d-spec v2 as drawn (# Add an RSI indicator / What to build / Tests / Out of scope; "Default length: 20"); POST
+#   /api/runs/r-12/tasks/12/resolve {decision: approve, edited_spec} turns it to Cnv-EditApproved: the gate approved with "Approved with your
+#   edits · spec v3" (its line at 10:42:06 and its Now-bar activity), the Engineer working "Starting from spec v3", the run running, 5 steps.
+#   Cnv-FailPathRun is Prob-Failed's run #12 waiting at the failure path's gate: status awaiting_human, the graph with "Ask me what to do" and
+#   the failure edge, the task gate:r-12:n-ask (kind approval), 27 steps — Prob-Failed's, its closing Run line replaced by 10:59:05 Run "The
+#   Engineer failed, so the run takes its failure path to Ask me what to do" (kind failure_path) and 10:59:06 Ask me what to do "Waiting for
+#   you: retry the Engineer or stop the run" — and the server's pinned callout for an open gate.
+# States are reached through the UI: a click on the Engineer's failure path a third of the way along (Cnv-FailPath: its "Use this path…"
+#   menu) › Time limit (Cnv-TimeLimit); a click on Engineer → Reviewer (Cnv-FailPathOne: "Always", "it has one"); Tidy, then the mouse back on
+#   it (Cnv-Tidy: the tip, the toast, the dashed boxes); a shift-drag selection round the Engineer and the Reviewer › Group › "Review loop"
+#   typed (Cnv-Group) › Enter › Fold Review loop (Cnv-GroupFolded); the Reviewer's drawer (?node=n-rev) › More actions, the mouse on Test this
+#   agent (Cnv-TestAgent: the ruling's place); run #12's address › the waiting Spec approval gate clicked › "20" double-clicked and "14, the
+#   usual default" typed (Cnv-EditApprove: "1 edit") › Approve with my edits (Cnv-EditApproved); run #12's address (Cnv-FailPathRun). The run
+#   boards' clock stands still at 10:43:46 (Cnv-EditApprove / -Approved: "Paused for you · 1m 40s" after 10:42:06, "1m ago") and 11:00:05
+#   (Cnv-FailPathRun: Prob-Failed's moment, "18m 03s", the Engineer "1m ago"). One extra shot, Cnv-EditApprove with "Hide activity" clicked,
+#   measures the spec drawer at full height against the board's drawer items (x ≥ 1000, y ≥ 207: 28 items) — TO FIX 3.
+# Which render is the comparison: every board is drawn in Desktop (the 30px title strip): the Desktop render is the comparison and the web
+#   render is framed 30px down (m7.txt … m10.txt's convention). Both renders are recorded below; each web render's 2 extra "not found" are by
+#   rule.
+# GATE: size/type MET for every new M11 element but one — after this sweep's fix (baf99055) the path menu, its Time limit choices, Tidy and
+#   Group, Tidy's tip and toast, the group's label field, summary and note, the folded group, the failure path's pill and Activity line and
+#   the spec drawer are at 0 size/type drift on every render (web and Desktop); every other drift item is an existing element or a pairing
+#   covered by a waiver (W1–W3 as m2.txt, W7 as m5.txt, W15–W18 below). Open: TO FIX 1 — Cnv-GroupFolded's lit 'Group' 600→500 (the board
+#   keeps Cnv-Group's naming state; a rule, not a size) — and TO FIX 2–5 (two words not built, a layout, a behaviour) for the lead.
+#   At 0 drift, box for box where measured (Desktop; x,y w×h): the path menu's rows 256x32 13/400 ('Always', 'If it fails or times out',
+#   'Time limit' with '10 min' 11.5px 35x14, 'Delete this path'), 'When the agent says…' 256x48 two lines with 'an outcome' 11.5px 64x14,
+#   'it has one' 11.5px 53x14 (Cnv-FailPathOne), 'Use this path…' 11.5/600; the Time limit choices 218 wide: the note 'If the Engineer works
+#   longer, it stops and this path is taken.' 12px 218x47, '5 min' / '10 min' / '20 min' / '30 min' 218x32 13/400, 'the default' 11.5px 58x14;
+#   Tidy 68x32 (lit, 12.5/600) / Group 78x32 12.5/500 (Cnv-Tidy), Group lit 78x32 12.5/600 (Cnv-Group); the Tidy tip 300x106 12.5px with its
+#   'Tidy' title 272x19 12.5/600; 'Tidied the layout' 13/400 and 'Undo' 34x21 13/600; the group's summary 'Engineer ⇄ Reviewer · up to 3
+#   rounds' 12px, the note 'Groups are labels' 12.5/600 292x19 and its 12.5px text 320x86; the folded group's 'Review loop' 13/600 and '2
+#   agents · Engineer ⇄ Reviewer · up to…' 12px; 'If it fails or times out' 10.5px (the failure pill); 'Test this agent' 13/400 with '6 tests'
+#   11.5px 37 wide (the row: W15); the spec drawer's 'Spec v2' 19px Newsreader 281x23 at (1063,224), 'Your edits become spec v3. The Engineer
+#   starts from it.' 12.5px 281x36, '1 edit' 10px 39x14 at (1145,270) — the board's boxes, 2px left —, Spec versions / Close 32x32 at
+#   (1354,224) / (1388,224) exactly, Reject 65x32 / Approve as is 110x32 / Approve with my edits 178x32 13/500 at the board's x (y: TO FIX 3);
+#   with the Activity hidden, the spec 'Add an RSI indicator' 20px Newsreader, 'What to build' / 'Tests' / 'Out of scope' 11.5/600, its lines
+#   13.5px, 'rsi(prices, length)' 139x15 / 'core/indicators.py' 132x15 / 'INDICATORS' 77x15 / 'tests/test_indicators.py' 174x15 11.5px code —
+#   every one 17px right and 15–43px lower than drawn (the steering editor's frame, kept); the Activity's 'The Engineer failed, so the run
+#   takes its failure path to Ask me what to do' 13/400 1144x21, 'Run' 12.5/600 and '10:59:05' 11px mono at the board's x, 'Approved with your
+#   edits · spec v3' 13px in the Activity and 11.5px in the Now bar (W18), 'Starting from spec v3' 11.5px with 'Working' 11.5/500.
+#   Measured by probe in CSS px (the canvas draws at its fit's zoom, 1.05 on these fixtures, so the shots measure canvas boxes 5% larger):
+#   the failure pill 119x21 (drawn 119x21), the group's label field 98x30 13/600 (drawn 101x30: the board's words plus a 3px drawn caret),
+#   its summary 213x19 (213x19), the folded box 300x56 (300x56), Unfold 32x32 (32x32; W16).
+# built in this sweep (baf99055, CSS on new M11 elements only; vitest / tsc / eslint / prettier green):
+#   the path menu's and the Time limit choices' rows take a button's own line height (.cv-pmenu__item: 32 high, the two-line row 48, as
+#   drawn; were 37 / 58 — 9 drift items on Cnv-TimeLimit, 5 on -FailPath, 4 on -FailPathOne); the group's label is 28px inside its border
+#   and as wide as its words (.cv-group__label content-box, .cv-group__label--edit field-sizing: content; was 28 overall and 117 wide by its
+#   `size` — measured by probe, the field is named by its label "Group name" so the matcher doesn't pair it); the spec in the approve drawer
+#   is set as Cnv-EditApprove draws it — 20px title, 11.5/600 uppercase eyebrows, 13.5px text, 11.5px code — scoped to .sa-body (the reused
+#   steering editor keeps the doc viewer's sizes everywhere else; were 28px / 19px Newsreader / 14.5px / 12.5px — 14 drift items).
+# LEAD RULINGS (made before this sweep; recorded, not changed):
+#   existing elements keep the app's look (brief 2.3): the toolbar keeps the app's "+ Add to canvas" (Agent · Gate · Ship · Stop · Query
+#      domain — kept-m11-canvas-add below) where the boards draw "+ Add agent" ('Add agent' 103x32 "not found" on Cnv-Tidy / -Group /
+#      -GroupFolded); Tidy and Group sit beside it, in their own row at (69,162) / (138,162) where drawn (137,167) / (206,167).
+#   "Test this agent · N tests" lives in the existing node drawer's More actions menu (the app has no ⋯ on canvas nodes): the board's
+#      floating node menu, 'Open settings' and 'Duplicate' are not built ("not found" ×2 on Cnv-TestAgent); its 'Delete' is the menu's existing
+#      "Delete agent" (not found by its word).
+#   "Approve with my edits" is the board's spec drawer, opened by clicking the waiting spec gate on the run canvas; the board's tracked-changes
+#      marks are not built (the reused steering editor shows the edit count only): 'Default length:', the struck '20' and '14, the usual
+#      default' are one line in the app ("Default length: 14, the usual default"), "not found" ×3 on Cnv-EditApprove.
+# TO FIX (for the lead; measured on the Desktop render, the web render is the same 30px lower):
+#   1. state — Cnv-GroupFolded draws Cnv-Group's toolbar state after the fold: Group lit (12.5/600, coral) and the dark note "Groups are
+#      labels / They help you read a big team and can be folded away. They don’t change how work flows." at (488,232), though no group is
+#      being named. The app lights Group and shows the note only while a new group is being named (CanvasTools `groupOn` = naming; GroupFrame's
+#      note only `isNew`), so 'Group' 600→500 (the one uncovered drift item, both renders) and the note's two texts "not found". A rule, not a
+#      size; the lead rules (likely the board carried Cnv-Group's state over).
+#   2. not found in app — Cnv-EditApprove, the Now bar's gate line 'Waiting for you · you are editing the spec' (11.5px 443x18 at (465,175)):
+#      the chip keeps the server's live line ("Waiting for you", activity.py) while the drawer is open; nothing tells the Now bar the person
+#      is editing. Needs a rule (the open drawer adds the words client-side) or the lead rules them an example.
+#   3. layout — Cnv-EditApprove: the board's spec drawer is 440x694 from under the Now bar to the window's foot, the Activity narrowed to
+#      1000px beside it; the app docks it in the canvas's area like every run-view drawer (nd-drawer--dock, 440x353 at (1000,207)) above
+#      the full-width Activity, so at 900px only the title, 'What to build' and two bullets show and the rest of the spec scrolls inside a
+#      ~200px body; the footer sits at y 516 where drawn 856 ("only moved" ×6). With "Hide activity" the drawer runs to the foot and every
+#      drawer item is at 0 drift (the "drawer, Activity hidden" lines below). The lead rules the placement.
+#   4. not found in app — Cnv-FailPathRun, the Reviewer's Now-bar state 'Not reached' (11.5/500) while the run waits at its failure path's
+#      gate: the app says "Not reached" only once a run has ended (M2, ma.txt), so here the Reviewer reads "Waiting · Starts after the Engineer"
+#      (M2's waiting words). The gate can still retry the Engineer (then the Reviewer runs), and no field says the path skips it; the lead
+#      rules.
+#   5. behaviour (not drawn; not CSS) — Cnv-GroupFolded: the agents a fold hides stay selected, so React Flow's selection box from the
+#      shift-drag that chose them (.react-flow__nodesselection-rect, a blue dotted 420x160 box, no text — not measured) stays drawn over the
+#      folded box until the pane is clicked: TeamCanvas's fold effect sets `hidden` but not `selected: false`.
+# waivers W1–W3: as m2.txt — W1 the design-system Button's 8px icon gap on existing buttons: 'Jump to live' 115→123 (Cnv-EditApprove,
+#   -EditApproved, -FailPathRun); W2 the run bar is the app's: 'Needs you' 12→11.5px (the board's run-bar badge → the Now bar's state word;
+#   Cnv-EditApprove, -FailPathRun) and 'Add an RSI indicator' 14px Inter → 20px Newsreader (Cnv-EditApprove: the board's run-bar task has no
+#   counterpart in the app's run bar, so it pairs with the spec drawer's title further down — m2.txt's W2 pattern); W3 the canvas cards'
+#   existing parts: 'Needs you' 9.5→11.5px 400→500 (Cnv-EditApprove's gate card label → the Now bar's state word), 'Round 2' 10→10.5px
+#   400→500 and 'Ship' 10.5→12.5px 500→600 (Cnv-FailPathRun: the card's round label; the Ship node pairs with the Now bar's Ship chip).
+# waiver W7: as m5.txt — Cnv-TestAgent 'Read-only' 10→12px 400→500 (the board's Reviewer card chip pairs with the drawer header's existing
+#   Read-only badge; the app's card reads "Edits off").
+# waiver W15 (= m6.txt's W3; app governs — the existing ⋯ More actions menu, PANEL-23 / Flow-More-1) Cnv-TestAgent [ctl] 'Test this agent ·
+#   6 tests' and 'Save as my agent' 32→37 high: the menu is 240px wide with 37px rows (13px at line-height 1.6); the new Test this agent is
+#   the same row, as M6's Save as my agent is; its words 13/400 and '6 tests' 11.5px are as drawn.
+# waiver W16 (new; canvas zoom) Cnv-GroupFolded [ctl] 'Unfold Review loop' 32→34 high: the canvas fits the whole graph (M2), here at 1.05×,
+#   so the DS IconButton sm (32x32 by probe, as drawn) measures 34 on screen; the folded box is 300x56 by probe (drawn 300x56).
+# waiver W17 (new; app governs — the Activity's current-line rule, M2 liveFormat.currentLineIds) each agent's current line is bold:
+#   Cnv-EditApproved 'Approved with your edits · spec v3' 600→400 (the board draws the decided gate's line bold on a tinted row, as
+#   Cnv-EditApprove's waiting line; once decided it isn't current), Cnv-FailPathRun 'Waiting for you: retry the Engineer or stop the run'
+#   400→600 (a gate waiting for you is current; this board draws it regular where Cnv-EditApprove draws its waiting line bold).
+# waiver W18 (new; pairing, M2's decided-gate time) Cnv-EditApproved 'Approved with your edits · spec v3' 11.5→13px: the Now bar adds the
+#   local time to a decided gate's line ("Approved with your edits · spec v3 · 10:42", 11.5px at (399,175) — the board's size), so the
+#   board's chip line pairs with the Activity's 13px line of the same words.
+# note (layout, only moved) the canvas fits the whole graph (M2), so cards, paths and labels sit elsewhere (and draw 5% larger, W16); the
+#   path menu opens where its path was clicked ('Always' at (694,595) where drawn (103,645)), and its Time limit choices open beside it as
+#   drawn (5px right of its edge, drawn 6) but level with the Time limit row's top − 6 where the board raises them 31 (25px lower); Tidy and Group (ruling)
+#   and Tidy's tip under its button (65,205) where drawn (120,210); Tidy keeps the entry where it is (tidy.ts) so the row lines up on the
+#   Product manager's centre line where the board moves it to the top row; the group's frame and label follow the app's 164px cards (drawn
+#   184–210 wide); the folded box sits at its leftmost agent (groups.ts); the More actions menu is the drawer's ('Test this agent' at (1174,314)
+#   where the board floats a node menu by the card, (907,457)); the spec drawer (TO FIX 3); the Activity shows its last six steps (M2) and, for an open gate,
+#   the server's pinned callout (the boards draw none), so its rows sit 68–113px lower (Cnv-EditApproved, no callout: 41px higher).
+# note (copy, server words) the fixtures carry the boards' words where the server's differ (same element and size): the failure path line
+#   (the contract's "The Engineer failed, so the run takes its failure path to <target>"; today's server names a gate by its kind —
+#   run_failure.node_label → "Approval" for the palette's gate — so it would read "…to Approval", and the Activity's who column 'Ask me what
+#   to do' would read "Approval"); the gate's waiting line 'Waiting for you: retry the Engineer or stop the run' (activity.py: "Waiting for you
+#   to approve this step"); the callout for that gate is the server's formula, "The ask me what to do gate is waiting for you" (activity.py
+#   lowercases the label) over the task's description "Retry the Engineer or stop the run." (the fixture's words); Cnv-EditApproved's gate
+#   activity "Approved with your edits · spec v3" in the Now bar as in its line (the contract names only the line; today's server says "You
+#   approved"), the Engineer's "Starting from spec v3" (the board's), and the gate's open line folded into its approval at 10:42:06 (the
+#   board's 5 steps; the server keeps both). The spec gate task is the walk's shape (kind prd_approval, topic gate:r-12:n-prd): the drawer
+#   opens only for that task (runs-fixtures.mjs's older Live-NeedsYou task, kind gate_approval / topic prd_approval, wouldn't open it).
+# note (the boards disagree) Cnv-EditApproved keeps Cnv-EditApprove's run bar ('Paused for you · 1m 40s', W2) and canvas (the gate card
+#   'Needs you', the Engineer '● Waiting · Starts after your approval') after the approval: the app's cards show the gate approved and the
+#   Engineer working, so 'Needs you' / 'Starts after your approval' are "not found" by their words; Cnv-FailPathRun's 'You approved · 10:43'
+#   with '15m ago' is 16m 55s before its moment (the app reads "16m ago", m2.txt's note); Cnv-GroupFolded draws the loop's 'Up to 3 rounds'
+#   pill with the loop folded away (TO FIX 1's carry-over).
+# note (not measured) the canvas gate card names a gate by its kind (nodeTitle → gateLabel): the board's 'Ask me what to do' / 'Gate · retry
+#   or stop' card reads "approval" / "Gate" — as 'Spec approval' / 'Gate · asks you' read "PRD approval" / "Gate" (m4.txt, m9.txt); the
+#   board's failure path from the Engineer's bottom edge and its menu's lit row (the board tints the row of the path's use and the hovered
+#   row; the app tints the use) are the app's.
+# Not found in app, by rule: the canvas cards' and loop's words (as m9.txt: 'Up to 3 rounds', 'Grok plan · this Mac', '2 skills', '4
+#   skills', 'GitHub', 'Read-only' — the app's card reads "Edits off" —, 'Spec approval', 'Gate · asks you') and 'Ask me what to do' / 'Gate ·
+#   retry or stop' (the gate card, note above); 'More for this team' (the toolbar ⋯, as m5–m9); 'Add agent', 'Open settings', 'Duplicate',
+#   'Delete', 'Default length:' / '20' / '14, the usual default' (LEAD RULINGS); Cnv-Group's 'Review loop' (the field is an input named by
+#   its label "Group name"; probed above); the run bar (W2: 'Back to the team', 'run #12', 'Paused for you · 1m 40s', '$0.06 of $5.00' /
+#   '$0.84 of $5.00', '18m 03s', 'Stop run' ×2, 'Running', Cnv-EditApproved's 'Add an RSI indicator') and 'More for this run' (M10: ended
+#   runs only; Cnv-FailPathRun's run waits for you); the run cards (m2.txt's list: 'Round 1 of 3' / 'Round 2 of 3', 'Spec written', 'Spec v2 ·
+#   1 page', '1m' / '16m' / '8m', 'Spec approval', 'Approved by you', 'Grok plan · this Mac', 'Model didn’t answer after 3 tries', 'Round 1 ·
+#   asked for 2 fixes', 'After the Engineer'); the Now bar's words (m2.txt / ma.txt: 'After your approval' — the app's "Starts after your
+#   approval" —, Cnv-FailPathRun's '15m ago', 'Round 1 · changes requested', '9m ago', 'Nothing shipped' — reads "Not yet"); Cnv-FailPathRun's
+#   '10:56:31' / 'Model busy. Trying again in 10 s · 1 of 3' (behind "Show 21 earlier steps": the last six, M2); Cnv-EditApproved's stale
+#   'Needs you' / 'Starts after your approval' (note). Each web render's 'Tvashtr — the living canvas' and 'Tvashtr Desktop' by rule.
+# Not found in app (new, real): Cnv-GroupFolded's note ×2 (TO FIX 1), 'Waiting for you · you are editing the spec' (TO FIX 2), 'Not
+#   reached' (TO FIX 4). Nothing beyond the boards was built.
+Cnv-FailPath desktop: matched 37/48 design items · 0 with size/type drift · 21 only moved · 11 not found in app
+Cnv-FailPath web: matched 35/48 design items · 0 with size/type drift · 21 only moved · 13 not found in app
+Cnv-FailPathOne desktop: matched 36/47 design items · 0 with size/type drift · 20 only moved · 11 not found in app
+Cnv-FailPathOne web: matched 34/47 design items · 0 with size/type drift · 20 only moved · 13 not found in app
+Cnv-TimeLimit desktop: matched 43/54 design items · 0 with size/type drift · 27 only moved · 11 not found in app
+Cnv-TimeLimit web: matched 41/54 design items · 0 with size/type drift · 27 only moved · 13 not found in app
+Cnv-Tidy desktop: matched 31/41 design items · 0 with size/type drift · 16 only moved · 10 not found in app
+Cnv-Tidy web: matched 29/41 design items · 0 with size/type drift · 16 only moved · 12 not found in app
+Cnv-Group desktop: matched 30/41 design items · 0 with size/type drift · 16 only moved · 11 not found in app
+Cnv-Group web: matched 28/41 design items · 0 with size/type drift · 16 only moved · 13 not found in app
+Cnv-GroupFolded desktop: matched 25/34 design items · 2 with size/type drift · 9 only moved · 9 not found in app — covered: W16×1; TO FIX 1×1
+Cnv-GroupFolded web: matched 23/34 design items · 2 with size/type drift · 9 only moved · 11 not found in app — covered: W16×1; TO FIX 1×1
+Cnv-TestAgent desktop: matched 30/41 design items · 3 with size/type drift · 13 only moved · 11 not found in app — covered: W7×1, W15×2
+Cnv-TestAgent web: matched 28/41 design items · 3 with size/type drift · 13 only moved · 13 not found in app — covered: W7×1, W15×2
+Cnv-EditApprove desktop: matched 72/89 design items · 4 with size/type drift · 52 only moved · 17 not found in app — covered: W1×1, W2×2, W3×1
+Cnv-EditApprove web: matched 70/89 design items · 4 with size/type drift · 52 only moved · 19 not found in app — covered: W1×1, W2×2, W3×1
+Cnv-EditApprove (drawer, Activity hidden) desktop: matched 25/28 design items · 0 with size/type drift · 20 only moved · 3 not found in app
+Cnv-EditApprove (drawer, Activity hidden) web: matched 25/28 design items · 0 with size/type drift · 20 only moved · 3 not found in app
+Cnv-EditApproved desktop: matched 44/60 design items · 3 with size/type drift · 31 only moved · 16 not found in app — covered: W1×1, W17×1, W18×1
+Cnv-EditApproved web: matched 42/60 design items · 3 with size/type drift · 31 only moved · 18 not found in app — covered: W1×1, W17×1, W18×1
+Cnv-FailPathRun desktop: matched 62/85 design items · 5 with size/type drift · 49 only moved · 23 not found in app — covered: W1×1, W2×1, W3×2, W17×1
+Cnv-FailPathRun web: matched 60/85 design items · 5 with size/type drift · 49 only moved · 25 not found in app — covered: W1×1, W2×1, W3×2, W17×1
+# (before baf99055: Cnv-FailPath 5 drift, -FailPathOne 4, -TimeLimit 9 — the path menu's rows 37 / 58 high —; Cnv-EditApprove 18 — the
+#   spec's 14 at the doc viewer's sizes; the group label field 117 wide and 28 high by probe. All new, all fixed.)
+# ("drawer, Activity hidden": the board's 28 drawer items (x ≥ 1000, y ≥ 207) against the Cnv-EditApprove shot with "Hide activity"
+#   clicked; its 3 "not found" are the tracked changes (ruling).)
+# Renders: 10 design shots (fonts-ok) + 22 app board shots (11 shots × web + Desktop: the 10 boards and Cnv-EditApprove with the Activity
+#   hidden); 16 kept inventory shots (the 8 below on main 25291698, Vite :5352, and the same 8 on m11-parity, Vite :5351) + 31 re-shots of
+#   earlier kept scenarios on m11-parity and 4 on main 25291698.
+
+# Kept elements (brief §2.2): INVENTORY=1 shoot-app.mjs, canvas-extras.mjs's kept-m11-* scenarios (the same file copied into a main 25291698
+#   worktree), shot on main 25291698 (before M11) and on m11-parity (after): kept-m11-canvas.txt (the team canvas: its toolbar, the "Add to
+#   canvas" + and — open — its five add options, the canvas), kept-m11-drawer.txt (the Reviewer's drawer with its More actions menu open),
+#   kept-m11-specgate.txt (run #12's view at its spec gate):
+kept-m11-canvas: web 16/16, desktop 16/16 kept items present — none missing (after: 19 each, added "button: Group", "button: Tidy", "toolbar: Arrange")
+kept-m11-canvas-add: web 21/21, desktop 21/21 kept items present — none missing (after: 24 each, added "button: Group", "button: Tidy", "toolbar: Arrange")
+kept-m11-drawer: web 53/53, desktop 53/53 kept items present — none missing (after: 57 each, added "button: Group", "button: Tidy", "menuitem: Test this agent 6 tests", "toolbar: Arrange")
+kept-m11-specgate: web 35/35, desktop 35/35 kept items present — none missing (after: the same lines, nothing added; with the gate clicked and the spec drawer open, 35/35 still present)
+# and the earlier records of the screens M11 adds to still hold on m11-parity (each adds only "button: Tidy", "button: Group",
+#   "toolbar: Arrange" on the canvas): kept-teamcanvas-web 11/11, -desktop 11/11; kept-m8-teamcanvas-web 14/14, -desktop 14/14;
+#   kept-m7-teamcanvas-web 46/46, -desktop 46/46; kept-ma-drawer-{setup 47, skills 41, memory 37, runs 34, tests 42, docs 31}/same, web and
+#   Desktop; kept-runview-web 13/13, -desktop 13/13, kept-runview-drawer-web 27/27; kept-ma-runview-stopped-web 29/29, -desktop 29/29;
+#   kept-m10-running-web 27/27, -desktop 27/27; kept-m10-activity-web 30/30, -desktop 30/30. Two earlier lines read differently today on
+#   main 25291698 as on m11-parity (the same inventories on both, so not M11): kept-m7-runview-runs' 'Round 1/2 Changes requested 1d ago' read
+#   "20h ago" (agent-tests.mjs's rounds are dated from the real clock: 44/46 + the two re-dated lines) and kept-m10-done's 'Show 25 earlier
+#   steps' reads "Show 26 earlier steps" (start-from.mjs gained the memories line after kept-m10-done was captured: m10.txt's ruling 4).

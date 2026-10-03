@@ -1,0 +1,117 @@
+# Kept-elements inventory — m11-drawer (the team canvas with the Reviewer's drawer open (Setup) and its ⋯ More actions menu open (Open in focus view, Rename, Open its documents, Save as my agent, Delete agent)), captured on main 25291698 (before M11) with scripts/design-parity/shoot-app.mjs INVENTORY=1
+# Scenarios: scripts/design-parity/scenarios/canvas-extras.mjs (kept-m11-drawer-web / -desktop: Cnv-TestAgent's canvas (agent-tests.mjs's, the Reviewer's 6 tests) at ?node=n-rev, More actions clicked), the same scenario file shot on
+#   main 25291698 (Vite :5352) and on m11-parity (Vite :5351). After the change every line must be present (superset).
+
+## kept-m11-drawer-desktop
+aside: Reviewer settings
+button: ADVANCED Backup model: none · Output format: none
+button: Account
+button: Add
+button: Add to canvas
+button: Back to teams
+button: Can edit files
+button: Choose
+button: Close panel
+button: Compare
+button: Documents 0
+button: Fit View
+button: Focus mode
+button: History
+button: More actions
+button: Open full editor
+button: Read-only
+button: Remove spec
+button: Run this team
+button: Save
+button: See the last run
+button: Set this node’s model
+button: Show all
+button: Team file
+button: Templates
+button: Update instructions
+button: Version history
+button: X grok-4.7
+button: Zoom In
+button: Zoom Out
+footer: 
+header: 
+heading: ACCESS & DOCUMENTS
+heading: Instructions
+heading: MODEL
+heading: Reviewer
+main: 
+menuitem: Delete agent Its arrows are removed too
+menuitem: Open in focus view
+menuitem: Open its documents
+menuitem: Rename
+menuitem: Save as my agent
+section: Access & documents
+section: Instructions
+section: Model
+tab: Docs
+tab: Memory 3
+tab: Runs
+tab: Setup
+tab: Skills & tools 4
+tab: Tests 6
+textarea: You are the Reviewer on a software team. The engineer’s build is in your current
+toolbar: Team
+
+## kept-m11-drawer-web
+aside: Reviewer settings
+button: ADVANCED Backup model: none · Output format: none
+button: Account
+button: Add
+button: Add to canvas
+button: Back to teams
+button: Can edit files
+button: Choose
+button: Close panel
+button: Compare
+button: Documents 0
+button: Fit View
+button: Focus mode
+button: History
+button: More actions
+button: Open full editor
+button: Read-only
+button: Remove spec
+button: Run this team
+button: Save
+button: See the last run
+button: Set this node’s model
+button: Show all
+button: Team file
+button: Templates
+button: Update instructions
+button: Version history
+button: X grok-4.7
+button: Zoom In
+button: Zoom Out
+footer: 
+header: 
+heading: ACCESS & DOCUMENTS
+heading: Instructions
+heading: MODEL
+heading: Reviewer
+main: 
+menuitem: Delete agent Its arrows are removed too
+menuitem: Open in focus view
+menuitem: Open its documents
+menuitem: Rename
+menuitem: Save as my agent
+section: Access & documents
+section: Instructions
+section: Model
+tab: Docs
+tab: Memory 3
+tab: Runs
+tab: Setup
+tab: Skills & tools 4
+tab: Tests 6
+textarea: You are the Reviewer on a software team. The engineer’s build is in your current
+toolbar: Team
+
+# After M11 (m11-parity, the same scenario):
+kept-m11-drawer: web 53/53, desktop 53/53 kept items present — none missing (after: 57 each, added "button: Group", "button: Tidy", "menuitem: Test this agent 6 tests", "toolbar: Arrange")
+# Web and Desktop inventories are equal, before and after.
