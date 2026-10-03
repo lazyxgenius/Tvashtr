@@ -940,7 +940,7 @@ export default function App({
         });
     });
   const postVersion = (
-    body?: { note?: string; run_tests?: boolean; check_set?: string },
+    body?: { note?: string; run_tests?: boolean; check_set?: string; desktop_target?: true },
     /** The set's name, for a check that couldn't start (Set-CheckNotStarted). */
     checkSet?: string,
   ) => {

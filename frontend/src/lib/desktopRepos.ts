@@ -5,6 +5,8 @@
  * and the composer says so instead of pretending.
  */
 
+import { displayNameForSubscription, type SubscriptionProviderId } from "./engines";
+
 export interface DesktopFolder {
   path: string;
   displayPath: string;
@@ -41,6 +43,33 @@ export interface DesktopReposBridge {
 /** True inside Tvashtr Desktop (set on <html> by the Electron preload). */
 export function isDesktopApp(): boolean {
   return document.documentElement.dataset.tvashtrDesktop === "true";
+}
+
+/** M-desk-2 (E2): where a Desktop action runs, as the server routes it: the subscriptions its
+ *  models route to and whether every model is on one (read with `?desktop_target=1`). */
+export interface DesktopRoutes {
+  subscriptions: string[];
+  all: boolean;
+}
+
+/** `?desktop_target=1` (or `&…`) on a read from Tvashtr Desktop; nothing on the website. */
+export const desktopQuery = (sep: "?" | "&" = "?") =>
+  isDesktopApp() ? `${sep}desktop_target=1` : "";
+
+/** "your Claude subscription", "your Claude and Grok subscriptions". */
+export function subscriptionsText(ids: readonly string[]): string {
+  const names = [...new Set(ids)]
+    .sort()
+    .map((id) => displayNameForSubscription(id as SubscriptionProviderId) ?? id);
+  if (names.length === 1) return `your ${names[0]} subscription`;
+  return `your ${names.slice(0, -1).join(", ")} and ${names[names.length - 1]} subscriptions`;
+}
+
+/** E2's rule: the subscription words when every model of the action is on a fresh subscription
+ *  (each route `all`); else null — mixed, not fresh, or the website keep today's words. */
+export function onSubscriptions(...routes: (DesktopRoutes | null | undefined)[]): string | null {
+  if (routes.some((r) => !r?.all || r.subscriptions.length === 0)) return null;
+  return subscriptionsText(routes.flatMap((r) => r?.subscriptions ?? []));
 }
 
 /** The bridge's `repos` namespace, or null (website, or a Desktop build without it). Spec §6 also

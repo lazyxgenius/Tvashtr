@@ -19,7 +19,7 @@ import {
   type TaskSet,
 } from "../../lib/api/compare";
 import { listRecentTasks } from "../../lib/api/myAgents";
-import { isDesktopApp } from "../../lib/desktopRepos";
+import { isDesktopApp, onSubscriptions, subscriptionsText } from "../../lib/desktopRepos";
 import { navigate } from "../../lib/nav";
 import { runsPill, versionAge } from "../../lib/versionFormat";
 import { LoadState } from "../../panel/runs/RunsTab";
@@ -243,6 +243,13 @@ function Start({
     getCompareChanges(teamId, a as number, b as number),
   );
   const changes = !pair ? 0 : isDefault ? start.changes : (other.value?.rows.length ?? 0);
+  // M-desk-2 (Cmp-StartDesktop): from the Desktop, the estimates name the subscriptions when every
+  // model of both versions runs on one, and versions sharing one take turns on it.
+  const va = versionOf(a)?.desktop;
+  const vb = versionOf(b)?.desktop;
+  const on = pair ? onSubscriptions(va, vb) : null;
+  const shared = (va?.subscriptions ?? []).filter((s) => vb?.subscriptions.includes(s));
+  const turns = pair && shared.length > 0 ? subscriptionsText(shared) : null;
 
   const canStart = !busy && pair && (set !== null || task.trim() !== "");
   const go = () => {
@@ -294,8 +301,10 @@ function Start({
       <div>
         <h2 className="cmp-h2">Run the same task on two versions</h2>
         <p className="cmp-lede">
-          Both run at the same time on separate copies of the repo. Nothing ships and no pull
-          request is opened.
+          {turns
+            ? `Both run on separate copies of the repo, taking turns on ${turns}.`
+            : "Both run at the same time on separate copies of the repo."}{" "}
+          Nothing ships and no pull request is opened.
         </p>
       </div>
       <div className="cmp-pick">
@@ -402,22 +411,32 @@ function Start({
       <div className="cmp-start__foot">
         {set ? (
           <span>
-            {set.estimate && (
-              <>
-                About <b>{money(set.estimate.cost_usd)}</b> on your keys · about{" "}
-                {set.estimate.minutes} min ·{" "}
-              </>
-            )}
+            {set.estimate &&
+              (on ? (
+                <>
+                  On {on} · about {set.estimate.minutes} min ·{" "}
+                </>
+              ) : (
+                <>
+                  About <b>{money(set.estimate.cost_usd)}</b> on your keys · about{" "}
+                  {set.estimate.minutes} min ·{" "}
+                </>
+              ))}
             {tasks(set.items.length)} × 2 versions
           </span>
         ) : (
           <span>
-            {start.estimate && (
-              <>
-                About <b>{money(start.estimate.cost_usd)}</b> on your keys · about{" "}
-                {start.estimate.minutes} min
-              </>
-            )}
+            {start.estimate &&
+              (on ? (
+                <>
+                  On {on} · about {start.estimate.minutes} min
+                </>
+              ) : (
+                <>
+                  About <b>{money(start.estimate.cost_usd)}</b> on your keys · about{" "}
+                  {start.estimate.minutes} min
+                </>
+              ))}
           </span>
         )}
         <Button variant="primary" className="cv-btn-flush" disabled={!canStart} onClick={go}>

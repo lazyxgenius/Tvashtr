@@ -31,6 +31,7 @@ import {
   testsCount,
 } from "../../lib/agentTestsFormat";
 import type { AgentTest, TestResult, TestRun } from "../../lib/api/agentTests";
+import { onSubscriptions } from "../../lib/desktopRepos";
 import { formatRelativeTime } from "../../lib/time";
 import { useModalDialog } from "../../lib/useModalDialog";
 import { useTicker } from "../../lib/useTicker";
@@ -355,7 +356,12 @@ function TestsList({
           {action}
         </div>
         <div className="tt-estimate">
-          {estimateText(agent, value?.estimate ?? null, value?.ai ?? null)}
+          {estimateText(
+            agent,
+            value?.estimate ?? null,
+            value?.ai ?? null,
+            onSubscriptions(value?.desktop),
+          )}
         </div>
         {queued && (
           <div className="tt-queued" role="status">

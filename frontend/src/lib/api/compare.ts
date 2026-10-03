@@ -5,6 +5,7 @@
  */
 import type { ActivityLine } from "./activity";
 import type { VersionChange } from "./versions";
+import { desktopQuery, type DesktopRoutes } from "../desktopRepos";
 import { apiRequest } from "./runs";
 
 /** One version in the A / B pickers (and the Versions tab). */
@@ -14,6 +15,8 @@ export interface CompareVersion {
   runs: number;
   summary: string;
   current: boolean;
+  /** M-desk-2 (E2): read from Tvashtr Desktop, where this version's runs would run. */
+  desktop?: DesktopRoutes;
 }
 
 /** The Compare tab: what can be compared, the defaults and the team's newest compare. */
@@ -85,6 +88,8 @@ export interface CompareResults {
   sample?: { set_id: string; name: string; count: number } | null;
   /** M-desk-routes (D3): a Desktop compare's line under the table, beside its "Work time" row. */
   note?: string;
+  /** M-desk-2 (E2): a Desktop compare whose lanes shared a subscription (they took turns). */
+  shared?: boolean;
 }
 
 /** M9: one summary card of a set compare's results. */
@@ -145,7 +150,7 @@ export interface Compare {
 const team = (teamId: string) => `/api/teams/${encodeURIComponent(teamId)}`;
 
 export function getCompareStart(teamId: string): Promise<CompareStart> {
-  return apiRequest("GET", `${team(teamId)}/compare`);
+  return apiRequest("GET", `${team(teamId)}/compare${desktopQuery()}`);
 }
 
 /** What changed from vA to vB (M5's What changed rows). */
