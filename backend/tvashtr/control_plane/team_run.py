@@ -135,6 +135,7 @@ from tvashtr.engines.run_event_sink import make_run_event_sink
 from tvashtr.engines.sandbox_cache import close_run_sandboxes, session_key_for
 from tvashtr.metering import record_agent_cost, running_cost
 from tvashtr.models import (
+    AgentInvocation,
     AgentNode,
     Compare,
     DesktopNodeJob,
@@ -603,7 +604,8 @@ def next_node(edges: list[dict], source_id: str, outcome: str | None) -> str | N
     """Pure routing: among ``edges`` leaving ``source_id``, follow the matching one.
 
     ``escalation`` edges are EXCLUDED from both searches — they are reached only via
-    the cap helper (:func:`escalation_target`), never by normal outcome routing. Of
+    the cap helper (:func:`escalation_target`), never by normal outcome routing; so are M11's
+    ``failure`` edges (reached only when the agent fails, :func:`failure_target`). Of
     the remaining out-edges: if ``outcome`` is not None and some edge's ``conditions``
     has ``{"when": outcome}`` (a subset match — the loop-back edge also carries a
     ``loop_limit`` key, so we match the ``when`` field, not the whole dict), return
@@ -615,7 +617,9 @@ def next_node(edges: list[dict], source_id: str, outcome: str | None) -> str | N
 
     Importable + unit-tested. ``edges`` are the ``load_graph_step`` dicts
     (``source``/``target``/``edge_type``/``conditions``)."""
-    out_edges = [e for e in edges if e["source"] == source_id and e["edge_type"] != "escalation"]
+    out_edges = [
+        e for e in edges if e["source"] == source_id and e["edge_type"] not in _NOT_ROUTING
+    ]
     if outcome is not None:
         for edge in out_edges:
             conditions = edge["conditions"]
@@ -636,6 +640,41 @@ def escalation_target(edges: list[dict], source_id: str) -> str | None:
         if edge["source"] == source_id and edge["edge_type"] == "escalation":
             return edge["target"]
     return None
+
+
+# M11 (ruling R13): the edge "If it fails or times out" — followed only when its agent fails.
+FAILURE_EDGE = "failure"
+# Edges ordinary outcome routing never follows.
+_NOT_ROUTING = ("escalation", FAILURE_EDGE)
+# The outcomes the stall sweep closes a step with when the agent has a failure path.
+SWEPT_OUTCOMES = ("stalled", "timed_out")
+
+
+def failure_target(edges: list[dict], source_id: str) -> str | None:
+    """M11 (R13): the ``target`` of the agent's failure path (its unique ``edge_type == "failure"``
+    out-edge), else ``None``. Pure + importable."""
+    for edge in edges:
+        if edge["source"] == source_id and edge["edge_type"] == FAILURE_EDGE:
+            return edge["target"]
+    return None
+
+
+def _swept_reason(run_id: str, node_id: str, iteration: int) -> str | None:
+    """The reason the stall sweep (or the agent's time limit) gave when it ended this step before
+    the walk saw it fail — kept when the walk takes the failure path — else ``None``.
+
+    A plain read, not a step: it only fills the detail the walk's (recorded) close writes, so a
+    replay, which returns the recorded close, never depends on it."""
+    with session_scope() as session:
+        row = session.execute(
+            select(AgentInvocation.outcome, AgentInvocation.outcome_detail).where(
+                AgentInvocation.run_id == run_id,
+                AgentInvocation.node_id == uuid.UUID(node_id),
+                AgentInvocation.iteration == iteration,
+                AgentInvocation.status == "failed",
+            )
+        ).one_or_none()
+    return row.outcome_detail if row is not None and row.outcome in SWEPT_OUTCOMES else None
 
 
 def loop_limit_for(edges: list[dict], node_id: str, default: int) -> int:
@@ -2849,6 +2888,32 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                     context_manifest=result.get("context_manifest"),
                 )
                 return _finalize_over_budget(run_id, pm_document_id)
+            fail_to = failure_target(edges, current)
+            if (
+                result["status"] != "completed"
+                and fail_to is not None
+                and n <= loop_limit_for(edges, current, get_settings().max_review_iterations)
+            ):
+                # M11 (R13): the agent has a failure path — close its step failed (its reason
+                # kept: the sweep's, when the stall sweep or the time limit ended it) and continue
+                # at the path's target instead of failing the run. Loop limits still apply: a
+                # round past the agent's limit fails the run as below. A pre-M11 graph has no
+                # failure edge, so its walk never enters here.
+                close_invocation_step(
+                    run_id,
+                    current,
+                    n,
+                    "failed",
+                    "failure_path",
+                    outcome_detail=_swept_reason(run_id, current, n) or result.get("error"),
+                    context_manifest=result.get("context_manifest"),
+                )
+                DBOS.logger.warning(
+                    f"run_team agent node failed, taking its failure path run_id={run_id}: "
+                    f"{result.get('error')}"
+                )
+                current = fail_to
+                continue
             if result["status"] != "completed":
                 # An ``over_context`` pre-call budget breach (or any engine error) lands here → the
                 # run finalizes ``failed`` with the self-explaining reason. The manifest is

@@ -8,6 +8,11 @@ raises out of ``run()``). The run's status leaves the in-flight set, which frees
 slot; the run-end teardown in ``run_team``'s ``finally`` reaps its workspace as for any cancelled
 walk.
 
+M11 (ruling R13): an agent with a failure path is the exception. Its step is ended (closed failed,
+``stalled``) and its sandbox released, so the step returns failed and the walk takes the path; the
+run is not failed and its workflow not cancelled. Such an agent also ends at its own time limit
+(``config.time_limit_s``, else this ceiling) however busy it is (``timed_out``).
+
 A running command is never swept (R1: it is bounded by its tool's own timeout). The run update is
 guarded on ``status == "running"``, so a run that finished meanwhile is left as it is. Registered as
 a DBOS scheduled workflow when ``stall_sweep_enabled`` (off in the offline suite, which calls
@@ -26,7 +31,7 @@ from tvashtr.control_plane import live_state, run_failure
 from tvashtr.db import session_scope
 from tvashtr.engines import sandbox_cache
 from tvashtr.metering import running_cost
-from tvashtr.models import AgentInvocation, AgentNode, Run, RunEvent
+from tvashtr.models import AgentInvocation, AgentNode, Edge, Run, RunEvent
 
 logger = logging.getLogger(__name__)
 
@@ -52,11 +57,43 @@ def stalled_message(label: str, after_s: float) -> str:
     )
 
 
+_AGENT_KINDS = ("completion", "agent")
+
+
+def _time_limit(config: dict | None, default: float) -> float:
+    """An agent's own time limit (``config.time_limit_s``), else R1's ceiling."""
+    limit = (config or {}).get("time_limit_s") if isinstance(config, dict) else None
+    return float(limit) if isinstance(limit, int | float) and limit > 0 else default
+
+
+def time_limit_message(label: str, limit_s: float) -> str:
+    minutes = max(1, round(limit_s / 60))
+    return f"The {label} ran longer than its time limit of {minutes} minute" + (
+        "s" if minutes != 1 else ""
+    )
+
+
 def _end(
-    run_id: str, inv_id: int, node: tuple, silent_s: float, ceiling: float, now: datetime
+    run_id: str,
+    inv_id: int,
+    node: tuple,
+    silent_s: float,
+    ceiling: float,
+    now: datetime,
+    *,
+    path: bool = False,
+    time_limit_s: float | None = None,
 ) -> bool:
+    """End one step; ``True`` when its run was ended. M11 (R13): ``path`` — the agent has a failure
+    path — ends only the step (closed failed, its sandbox released so the step returns failed and
+    the walk takes the path), never the run. ``time_limit_s``: the step ran past the agent's own
+    time limit rather than going silent."""
     node_id, role_name, kind, config = node
-    message = stalled_message(run_failure.node_label(role_name, kind, config), ceiling)
+    label = run_failure.node_label(role_name, kind, config)
+    if time_limit_s is not None:
+        outcome, message = "timed_out", time_limit_message(label, time_limit_s)
+    else:
+        outcome, message = "stalled", stalled_message(label, ceiling)
     total = running_cost(run_id)
     with session_scope() as session:
         # Guarded on the step as well as the run: a round that closed, or spoke, between the look
@@ -66,43 +103,53 @@ def _end(
                 RunEvent.run_id == run_id, RunEvent.invocation_id == inv_id
             )
         ).scalar_one()
-        if newest is not None and (now - newest).total_seconds() < ceiling:
+        if time_limit_s is None and newest is not None and (now - newest).total_seconds() < ceiling:
             return False
         closed = session.execute(
             update(AgentInvocation)
             .where(AgentInvocation.id == inv_id, AgentInvocation.status == "running")
             .values(
                 status="failed",
-                outcome="stalled",
+                outcome=outcome,
                 outcome_detail=message,
                 ended_at=datetime.now(UTC),
             )
         ).rowcount
         if not closed:
             return False
-        ended = session.execute(
-            update(Run)
-            .where(Run.id == uuid.UUID(run_id), Run.status == "running")
-            .values(
-                status="failed",
-                cost_total_usd=total,
-                failure_code=run_failure.STALLED,
-                failure_message=message,
-                failed_node_id=node_id,
-            )
-        ).rowcount
+        if path:
+            # M11: the walk carries on along the failure path — the run is left as it is (but the
+            # step only ends while the run is still running, as below).
+            ended = session.execute(
+                select(Run.id).where(Run.id == uuid.UUID(run_id), Run.status == "running")
+            ).first()
+        else:
+            ended = session.execute(
+                update(Run)
+                .where(Run.id == uuid.UUID(run_id), Run.status == "running")
+                .values(
+                    status="failed",
+                    cost_total_usd=total,
+                    failure_code=run_failure.STALLED,
+                    failure_message=message,
+                    failed_node_id=node_id,
+                )
+            ).rowcount
         if not ended:
             session.rollback()  # the run ended meanwhile: leave its step as it was too
             return False
-    live_state.record_host_event(
-        run_id, inv_id, "stalled", {"after_s": int(silent_s), "message": message}
-    )
-    for release in (_cancel_workflow, _close_sandboxes):
+    if time_limit_s is None:
+        live_state.record_host_event(
+            run_id, inv_id, "stalled", {"after_s": int(silent_s), "message": message}
+        )
+    # With a failure path only the sandbox is released: the step returns failed and the walk
+    # takes the path. Without one the workflow is cancelled too, so the walk can't carry on.
+    for release in (_close_sandboxes,) if path else (_cancel_workflow, _close_sandboxes):
         try:
             release(run_id)
-        except Exception:  # noqa: BLE001 — the run is already failed; never strand the sweep
+        except Exception:  # noqa: BLE001 — the step is already ended; never strand the sweep
             logger.warning("stall sweep: %s failed for run %s", release.__name__, run_id)
-    return True
+    return not path
 
 
 def sweep_stalled_steps(now: datetime | None = None) -> list[str]:
@@ -121,20 +168,42 @@ def sweep_stalled_steps(now: datetime | None = None) -> list[str]:
             )
         ).all()
         live = live_state.invocation_live(session, [inv for inv, _ in rows], now=now)
+        # M11 (R13): the agents among them with a failure path.
+        with_path = set(
+            session.execute(
+                select(Edge.source_node_id).where(
+                    Edge.edge_type == "failure",  # team_run.FAILURE_EDGE (not imported: heavy)
+                    Edge.source_node_id.in_({node.id for _, node in rows}),
+                )
+            ).scalars()
+        )
         # Plain values, not ORM rows: they outlive this session, and one node can have two rounds.
-        due = [
-            (
-                inv.run_id,
-                inv.id,
-                (node.id, node.role_name, node.kind, node.config),
-                live_state.stalled_for(live[inv.id], now),
+        due = []
+        for inv, node in rows:
+            silent = live_state.stalled_for(live[inv.id], now)
+            path = node.id in with_path and node.kind in _AGENT_KINDS
+            # An agent with a failure path also ends at its own time limit (R1's ceiling unless
+            # set); without one, only the stall ceiling ends a step — exactly as before M11.
+            limit = _time_limit(node.config, ceiling) if path else None
+            if silent >= ceiling:
+                limit = None
+            elif limit is None or (now - inv.started_at).total_seconds() < limit:
+                continue
+            due.append(
+                (
+                    inv.run_id,
+                    inv.id,
+                    (node.id, node.role_name, node.kind, node.config),
+                    silent,
+                    path,
+                    limit,
+                )
             )
-            for inv, node in rows
-            if live_state.stalled_for(live[inv.id], now) >= ceiling
-        ]
     ended: list[str] = []
-    for run_id, inv_id, node, silent in due:
-        if run_id not in ended and _end(run_id, inv_id, node, silent, ceiling, now):
+    for run_id, inv_id, node, silent, path, limit in due:
+        if run_id not in ended and _end(
+            run_id, inv_id, node, silent, ceiling, now, path=path, time_limit_s=limit
+        ):
             ended.append(run_id)
     if ended:
         logger.warning("stall sweep: ended %d stalled run(s): %s", len(ended), ended)

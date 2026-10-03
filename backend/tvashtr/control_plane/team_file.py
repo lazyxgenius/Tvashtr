@@ -563,7 +563,7 @@ MAX_LOOP_LIMIT = 50
 _GATE_KINDS = frozenset(
     {"approval", "gate_approval", "prd_approval", "ship_approval", "review_escalation"}
 )
-_ROUTE_TYPES = ("work", "review", "escalation")
+_ROUTE_TYPES = ("work", "review", "escalation", "failure")  # M11: a failure path
 _ON_NO_ANSWER = ("continue", "stop")
 
 
@@ -919,7 +919,9 @@ def parse(content: str) -> tuple[dict, list[str]]:
                 f"`loop_limit` should be a whole number from 1 to {MAX_LOOP_LIMIT}.",
             )
         if route.get("type", "work") not in _ROUTE_TYPES:
-            raise FileError(at(*where, "type"), "`type` should be work, review or escalation.")
+            raise FileError(
+                at(*where, "type"), "`type` should be work, review, escalation or failure."
+            )
     needs = data.get("needs", {})
     if not isinstance(needs, dict):
         raise FileError(at("needs"), "`needs` should be {connectors: [...], secrets: [...]}.")

@@ -231,6 +231,10 @@ class TeamGraph(Base):
     # carried by its team file. NULL until a team file sets them.
     budget_usd: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
     repo: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # M11 (migration ``0052``, ruling R14): the canvas's groups, ``{"groups": [{"id", "label",
+    # "node_ids", "folded"}]}``. Layout only: never part of a version, never read by the walk, not
+    # copied into a run's snapshot. NULL = no groups.
+    layout: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -871,6 +875,9 @@ class HumanTask(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # M11 (migration ``0052``): the spec version a person saved with "Approve with my edits" (the
+    # resolve route writes it before it signals; NULL for every other resolution).
+    edited_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class User(Base):

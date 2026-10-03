@@ -324,6 +324,15 @@ class _Lines:
         return row
 
 
+def _edited_version(task) -> int | None:
+    """M11: the spec version a person saved approving this gate with their edits, else ``None``."""
+    return getattr(task, "edited_version", None) if task.resolution == "approved" else None
+
+
+def _approved_with_edits(version: int) -> str:
+    return f"Approved with your edits · spec v{version}"
+
+
 def _retry_text(p: dict) -> str:
     lead = _RETRY_LEAD.get(p.get("reason"), _RETRY_LEAD["busy"])
     wait = float(p.get("wait_s") or 0)
@@ -552,6 +561,7 @@ def build(
     events_by_inv: dict = {}
     for ev in events:
         events_by_inv.setdefault(ev.invocation_id, []).append(ev)
+    stalled_invs = {ev.invocation_id for ev in events if ev.kind == "stalled"}
     out = _Lines(labels)
 
     # M10: a run started from another one says so first ("Started from run #12 · brought …"), with
@@ -639,17 +649,41 @@ def build(
         _event_lines(out, inv, nid, events_by_inv.get(inv.id, []), open_step)
         end_at = inv.ended_at or inv.started_at
         if inv.status == "failed" and inv.outcome != "stalled":  # a stall has its own line
-            message = mask_secrets(_lower_first(humanise(None, _m(inv.outcome_detail))["message"]))
-            out.add(
-                f"inv:{inv.id}:end",
-                end_at,
-                nid,
-                inv.iteration,
-                "error",
-                f"Failed: {message}",
-                "danger",
-                {"message": message},
-            )
+            if inv.id not in stalled_invs:  # (M11: also a stall that then took a failure path)
+                message = mask_secrets(
+                    _lower_first(humanise(None, _m(inv.outcome_detail))["message"])
+                )
+                out.add(
+                    f"inv:{inv.id}:end",
+                    end_at,
+                    nid,
+                    inv.iteration,
+                    "error",
+                    f"Failed: {message}",
+                    "danger",
+                    {"message": message},
+                )
+            if inv.outcome == "failure_path":
+                # M11 (R13): the run took the agent's failure path instead of failing.
+                target = next(
+                    (
+                        e["target"]
+                        for e in edges
+                        if e["source"] == nid and e.get("edge_type") == "failure"
+                    ),
+                    None,
+                )
+                out.add(
+                    f"inv:{inv.id}:failure_path",
+                    end_at,
+                    None,
+                    None,
+                    "failure_path",
+                    f"The {labels.get(nid, 'agent')} failed, so the run takes its failure path "
+                    f"to {labels.get(target, 'its next step')}",
+                    "warn",
+                    {"node_id": nid, "target_node_id": target},
+                )
         elif kind in _STEP_KINDS and inv.outcome in ("approved", "changes_requested"):
             reasons = _reasons(_m(inv.outcome_detail))
             if inv.outcome == "approved":
@@ -698,20 +732,32 @@ def build(
         elif task.resolution in _RESOLVED and task.resolved_at is not None:
             kind, tone = _RESOLVED[task.resolution]
             verb = "approved" if task.resolution == "approved" else "rejected"
+            text = f"You {verb} {what}"
+            edited = _edited_version(task)
+            if edited is not None:  # M11: Approve with my edits
+                text, refs = _approved_with_edits(edited), {**refs, "edited_version": edited}
             out.add(
                 f"task:{task.id}:done",
                 task.resolved_at,
                 nid,
                 iteration,
                 kind,
-                f"You {verb} {what}",
+                text,
                 tone,
                 dict(refs),
             )
 
-    # Documents the steps (or you) wrote.
+    # Documents the steps (or you) wrote. M11: a spec version you saved with "Approve with my edits"
+    # is told by the gate's line.
+    approved_edits = {_edited_version(t) for t in tasks} - {None}
     for version, name in versions:
         human = version.created_by == "human"
+        if (
+            human
+            and version.version_no in approved_edits
+            and version.document_id == getattr(run, "pm_document_id", None)
+        ):
+            continue
         nid, iteration = (None, None) if human else _doc_node(version, by_id, by_origin, run_id)
         doc = name or "spec"
         text = f"{'You edited' if human else 'Wrote'} the {doc} (v{version.version_no})"
@@ -829,8 +875,11 @@ def build(
             )
             if decided is not None and decided.resolution in _RESOLVED:
                 # No clock here: the frontend shows last_event_at in the person's own time.
+                edited = _edited_version(decided)
                 live.update(
-                    activity=f"You {decided.resolution}",
+                    activity=f"You {decided.resolution}"
+                    if edited is None
+                    else _approved_with_edits(edited),
                     last_event_at=decided.resolved_at.isoformat(),
                 )
         elif inv is not None and inv.status != "running" and nid in last_line:

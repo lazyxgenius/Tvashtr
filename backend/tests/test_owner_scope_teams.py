@@ -105,7 +105,11 @@ def _snapshot(acct: SimpleNamespace) -> dict:
 
     with session_scope() as s:
         g = s.get(TeamGraph, tid)
-        team = None if g is None else (g.name, g.is_library, str(g.owner_id), g.template_key)
+        team = (
+            None
+            if g is None
+            else (g.name, g.is_library, str(g.owner_id), g.template_key, dump(g.layout))
+        )
         nodes = s.execute(select(AgentNode).where(AgentNode.team_graph_id == tid)).scalars().all()
         node_ids = [n.id for n in nodes]
         node_rows = sorted(
@@ -212,7 +216,13 @@ PATH_CASES = [
         {"source_node_id": "{node}", "target_node_id": "{node2}", "role": "forward"},
     ),
     ("DELETE", "/api/teams/{team}/edges/{edge}", None),
+    ("PATCH", "/api/teams/{team}/edges/{edge}", {"role": "forward"}),
     ("POST", "/api/teams/{team}/positions", {"positions": {"{node}": {"x": 999, "y": 999}}}),
+    (
+        "PUT",
+        "/api/teams/{team}/layout",
+        {"groups": [{"id": "g", "label": "B's group", "node_ids": ["{node}"], "folded": True}]},
+    ),
     ("GET", "/api/teams/{team}/validate", None),
 ]
 
@@ -224,6 +234,8 @@ def _fill(value, ids: dict):
         return value
     if isinstance(value, dict):
         return {_fill(k, ids): _fill(v, ids) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_fill(v, ids) for v in value]
     return value
 
 
@@ -263,6 +275,7 @@ def test_b_gets_404_for_a_path_ids(ab, method, path, body):
 # ---- 2. B's own team in the path, A's node / edge as the second path id -----------------------
 
 MIXED_CASES = [
+    ("PATCH", "/api/teams/{team}/edges/{edge}", {"role": "forward"}),
     ("GET", "/api/teams/{team}/nodes/{node}/runs", None),
     ("POST", "/api/teams/{team}/nodes/{node}/context-preview", {"prompt": "B draft"}),
     ("PATCH", "/api/teams/{team}/nodes/{node}", {"prompt": "B overwrote this"}),
