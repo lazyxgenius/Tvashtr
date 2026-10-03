@@ -370,6 +370,36 @@ const callout = (title) => async (p) => {
   await p.getByText(title).evaluate((el) => el.scrollIntoView({ block: "center" }));
 };
 
+// ---- M-desk-3: Set-SaveCheckDesktop, Set-ResultsDesktop ----
+// The Desktop reads the versions with ?desktop_target=1 and the server says where each check runs
+// (the Reviewer's tests on Grok; the set check over both versions' models, Claude and Grok); the
+// website never asks, so its render is today's dialog.
+const deskSaveRoutes = (desktop) => {
+  const base = saveRoutes(desktop);
+  return {
+    ...base,
+    [`${VERSIONS_KEY}?desktop_target=1`]: {
+      ...base[VERSIONS_KEY],
+      tests: { ...NUDGE, desktop: { subscriptions: ["grok"], all: true } },
+      check_sets: CHECK_SETS.map((s) => ({ ...s, desktop: { subscriptions: ["claude", "grok"], all: true } })),
+    },
+  };
+};
+// A Desktop set compare whose lanes shared a subscription: every run on it, so nothing is metered.
+const free = (c) => ({ ...c, cost_usd: 0 });
+const SET_RESULTS_DESKTOP = {
+  ...SET_RESULTS,
+  cost_usd: 0,
+  items: SET_RESULTS.items.map((it) => ({ ...it, a: free(it.a), b: free(it.b), badge: "v7 better" })),
+  results: {
+    ...SET_RESULTS.results,
+    cards: SET_RESULTS.results.cards.map((k) =>
+      k.key === "cost" ? { ...k, a: "$0.00", b: "$0.00", note: "same", tone: null } : k,
+    ),
+    shared: true,
+  },
+};
+
 /** Kept elements: a scenario as `kept-m9-<screen>-web` / `-desktop` (the same states, unframed). */
 const kept = (screen, shots) =>
   shots.map((s) => ({ ...s, name: s.name.replace(/^.*-(web|desktop)$/, `kept-m9-${screen}-$1`) }));
@@ -462,6 +492,18 @@ export default [
     "Set-CheckedWorse-callout",
     (d) => historyRoutes(d, WORSE),
     callout("v8 did worse on Indicators"),
+  ),
+  // M-desk-3: the Desktop boards; their `-web` renders are the website's words, unchanged.
+  ...canvasBoard("Set-SaveCheckDesktop", deskSaveRoutes, async (p) => {
+    const dialog = await saveAs(p);
+    await dialog.getByLabel("What changed (optional)").fill("Engineer on GPT-4.1; Reviewer names files");
+    await p.evaluate(() => document.activeElement?.blur());
+  }),
+  ...cmpBoard(
+    "Set-ResultsDesktop",
+    withSets(START_ROUTES, SETS, { [CMP_KEY(SET_CMP)]: SET_RESULTS_DESKTOP }),
+    resultsReady("Results"),
+    `${page}/${SET_CMP}`,
   ),
   // Kept elements (shot on main 699e453 and on m09-parity with this same file): the Compare tab's
   // start form and a one-task results page (the team has sets), History (v8 checked), Save as v8.
