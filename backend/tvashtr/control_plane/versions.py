@@ -178,6 +178,8 @@ def _route(edge: dict, names: dict) -> str:
     if cond.get("loop_limit"):
         n = cond["loop_limit"]
         text += f" · up to {n} round" + ("" if n == 1 else "s")
+    if edge.get("edge_type") == "failure":  # M11
+        text += " · if it fails"
     return text
 
 

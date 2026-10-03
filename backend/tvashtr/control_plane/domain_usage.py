@@ -260,7 +260,11 @@ def _slot(node: AgentNode, edges: list[Edge]) -> Edge | None:
     (a ``when`` branch or a rework loop) or a fan-out has no slot."""
     if node.kind not in AGENT_KINDS:
         return None
-    outs = [e for e in edges if e.source_node_id == node.id and e.edge_type != "escalation"]
+    outs = [
+        e
+        for e in edges
+        if e.source_node_id == node.id and e.edge_type not in ("escalation", "failure")
+    ]
     if len(outs) != 1 or outs[0].conditions:
         return None
     return outs[0]

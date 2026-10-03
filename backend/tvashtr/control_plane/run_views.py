@@ -174,7 +174,11 @@ def walk_order(nodes: list[dict], edges: list[dict]) -> tuple[list[str], dict[st
     targeted = {e["target"] for e in edges}
     roots = sorted(nid for nid in by_id if nid not in targeted)
     root = roots[0] if roots else min(by_id, key=key)
-    forward = [e for e in edges if e.get("edge_type") != "escalation" and not _is_loop_edge(e)]
+    forward = [
+        e
+        for e in edges
+        if e.get("edge_type") not in ("escalation", "failure") and not _is_loop_edge(e)
+    ]
     adjacency: dict[str, list[str]] = {}
     for e in forward:
         adjacency.setdefault(e["source"], []).append(e["target"])

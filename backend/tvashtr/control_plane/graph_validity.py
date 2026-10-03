@@ -21,7 +21,12 @@ from collections import defaultdict
 
 from sqlalchemy import select
 
-from tvashtr.control_plane.team_run import escalation_target, next_node, node_emits_outcome
+from tvashtr.control_plane.team_run import (
+    FAILURE_EDGE,
+    escalation_target,
+    next_node,
+    node_emits_outcome,
+)
 from tvashtr.models import AgentNode, Domain, Edge
 
 
@@ -41,6 +46,9 @@ def _routing_edges(edges: list[dict]) -> list[dict]:
         }
         for e in edges
     ]
+
+
+AGENT_KINDS = ("completion", "agent")
 
 
 def _is_loop_back(edge: dict) -> bool:
@@ -218,8 +226,10 @@ def validate_graph(
     # (the executor only enforces the cap on a node that HAS an escalation edge). ---
     adj: dict[str, list[str]] = defaultdict(list)
     for e in redges:
-        if _is_loop_back(e):
-            continue  # the loop bound is what BREAKS the cycle — exclude it from the cycle check
+        if _is_loop_back(e) or e["edge_type"] == FAILURE_EDGE:
+            # The loop bound is what BREAKS the cycle — exclude it from the cycle check. M11: so is
+            # a failure path (the walk takes it only while its agent is within its loop limit).
+            continue
         if e["source"] in reachable and e["target"] in reachable:
             adj[e["source"]].append(e["target"])
     # DFS three-colour cycle detection over the loop_limit-free reachable subgraph.
@@ -261,9 +271,38 @@ def validate_graph(
                     edge_id=e["id"],
                 )
 
+    # --- M11 (R13): failure paths — only out of an agent, one per agent, and leading somewhere
+    # that ends (the reverse search above already counts one as a route to an ending). ---
+    failure_sources: set[str] = set()
+    for e in redges:
+        if e["edge_type"] != FAILURE_EDGE or e["source"] not in nodes_by_id:
+            continue
+        if nodes_by_id[e["source"]]["kind"] not in AGENT_KINDS:
+            err(
+                "failure_not_agent",
+                "Only an agent can have a failure path.",
+                node_id=e["source"],
+                edge_id=e["id"],
+            )
+        elif e["source"] in failure_sources:
+            err(
+                "failure_twice",
+                "An agent has one failure path — remove the extra one.",
+                node_id=e["source"],
+                edge_id=e["id"],
+            )
+        failure_sources.add(e["source"])
+        if e["target"] not in can_reach_terminal:
+            err(
+                "failure_dead_end",
+                "This failure path can't reach an ending (Ship or Stop).",
+                node_id=e["source"],
+                edge_id=e["id"],
+            )
+
     # --- B-NODES: per-agent readiness. Checked only when the node dict CARRIES the field
     # (graph_dicts does; a hand-built dict without ``model``/``prompt`` is not judged on it). ---
-    agent_kinds = ("completion", "agent")
+    agent_kinds = AGENT_KINDS
     for nid in sorted(reachable):
         n = nodes_by_id[nid]
         if n.get("kind") not in agent_kinds:
@@ -389,7 +428,7 @@ def team_shape(nodes: list[dict], edges: list[dict]) -> dict:
     main_edges = [
         e
         for e in redges
-        if e["edge_type"] != "escalation"
+        if e["edge_type"] not in ("escalation", FAILURE_EDGE)
         and not _is_loop_back(e)
         and e["source"] in nodes_by_id
         and e["target"] in nodes_by_id
