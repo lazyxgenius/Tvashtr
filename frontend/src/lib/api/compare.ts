@@ -83,6 +83,8 @@ export interface CompareResults {
   cards?: SetCard[];
   /** M9, a one-task compare: the team's set for "One task is a small sample" (null: none). */
   sample?: { set_id: string; name: string; count: number } | null;
+  /** M-desk-routes (D3): a Desktop compare's line under the table, beside its "Work time" row. */
+  note?: string;
 }
 
 /** M9: one summary card of a set compare's results. */
@@ -155,10 +157,11 @@ export function getCompareChanges(
   return apiRequest("GET", `${team(teamId)}/compare/changes?a=${a}&b=${b}`);
 }
 
-/** Start compare (on one task, or M9's task set). 422 / 409 throw `ApiDetailError`. */
+/** Start compare (on one task, or M9's task set). 422 / 409 throw `ApiDetailError`.
+ *  `desktop_target` (sent only from Tvashtr Desktop): its runs use the owner's subscriptions. */
 export function startCompare(
   teamId: string,
-  body: { a: number; b: number; auto_approve: boolean } & (
+  body: { a: number; b: number; auto_approve: boolean; desktop_target?: true } & (
     | { task: string }
     | { task_set_id: string }
   ),

@@ -6,6 +6,7 @@ import {
   Clock,
   Info,
   ListChecks,
+  Monitor,
   RotateCcw,
   Square,
 } from "lucide-react";
@@ -386,6 +387,13 @@ function Results({
           </tbody>
         </table>
       </div>
+      {/* M-desk-routes (Cmp-ResultsDesktop): a Desktop compare counts working time only. */}
+      {r.note && (
+        <p className="cmp-res__note">
+          <Monitor size={14} strokeWidth={1.6} aria-hidden />
+          {r.note}
+        </p>
+      )}
       {/* M9 (Cmp-Results): the team's task set, when it has one. */}
       {r.sample && (
         <div className="cmp-callout cmp-sample">

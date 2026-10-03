@@ -19,6 +19,7 @@ import {
   type TaskSet,
 } from "../../lib/api/compare";
 import { listRecentTasks } from "../../lib/api/myAgents";
+import { isDesktopApp } from "../../lib/desktopRepos";
 import { navigate } from "../../lib/nav";
 import { runsPill, versionAge } from "../../lib/versionFormat";
 import { LoadState } from "../../panel/runs/RunsTab";
@@ -253,6 +254,8 @@ function Start({
       b,
       ...(set ? { task_set_id: set.id } : { task: task.trim() }),
       auto_approve: auto,
+      // M-desk-routes (D1): from the Desktop, both versions run on your subscriptions.
+      ...(isDesktopApp() ? { desktop_target: true as const } : {}),
     }).then(
       (made) => navigate({ page: "compare", teamId, compareId: made.id }, { replace: true }),
       (e: unknown) => {

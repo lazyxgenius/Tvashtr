@@ -340,6 +340,21 @@
   font-size: 13px;
   color: var(--ink-600);
 }
+/* M-desk-routes (Cmp-ResultsDesktop): the work-time line under a Desktop compare's table. */
+.cmp-res__note {
+  margin: -6px 0 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-600);
+}
+.cmp-res__note svg {
+  flex: none;
+  color: var(--ink-500);
+}
 .cmp-res__wrap {
   border: 1px solid var(--border-hairline);
   border-radius: 14px;
