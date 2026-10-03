@@ -296,6 +296,8 @@ describe("NodeEditor — M6 More › Save as my agent (Agents-More, Agents-Save)
       "Open in focus view",
       "Rename",
       "Open its documents",
+      // M11 (Cnv-TestAgent).
+      "Test this agent",
       "Save as my agent",
       "Delete agentIts arrows are removed too",
     ]);

@@ -529,6 +529,8 @@ describe("NodeEditor — the ⋯ menu (PANEL-23..26)", () => {
       "Open in focus view",
       "Rename",
       "Open its documents",
+      // M11 (Cnv-TestAgent): added before Save as my agent; the others are unchanged.
+      "Test this agent",
       // M6 (Agents-More): added before the separator; the others are unchanged.
       "Save as my agent",
       "Delete agentIts arrows are removed too",
