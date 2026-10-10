@@ -340,7 +340,11 @@ const keyReplaced = engines(
 const replaceAgents = (() => {
   const routes = enginesRoutes({
     domains: [],
-    over: { "GET /api/providers": { providers: [key("anthropic", "wQ3f", new Date().toISOString()), ...KEYS] } },
+    over: {
+      "GET /api/providers": {
+        providers: [key("anthropic", "wQ3f", new Date().toISOString()), ...KEYS],
+      },
+    },
   });
   const usage = routes["GET /api/engines/usage"];
   return {
@@ -441,7 +445,6 @@ const warnings = (() => {
         p.getByRole = loc;
         p.fill = fill;
       }
-
     },
   };
 })();
