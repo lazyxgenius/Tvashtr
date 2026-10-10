@@ -231,7 +231,8 @@ describe("Set-EditDesktop: Edit task set's estimate", () => {
   });
 
   it("the website's words are today's", () => {
-    const { desktop: _d, ...web } = SET;
-    expect(note(web)).toBe("Comparing two versions on this set: about $5.60 and 80 min");
+    expect(note({ ...SET, desktop: undefined })).toBe(
+      "Comparing two versions on this set: about $5.60 and 80 min",
+    );
   });
 });
