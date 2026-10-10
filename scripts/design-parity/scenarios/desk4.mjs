@@ -175,7 +175,7 @@ const ranActivity = (r, edit = (a) => a) =>
   desk(r, "GET /api/runs/r-12/activity", (a) => {
     a.ran_on = BOTH;
     for (const ln of a.lines ?? [])
-      if (ln.id === "run:done")
+      if (ln.id === "run:done" || ln.kind === "done")
         ln.text = ln.text.replace(/ · \$\d+\.\d\d$/, " · on your Claude and Grok subscriptions");
     return edit(a);
   });
@@ -208,7 +208,24 @@ const runTag = variant(versions, "Ver-RunTag-desktop", "Ver-RunTagDesktop", (r) 
   }),
 );
 
-const homeSpend = { ...pick(home, "home-desktop"), name: "Home-DesktopSpend-desktop" };
+// D21/D22: Running now's budget and the Spend card's default budget (the board's $5.00).
+const homeSpend = (() => {
+  const s = pick(home, "home-desktop");
+  const runs = s.routes["GET /api/runs"];
+  return {
+    ...s,
+    name: "Home-DesktopSpend-desktop",
+    routes: {
+      ...s.routes,
+      "GET /api/spend": { ...s.routes["GET /api/spend"], default_run_budget_usd: 5 },
+      "GET /api/runs": async (req) => {
+        const r = await runs(req);
+        for (const run of r.json.runs ?? []) run.budget_cap_usd ??= 5;
+        return r;
+      },
+    },
+  };
+})();
 const homeOptions = {
   ...pick(home, "options-1"),
   name: "Home-OptionsDesktop-desktop",
@@ -318,7 +335,20 @@ const keyReplaced = engines(
   },
 );
 
-const focusBackup = { ...pick(advanced, "Desktop-Focus-desktop"), name: "Desktop-FocusBackup-desktop" };
+const focusBackup = (() => {
+  const s = pick(advanced, "Desktop-Focus-desktop");
+  return {
+    ...s,
+    name: "Desktop-FocusBackup-desktop",
+    steps: async (p) => {
+      await s.steps(p);
+      const adv = p.getByRole("button", { name: /^Advanced/ });
+      if ((await adv.count()) && (await adv.first().getAttribute("aria-expanded")) !== "true")
+        await adv.first().click();
+      await p.mouse.move(700, 880);
+    },
+  };
+})();
 
 const pickerCustom = (() => {
   const s = pick(model, "Desktop-ModelPicker-desktop");
@@ -358,9 +388,22 @@ const warnings = (() => {
         p.getByRole = loc;
         p.fill = fill;
       }
+
     },
   };
 })();
+
+/** A string's proof shot: the board's scenario, scrolled to the string (the app lays it out below
+ *  the fold where the board draws it in view). Parity uses the unscrolled shot. */
+const proof = (s, text) => ({
+  ...s,
+  name: s.name.replace(/-desktop$/, "-proof-desktop"),
+  steps: async (p) => {
+    await s.steps?.(p);
+    await p.getByText(text).first().scrollIntoViewIfNeeded();
+    await p.mouse.move(700, 880);
+  },
+});
 
 export default [
   setRunning,
@@ -389,4 +432,8 @@ export default [
   focusBackup,
   pickerCustom,
   warnings,
+  proof(homeSpend, /^Each run stops at/),
+  proof(focusBackup, /^Used once if the main model fails/),
+  proof(warnings, /^No provider matches/),
+  proof(probFailed, /^Next:/),
 ];
