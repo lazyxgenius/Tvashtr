@@ -324,10 +324,11 @@ function Pinned({
             {(pin.kind === "failed" || pin.kind === "stopped") && resume && (
               <>
                 {" "}
-                <b>Next:</b> resume from {resume.label}.{" "}
+                <b>Next:</b> resume from {resume.label}
+                {/* One text node, as the website has always rendered it. */}
                 {isDesktopApp() && ranOn?.all
-                  ? "Tvashtr skips the work that is done, so it doesn’t run again."
-                  : "Tvashtr skips the work that is done, so you don’t pay for it again."}
+                  ? ". Tvashtr skips the work that is done, so it doesn’t run again."
+                  : ". Tvashtr skips the work that is done, so you don’t pay for it again."}
               </>
             )}
           </div>
