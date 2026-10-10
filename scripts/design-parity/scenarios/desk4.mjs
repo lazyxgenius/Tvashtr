@@ -10,7 +10,7 @@
 // queued set cell, the turn-taking minutes); the website's reads are the original fixtures.
 import agentTests from "./agent-tests.mjs";
 import compare from "./compare.mjs";
-import { desktopInit, enginesRoutes } from "./engines-fixtures.mjs";
+import { desktopInit, enginesRoutes, key, KEYS } from "./engines-fixtures.mjs";
 import home from "./home-runs.mjs";
 import advanced from "./panel-advanced.mjs";
 import model from "./panel-model.mjs";
@@ -335,6 +335,59 @@ const keyReplaced = engines(
   },
 );
 
+// K2, several agents: the anthropic key saved, and the Writer's deepseek model is an anthropic one
+// too, so two agents use the key ("Agents use the new one on their next website run.").
+const replaceAgents = (() => {
+  const routes = enginesRoutes({
+    domains: [],
+    over: { "GET /api/providers": { providers: [key("anthropic", "wQ3f", new Date().toISOString()), ...KEYS] } },
+  });
+  const usage = routes["GET /api/engines/usage"];
+  return {
+    name: "Eng-ReplaceKeyAgentsDesktop-desktop",
+    path: keysPage,
+    desktop: true,
+    init: desktopInit(),
+    routes: {
+      ...routes,
+      "GET /api/engines/usage": JSON.parse(
+        JSON.stringify(usage)
+          .replaceAll("deepseek/deepseek-chat", "anthropic/claude-sonnet-4.5")
+          .replaceAll("deepseek", "anthropic"),
+      ),
+    },
+    steps: seq(menu("anthropic"), item("Replace key"), async (p) => {
+      await p.waitForSelector('[role="alertdialog"]');
+      await p.evaluate(() => document.activeElement?.blur());
+    }),
+  };
+})();
+
+// K8, the team picker: on this Mac Claude and Grok aren't connected (Indicator sprint team needs
+// both, Bugfix squad needs Grok).
+const pickTeam = (() => {
+  const s = pick(home, "pickteam-1");
+  const teams = clone(s.routes["GET /api/teams"]);
+  const gap = { "Indicator sprint team": ["anthropic", "xai"], "Bugfix squad": ["xai"] };
+  for (const t of teams.teams)
+    if (gap[t.name])
+      Object.assign(t.readiness, {
+        desktop: {
+          ready: false,
+          missing_providers: gap[t.name],
+          missing_nodes: ["engineer"],
+          routed_subscriptions: [],
+        },
+        subscriptions_connected: [],
+      });
+  return {
+    ...s,
+    name: "Home-PickTeamDesktop-desktop",
+    desktop: true,
+    routes: { ...s.routes, "GET /api/teams": teams },
+  };
+})();
+
 const focusBackup = (() => {
   const s = pick(advanced, "Desktop-Focus-desktop");
   return {
@@ -432,8 +485,50 @@ export default [
   focusBackup,
   pickerCustom,
   warnings,
+  replaceAgents,
+  pickTeam,
   proof(homeSpend, /^Each run stops at/),
+  // D21 without a budget: "$1.21 spent on keys".
+  (() => {
+    const s = proof(homeSpend, /^Each run stops at/);
+    const runs = s.routes["GET /api/runs"];
+    return {
+      ...s,
+      name: "Home-DesktopSpend-nocap-proof-desktop",
+      routes: {
+        ...s.routes,
+        "GET /api/runs": async (req) => {
+          const r = await runs(req);
+          for (const run of r.json.runs ?? []) run.budget_cap_usd = null;
+          return r;
+        },
+      },
+    };
+  })(),
   proof(focusBackup, /^Used once if the main model fails/),
   proof(warnings, /^No provider matches/),
   proof(probFailed, /^Next:/),
+  // D2: a failed run's end line as the server words it for the Desktop (test_desk_4 (p) asserts
+  // the server side); the Prob-Failed fixture, like its board, stops before the end line.
+  (() => {
+    const s = proof(probFailed, /^Failed after/);
+    return {
+      ...s,
+      name: "Prob-FailedDesktop-endline-proof-desktop",
+      routes: desk(s.routes, "GET /api/runs/r-12/activity", (a) => {
+        const last = a.lines[a.lines.length - 1];
+        a.lines.push({
+          ...last,
+          id: "run:done",
+          node_id: null,
+          iteration: null,
+          kind: "done",
+          tone: "danger",
+          text: "Failed after 18m 40s · on your Claude and Grok subscriptions",
+          refs: { elapsed_s: 1120, cost_usd: 0 },
+        });
+        return a;
+      }),
+    };
+  })(),
 ];
