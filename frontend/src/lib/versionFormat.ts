@@ -1,6 +1,7 @@
 /** M5's small words (the Ver-* boards): a version's age, the runs pill, the diff pill, a run's look. */
 import { elapsedShort, money } from "../pages/home/homeFormat";
 import type { TeamRunRow } from "./api";
+import { spendText } from "./desktopRepos";
 import type { VersionChange } from "./api/versions";
 
 /** "changed" fields that are one thing ("Type goes back"); the others are many ("Skills go back"). */
@@ -83,7 +84,7 @@ export function runLook(status: string): {
 export function runMeta(run: TeamRunRow): string {
   const parts = [
     run.updated_at ? elapsedShort(run.created_at, Date.parse(run.updated_at)) : "",
-    money(run.spent_usd ?? run.cost_total_usd),
+    spendText(money(run.spent_usd ?? run.cost_total_usd), run.ran_on), // M-desk-4 (H1)
     run.pr_number != null ? `pull request #${run.pr_number}` : "",
     run.resumed_as != null ? `resumed as #${run.resumed_as}` : "",
     run.status === "cancelled" ? "stopped by you" : "",

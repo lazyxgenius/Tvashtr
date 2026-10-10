@@ -58,6 +58,8 @@ export interface CompareSide {
   status: SideStatus;
   elapsed_s: number;
   cost_usd: number;
+  /** M-desk-4: read from the Desktop, where this lane's work really ran. */
+  ran_on?: DesktopRoutes;
   strip: CompareStripChip[];
   /** "Engineer · round 3" / "Approved in round 2". */
   current: { label: string; text: string } | null;
@@ -115,6 +117,10 @@ export interface SetCell {
   cost_usd: number;
   /** The check's last output line on a failed check, else the run's failure words. */
   note: string | null;
+  /** M-desk-4 (H4): read from the Desktop, the run waits for the other lane's job (`now` is the
+   *  waiting line), and where its work really ran. */
+  queued?: boolean;
+  ran_on?: DesktopRoutes;
 }
 
 export interface SetItem {
@@ -132,6 +138,8 @@ export interface Compare {
   status: CompareStatus;
   elapsed_s: number;
   cost_usd: number;
+  /** M-desk-4: read from the Desktop, where the lanes' work really ran, together. */
+  ran_on?: DesktopRoutes;
   created_at: string;
   ended_at: string | null;
   /** Waiting for a free slot: the owner's run slots in use. */
@@ -175,7 +183,7 @@ export function startCompare(
 }
 
 export function getCompare(compareId: string): Promise<Compare> {
-  return apiRequest("GET", `/api/compares/${encodeURIComponent(compareId)}`);
+  return apiRequest("GET", `/api/compares/${encodeURIComponent(compareId)}${desktopQuery()}`);
 }
 
 export function stopCompare(compareId: string): Promise<{ status: "stopped" }> {
@@ -202,6 +210,8 @@ export interface TaskSet {
   last_used: { compare_id: string; a: number; b: number; at: string; summary: string } | null;
   /** Comparing two versions on this set: about $X and N min (null: no finished run yet). */
   estimate: { cost_usd: number; minutes: number } | null;
+  /** M-desk-4 (D15): read from the Desktop, where comparing its two versions would run. */
+  desktop?: DesktopRoutes;
 }
 
 export type TaskSetBody = {
@@ -210,7 +220,10 @@ export type TaskSetBody = {
 };
 
 export async function listTaskSets(teamId: string): Promise<TaskSet[]> {
-  const body = await apiRequest<{ sets?: TaskSet[] } | null>("GET", `${team(teamId)}/task-sets`);
+  const body = await apiRequest<{ sets?: TaskSet[] } | null>(
+    "GET",
+    `${team(teamId)}/task-sets${desktopQuery()}`,
+  );
   return Array.isArray(body?.sets) ? body.sets : [];
 }
 

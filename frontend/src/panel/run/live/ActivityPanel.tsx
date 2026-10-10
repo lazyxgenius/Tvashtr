@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { StopRunDialog } from "../../../components/StopRunDialog";
 import { Button, IconButton } from "../../../design-system/components";
 import type { ActivityLine, PinnedCallout, RunActivity } from "../../../lib/api/activity";
+import { type DesktopRoutes, isDesktopApp } from "../../../lib/desktopRepos";
 import { navigate } from "../../../lib/nav";
 import { clock, currentLineIds, duration } from "./liveFormat";
 import { CameAlongButton, CameAlongPopover } from "./StartNext";
@@ -246,11 +247,14 @@ function Pinned({
   actions,
   busy,
   teamName,
+  ranOn,
 }: {
   pin: PinnedCallout;
   actions: ActivityActions;
   busy: boolean;
   teamName: string | undefined;
+  /** M-desk-4 (H2): read from the Desktop, where the run's work really ran. */
+  ranOn?: DesktopRoutes;
 }) {
   const [askStop, setAskStop] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -320,8 +324,10 @@ function Pinned({
             {(pin.kind === "failed" || pin.kind === "stopped") && resume && (
               <>
                 {" "}
-                <b>Next:</b> resume from {resume.label}. Tvashtr skips the work that is done, so you
-                don’t pay for it again.
+                <b>Next:</b> resume from {resume.label}.{" "}
+                {isDesktopApp() && ranOn?.all
+                  ? "Tvashtr skips the work that is done, so it doesn’t run again."
+                  : "Tvashtr skips the work that is done, so you don’t pay for it again."}
               </>
             )}
           </div>
@@ -549,7 +555,13 @@ export function ActivityPanel({
       {!folded && (
         <>
           {activity.pinned && (
-            <Pinned pin={activity.pinned} actions={actions} busy={busy} teamName={teamName} />
+            <Pinned
+              pin={activity.pinned}
+              actions={actions}
+              busy={busy}
+              teamName={teamName}
+              ranOn={activity.ran_on}
+            />
           )}
           {hiddenCount > 0 && (
             <div className="lv-act__earlier">

@@ -48,15 +48,27 @@ export function SameModelAdvisory({
 /** PANEL-47: a main or backup model the catalogue doesn't list. Soft: Save still works. */
 export function UnknownModelWarning({
   model,
+  plan = null,
   onDismiss,
 }: {
   model: string;
+  /** M-desk-4 (H6): on the Desktop, the plan ("Grok") it runs on here — no key involved. */
+  plan?: string | null;
   onDismiss: () => void;
 }) {
   return (
     <ModelNotice tone="warn" onDismiss={onDismiss}>
-      No provider matches <code>{model}</code>. It will fail at run time if the name is wrong or the
-      key isn’t set.
+      {plan ? (
+        <>
+          No provider matches <code>{model}</code>. On this Mac it runs on your {plan} subscription;
+          it will fail at run time if the name is wrong.
+        </>
+      ) : (
+        <>
+          No provider matches <code>{model}</code>. It will fail at run time if the name is wrong or
+          the key isn’t set.
+        </>
+      )}
     </ModelNotice>
   );
 }

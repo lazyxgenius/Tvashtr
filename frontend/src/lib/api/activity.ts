@@ -3,6 +3,7 @@
  * feeds the Now bar, the Activity panel, its pinned callout, the node cards' activity line and the
  * Done summary. The words are made server-side; this module only carries them.
  */
+import { desktopQuery, type DesktopRoutes } from "../desktopRepos";
 import { apiRequest } from "./runs";
 
 /** What a step is doing now (M1 R1) — the machine values of the plain state words. */
@@ -157,10 +158,12 @@ export interface RunActivity {
   /** M3: "run #12" (null without a library team); absent from an older server. */
   number?: number | null;
   resumed_from?: ResumedFrom | null;
+  /** M-desk-4: read from the Desktop, where the run's work really ran. */
+  ran_on?: DesktopRoutes;
 }
 
 export function getRunActivity(runId: string, after?: string | null): Promise<RunActivity> {
-  const q = after ? `?after=${encodeURIComponent(after)}` : "";
+  const q = after ? `?after=${encodeURIComponent(after)}${desktopQuery("&")}` : desktopQuery();
   return apiRequest<RunActivity>("GET", `/api/runs/${encodeURIComponent(runId)}/activity${q}`);
 }
 

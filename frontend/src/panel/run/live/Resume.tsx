@@ -18,6 +18,7 @@ import { createPortal } from "react-dom";
 import { Button, IconButton } from "../../../design-system/components";
 import type { ResumedFrom as ResumedFromRun } from "../../../lib/api/activity";
 import type { ResumeInfo, ResumePoint } from "../../../lib/api/resume";
+import { isDesktopApp, spendText, subscriptionsText } from "../../../lib/desktopRepos";
 import { routeToHash } from "../../../lib/nav";
 import { isTopOverlay, pushOverlay, removeOverlay } from "../../../lib/overlayStack";
 import { useModalDialog } from "../../../lib/useModalDialog";
@@ -143,7 +144,8 @@ export function ResumePick({
                 <div className="lv-pick__foot">
                   <span className="lv-pick__meta">
                     {clock(p.at).slice(0, 5)}
-                    {p.cost_usd != null && ` · ${money(p.cost_usd)}`}
+                    {p.cost_usd != null &&
+                      ` · ${spendText(money(p.cost_usd), p.plan ? { subscriptions: [p.plan], all: true } : null)}`}
                   </span>
                   {p.resumable && p.confirm && (
                     <Button
@@ -289,11 +291,20 @@ export function ResumeConfirm({
               </span>
               <div className="lv-confirm__skips-text">
                 <div className="lv-confirm__skips-title">
-                  Skips work that already cost {money(c.skips_cost_usd)} and took{" "}
-                  {aboutMinutes(c.skips_s)}
+                  {/* M-desk-4 (H2): on the Desktop, work on subscriptions is time, not money. */}
+                  {isDesktopApp() && c.skips_ran_on?.all ? (
+                    `Skips ${Math.max(1, Math.round(c.skips_s / 60))} min of finished work.`
+                  ) : (
+                    <>
+                      Skips work that already cost {money(c.skips_cost_usd)} and took{" "}
+                      {aboutMinutes(c.skips_s)}
+                    </>
+                  )}
                 </div>
                 <div className="lv-confirm__skips-sub">
-                  You only pay for the steps that run again.
+                  {isDesktopApp() && c.again_ran_on?.subscriptions.length
+                    ? `Only the steps that run again use ${subscriptionsText(c.again_ran_on.subscriptions)}${c.again_ran_on.all ? "" : " and your keys"}.`
+                    : "You only pay for the steps that run again."}
                 </div>
               </div>
             </div>

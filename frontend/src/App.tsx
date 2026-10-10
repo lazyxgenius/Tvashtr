@@ -10,7 +10,7 @@ import { VersionChip } from "./canvas/VersionChip";
 import { getVersions, saveVersion, type TeamVersions } from "./lib/api/versions";
 import { ApiDetailError } from "./lib/api/runs";
 import type { ImportFix } from "./lib/api/teams";
-import { isDesktopApp } from "./lib/desktopRepos";
+import { isDesktopApp, spendText } from "./lib/desktopRepos";
 import {
   fixChips,
   fixRoute,
@@ -1067,7 +1067,7 @@ export default function App({
   // F-canvas-fidelity-1 Part C: the toolbar spend chip — the run's total cost (prefer the run's
   // authoritative total; else sum the polled cost rows), "$0.00" while nothing is running.
   const runCost = run?.cost_total_usd ?? costs.reduce((sum, c) => sum + c.cost_usd, 0);
-  const spendLabel = `$${runCost.toFixed(2)}`;
+  const spendLabel = spendText(`$${runCost.toFixed(2)}`, run?.ran_on); // M-desk-4 (H1)
   // Why Run is disabled, as the canvas callout says it: the team's blocking findings first, then the
   // providers nothing covers (the same rule POST /api/runs enforces).
   const runBlock = !authoring
@@ -1315,6 +1315,7 @@ export default function App({
           <DoneSummary
             idea={run.idea}
             summary={activity.summary}
+            ranOn={activity.ran_on}
             startNext={
               nextInfo
                 ? {

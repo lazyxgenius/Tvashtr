@@ -24,6 +24,7 @@ import {
   stopCompare,
 } from "../../lib/api/compare";
 import type { ProgressState } from "../../lib/api/runs";
+import { spendText } from "../../lib/desktopRepos";
 import { navigate } from "../../lib/nav";
 import { versionAge } from "../../lib/versionFormat";
 import { LoadState } from "../../panel/runs/RunsTab";
@@ -124,7 +125,7 @@ function Running({ c, teamId, onStopped }: { c: Compare; teamId: string; onStopp
         </Badge>
         <span className="cmp-run__meta">
           <span className="cmp-mono">
-            {duration(c.elapsed_s)} · {money(c.cost_usd)} so far
+            {duration(c.elapsed_s)} · {soFar(c.cost_usd, c.ran_on)}
           </span>
           {going && (
             <Button
@@ -238,7 +239,7 @@ function Lane({ side, c, teamId }: { side: CompareSide; c: Compare; teamId: stri
           {look}
         </Badge>
         <span className="cmp-lane__meta">
-          {duration(side.elapsed_s)} · {money(side.cost_usd)}
+          {duration(side.elapsed_s)} · {spendText(money(side.cost_usd), side.ran_on)}
         </span>
         {side.status === "needs_you" && side.run_id && (
           <span className="cmp-lane__open">
@@ -478,6 +479,13 @@ function Foot({
 
 const rounds = (n: number) => `${n} ${n === 1 ? "round" : "rounds"}`;
 
+/** "$2.02 so far"; M-desk-4 (H1), the Desktop: "on your Claude subscription" (no "so far" for
+ *  work wholly on subscriptions), mixed "$0.12 + your Claude subscription so far". */
+function soFar(usd: number, ran: Compare["ran_on"]): string {
+  const spent = spendText(money(usd), ran);
+  return ran?.all && spent !== money(usd) ? spent : `${spent} so far`;
+}
+
 /** One side of one task (Set-Running / Set-Results): its state, or ✓/✗ with rounds · cost · note. */
 function SetCellView({ cell }: { cell: SetCell }) {
   if (cell.status === "waiting")
@@ -487,6 +495,19 @@ function SetCellView({ cell }: { cell: SetCell }) {
         Waiting for a free slot
       </span>
     );
+  if (cell.status === "running" && cell.queued) {
+    // M-desk-4 (H4): waiting for the other lane's job on the Desktop — the waiting line.
+    const [who, ...rest] = (cell.now ?? "").split(" · ");
+    return (
+      <span className="cmp-set__cell cmp-set__cell--muted">
+        <Clock size={14} strokeWidth={1.6} aria-hidden />
+        <span>
+          <b>{who}</b>
+          {rest.length > 0 && ` · ${rest.join(" · ")}`}
+        </span>
+      </span>
+    );
+  }
   if (cell.status === "running") {
     // "Engineer · round 2" → "Working · **Engineer** · round 2"
     const [who, ...rest] = (cell.now ?? "").split(" · ");
@@ -522,7 +543,8 @@ function SetCellView({ cell }: { cell: SetCell }) {
           )}
         </span>
       )}
-      {rounds(cell.rounds)} · <code className="cmp-set__cost">{money(cell.cost_usd)}</code>
+      {rounds(cell.rounds)} ·{" "}
+      <code className="cmp-set__cost">{spendText(money(cell.cost_usd), cell.ran_on)}</code>
       {cell.note && <span className="cmp-set__note">{cell.note}</span>}
     </span>
   );

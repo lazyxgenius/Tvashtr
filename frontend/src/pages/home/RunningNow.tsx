@@ -2,6 +2,7 @@ import { RotateCcw, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 
 import { type RunListRow, type RunLive, stopRun } from "../../lib/api/runs";
+import { isDesktopApp } from "../../lib/desktopRepos";
 import { navigate } from "../../lib/nav";
 import { StopRunDialog } from "../../components/StopRunDialog";
 import { Badge, Button, useToast } from "../../design-system/components";
@@ -147,10 +148,14 @@ function RunCard({
             </div>
             <span className="hm-run__spend">
               {money(row.spent_usd)} of {money(cap)}
+              {/* M-desk-4 (H3): on the Desktop, the budget counts API-key spend. */}
+              {isDesktopApp() && " on keys"}
             </span>
           </>
         ) : (
-          <span className="hm-run__spend">{money(row.spent_usd)} spent</span>
+          <span className="hm-run__spend">
+            {money(row.spent_usd)} spent{isDesktopApp() && " on keys"}
+          </span>
         )}
         <span className="hm-run__actions">
           {teamId && (

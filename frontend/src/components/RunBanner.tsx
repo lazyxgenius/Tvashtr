@@ -1,4 +1,5 @@
 import type { CostRow, RunRow } from "../lib/api";
+import { spendText } from "../lib/desktopRepos";
 import { deriveOverall } from "../lib/status";
 import { VersionTag } from "./VersionTag";
 
@@ -47,7 +48,7 @@ export function RunBanner({
       <Item label="run" value={runId ? runId.slice(0, 8) : "—"} />
       {run?.team_version_number != null && <VersionTag number={run.team_version_number} />}
       {cost != null ? (
-        <Item label="cost" value={`$${cost.toFixed(4)}`} />
+        <Item label="cost" value={spendText(`$${cost.toFixed(4)}`, run?.ran_on)} />
       ) : (
         costs.length > 0 && <Item label="cost" value={`$${totalFromRows.toFixed(4)}`} />
       )}

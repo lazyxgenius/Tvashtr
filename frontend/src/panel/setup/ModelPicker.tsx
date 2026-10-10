@@ -27,7 +27,7 @@ import {
   shortId,
   subscriptionStateText,
 } from "./modelCatalog";
-import type { CredentialCover } from "./modelCopy";
+import { type CredentialCover, planOnThisMac } from "./modelCopy";
 import { ModelButton } from "./ModelButton";
 
 export interface ModelPickerProps {
@@ -331,7 +331,10 @@ export function ModelPicker({
                   role={customError ? "alert" : undefined}
                 >
                   {customError ??
-                    "The provider’s own name for the model. It runs on that provider’s key."}
+                    (planOnThisMac(custom, cover, desktop)
+                      ? // M-desk-4 (H6): on the Desktop, a Claude/Grok model runs on the plan.
+                        `The provider’s own name for the model. On this Mac, it runs on your ${planOnThisMac(custom, cover, desktop)} subscription.`
+                      : "The provider’s own name for the model. It runs on that provider’s key.")}
                 </p>
                 <div className="nd-lb__custom-actions">
                   <Button variant="ghost" size="sm" onClick={() => setCustom(null)}>

@@ -572,7 +572,11 @@ export function Composer() {
               <>
                 <span className="hm-alert__text">
                   <b>Can’t run {where} yet.</b>{" "}
-                  {missingKeysSentence(selected?.name ?? "This team", problem.providers ?? [])}
+                  {missingKeysSentence(
+                    selected?.name ?? "This team",
+                    problem.providers ?? [],
+                    desktop,
+                  )}
                 </span>
                 <Button
                   variant="secondary"

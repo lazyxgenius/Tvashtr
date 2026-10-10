@@ -165,6 +165,7 @@ export function SetupTab({
         changed={changed}
       />
       <AdvancedSection
+        model={draft.model}
         fallbackModel={draft.fallbackModel}
         outputSchema={draft.outputSchema}
         onBackupChange={(v) => set("fallbackModel", v)}

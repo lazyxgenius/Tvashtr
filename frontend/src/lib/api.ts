@@ -10,7 +10,7 @@ import type { RunTarget } from "./api/runs";
 // The leaf module, never `./api/connectors`: that one imports `./api/runs`, which extends
 // `ApiError` from this file when it loads (a cycle that throws for any entry loading this first).
 import { parseRoundConnectors, type RoundConnectors } from "./api/roundConnectors";
-import { isDesktopApp } from "./desktopRepos";
+import { desktopQuery, isDesktopApp, type DesktopRoutes } from "./desktopRepos";
 import { isFeedEvent } from "./events";
 
 // Absolute API origin when set at build time. Empty = same-origin relative paths (preferred).
@@ -201,6 +201,8 @@ export interface RunRow {
   github_repo?: string | null;
   pr_url?: string | null;
   cost_total_usd: number | null;
+  /** M-desk-4: read from the Desktop, where the run's work really ran. */
+  ran_on?: DesktopRoutes;
   created_at: string;
   updated_at: string;
   // Revamp P11 (additive): the library team this run was launched from.
@@ -1083,6 +1085,8 @@ export interface TeamRunRow {
   team_version_number?: number | null;
   /** The number of the run that resumed this one. */
   resumed_as?: number | null;
+  /** M-desk-4: read from the Desktop, where the run's work really ran. */
+  ran_on?: DesktopRoutes;
 }
 
 // One starter preset in the New-team picker (the curated, code-resident template library).
@@ -1197,7 +1201,7 @@ export async function renameTeam(teamId: string, name: string): Promise<TeamSumm
 // A team's full run history, newest first (the dashboard drill-down). `[]` for a team that exists
 // but has never run; a team that is not yours is a 404, which throws.
 export async function getTeamRuns(teamId: string): Promise<TeamRunRow[]> {
-  const data = await getJSON<{ runs: TeamRunRow[] }>(`/api/teams/${teamId}/runs`);
+  const data = await getJSON<{ runs: TeamRunRow[] }>(`/api/teams/${teamId}/runs${desktopQuery()}`);
   return data.runs;
 }
 
@@ -1426,7 +1430,7 @@ export const getTeamValidity = (teamId: string): Promise<GraphValidity> =>
   getJSON<GraphValidity>(`/api/teams/${teamId}/validate`);
 
 export const getRunStatus = (runId: string): Promise<RunStatus> =>
-  getJSON<RunStatus>(`/api/runs/${runId}`);
+  getJSON<RunStatus>(`/api/runs/${runId}${desktopQuery()}`);
 
 export const getHealth = (): Promise<Health> => getJSON<Health>("/health");
 

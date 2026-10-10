@@ -12,6 +12,7 @@ import type {
   TestGets,
   TestRun,
 } from "./api/agentTests";
+import { spendText } from "./desktopRepos";
 
 export const CHECK_LABEL: Record<CheckKind, string> = {
   must_say: "Must say",
@@ -105,13 +106,21 @@ export function elapsedText(seconds: number): string {
 export const runningTitle = (run: TestRun) =>
   `Running ${Math.min(run.done + 1, run.total)} of ${run.total}`;
 
-/** "On v7 · $0.14 so far". */
-export const runningSub = (run: TestRun) =>
-  `${run.version != null ? `On v${run.version} · ` : ""}${dollars(run.cost_usd)} so far`;
+/** "On v7 · $0.14 so far" (M-desk-4, the Desktop: "On v7 · on your Grok subscription"). */
+export const runningSub = (run: TestRun) => {
+  const spent = spendText(dollars(run.cost_usd), run.ran_on);
+  const soFar = run.ran_on?.all && spent !== dollars(run.cost_usd) ? "" : " so far";
+  return `${run.version != null ? `On v${run.version} · ` : ""}${spent}${soFar}`;
+};
 
-/** "On v7 · just now · $0.38" (Test-Stopped: "On v7 · $0.14", no time). */
+/** "On v7 · just now · $0.38" (Test-Stopped: "On v7 · $0.14", no time). M-desk-4: on the
+ *  Desktop, replays that ran on a subscription name it instead of a price. */
 export const resultsSub = (run: TestRun, when: string) =>
-  [run.version != null ? `On v${run.version}` : null, when || null, dollars(run.cost_usd)]
+  [
+    run.version != null ? `On v${run.version}` : null,
+    when || null,
+    spendText(dollars(run.cost_usd), run.ran_on),
+  ]
     .filter(Boolean)
     .join(" · ");
 

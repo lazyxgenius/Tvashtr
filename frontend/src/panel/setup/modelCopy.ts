@@ -96,6 +96,18 @@ export function modelHint(
   }
 }
 
+/** M-desk-4 (H6): the plan ("Claude", "Grok") this Desktop runs `model` on — its subscription
+ *  connected and fresh here — else null (the website, a key, or no plan for its provider). */
+export function planOnThisMac(
+  model: string,
+  cover: CredentialCover | null,
+  desktop = isDesktopApp(),
+): string | null {
+  if (!cover || !model.trim() || modelTreatment(model, cover, desktop) !== "subscription")
+    return null;
+  return displayNameForSubscription(subscriptionProviderForModel(model) as SubscriptionProviderId);
+}
+
 /** Needs a model: blank, or (once credentials are known) nothing covers it. */
 export function needsModel(model: string, cover: CredentialCover | null): boolean {
   if (!model.trim()) return true;

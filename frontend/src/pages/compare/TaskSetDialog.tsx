@@ -5,6 +5,7 @@ import { VersionDialog } from "../../canvas/VersionDialogs";
 import { Button, Checkbox, IconButton, Input, Popover } from "../../design-system/components";
 import { createTaskSet, type TaskSet, updateTaskSet } from "../../lib/api/compare";
 import { listRecentTasks, type RecentTask } from "../../lib/api/myAgents";
+import { isDesktopApp, onSubscriptions, subscriptionsText } from "../../lib/desktopRepos";
 import { formatRelativeTime } from "../../lib/time";
 import { money } from "../home/homeFormat";
 
@@ -12,6 +13,21 @@ type Row = { key: number; task: string; starts_from: string; hidden_check: strin
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const blank = (r: Row) => !r.task.trim() && !r.starts_from.trim() && !r.hidden_check.trim();
+
+/** "Comparing two versions on this set: about $5.60 and 40 min". M-desk-4 (D15, H5), on the
+ *  Desktop: wholly on subscriptions "about 80 min on your Claude and Grok subscriptions"; mixed,
+ *  the key part's dollars "about $2.80 + your Claude subscription and 80 min". */
+function setEstimateNote(
+  e: { cost_usd: number; minutes: number },
+  desktop: TaskSet["desktop"],
+): string {
+  const lead = "Comparing two versions on this set: about";
+  const on = isDesktopApp() ? onSubscriptions(desktop) : null;
+  if (on) return `${lead} ${e.minutes} min on ${on}`;
+  if (isDesktopApp() && desktop?.subscriptions.length)
+    return `${lead} ${money(e.cost_usd)} + ${subscriptionsText(desktop.subscriptions)} and ${e.minutes} min`;
+  return `${lead} ${money(e.cost_usd)} and ${e.minutes} min`;
+}
 
 /**
  * M9 — New / Edit task set (Quality › Set-Edit, Set-AddRecent): the name, the tasks (task, starts
@@ -81,11 +97,7 @@ export function TaskSetDialog({
       sub={null}
       size="cv-vdlg cmp-setdlg"
       onClose={onClose}
-      footNote={
-        e
-          ? `Comparing two versions on this set: about ${money(e.cost_usd)} and ${e.minutes} min`
-          : null
-      }
+      footNote={e ? setEstimateNote(e, set?.desktop) : null}
       actions={
         <>
           <Button variant="ghost" onClick={onClose}>

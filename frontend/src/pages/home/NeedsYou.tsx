@@ -177,10 +177,16 @@ export function NeedsYou() {
       retryPrefill(item.run, item.team?.id ?? item.run.library_team_id ?? null),
     );
 
-  const fixKeys = (teamName: string, providers: string[], key: string) =>
+  const fixKeys = (
+    teamName: string,
+    providers: string[],
+    key: string,
+    savedMessage?: (provider: string) => string,
+  ) =>
     requestAddKeys({
       teamName,
       providers,
+      savedMessage,
       onDone: () => {
         removeInboxItem(key);
         void reloadTeams();
@@ -443,7 +449,19 @@ export function NeedsYou() {
                 <Button
                   variant="secondary"
                   size="sm"
-                  onClick={() => fixKeys(item.team.name, item.missing_providers, item.key)}
+                  onClick={() =>
+                    fixKeys(
+                      item.team.name,
+                      item.missing_providers,
+                      item.key,
+                      // M-desk-4 (H6): a website gap fixed on the Desktop, which already runs
+                      // the team on the plans, says where the keys work.
+                      isDesktopApp() && item.target === "website" && covers.length
+                        ? (provider) =>
+                            `${item.missing_providers.length === 1 ? `${provider} key` : "Keys"} saved. ${item.team.name} can run on the website too.`
+                        : undefined,
+                    )
+                  }
                 >
                   Fix
                 </Button>

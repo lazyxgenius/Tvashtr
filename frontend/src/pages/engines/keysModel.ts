@@ -7,7 +7,12 @@
  * uses NVIDIA NIM right now." — and is never suggested as a key to add.
  */
 import type { SavedKey, UsageNode } from "../../lib/api/engines";
-import { byokProviderOf, displayNameForSubscription } from "../../lib/engines";
+import {
+  byokProviderOf,
+  displayNameForSubscription,
+  RUNNER_SUBSCRIPTIONS,
+  subscriptionProviderForModel,
+} from "../../lib/engines";
 import {
   type EngineInputs,
   monogramOf,
@@ -272,8 +277,23 @@ export function keyUsage(i: EngineInputs, provider: string): KeyUsage {
     heading: `${provider} is used by`,
     rows,
     empty: noSeat ? noSeatNote(providerName(i, provider)) : `No team uses ${provider} yet.`,
-    footer: noSeat ? null : "Works for website runs and Desktop runs.",
+    footer: noSeat
+      ? null
+      : planFirst(i, provider)
+        ? `Works for website runs. On this Mac, ${planFirst(i, provider)} runs use your ${planFirst(i, provider)} subscription first.`
+        : "Works for website runs and Desktop runs.",
   };
+}
+
+/** M-desk-4 (H6): on the Desktop, the plan ("Claude", "Grok") this Mac runs `provider`'s models
+ *  on before any key — connected here — else null (the website, or no such plan). */
+function planFirst(i: EngineInputs, provider: string): string | null {
+  if (i.surface !== "desktop") return null;
+  const sub = subscriptionProviderForModel(`${provider}/`);
+  if (!sub || !RUNNER_SUBSCRIPTIONS.includes(sub)) return null;
+  return i.subs.some((s) => s.provider === sub && s.connected)
+    ? displayNameForSubscription(sub)
+    : null;
 }
 
 // ---- Replace (ENG-56) ----
@@ -300,16 +320,18 @@ export function replaceCopy(i: EngineInputs, provider: string): ReplaceCopy {
   const noSeat = providersServingNoSeat(i.catalogue).has(provider);
   const user = noSeat ? null : soleUser(i, provider);
   const lead = "The old key is deleted when you save.";
+  // M-desk-4 (H6): on the Desktop, these models run on the plan first; the key is the website's.
+  const next = planFirst(i, provider) ? "next website run" : "next run";
   const body = noSeat
     ? `${lead} ${noSeatNote(providerName(i, provider))}`
     : user
-      ? `${lead} ${user} uses the new one on its next run.`
-      : `${lead} Agents use the new one on their next run.`;
+      ? `${lead} ${user} uses the new one on its ${next}.`
+      : `${lead} Agents use the new one on their ${next}.`;
   return {
     title: `Replace the ${provider} key`,
     body,
     toast: user
-      ? `${provider} key replaced. ${user} uses it on its next run.`
+      ? `${provider} key replaced. ${user} uses it on its ${next}.`
       : `${provider} key replaced.`,
   };
 }

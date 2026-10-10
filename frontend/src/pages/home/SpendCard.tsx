@@ -1,4 +1,5 @@
 import { useHomeData, refreshHome } from "./homeData";
+import { isDesktopApp } from "../../lib/desktopRepos";
 import { SECTION_IDS, money } from "./homeFormat";
 import "./home-runs.css";
 
@@ -62,7 +63,8 @@ export function SpendCard() {
             ))}
             <div className="hm-spend__note">
               {s.default_run_budget_usd
-                ? `Each run stops at ${money(s.default_run_budget_usd)} unless you change its budget. `
+                ? // M-desk-4 (H3): on the Desktop, the budget counts API-key spend.
+                  `Each run stops at ${money(s.default_run_budget_usd)}${isDesktopApp() ? " of API-key spend" : ""} unless you change its budget. `
                 : ""}
               Subscription runs on Desktop count against your plan, not here.
             </div>

@@ -72,6 +72,15 @@ export function onSubscriptions(...routes: (DesktopRoutes | null | undefined)[])
   return subscriptionsText(routes.flatMap((r) => r?.subscriptions ?? []));
 }
 
+/** M-desk-4 (H1): a money figure as the Desktop says it. Work that ran on subscriptions (the
+ *  server's `ran_on`, read from the Desktop) names them: all of it "on your Claude subscription",
+ *  mixed "$0.12 + your Claude subscription". Key-only work and the website: `money` as given. */
+export function spendText(money: string, ran: DesktopRoutes | null | undefined): string {
+  if (!isDesktopApp() || !ran?.subscriptions.length) return money;
+  const subs = subscriptionsText(ran.subscriptions);
+  return ran.all ? `on ${subs}` : `${money} + ${subs}`;
+}
+
 /** The bridge's `repos` namespace, or null (website, or a Desktop build without it). Spec §6 also
  *  names `dialog.pickFolder()`; it is used as a fallback for the folder picker. */
 export function desktopRepos(): DesktopReposBridge | null {

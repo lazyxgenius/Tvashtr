@@ -2,6 +2,7 @@
  * M3 — Resume from here (`docs/superpowers/plans/api/resume.md`, ruling R8): where a failed, stopped
  * or stalled run can pick up again, and starting that new run. The words are made server-side.
  */
+import { desktopQuery, type DesktopRoutes } from "../desktopRepos";
 import { apiRequest } from "./runs";
 
 /** The Prob-Confirm dialog for one resume point. */
@@ -12,6 +13,9 @@ export interface ResumeConfirm {
   runs_again: string[];
   skips_cost_usd: number;
   skips_s: number;
+  /** M-desk-4 (H2): read from the Desktop, where the skipped steps and the re-run ones ran. */
+  skips_ran_on?: DesktopRoutes;
+  again_ran_on?: DesktopRoutes;
 }
 
 /** One step of the run, in the order it ran (agent steps and gates). */
@@ -28,6 +32,8 @@ export interface ResumePoint {
   text: string;
   at: string;
   cost_usd: number | null;
+  /** M-desk-4: read from the Desktop, the plan this step ran on (null: a key). */
+  plan?: string | null;
   /** "kept" | "suggested" (the step that failed or stalled). */
   state: string;
   resumable: boolean;
@@ -48,7 +54,10 @@ export interface ResumeInfo {
 }
 
 export function getResume(runId: string): Promise<ResumeInfo> {
-  return apiRequest<ResumeInfo>("GET", `/api/runs/${encodeURIComponent(runId)}/resume`);
+  return apiRequest<ResumeInfo>(
+    "GET",
+    `/api/runs/${encodeURIComponent(runId)}/resume${desktopQuery()}`,
+  );
 }
 
 /** Start the resumed run. Refusals (409 / 422 / 429) throw `ApiDetailError` with the detail. */

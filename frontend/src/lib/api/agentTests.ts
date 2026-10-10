@@ -70,6 +70,8 @@ export interface TestResult {
   cost_usd: number;
   /** M-desk-routes (D4): a Desktop replay queued behind another job of its plan — its line. */
   waiting?: string | null;
+  /** M-desk-4: read from the Desktop, where this replay really ran. */
+  ran_on?: DesktopRoutes;
 }
 
 export interface TestRun {
@@ -94,6 +96,8 @@ export interface TestRun {
   /** "+1 since v6" (delta may be ≤ 0). */
   since: { version: number; delta: number } | null;
   results: TestResult[];
+  /** M-desk-4: read from the Desktop, where the run's replays really ran. */
+  ran_on?: DesktopRoutes;
 }
 
 export interface TestEstimate {
@@ -161,6 +165,8 @@ export interface ReplayDetail {
   at: string | null;
   duration_s: number | null;
   cost_usd: number;
+  /** M-desk-4: read from the Desktop, where this replay really ran. */
+  ran_on?: DesktopRoutes;
   gets: TestGets | null;
   answer: string | null;
   files: string[];
@@ -298,7 +304,7 @@ export async function getReplay(
 ): Promise<ReplayDetail> {
   const r = await apiRequest<ReplayDetail>(
     "GET",
-    `${base(teamId, nodeId)}/results/${encodeURIComponent(resultId)}`,
+    `${base(teamId, nodeId)}/results/${encodeURIComponent(resultId)}${desktopQuery()}`,
   );
   return {
     ...r,

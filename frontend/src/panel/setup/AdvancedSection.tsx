@@ -7,6 +7,7 @@ import { ChangedDot } from "../ChangedDot";
 import { ModelButton } from "./ModelButton";
 import { unknownModel } from "./modelCatalog";
 import { UnknownModelWarning } from "./ModelNotices";
+import { planOnThisMac } from "./modelCopy";
 import { ModelPicker } from "./ModelPicker";
 import type { ModelPickerContext } from "./ModelSection";
 import { SettingRow } from "./SettingRow";
@@ -17,6 +18,7 @@ import { BACKUP_HINT, OUTPUT_FORMAT_HINT, TIPS } from "./setupCopy";
  * one-line summary of both while it's closed.
  */
 export function AdvancedSection({
+  model = "",
   fallbackModel,
   outputSchema,
   onBackupChange,
@@ -25,6 +27,8 @@ export function AdvancedSection({
   defaultOpen = false,
   changed = [],
 }: {
+  /** M-desk-4 (H7/K7): the main model — on the Desktop, one on a plan never switches to the backup. */
+  model?: string;
   fallbackModel: string;
   outputSchema: string;
   /** Pick the backup model ("" = None). Without it the picker is read-only. */
@@ -38,6 +42,7 @@ export function AdvancedSection({
   const [open, setOpen] = useState(defaultOpen);
   const [unknownHidden, setUnknownHidden] = useState<string | null>(null);
   const unknown = picker ? unknownModel(fallbackModel, picker.catalogue) : null;
+  const plan = picker ? planOnThisMac(model, picker.cover, picker.desktop) : null;
   const schemaSet = outputSchema.trim() !== "";
   const summary = `Backup model: ${fallbackModel.trim() || "none"} · Output format: ${
     schemaSet ? "set" : "none"
@@ -69,7 +74,11 @@ export function AdvancedSection({
           <SettingRow
             label="Backup model"
             tip={TIPS.backup}
-            hint={BACKUP_HINT}
+            hint={
+              plan
+                ? `${BACKUP_HINT} On this Mac, ${plan} runs use your subscription and don’t switch to it.`
+                : BACKUP_HINT
+            }
             changed={changed.includes("backupModel")}
           >
             {picker ? (
@@ -92,7 +101,11 @@ export function AdvancedSection({
             )}
           </SettingRow>
           {unknown && unknownHidden !== unknown && (
-            <UnknownModelWarning model={unknown} onDismiss={() => setUnknownHidden(unknown)} />
+            <UnknownModelWarning
+              model={unknown}
+              plan={picker ? planOnThisMac(unknown, picker.cover, picker.desktop) : null}
+              onDismiss={() => setUnknownHidden(unknown)}
+            />
           )}
           <SettingRow
             label="Output format"

@@ -1,5 +1,6 @@
 import { CHECK_LABEL, elapsedText } from "../../lib/agentTestsFormat";
 import { type CheckResult, getReplay, type ReplayDetail } from "../../lib/api/agentTests";
+import { spendText } from "../../lib/desktopRepos";
 import { formatRelativeTime } from "../../lib/time";
 import { LoadState } from "../runs/RunsTab";
 import { useLoaded } from "../runs/useLoaded";
@@ -67,7 +68,7 @@ export function ReplayView({
         r.version != null ? `On v${r.version}` : null,
         r.at ? formatRelativeTime(r.at) : null,
         r.duration_s != null ? elapsedText(r.duration_s) : null,
-        `$${r.cost_usd.toFixed(2)}`,
+        spendText(`$${r.cost_usd.toFixed(2)}`, r.ran_on), // M-desk-4 (H1)
       ]
         .filter(Boolean)
         .join(" · ")

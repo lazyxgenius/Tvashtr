@@ -9,6 +9,7 @@ import {
   type TeamSummary,
 } from "../../lib/api";
 import { ApiDetailError } from "../../lib/api/runs";
+import { RUNNER_SUBSCRIPTIONS, subscriptionProviderForModel } from "../../lib/engines";
 import { listNatural, subscriptionName } from "./homeFormat";
 
 const LAST_TEAM_KEY = "tvashtr.home.lastTeam";
@@ -62,12 +63,26 @@ function keysPhrase(missing: string[]): string {
   return missing.length === 1 ? `${missing[0]} key` : `${missing.length} keys`;
 }
 
+/** M-desk-4 (H6/K8): on the Desktop, the plans that would run every missing provider here
+ *  ("Claude and Grok") — the first remedy, Engines' Connect — else null. */
+function plansFor(missing: string[]): string | null {
+  const subs = missing.map((p) => subscriptionProviderForModel(`${p}/`));
+  if (!missing.length || subs.some((s) => !s || !RUNNER_SUBSCRIPTIONS.includes(s))) return null;
+  return listNatural([...new Set(subs as string[])].map(subscriptionName));
+}
+
+/** "This computer: connect Claude and Grok in Engines, or add 2 keys" (K8). */
+const connectOrAdd = (plans: string, missing: string[]) =>
+  `This computer: connect ${plans} in Engines, or add ${missing.length === 1 ? `an ${missing[0]} key` : keysPhrase(missing)}`;
+
 /** The team picker's readiness phrase: "Ready", "Ready · never run", "Website: needs 2 keys". */
 export function pickerPhrase(team: TeamSummary, desktop: boolean): string {
   const r = readinessOf(team, desktop);
   if (r.ready === null) return "";
   if (r.ready)
     return (team.run_count ?? (team.last_run ? 1 : 0)) === 0 ? "Ready · never run" : "Ready";
+  const plans = desktop ? plansFor(r.missing) : null;
+  if (plans) return connectOrAdd(plans, r.missing);
   return `${desktop ? "This computer" : "Website"}: needs ${keysPhrase(r.missing)}`;
 }
 
@@ -85,9 +100,12 @@ export function readinessHint(
       text: subs.length ? `Ready on this computer · ${subs.join(", ")}` : "Ready on this computer",
     };
   }
+  const plans = desktop ? plansFor(r.missing) : null;
   return {
     tone: "gap",
-    text: `${desktop ? "This computer" : "Website"} needs ${keysPhrase(r.missing)}`,
+    text: plans
+      ? connectOrAdd(plans, r.missing)
+      : `${desktop ? "This computer" : "Website"} needs ${keysPhrase(r.missing)}`,
   };
 }
 
@@ -164,8 +182,12 @@ export function launchProblem(
 }
 
 /** "Indicator sprint team uses anthropic and xai models, and there’s no API key for them." */
-export function missingKeysSentence(team: string, providers: string[]): string {
+export function missingKeysSentence(team: string, providers: string[], desktop = false): string {
   const them = providers.length === 1 ? "it" : "them";
+  const plans = desktop ? plansFor(providers) : null;
+  if (plans)
+    // M-desk-4 (K8): on the Desktop, connecting the plan comes first.
+    return `${team} uses ${listNatural(providers)} models. Connect ${plans} in Engines, or add API keys for ${them}.`;
   return `${team} uses ${listNatural(providers)} models, and there’s no API key for ${them}.`;
 }
 

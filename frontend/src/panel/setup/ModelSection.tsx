@@ -5,7 +5,7 @@ import { Switch } from "../../design-system/components";
 import type { Capability, ProviderCatalogueEntry } from "../../lib/api";
 import type { ChangeGroup } from "../agentDraft";
 import { type ModelGroup, modelGroups, pickerNote, unknownModel } from "./modelCatalog";
-import { type CredentialCover, type ModelHint, modelHint } from "./modelCopy";
+import { type CredentialCover, type ModelHint, modelHint, planOnThisMac } from "./modelCopy";
 import { SameModelAdvisory, UnknownModelWarning } from "./ModelNotices";
 import { ModelPicker } from "./ModelPicker";
 import { SettingRow, SettingSection } from "./SettingRow";
@@ -138,7 +138,11 @@ export function ModelSection({
         />
       )}
       {unknown && unknownHidden !== unknown && (
-        <UnknownModelWarning model={unknown} onDismiss={() => setUnknownHidden(unknown)} />
+        <UnknownModelWarning
+          model={unknown}
+          plan={planOnThisMac(unknown, picker.cover, picker.desktop)}
+          onDismiss={() => setUnknownHidden(unknown)}
+        />
       )}
       <SettingRow label="Images" tip={TIPS.images} changed={changed.includes("images")}>
         <Switch aria-label="Images" checked={multimodal} onCheckedChange={onMultimodalChange} />

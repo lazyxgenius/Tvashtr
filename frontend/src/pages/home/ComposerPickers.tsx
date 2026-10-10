@@ -3,7 +3,7 @@ import { type KeyboardEvent, type ReactNode, useRef, useState } from "react";
 
 import type { TeamSummary } from "../../lib/api";
 import type { DesktopFolder } from "../../lib/desktopRepos";
-import { folderLabel } from "../../lib/desktopRepos";
+import { folderLabel, isDesktopApp } from "../../lib/desktopRepos";
 import { Input, LetterTile, Popover, Select } from "../../design-system/components";
 import { type RepoList, type Target, pickerPhrase, targetBranch } from "./composerModel";
 import { GithubIcon } from "./homeIcons";
@@ -525,7 +525,12 @@ export function OptionsPopover({
           label="Budget for this run"
           value={budget}
           inputMode="decimal"
-          helper="The run pauses and asks you before spending more."
+          helper={
+            isDesktopApp()
+              ? // M-desk-4 (H3): on the Desktop, the budget counts API-key spend only.
+                "The run pauses and asks you before spending more. Counts API-key spend. Work on your Claude and Grok subscriptions isn’t billed here."
+              : "The run pauses and asks you before spending more."
+          }
           error={budgetError ?? undefined}
           onChange={(e) => onBudget(e.target.value)}
         />

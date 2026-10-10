@@ -5,6 +5,7 @@ import { useId } from "react";
 
 import { Button, ButtonLink } from "../../../design-system/components";
 import type { RunSummary } from "../../../lib/api/activity";
+import { type DesktopRoutes, spendText } from "../../../lib/desktopRepos";
 import { duration } from "./liveFormat";
 import { StateGlyph } from "./StateGlyph";
 
@@ -16,10 +17,13 @@ import { StateGlyph } from "./StateGlyph";
 export function DoneSummary({
   idea,
   summary,
+  ranOn,
   startNext,
 }: {
   idea: string;
   summary: RunSummary;
+  /** M-desk-4 (H1): read from the Desktop, where the run's work really ran. */
+  ranOn?: DesktopRoutes;
   /** M10: only when the server says this run can start the next one (no dead buttons).
    *  `prNumber`: the unmerged pull request the next run can start from. */
   startNext?: { prNumber: number | null; onStart: () => void };
@@ -35,7 +39,7 @@ export function DoneSummary({
   const stats: [string, string][] = [
     [String(summary.rounds), summary.rounds === 1 ? "round" : "rounds"],
     [duration(summary.elapsed_s), "total time"],
-    [`$${summary.cost_usd.toFixed(2)}`, "cost"],
+    [spendText(`$${summary.cost_usd.toFixed(2)}`, ranOn), "cost"],
   ];
   if (summary.tests_passed != null) stats.push([String(summary.tests_passed), "tests passing"]);
   return (

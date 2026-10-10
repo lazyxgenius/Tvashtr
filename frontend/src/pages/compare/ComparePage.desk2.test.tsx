@@ -80,6 +80,7 @@ beforeEach(() => {
   fetchMock = vi.fn<Fetch>((url) => {
     if (url.split("?")[0] === "/api/teams/team-1/compare") return reply(page);
     if (url === "/api/teams/team-1/task-sets") return reply({ sets });
+    if (url === "/api/teams/team-1/task-sets?desktop_target=1") return reply({ sets }); // M-desk-4
     if (url.startsWith("/api/recent-tasks")) return reply({ tasks: [] });
     if (url === "/api/compares/cmp-1") return reply(compare);
     return reply({});
