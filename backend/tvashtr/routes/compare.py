@@ -72,9 +72,10 @@ def start_compare(team_id: str, body: CompareRequest, current_user: CurrentUser)
 
 
 @router.get("/api/compares/{compare_id}")
-def get_compare(compare_id: str, current_user: CurrentUser) -> dict:
-    """The running page (polled every 2 s, R15): both lanes, then the results."""
-    return compare.view(_owner(current_user), compare_id)
+def get_compare(compare_id: str, current_user: CurrentUser, desktop_target: bool = False) -> dict:
+    """The running page (polled every 2 s, R15): both lanes, then the results. M-desk-4: read from
+    the Desktop (``desktop_target``), money for work that ran on subscriptions names them."""
+    return compare.view(_owner(current_user), compare_id, desktop_target)
 
 
 @router.post("/api/compares/{compare_id}/stop")

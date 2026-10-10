@@ -1602,7 +1602,11 @@ def get_ab_comparison(
 
 
 @router.get("/api/runs/{run_id}")
-def get_run(run_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]) -> dict:
+def get_run(
+    run_id: str,
+    current_user: Annotated[UserOut, Depends(get_current_user)],
+    desktop_target: bool = False,
+) -> dict:
     """Return the DBOS workflow status, the run row, and the run's cost rows. M-accounts Slice B:
     owner-scoped — 404 unless the run belongs to the current user (no cross-account guessing)."""
     status = DBOS.get_workflow_status(run_id)
@@ -1621,6 +1625,10 @@ def get_run(run_id: str, current_user: Annotated[UserOut, Depends(get_current_us
         run_dict = _run_to_dict(run)
         # Revamp P3: team, live spent_usd, awaiting, failure.
         run_dict.update(run_views.run_extras(session, [run])[run.id])
+        # M-desk-4 (H1): read from the Desktop, where the run's work really ran (its Desktop
+        # jobs; any metered spend).
+        if desktop_target:
+            run_dict["ran_on"] = desktop_jobs.ran_on(session, [run.workflow_id])[run.workflow_id]
 
     return {
         "run_id": run_id,
@@ -2118,26 +2126,30 @@ def get_run_activity(
     run_id: str,
     current_user: Annotated[UserOut, Depends(get_current_user)],
     after: str | None = None,
+    desktop_target: bool = False,
 ) -> dict:
     """M2 live run view: the run's steps in plain words, each agent's live state, the one thing
     needing action and (once completed) the summary — ``control_plane/activity.py``. Owner-scoped
     (404). ``after`` is a previous reply's ``cursor``: only newer lines (and any line still
-    changing) come back; everything else is always whole. Polled every 2 s (R15)."""
+    changing) come back; everything else is always whole. Polled every 2 s (R15). M-desk-4: read
+    from the Desktop (``desktop_target``), the end line names the subscriptions the work ran on."""
     with db.session_scope() as session:
         run = _require_owned_run(session, run_id, uuid.UUID(current_user.id))
-        return activity.run_activity(session, run, after)
+        return activity.run_activity(session, run, after, desktop=desktop_target)
 
 
 @router.get("/api/runs/{run_id}/resume")
 def get_run_resume(
-    run_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]
+    run_id: str,
+    current_user: Annotated[UserOut, Depends(get_current_user)],
+    desktop_target: bool = False,
 ) -> dict:
     """M3 (R8): where this run can be picked up again — its steps (Kept / Suggested), which ones can
     be resumed and, for each, what is kept, what runs again and what it skips
     (``control_plane/resume.py``). Owner-scoped (404); always 200 otherwise (``available``)."""
     with db.session_scope() as session:
         run = _require_owned_run(session, run_id, uuid.UUID(current_user.id))
-        return resume.points(session, run)
+        return resume.points(session, run, desktop=desktop_target)
 
 
 class ResumeRunRequest(BaseModel):
@@ -3580,8 +3592,19 @@ def get_team_versions(
         if desktop_target and listing.get("check_sets"):
             # Every set check compares the same two versions, so they all run in the same place.
             where = task_sets.check_desktop(session, team, listing["current"], me)
+            # M-desk-4 (H5): the minutes count the turns the two versions take on shared plans.
+            current = listing["current"]
+            graphs = (
+                versions._version(session, team, current).graph,
+                versions.capture(session, team),
+            )
+            plans = task_sets.graph_plans(session, graphs, me)
+            estimates = {
+                s["id"]: s["estimate"] for s in task_sets.check_sets(session, team, current, plans)
+            }
             for offered in listing["check_sets"]:
                 offered["desktop"] = where
+                offered["estimate"] = estimates.get(offered["id"], offered.get("estimate"))
         return listing
 
 
@@ -4156,7 +4179,9 @@ def rename_team(
 
 @router.get("/api/teams/{team_id}/runs")
 def get_team_runs(
-    team_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]
+    team_id: str,
+    current_user: Annotated[UserOut, Depends(get_current_user)],
+    desktop_target: bool = False,
 ) -> dict:
     """This team's FULL run history, newest first — the dashboard's per-team drill-down. Each row is
     ``{run_id, status, idea, created_at, cost_total_usd}``; ``run_id`` is what the run view opens.
@@ -4173,7 +4198,7 @@ def get_team_runs(
         tid = uuid.UUID(team_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="invalid team id") from exc
-    runs = list_team_runs(tid, owner_id)
+    runs = list_team_runs(tid, owner_id, desktop=desktop_target)  # M-desk-4: + ran_on
     if runs is None:
         raise HTTPException(status_code=404, detail="library team not found")
     return {"runs": runs}

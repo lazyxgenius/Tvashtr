@@ -27,8 +27,9 @@ from types import SimpleNamespace
 from sqlalchemy import func, literal_column, or_, select
 from sqlalchemy.dialects.postgresql import JSONB
 
-from tvashtr.control_plane import live_state, run_views
+from tvashtr.control_plane import desktop_jobs, live_state, run_views
 from tvashtr.control_plane.connector_proxy import EVENT_KINDS as CONNECTOR_EVENT_KINDS
+from tvashtr.control_plane.desktop_jobs import spend_text
 from tvashtr.control_plane.guardrails import mask_secrets
 from tvashtr.control_plane.run_failure import describe_run_failure, humanise, node_label
 from tvashtr.models import (
@@ -539,13 +540,15 @@ def build(
     number: int | None = None,
     waiting_memories: tuple[int, datetime] | None = None,
     mask=None,
+    ran_on: dict | None = None,
 ) -> dict:
     """The Activity reply for one run (see the contract). ``events`` in ``(created_at, id)`` order;
     ``versions`` are ``(DocumentVersion, document name)`` pairs. M3: a resumed run's ``carried``
     step rows (``resume.carried``) come first, one line each, then the Resumed line. M10:
     ``waiting_memories`` is ``(count, newest created_at)`` of the memories the run saved that still
     wait for review. ``mask`` (the run log's) masks what isn't an event — a step's detail, the run's
-    failure, the carried memories — before any line is cut from it."""
+    failure, the carried memories — before any line is cut from it. M-desk-4 (H1): ``ran_on``
+    (read from the Desktop) words the end line's money for work that ran on subscriptions."""
 
     def _m(text):
         return mask(text) if mask is not None and isinstance(text, str) else text
@@ -832,9 +835,12 @@ def build(
         if compared:
             text, tone = "Finished · no pull request in a compare", "ok"
         elif run.status == "completed":
-            text, tone = f"Done in {_duration(elapsed_s)} · ${cost:.2f}", "ok"
+            text, tone = f"Done in {_duration(elapsed_s)} · {spend_text(cost, ran_on)}", "ok"
         elif run.status == "failed":
-            text, tone = f"Failed after {_duration(elapsed_s)} · ${cost:.2f}", "danger"
+            text, tone = (
+                f"Failed after {_duration(elapsed_s)} · {spend_text(cost, ran_on)}",
+                "danger",
+            )
         else:
             text, tone = "Stopped. Nothing shipped.", "neutral"
         out.add(
@@ -1148,16 +1154,24 @@ def _public(line: dict) -> dict:
 
 
 def run_activity(
-    session, run: Run, after: str | None = None, *, resume_info: bool = True, mask=None
+    session,
+    run: Run,
+    after: str | None = None,
+    *,
+    resume_info: bool = True,
+    mask=None,
+    desktop: bool = False,
 ) -> dict:
     """Read one (already owner-checked) run's rows and :func:`build` its Activity. M3: a resumed
     run's carried steps come from its seed; a Failed / Stalled callout gains its Resume point
     (``resume_info`` False when :mod:`resume` itself reads the lines). M10: ``mask`` (the run
     log's) masks every event text before a line is made from it, so no cut leaves part of a
-    secret."""
+    secret. M-desk-4 (H1): ``ran_on`` says where the run's work really ran; read from the Desktop
+    (``desktop``), its end line names the subscriptions instead of a price."""
     from tvashtr.control_plane import resume  # lazy: resume imports this module
 
     run_id = run.workflow_id
+    ran = desktop_jobs.ran_on(session, [run_id])[run_id] if desktop else None
     nodes = (
         session.execute(select(AgentNode).where(AgentNode.team_graph_id == run.team_graph_id))
         .scalars()
@@ -1240,7 +1254,10 @@ def run_activity(
         number=resume.number(session, run),
         waiting_memories=(waiting, newest) if waiting else None,
         mask=mask,
+        ran_on=ran,
     )
+    if ran is not None:
+        reply["ran_on"] = ran
     all_lines = reply.pop("_all_lines")
     pinned = reply["pinned"]
     if resume_info and pinned is not None and pinned["kind"] in ("failed", "stalled", "stopped"):

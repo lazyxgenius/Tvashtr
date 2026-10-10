@@ -23,7 +23,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 
 from tvashtr.config import get_settings
-from tvashtr.control_plane import node_history, resume
+from tvashtr.control_plane import desktop_jobs, node_history, resume
 from tvashtr.control_plane.run_failure import node_label
 from tvashtr.control_plane.worktree import is_work_tree
 from tvashtr.db import session_scope
@@ -808,7 +808,8 @@ def _counts(results: list[AgentTestResult]) -> tuple[int, int, int]:
     return done, ok, sum(r.status == "failed" for r in results)
 
 
-def _run_view(session, run: AgentTestRun) -> dict:
+def _run_view(session, run: AgentTestRun, desktop: bool = False) -> dict:
+    """``desktop``: a Desktop read — it also says where each replay really ran (M-desk-4)."""
     results = (
         session.execute(
             select(AgentTestResult)
@@ -820,6 +821,12 @@ def _run_view(session, run: AgentTestRun) -> dict:
     )
     done, ok, bad = _counts(results)
     waiting = _desktop_waiting(session, run, results)
+    # M-desk-4 (H1): where each replay really ran (its Desktop job's plan), and so the run.
+    ran = (
+        desktop_jobs.ran_on(session, [r.id for r in results], desktop_jobs.TEST_REPLAY)
+        if desktop
+        else None
+    )
     since = None
     if run.status == "done" and run.version_number is not None:
         prev = session.execute(
@@ -858,7 +865,19 @@ def _run_view(session, run: AgentTestRun) -> dict:
         "stopping": bool(run.stop_requested) and run.status == "running",
         "error": run.error,
         "since": since,
-        "results": [_result_view(r, waiting.get(r.id)) for r in results],
+        "results": [
+            _result_view(r, waiting.get(r.id), ran[str(r.id)] if ran is not None else None)
+            for r in results
+        ],
+        **(
+            {
+                "ran_on": desktop_jobs.ran_union(
+                    ran[str(r.id)] for r in results if r.status != "waiting"
+                )
+            }
+            if ran is not None
+            else {}
+        ),
     }
 
 
@@ -896,7 +915,9 @@ def _desktop_waiting(session, run: AgentTestRun, results: list[AgentTestResult])
     }
 
 
-def _result_view(r: AgentTestResult, waiting: str | None = None) -> dict:
+def _result_view(
+    r: AgentTestResult, waiting: str | None = None, ran_on: dict | None = None
+) -> dict:
     view = {
         "id": str(r.id),
         "test_id": str(r.test_id) if r.test_id else None,
@@ -908,6 +929,8 @@ def _result_view(r: AgentTestResult, waiting: str | None = None) -> dict:
         "error": r.error,
         "cost_usd": round(float(r.cost_usd or 0), 4),
     }
+    if ran_on is not None:  # M-desk-4: a Desktop read — where this replay really ran
+        view["ran_on"] = ran_on
     if waiting:  # D4: queued behind another Desktop job of its plan
         view["waiting"] = waiting
     return view
@@ -995,7 +1018,7 @@ def tests_view(
         ).scalar_one_or_none()
         if run is not None:
             agent_test_runner.end_if_stale(session, run)
-        view = _run_view(session, run) if run is not None else None
+        view = _run_view(session, run, desktop_target) if run is not None else None
         return {
             "tests": [_test_view(t) for t in tests],
             "run": view,
@@ -1025,7 +1048,9 @@ def _owned_test(session, node: AgentNode, test_id: str) -> AgentTest:
     return test
 
 
-def result_detail(owner_id: uuid.UUID, team_id: str, node_id: str, result_id: str) -> dict:
+def result_detail(
+    owner_id: uuid.UUID, team_id: str, node_id: str, result_id: str, desktop: bool = False
+) -> dict:
     with session_scope() as session:
         node = _require_node(session, owner_id, team_id, node_id)
         try:
@@ -1046,8 +1071,13 @@ def result_detail(owner_id: uuid.UUID, team_id: str, node_id: str, result_id: st
             if result.started_at and result.ended_at
             else None
         )
+        ran = (
+            desktop_jobs.ran_on(session, [result.id], desktop_jobs.TEST_REPLAY)[str(result.id)]
+            if desktop
+            else None
+        )
         return {
-            **_result_view(result),
+            **_result_view(result, ran_on=ran),
             "version": run.version_number,
             "at": (result.ended_at or result.started_at or run.created_at).isoformat(),
             "duration_s": duration,

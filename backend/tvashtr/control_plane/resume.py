@@ -19,7 +19,7 @@ from datetime import datetime
 
 from sqlalchemy import func, select
 
-from tvashtr.control_plane import activity, run_views
+from tvashtr.control_plane import activity, desktop_jobs, run_views
 from tvashtr.control_plane.checkpoints import CheckpointError
 from tvashtr.control_plane.live_state import invocation_live
 from tvashtr.control_plane.node_history import _cost_by_invocation, _run_number
@@ -189,6 +189,7 @@ def step_rows(session, run: Run, lines: list[dict] | None = None) -> list[dict]:
         if ln.get("from_run") is None:
             by_step.setdefault((ln["node_id"], ln["iteration"]), []).append(ln)
     costs = _cost_by_invocation(session, run.workflow_id, [i.id for i in invs])
+    plans = desktop_jobs.step_plans(session, run.workflow_id)  # M-desk-4: where each step ran
     for inv in invs:
         node = nodes[str(inv.node_id)]
         label = node_label(node.role_name, node.kind, node.config)
@@ -219,6 +220,7 @@ def step_rows(session, run: Run, lines: list[dict] | None = None) -> list[dict]:
                 "at": inv.started_at.isoformat(),
                 "duration_s": max(0, int((ended - inv.started_at).total_seconds())),
                 "cost_usd": None if node.kind == "gate" else round(float(cost), 2),
+                "plan": plans.get(inv.id),
                 "from_run": None,
                 **summary,
             }
@@ -391,10 +393,18 @@ def _documents_before(session, run: Run, before: datetime) -> list[tuple[str | N
     return [(name, version) for name, version in rows]
 
 
-def points(session, run: Run, lines: list[dict] | None = None, *, confirm: bool = True) -> dict:
+def points(
+    session,
+    run: Run,
+    lines: list[dict] | None = None,
+    *,
+    confirm: bool = True,
+    desktop: bool = False,
+) -> dict:
     """The ``GET /api/runs/{id}/resume`` reply (owner already checked). ``lines``: the run's whole
     Activity when the caller has it; ``confirm`` False skips each point's confirm data but the
-    step label (Needs you's button needs no more)."""
+    step label (Needs you's button needs no more). M-desk-4: ``desktop`` (a Desktop read) adds
+    the plan each step ran on and where the skipped and re-run steps ran."""
     num = number(session, run)
     out = {
         "run_id": str(run.id),
@@ -466,6 +476,13 @@ def points(session, run: Run, lines: list[dict] | None = None, *, confirm: bool 
                 "skips_cost_usd": round(sum(r.get("cost_usd") or 0 for r in before), 2),
                 "skips_s": sum(r.get("duration_s") or 0 for r in before),
             }
+            if desktop:  # M-desk-4 (H2): where the skipped and the re-run steps really ran
+                point["confirm"]["skips_ran_on"] = _ran_on(before)
+                point["confirm"]["again_ran_on"] = _ran_on(
+                    [r for r in rows[k:] if r["kind"] != "gate" and r.get("invocation_id")]
+                )
+        if desktop:
+            point["plan"] = row.get("plan")
         out["points"].append(point)
     if run.status == "running":
         out["stops_run"] = True
@@ -473,6 +490,12 @@ def points(session, run: Run, lines: list[dict] | None = None, *, confirm: bool 
     if not out["available"]:
         out["reason"] = "No step of this run can be picked up again"
     return out
+
+
+def _ran_on(steps: list[dict]) -> dict:
+    """H2: the plans ``steps`` ran on; ``all`` when every one of them ran on a plan."""
+    plans = sorted({s["plan"] for s in steps if s.get("plan")})
+    return {"subscriptions": plans, "all": bool(steps) and all(s.get("plan") for s in steps)}
 
 
 def resume_hint(session, run: Run) -> dict | None:

@@ -188,9 +188,9 @@ def _target(session, team: TeamGraph) -> dict | None:
     return {"repo": row.github_repo, "base_ref": row.base_ref} if row else None
 
 
-def _estimate(session, team: TeamGraph, numbers: list[int]) -> dict | None:
-    """Both runs' cost (added) and time (the longer: they run together) from the finished runs of
-    each version; a version with none is estimated by the other's. None when neither has one."""
+def _sides(session, team: TeamGraph, numbers: list[int]) -> list[tuple[float, float]] | None:
+    """Each version's average ``(cost, seconds)`` from its finished runs; a version with none is
+    estimated by the other's. None when neither has one."""
     by: dict[int, list[tuple[float, float]]] = {}
     for number, cost, start, end in session.execute(
         select(Run.team_version_number, Run.cost_total_usd, Run.created_at, Run.updated_at).where(
@@ -207,9 +207,37 @@ def _estimate(session, team: TeamGraph, numbers: list[int]) -> dict | None:
     def avg(rows, k):
         return sum(r[k] for r in rows) / len(rows)
 
+    return [(avg(s, 0), avg(s, 1)) for s in sides]
+
+
+def _turns(secs: list[float], plans: list[list[str]] | None, tasks: int) -> float:
+    """M-desk-4 (H5): on the Desktop the owner's plans run one job at a time, so every task's work
+    on a plan takes turns: the longest plan's queue. ``plans``: each version's plans (None: the
+    website, or nothing on a plan — no turns)."""
+    if not plans:
+        return 0.0
+    return max(
+        (
+            tasks * sum(s for s, p in zip(secs, plans, strict=True) if plan in p)
+            for plan in set().union(*plans)
+        ),
+        default=0.0,
+    )
+
+
+def _estimate(
+    session, team: TeamGraph, numbers: list[int], plans: list[list[str]] | None = None
+) -> dict | None:
+    """Both runs' cost (added) and time (the longer: they run together) from the finished runs of
+    each version; a version with none is estimated by the other's. None when neither has one.
+    M-desk-4 (H5): on the Desktop (``plans``), versions sharing a plan take turns on it."""
+    sides = _sides(session, team, numbers)
+    if sides is None:
+        return None
+    secs = [s for _, s in sides]
     return {
-        "cost_usd": round(sum(avg(s, 0) for s in sides), 2),
-        "minutes": math.ceil(max(avg(s, 1) for s in sides) / 60),
+        "cost_usd": round(sum(c for c, _ in sides), 2),
+        "minutes": math.ceil(max(max(secs), _turns(secs, plans, 1)) / 60),
     }
 
 
@@ -245,6 +273,15 @@ def page(session, team: TeamGraph, viewer: uuid.UUID, desktop_target: bool = Fal
         models = [n.get("model") for n in (v.graph or {}).get("nodes") or []]
         return {"desktop": desktop_routes(models, fresh_subscriptions=fresh)}
 
+    numbers = [n for n in (a, top.number) if n is not None]
+    # M-desk-4 (H5): from the Desktop, the versions' plans decide which work takes turns.
+    by_number = {v.number: v for v in rows}
+    plans = (
+        [where(by_number[n])["desktop"]["subscriptions"] for n in numbers if n in by_number]
+        if desktop_target
+        else None
+    )
+
     return {
         "team": {"id": str(team.id), "name": team.name},
         "versions": [
@@ -261,19 +298,25 @@ def page(session, team: TeamGraph, viewer: uuid.UUID, desktop_target: bool = Fal
         "defaults": {"a": a, "b": top.number},
         "changes": changes,
         "target": _target(session, team),
-        "estimate": _estimate(session, team, [n for n in (a, top.number) if n is not None]),
+        "estimate": _estimate(
+            session, team, numbers, plans if plans and len(plans) == len(numbers) else None
+        ),
         "latest": {"id": str(latest.id), "status": latest.status} if latest else None,
         # M9: the team's task sets (the Start panel's "A task set" choice).
         "task_sets": task_sets.summaries(session, team.id),
     }
 
 
-def set_estimate(session, team: TeamGraph, numbers: list[int], tasks: int) -> dict | None:
+def set_estimate(
+    session, team: TeamGraph, numbers: list[int], tasks: int, plans: list[list[str]] | None = None
+) -> dict | None:
     """A set compare's cost (both versions on every task) and time (tasks run two runs at a time
-    as the owner's slots allow; self-hosted: all at once), from :func:`_estimate` per task."""
+    as the owner's slots allow; self-hosted: all at once), from :func:`_estimate` per task.
+    M-desk-4 (H5): on the Desktop (``plans``), every task's work on a plan takes turns on it."""
     one = _estimate(session, team, numbers)
     if one is None or not tasks:
         return None
+    secs = [s for _, s in _sides(session, team, numbers)]
     settings = get_settings()
     at_once = (
         max(1, settings.hosted_max_concurrent_runs_per_owner // 2)
@@ -282,7 +325,9 @@ def set_estimate(session, team: TeamGraph, numbers: list[int], tasks: int) -> di
     )
     return {
         "cost_usd": round(one["cost_usd"] * tasks, 2),
-        "minutes": one["minutes"] * math.ceil(tasks / at_once),
+        "minutes": max(
+            one["minutes"] * math.ceil(tasks / at_once), math.ceil(_turns(secs, plans, tasks) / 60)
+        ),
     }
 
 
@@ -763,10 +808,19 @@ def _work_seconds(session, run: Run) -> int:
 
 
 def _lane(
-    session, run: Run, extras: dict, live: dict, desktop: bool = False, *, work: bool = False
+    session,
+    run: Run,
+    extras: dict,
+    live: dict,
+    desktop: bool = False,
+    *,
+    work: bool = False,
+    read_desktop: bool = False,
 ) -> dict:
-    """One run's lane and the facts its results row needs (a Desktop lane's work time too)."""
-    act = activity.run_activity(session, run, resume_info=False)
+    """One run's lane and the facts its results row needs (a Desktop lane's work time too).
+    M-desk-4: ``read_desktop`` (the page read from the Desktop) words its lines' money as the run
+    view does."""
+    act = activity.run_activity(session, run, resume_info=False, desktop=read_desktop)
     lines, agents = act["lines"], act["agents"]
     status = _SIDE_STATUS.get(run.status, "stopped")
     done = next((ln for ln in reversed(lines) if ln["id"] == "run:done"), None)
@@ -875,12 +929,18 @@ def _queued_strip(graph: dict) -> list[dict]:
     ]
 
 
-def view(owner_id: uuid.UUID, compare_id: str) -> dict:
+def view(owner_id: uuid.UUID, compare_id: str, read_desktop: bool = False) -> dict:
+    """M-desk-4 (H1): each lane and cell says where its run's work really ran (``ran_on``); read
+    from the Desktop (``read_desktop``), the results word money for work on subscriptions."""
     with session_scope() as session:
         cmp = _require(session, owner_id, compare_id)
         listed = _refresh(session, cmp)
+        # Only a Desktop read learns where the work ran: the website's read stays as it was.
+        ran = (
+            desktop_jobs.ran_on(session, [r.workflow_id for r in listed]) if read_desktop else None
+        )
         if cmp.item_count is not None:
-            return _set_view(session, cmp, listed)
+            return _set_view(session, cmp, listed, ran)
         runs = {r.pair_label: r for r in listed}
         team = session.get(TeamGraph, cmp.team_graph_id)
         desktop = _is_desktop(session, cmp)
@@ -910,29 +970,44 @@ def view(owner_id: uuid.UUID, compare_id: str) -> dict:
                     "current": None,
                     "lines": [],
                     "gate_task_id": None,
+                    **({"ran_on": dict(_NOT_RAN)} if ran is not None else {}),
                 }
             else:
-                lane = _lane(session, run, extras[run.id], live, desktop, work=shared)
-                facts[label] = lane.pop("_facts")
+                lane = _lane(
+                    session,
+                    run,
+                    extras[run.id],
+                    live,
+                    desktop,
+                    work=shared,
+                    read_desktop=read_desktop,
+                )
+                if ran is not None:
+                    lane["ran_on"] = ran[run.workflow_id]
+                facts[label] = {**lane.pop("_facts"), "ran_on": lane.get("ran_on")}
             sides.append({"label": label, "version": number, **lane})
         ended = cmp.status in ("finished", "stopped")
         results = None
         if ended:
             # M9: "One task is a small sample · Compare on <set>".
             results = {
-                **_results(session, cmp, facts, shared),
+                **_results(session, cmp, facts, shared, read_desktop),
                 "sample": task_sets.sample(session, team.id),
             }
         return {
-            **_head(cmp, sum(f["cost"] for f in facts.values())),
+            **_head(
+                cmp,
+                sum(f["cost"] for f in facts.values()),
+                ran.values() if ran is not None else None,
+            ),
             "waiting": _slots(session, cmp.owner_id) if cmp.status == "waiting" else None,
             "sides": sides,
             "results": results,
         }
 
 
-def _head(cmp: Compare, cost: float) -> dict:
-    return {
+def _head(cmp: Compare, cost: float, ran=None) -> dict:
+    out = {
         "id": str(cmp.id),
         "team_id": str(cmp.team_graph_id),
         "task": cmp.task,
@@ -945,6 +1020,9 @@ def _head(cmp: Compare, cost: float) -> dict:
         "created_at": cmp.created_at.isoformat(),
         "ended_at": cmp.ended_at.isoformat() if cmp.ended_at else None,
     }
+    if ran is not None:  # M-desk-4: a Desktop read — where the lanes' work ran, together
+        out["ran_on"] = desktop_jobs.ran_union(ran)
+    return out
 
 
 # ------------------------------------------------------------------------- M9: a set compare
@@ -996,6 +1074,7 @@ def _facts(session, runs: list[Run]) -> dict[uuid.UUID, dict]:
     return out
 
 
+_NOT_RAN = {"subscriptions": [], "all": False}
 _NO_CELL = {
     "run_id": None,
     "status": "waiting",
@@ -1007,14 +1086,23 @@ _NO_CELL = {
 }
 
 
-def _cell(session, run: Run | None, f: dict | None) -> dict:
-    """One side of one task; a task not launched yet (no run) is "waiting"."""
+def _cell(
+    session, run: Run | None, f: dict | None, desktop: bool = False, ran: dict | None = None
+) -> dict:
+    """``ran``: a Desktop read's ``{run id: ran_on}`` (None: the website's read, unchanged)."""
+    """One side of one task; a task not launched yet (no run) is "waiting". M-desk-4 (H4): a
+    Desktop cell whose run waits for the other lane's job says so (``queued``), as a one-task
+    lane does; ``ran_on``: where its run's work really ran."""
+    desk = {"queued": False, "ran_on": dict(_NOT_RAN)} if ran is not None else {}
     if run is None:
-        return dict(_NO_CELL)
-    now = None
+        return {**_NO_CELL, **desk}
+    now, queued = None, False
     if f["status"] == "running":
-        current = _current(activity.run_activity(session, run, resume_info=False)["agents"])
+        agents = activity.run_activity(session, run, resume_info=False)["agents"]
+        current = _current(agents, desktop)
         now = f"{current['label']} · {current['text']}" if current else None
+        # Waiting for the Desktop: a step the website's read would not call current.
+        queued = current is not None and current != _current(agents)
     note = None
     if f["check"] is False:
         note = f["last_line"]
@@ -1028,6 +1116,7 @@ def _cell(session, run: Run | None, f: dict | None) -> dict:
         "rounds": f["rounds"],
         "cost_usd": round(f["cost"], 2),
         "note": note,
+        **({"queued": queued, "ran_on": ran[run.workflow_id]} if ran is not None else {}),
     }
 
 
@@ -1062,7 +1151,9 @@ def _tone(b_better: bool, b_worse: bool) -> str | None:
     return "good" if b_better else "warn" if b_worse else None
 
 
-def _cards(cmp: Compare, by: dict[str, list[dict]]) -> tuple[list[dict], int | None]:
+def _cards(
+    cmp: Compare, by: dict[str, list[dict]], ran_by: dict | None = None
+) -> tuple[list[dict], int | None]:
     """The set's result cards — bare values (the page adds "v6 " / "v7 "), a note and a tone for
     B against A — and the version that did better (None: about the same). The hidden checks
     decide first; else most of rounds, cost and steadiness."""
@@ -1115,8 +1206,9 @@ def _cards(cmp: Compare, by: dict[str, list[dict]]) -> tuple[list[dict], int | N
         {
             "key": "cost",
             "label": "Cost",
-            "a": _money(cost["A"]),
-            "b": _money(cost["B"]),
+            # M-desk-4 (H1): read from the Desktop, a side's runs on subscriptions name them.
+            "a": desktop_jobs.spend_text(cost["A"], ran_by["A"]) if ran_by else _money(cost["A"]),
+            "b": desktop_jobs.spend_text(cost["B"], ran_by["B"]) if ran_by else _money(cost["B"]),
             "note": cost_note,
             "tone": _tone(d_cost < -0.004, d_cost > 0.004),
         },
@@ -1140,9 +1232,12 @@ def _cards(cmp: Compare, by: dict[str, list[dict]]) -> tuple[list[dict], int | N
     return cards, (cmp.version_b if score < 0 else cmp.version_a) if score else None
 
 
-def _set_items(session, cmp: Compare, runs: list[Run]) -> tuple[list[dict], dict, list, list]:
+def _set_items(
+    session, cmp: Compare, runs: list[Run], ran: dict | None = None
+) -> tuple[list[dict], dict, list, list]:
     """The rows of a set compare's table, the facts of its runs, its runs by task and the tasks
     still to launch."""
+    desktop = _is_desktop(session, cmp)
     groups = _groups(runs)
     facts = _facts(session, runs)
     pending = _pending(session, cmp, runs) if cmp.status in ACTIVE else []
@@ -1153,16 +1248,16 @@ def _set_items(session, cmp: Compare, runs: list[Run]) -> tuple[list[dict], dict
         items.append(
             {
                 "task": (a or b).idea,
-                "a": _cell(session, a, fa),
-                "b": _cell(session, b, fb),
+                "a": _cell(session, a, fa, desktop, ran),
+                "b": _cell(session, b, fb, desktop, ran),
                 "badge": _badge(cmp, fa, fb),
             }
         )
     items += [
         {
             "task": it.task,
-            "a": _cell(session, None, None),
-            "b": _cell(session, None, None),
+            "a": _cell(session, None, None, ran=ran),
+            "b": _cell(session, None, None, ran=ran),
             "badge": None,
         }
         for it in pending
@@ -1170,11 +1265,23 @@ def _set_items(session, cmp: Compare, runs: list[Run]) -> tuple[list[dict], dict
     return items, facts, groups, pending
 
 
-def _set_view(session, cmp: Compare, runs: list[Run]) -> dict:
+def _set_view(session, cmp: Compare, runs: list[Run], ran: dict | None = None) -> dict:
+    """``ran``: a Desktop read's ``{run id: ran_on}`` (None: the website's read, unchanged)."""
     team = session.get(TeamGraph, cmp.team_graph_id)
-    items, facts, groups, pending = _set_items(session, cmp, runs)
+    items, facts, groups, pending = _set_items(session, cmp, runs, ran)
     by = _sides_facts(groups, facts)
-    head = _head(cmp, sum(f["cost"] for f in facts.values()))
+    head = _head(
+        cmp, sum(f["cost"] for f in facts.values()), ran.values() if ran is not None else None
+    )
+    # M-desk-4 (H1): where each side's runs really ran (from the Desktop: the Cost card's words).
+    ran_by = (
+        {
+            label: desktop_jobs.ran_union(ran[g[label].workflow_id] for g in groups if label in g)
+            for label in LABELS
+        }
+        if ran is not None
+        else None
+    )
     sides = []
     for label, number in zip(LABELS, (cmp.version_a, cmp.version_b), strict=True):
         mine = [g[label] for g in groups if label in g]
@@ -1192,12 +1299,13 @@ def _set_view(session, cmp: Compare, runs: list[Run]) -> dict:
                 "current": None,
                 "lines": [],
                 "gate_task_id": None,
+                **({"ran_on": ran_by[label]} if ran_by is not None else {}),
             }
         )
     results = None
     if cmp.status in ("finished", "stopped"):
         current = versions.latest(session, team).number
-        cards, winner = _cards(cmp, by) if groups else ([], None)
+        cards, winner = _cards(cmp, by, ran_by) if groups else ([], None)
         if cmp.status == "stopped":
             headline, winner = "You stopped this compare", None
         elif winner is not None:
@@ -1402,8 +1510,21 @@ def _row(key: str, label: str, a: str, b: str, better=None, difference: str = ""
 
 
 def _rows(
-    fa: dict, fb: dict, tested: tuple | None, cmp: Compare, both: bool, desktop: bool = False
+    fa: dict,
+    fb: dict,
+    tested: tuple | None,
+    cmp: Compare,
+    both: bool,
+    desktop: bool = False,
+    read_desktop: bool = False,
 ) -> list[dict]:
+    def spend(f: dict) -> str:  # M-desk-4 (H1): read from the Desktop, subscription work is named
+        return (
+            desktop_jobs.spend_text(f["cost"], f.get("ran_on"))
+            if read_desktop
+            else _money(f["cost"])
+        )
+
     def mark(key, label, a, b, x, y, *, lower, near=0.0, diff=None):
         better = _better(x, y, lower=lower, near=near) if both else None
         difference = ""
@@ -1432,8 +1553,8 @@ def _rows(
         mark(
             "cost",
             "Cost",
-            _money(fa["cost"]),
-            _money(fb["cost"]),
+            spend(fa),
+            spend(fb),
             round(fa["cost"], 2),
             round(fb["cost"], 2),
             lower=True,
@@ -1497,7 +1618,9 @@ def _rows(
     return rows
 
 
-def _results(session, cmp: Compare, facts: dict, desktop: bool = False) -> dict:
+def _results(
+    session, cmp: Compare, facts: dict, desktop: bool = False, read_desktop: bool = False
+) -> dict:
     team = session.get(TeamGraph, cmp.team_graph_id)
     current = versions.latest(session, team).number
     va, vb = f"v{cmp.version_a}", f"v{cmp.version_b}"
@@ -1508,7 +1631,7 @@ def _results(session, cmp: Compare, facts: dict, desktop: bool = False) -> dict:
     else:
         fa, fb = facts["A"], facts["B"]
         both = fa["status"] == fb["status"] == "finished"
-        rows = _rows(fa, fb, _agent_tests(session, cmp), cmp, both, desktop)
+        rows = _rows(fa, fb, _agent_tests(session, cmp), cmp, both, desktop, read_desktop)
         wins = Counter(r["better"] for r in rows)
         if cmp.status == "stopped":
             headline = "You stopped this compare"

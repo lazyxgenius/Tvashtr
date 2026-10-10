@@ -156,8 +156,17 @@ def stop_tests(team_id: str, node_id: str, current_user: CurrentUser) -> dict:
 
 
 @router.get(BASE + "/results/{result_id}")
-def test_result(team_id: str, node_id: str, result_id: str, current_user: CurrentUser) -> dict:
-    return _call(agent_tests.result_detail, _owner(current_user), team_id, node_id, result_id)
+def test_result(
+    team_id: str,
+    node_id: str,
+    result_id: str,
+    current_user: CurrentUser,
+    desktop_target: bool = False,
+) -> dict:
+    # M-desk-4: ``?desktop_target=1`` (Tvashtr Desktop) adds where the replay really ran.
+    return _call(
+        agent_tests.result_detail, _owner(current_user), team_id, node_id, result_id, desktop_target
+    )
 
 
 @router.get(BASE + "/{test_id}/answers")

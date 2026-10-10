@@ -2453,7 +2453,9 @@ def _pr_number(pr_url: str | None) -> int | None:
     return int(tail) if sep and head and tail.isdigit() else None
 
 
-def list_team_runs(team_id: uuid.UUID, owner_id: uuid.UUID) -> list[dict] | None:
+def list_team_runs(
+    team_id: uuid.UUID, owner_id: uuid.UUID, desktop: bool = False
+) -> list[dict] | None:
     """Every run of one of the owner's library teams, NEWEST FIRST — the per-team run history.
     ``None`` if there is no such team of theirs; ``[]`` for a team that exists but has never run.
 
@@ -2507,6 +2509,10 @@ def list_team_runs(team_id: uuid.UUID, owner_id: uuid.UUID) -> list[dict] | None
                 )
             ).all()
         )
+        # M-desk-4 (H1): where each run's work really ran (its Desktop jobs; any metered spend).
+        from tvashtr.control_plane import desktop_jobs  # lazy: keeps this module's imports light
+
+        ran = desktop_jobs.ran_on(session, [str(r[0]) for r in rows]) if desktop else None
         return [
             {
                 "run_id": str(run_id),
@@ -2514,6 +2520,7 @@ def list_team_runs(team_id: uuid.UUID, owner_id: uuid.UUID) -> list[dict] | None
                 "idea": idea,
                 "created_at": created_at.isoformat(),
                 "cost_total_usd": float(cost),
+                **({"ran_on": ran[str(run_id)]} if ran is not None else {}),
                 "updated_at": updated_at.isoformat(),
                 "status_group": run_status_group(status),
                 "pr_url": pr_url,

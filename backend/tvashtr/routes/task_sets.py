@@ -33,12 +33,15 @@ def _owner(user: UserOut) -> uuid.UUID:
 
 
 @router.get("/api/teams/{team_id}/task-sets")
-def list_task_sets(team_id: str, current_user: CurrentUser) -> dict:
+def list_task_sets(team_id: str, current_user: CurrentUser, desktop_target: bool = False) -> dict:
     """The team's task sets: tasks with their hidden checks, when each was last used, and what
-    comparing two versions on it would cost."""
+    comparing two versions on it would cost. M-desk-4: read from the Desktop
+    (``desktop_target``), the minutes count the turns the versions take on shared plans and each
+    set says where the compare would run."""
+    owner = _owner(current_user)
     with session_scope() as session:
-        team = compare._require_team(session, team_id, _owner(current_user))
-        return task_sets.listing(session, team)
+        team = compare._require_team(session, team_id, owner)
+        return task_sets.listing(session, team, owner if desktop_target else None)
 
 
 @router.post("/api/teams/{team_id}/task-sets", status_code=201)

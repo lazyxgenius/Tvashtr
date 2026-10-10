@@ -38,6 +38,7 @@ from tvashtr.db import session_scope
 from tvashtr.engines.base import EngineEvent
 from tvashtr.engines.run_event_sink import make_run_event_sink
 from tvashtr.models import (
+    CostRecord,
     DesktopNodeJob,
     DesktopRunnerHeartbeat,
     EngineSubscriptionStatus,
@@ -772,3 +773,71 @@ def apply_job_patch(
         return sorted(dict.fromkeys(paths))
     finally:
         os.unlink(patch_file)
+
+
+# ---------------------------------------------------------------- M-desk-4: where work really ran
+
+_PLAN_NAMES = {"claude": "Claude", "grok": "Grok"}
+
+
+def ran_on(session, run_ids, purpose: str = RUN_NODE) -> dict[str, dict]:
+    """H1: where each run's work really ran — ``{"subscriptions": [...], "all": bool}`` per id
+    (a run's ``workflow_id``; a replay's id for ``test_replay``). ``subscriptions``: the plans its
+    Desktop jobs ran on; ``all``: some did and none of its work was metered on a key (no cost
+    row). A run with no Desktop job is ``{"subscriptions": [], "all": False}``."""
+    ids = list(dict.fromkeys(str(i) for i in run_ids))
+    out = {i: {"subscriptions": [], "all": False} for i in ids}
+    if not ids:
+        return out
+    subs: dict[str, set[str]] = {}
+    for rid, provider in session.execute(
+        select(DesktopNodeJob.run_id, DesktopNodeJob.provider)
+        .where(DesktopNodeJob.run_id.in_(ids), DesktopNodeJob.purpose == purpose)
+        .distinct()
+    ).all():
+        subs.setdefault(rid, set()).add(provider)
+    keyed = set(
+        session.execute(
+            select(CostRecord.workflow_id).where(CostRecord.workflow_id.in_(ids)).distinct()
+        ).scalars()
+    )
+    for rid, plans in subs.items():
+        out[rid] = {"subscriptions": sorted(plans), "all": rid not in keyed}
+    return out
+
+
+def step_plans(session, run_id: str) -> dict[int, str]:
+    """H1: the plan each step (agent invocation) of a run ran on, for the steps a Desktop ran."""
+    return dict(
+        session.execute(
+            select(DesktopNodeJob.invocation_id, DesktopNodeJob.provider).where(
+                DesktopNodeJob.run_id == run_id,
+                DesktopNodeJob.purpose == RUN_NODE,
+                DesktopNodeJob.invocation_id.is_not(None),
+            )
+        ).all()
+    )
+
+
+def plans_text(plans) -> str:
+    """ "your Claude subscription", "your Claude and Grok subscriptions" (the FE's wording)."""
+    names = [_PLAN_NAMES.get(p, p) for p in sorted(set(plans))]
+    if len(names) == 1:
+        return f"your {names[0]} subscription"
+    return f"your {', '.join(names[:-1])} and {names[-1]} subscriptions"
+
+
+def spend_text(usd: float, ran: dict | None) -> str:
+    """H1: a money figure — or, for work that ran on subscriptions, the plans that did it: all on
+    them "on your Claude subscription", mixed "$0.12 + your Claude subscription"."""
+    plans = (ran or {}).get("subscriptions") or []
+    if not plans:
+        return f"${usd:.2f}"
+    return f"on {plans_text(plans)}" if ran["all"] else f"${usd:.2f} + {plans_text(plans)}"
+
+
+def ran_union(rans) -> dict:
+    """H1: where several runs' work ran together — their plans, ``all`` when every one did."""
+    rans = list(rans)
+    plans = sorted({p for r in rans for p in r["subscriptions"]})
+    return {"subscriptions": plans, "all": bool(rans) and all(r["all"] for r in rans)}

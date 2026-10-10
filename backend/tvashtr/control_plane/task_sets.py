@@ -89,9 +89,11 @@ def sample(session, team_id: uuid.UUID) -> dict | None:
     return {"set_id": str(row[0].id), "name": row[0].name, "count": row[1]} if row else None
 
 
-def check_sets(session, team: TeamGraph, current: int) -> list[dict]:
+def check_sets(
+    session, team: TeamGraph, current: int, plans: list[list[str]] | None = None
+) -> list[dict]:
     """The Save-as dialog's choices: each set with what comparing the new version with the
-    current one on it would cost."""
+    current one on it would cost. M-desk-4 (H5): ``plans`` (from the Desktop) count the turns."""
     from tvashtr.control_plane import compare  # compare imports this module
 
     return [
@@ -99,7 +101,7 @@ def check_sets(session, team: TeamGraph, current: int) -> list[dict]:
             "id": str(ts.id),
             "name": ts.name,
             "count": n,
-            "estimate": compare.set_estimate(session, team, [current, current + 1], n),
+            "estimate": compare.set_estimate(session, team, [current, current + 1], n, plans),
         }
         for ts, n in _counts(session, team.id)
     ]
@@ -117,12 +119,42 @@ def check_desktop(session, team: TeamGraph, current: int, owner_id: uuid.UUID) -
     return desktop_routes(models, fresh_subscriptions=desktop_jobs.fresh_subscription_ids(owner_id))
 
 
-def _view(session, ts: TaskSet, team: TeamGraph) -> dict:
+def graph_plans(session, graphs, owner_id: uuid.UUID) -> list[list[str]]:
+    """M-desk-4 (H5): each graph's plans as a Desktop launch routes its models."""
+    from tvashtr.control_plane import desktop_jobs
+    from tvashtr.control_plane.credential_gate import desktop_routes
+
+    fresh = desktop_jobs.fresh_subscription_ids(owner_id)
+    return [
+        desktop_routes(
+            [n.get("model") for n in (g or {}).get("nodes") or []], fresh_subscriptions=fresh
+        )["subscriptions"]
+        for g in graphs
+    ]
+
+
+def _view(session, ts: TaskSet, team: TeamGraph, owner_id: uuid.UUID | None = None) -> dict:
+    """One set. M-desk-4: read from the Desktop (``owner_id``), its estimate counts the turns its
+    versions take on shared plans and ``desktop`` says where comparing them would run (D15)."""
     from tvashtr.control_plane import compare  # compare imports this module
 
     items = items_of(session, ts.id)
     top = versions.latest(session, team)
     numbers = [max(top.number - 1, 1), top.number] if top is not None else []
+    plans, where = None, {}
+    if owner_id is not None and numbers:
+        from tvashtr.control_plane import desktop_jobs
+        from tvashtr.control_plane.credential_gate import desktop_routes
+
+        graphs = [versions._version(session, team, n).graph for n in dict.fromkeys(numbers)]
+        plans = graph_plans(session, graphs, owner_id)
+        plans = plans if len(plans) == len(numbers) else plans * len(numbers)
+        models = [n.get("model") for g in graphs for n in (g or {}).get("nodes") or []]
+        where = {
+            "desktop": desktop_routes(
+                models, fresh_subscriptions=desktop_jobs.fresh_subscription_ids(owner_id)
+            )
+        }
     return {
         "id": str(ts.id),
         "name": ts.name,
@@ -137,12 +169,15 @@ def _view(session, ts: TaskSet, team: TeamGraph) -> dict:
             for i in items
         ],
         "last_used": compare.last_used(session, ts.id),
-        "estimate": compare.set_estimate(session, team, numbers, len(items)) if numbers else None,
+        "estimate": compare.set_estimate(session, team, numbers, len(items), plans)
+        if numbers
+        else None,
+        **where,
     }
 
 
-def listing(session, team: TeamGraph) -> dict:
-    return {"sets": [_view(session, ts, team) for ts, _ in _counts(session, team.id)]}
+def listing(session, team: TeamGraph, owner_id: uuid.UUID | None = None) -> dict:
+    return {"sets": [_view(session, ts, team, owner_id) for ts, _ in _counts(session, team.id)]}
 
 
 def _clean(name: str, items: list[dict]) -> tuple[str, list[tuple[str, str | None, str]]]:
