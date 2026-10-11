@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Drop and rebuild ONLY tvashtr_film, then start the stack again (same knobs as up).
+. "$(dirname "$0")/lib.sh"
+"$ROOT/video/stack/down"
+FILM_URL="$(film_url)"
+export FILM_URL
+say "tvashtr_film: $(film_db drop)"
+exec "$ROOT/video/stack/up"

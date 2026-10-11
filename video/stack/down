@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Stop this checkout's backend (:8000) and Vite (:5173). Never touches another checkout's servers.
+#   video/stack/down          # servers only
+#   video/stack/down --db     # and the docker Postgres/LiteLLM (volume kept)
+. "$(dirname "$0")/lib.sh"
+
+for name in backend vite; do
+  f="$LOGS/$name.pid"
+  [[ -f "$f" ]] && kill_tree "$(cat "$f")" && rm -f "$f"
+done
+for port in 8000 5173; do
+  for pid in $(listeners "$port"); do
+    if [[ "$(cwd_of "$pid")" == "$ROOT"* ]]; then kill_tree "$pid"; else say ":$port is another checkout's — left alone"; fi
+  done
+done
+sleep 1
+for port in 8000 5173; do [[ -z "$(listeners "$port")" ]] && say ":$port free"; done
+if [[ "${1:-}" == "--db" ]]; then make -s -C "$ROOT" db-down >/dev/null 2>&1 && say "docker stopped"; fi

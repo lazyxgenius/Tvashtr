@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# Start the filming stack: Postgres (docker) → tvashtr_film if missing → migrate → seed (the lazyx
+# account, the DeepSeek key only, the GitHub App installation) → backend :8000 → Vite :5173.
+#   video/stack/up                       # normal timers
+#   QUIET=20 STALLED=60 FAIL=180 video/stack/up   # shortened stall timers (scene 4.1)
+# Exits 2 with STACK_WAITING when another checkout holds :8000 or :5173.
+. "$(dirname "$0")/lib.sh"
+
+for port in 8000 5173; do
+  for pid in $(listeners "$port"); do
+    cwd="$(cwd_of "$pid")"
+    if [[ "$cwd" != "$ROOT"* ]]; then
+      echo "STACK_WAITING :$port held by pid $pid (cwd $cwd)"
+      exit 2
+    fi
+  done
+done
+
+if ! docker inspect -f '{{.State.Health.Status}}' tvashtr-postgres 2>/dev/null | grep -qx healthy; then
+  make -C "$ROOT" db-up >"$LOGS/db-up.log" 2>&1
+fi
+say "postgres healthy"
+
+FILM_URL="$(film_url)"
+export FILM_URL
+say "tvashtr_film: $(film_db create)"
+make -s -C "$ROOT" migrate DATABASE_URL="$FILM_URL" >"$LOGS/migrate.log" 2>&1
+say "migrated: $(cd "$ROOT/backend" && DATABASE_URL="$FILM_URL" uv run --quiet alembic current 2>/dev/null | tail -1)"
+
+# The seed imports every provider key it finds in the environment, then demo_proof_seed loads .env
+# with setdefault: blanking the others leaves DeepSeek as the account's one API key (the Fixer's).
+# Its exit 2 is M-proof's own two-provider bar, which filming doesn't need.
+rc=0
+seeded="$(cd "$ROOT/backend" && env DATABASE_URL="$FILM_URL" \
+  OPENROUTER_API_KEY= OPENAI_API_KEY= GEMINI_API_KEY= GROQ_CLOUD_API_KEY= GROQ_API_KEY= \
+  NVIDIA_BUILD_API_KEY= NVIDIA_NIM_API_KEY= HF_TOKEN= HUGGINGFACE_API_KEY= \
+  uv run --quiet python ../scripts/demo_proof_seed.py 2>&1)" || rc=$?
+grep -E '^(seed:|\[demo-proof-seed\])' <<<"$seeded" | sed 's/^/[stack] /' || true
+((rc <= 2)) || { say "seed failed (exit $rc)"; exit 1; }
+
+if [[ -z "$(listeners 8000)" ]]; then
+  knobs=()
+  [[ -n "${QUIET:-}" ]] && knobs+=("TVASHTR_QUIET_AFTER_S=$QUIET")
+  [[ -n "${STALLED:-}" ]] && knobs+=("TVASHTR_STALLED_AFTER_S=$STALLED")
+  [[ -n "${FAIL:-}" ]] && knobs+=("TVASHTR_STALL_FAIL_AFTER_S=$FAIL")
+  # A run clones its repo under backend/; the reloader must not restart the server mid-run
+  # (absolute paths: uvicorn only matches excluded directories by absolute path).
+  UVICORN_RELOAD_EXCLUDES="$ROOT/backend/.tvashtr_clones $ROOT/backend/.tvashtr_workspaces" \
+    nohup make -C "$ROOT" backend DATABASE_URL="$FILM_URL" ${knobs[@]+"${knobs[@]}"} \
+    </dev/null >"$LOGS/backend.log" 2>&1 &
+  echo $! >"$LOGS/backend.pid"
+  say "backend starting (pid $!${knobs[*]:+, ${knobs[*]}})"
+fi
+wait_http http://127.0.0.1:8000/healthz backend 90
+
+if [[ -z "$(listeners 5173)" ]]; then
+  TVASHTR_API_PROXY_TARGET=http://localhost:8000 TVASHTR_DESKTOP_ORIGIN=http://127.0.0.1:5173 \
+    nohup bash -c 'cd "$1" && exec npx vite --host 127.0.0.1 --port 5173 --strictPort' _ \
+    "$ROOT/frontend" </dev/null >"$LOGS/vite.log" 2>&1 &
+  echo $! >"$LOGS/vite.pid"
+  say "vite starting"
+fi
+wait_http http://127.0.0.1:5173/ vite 60
+say "FILM_STACK up: db=$FILM_DB account=$TVASHTR_SEED_EMAIL"
