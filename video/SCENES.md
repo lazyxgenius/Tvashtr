@@ -89,7 +89,7 @@ registry count the tests pin).
 |---|---|---|
 | 3.6 / hero (L1, H1): chip, banner, Done summary, Activity's last line name the subscriptions | **PASS** — "on your Claude and Grok subscriptions" everywhere; "Done in 37m 16s · on your Claude and Grok subscriptions"; no "$0.00 +", no "$0.0000" | `video/takes/v2/3.1/shots/done.png` (+ `running.png`, 3.6's `poster.png`) |
 | hero (L2): no verdict names `REPORT.md`, `REVIEW_VERDICT.json`, `SPEC.md`, `TVASHTR_REMEMBER.jsonl` | **PASS** — 0 of 3 verdicts; the Grok jobs carried only `REVIEW_VERDICT.json` home | `video/takes/v2/3.1/shots/reviewer-verdict.png` |
-| 3.7 (L3): after Done, Changes lists the PR's "Files changed" | **PASS** — 3 of 3: `core/indicators.py` +21, `tests/test_indicators.py` +13 −2, `web/lib/engine-facts.ts` +1 −1 (= `gh api …/pulls/53/files`); the run's workspace is gone | `video/takes/v2/3.7/shots/changes-list.png` |
+| 3.7 (L3): after Done, Changes lists the PR's "Files changed" | **PASS** — 3 of 3: `core/indicators.py` +21, `tests/test_indicators.py` +13 −2, `web/lib/engine-facts.ts` +1 −1 (= `gh api …/pulls/53/files`; the app's `/api/runs/<id>/diff` gave the same 3); the run's workspace is gone | `video/takes/v2/3.7/shots/changes-list.png` — the same run view in headless Chromium (the website surface, same `/diff` answer) with the list scrolled into view; the Desktop take's `changes.png` shows only the first row above the drawer's fold |
 | hero (L4): no "repo produced no skills" line | **PASS** — the only banner is the by-design "1 library tool(s) — tools aren't used by Desktop subscription agents yet"; `mcp-builder` was in all 3 Engineer jobs | `video/takes/v2/3.1/shots/running.png` |
 | 4.1 (H1, H2): failure line "· on your Claude subscription"; "Next: resume from …" says Tvashtr skips done work | **PASS** — "Failed after 4m 17s · on your Claude subscription"; "Next: resume from Engineer, round 1. Tvashtr skips the work that is done, so it doesn't run again." | `video/takes/v2/4.1/shots/failed.png` |
 | 4.2 (H2): "Skips N min of finished work." + "Only the steps that run again use your Claude subscription."; no dollar per step | **PASS** — both lines, word for word; the picker shows plans, no dollars | `video/takes/v2/4.2/shots/confirm.png`, `picker.png` |
@@ -266,7 +266,7 @@ the film account has no second provider for a backup. V4 must caption it as an i
 rehearsed on the proof run, stops before the Ask's Send). Memory review mode is switched on in setup
 so new memories wait for Keep/Discard. **V2:** 52.6 s on the hero run, one Ask ("Why did you reject
 round 1?"); Keep/Discard on the **Engineer's** drawer (the Reviewer learned nothing); the Changes list
-sits below the drawer's fold (`shots/changes-list.png` shows all three files).
+sits below the drawer's fold (`shots/changes-list.png`, taken in headless Chromium, shows all three).
 **4.1 Quiet → Stalled → Failed** — RUN (V2): stack with `QUIET=20 STALLED=60 FAIL=180`; the
 Engineer's CLI is paused through the Desktop's own process tree (SIGSTOP). The Mac notification is
 MAC-3. **V2:** 282.4 s, run #3 — Quiet ≈92 s, Stalled ≈131 s, Failed ≈274 s into the take ("Failed
