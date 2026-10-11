@@ -101,7 +101,14 @@ export default {
     const run = tests.getByRole("button", { name: /^Run all \d+$/ });
     await run.waitFor({ timeout: 30000 });
     const n = Number((await run.innerText()).match(/\d+/)[0]);
+    const t0 = Date.now();
     await ctx.spend("test", "Run all", () => cam.click(run, "Run all"), n);
+    // The live smoke (L1, D8): the running line names its subscription from its first second.
+    const head = tests.locator(".tt-head");
+    await head.locator(".tt-head__title", { hasText: /^Running/ }).waitFor({ timeout: 60000 });
+    const line = (await head.locator(".tt-head__sub").innerText().catch(() => "")).trim();
+    ctx.note(`running line at ${((Date.now() - t0) / 1000).toFixed(1)} s: ${line}`);
+    await ctx.shot("running");
     await tests.getByText(/\d+ of \d+ passed/).first().waitFor({ timeout: 15 * 60000 });
     const failed = tests.getByRole("list", { name: "Tests" }).getByRole("listitem").filter({ hasText: "Failed" }).first();
     if (await failed.count()) {

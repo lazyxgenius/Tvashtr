@@ -115,6 +115,7 @@ export default {
     const rev = card(page, "Reviewer");
     await rev.locator(".rf-node__tests--live").waitFor({ timeout: 60000 }).catch(() => {});
     await cam.roi("testing", rev);
+    await ctx.shot("testing");
     await cam.hover(rev, "the Reviewer testing");
     await cam.pause(2500);
     await rev.locator(".rf-node__tests", { hasText: /^\d+ of \d+ tests?$/ }).waitFor({ timeout: 30 * 60000 });

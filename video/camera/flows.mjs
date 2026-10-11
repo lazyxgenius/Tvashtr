@@ -40,7 +40,12 @@ export async function composeAndLaunch(ctx, { task, repo, folder = null, branch 
     await cam.roi("composer", composer);
     const box = composer.getByRole("textbox", { name: "What should the team build?" });
     await cam.type(box, task, "the task", { cps: 22 });
-    await page.keyboard.press("Escape").catch(() => {}); // close Recent tasks
+    // Recent tasks opens once its matches load; Esc closes it only while it is open.
+    const recent = page.getByRole("listbox", { name: "Recent tasks" });
+    if (await recent.waitFor({ timeout: 3000 }).then(() => true, () => false)) {
+      await page.keyboard.press("Escape");
+      await recent.waitFor({ state: "hidden", timeout: 5000 }).catch(() => {});
+    }
   }
   await cam.click(composer.locator(".hm-picker--repo"), "the repo picker");
   const pop = page.getByRole("dialog", { name: /^Pick a (repo|folder)$/ });

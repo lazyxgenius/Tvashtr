@@ -23,8 +23,14 @@ export default {
     await editAndApproveSpec(ctx, "Keep the change small and tested.");
     await watch(ctx, async () => (await state(page, "Working").count()) > 0, { label: "the Engineer working" });
     // Pause the Engineer's CLI — found only through this Desktop's own process tree (rule 8).
-    const cli = processTree(app.process().pid).find((p) => /runner-jobs\//.test(p.command));
-    if (!cli) throw new Error("no Desktop job CLI in the Electron process tree");
+    // The runner claims the job a few seconds after "Working"; both CLIs run with --output-format
+    // (Claude takes its prompt on stdin, so its command line has no runner-jobs/ path).
+    let cli = null;
+    for (let i = 0; i < 90 && !cli; i++) {
+      cli = processTree(app.process().pid).find((p) => /\s--output-format\s/.test(p.command));
+      if (!cli) await page.waitForTimeout(1000);
+    }
+    if (!cli) throw new Error("no Desktop job CLI in the Electron process tree after 90 s");
     execFileSync("kill", ["-STOP", String(cli.pid)]);
     ctx.note(`paused the job CLI pid ${cli.pid}`);
     try {
@@ -35,6 +41,12 @@ export default {
       }
       await cam.hover(activity(page).locator(".lv-pin__box").first(), "the failed callout");
       await cam.pause(3000);
+      // The live smoke (H1, H2): the failure line and the callout's "Next:" in the take's notes.
+      await ctx.shot("failed");
+      const said = async (loc) => (await loc.innerText()).replace(/\s+/g, " ").trim();
+      ctx.note(`callout: ${await said(activity(page).locator(".lv-pin__box").first())}`);
+      for (const l of await activity(page).locator(".lv-line__what").all())
+        if (/subscription/.test(await l.innerText())) ctx.note(`line: ${await said(l)}`);
     } finally {
       try {
         execFileSync("kill", ["-TERM", String(cli.pid)]);
