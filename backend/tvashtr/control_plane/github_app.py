@@ -532,6 +532,25 @@ def compare_files(installation_id: int, full_name: str, base: str, head: str) ->
     return files if isinstance(files, list) else []
 
 
+def pull_request_files(installation_id: int, full_name: str, number: int) -> list[dict]:
+    """A pull request's Files changed, every page (GitHub lists at most 3000). Unlike the branch
+    comparison it stays right after the pull request is merged or its branch is deleted."""
+    token = get_installation_token(installation_id)
+    files: list[dict] = []
+    for page in range(1, 31):
+        batch = _http(
+            "GET",
+            f"{_GITHUB_API}/repos/{full_name}/pulls/{number}/files?per_page=100&page={page}",
+            token=token,
+        )
+        if not isinstance(batch, list):
+            break
+        files.extend(batch)
+        if len(batch) < 100:
+            break
+    return files
+
+
 def tree_subpaths(installation_id: int, full_name: str, sha: str) -> tuple[list[dict], bool]:
     """``([{"path", "file_count"}, …], truncated)`` — the TOP-LEVEL folders of the tree at ``sha``,
     each with the number of files anywhere under it (the shape of ``worktree.repo_subpaths``),

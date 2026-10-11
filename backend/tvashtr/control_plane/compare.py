@@ -1002,8 +1002,8 @@ def view(owner_id: uuid.UUID, compare_id: str, read_desktop: bool = False) -> di
             **_head(
                 cmp,
                 sum(f["cost"] for f in facts.values()),
-                # A lane with no run counts only when it is routed to a plan (L1).
-                [s["ran_on"] for s in sides if s["run_id"] or s["ran_on"]["subscriptions"]]
+                # L1: a lane counts once it did work (or, with no run yet, when it is routed).
+                [s["ran_on"] for s in sides if _did_work(s["ran_on"], s["cost_usd"])]
                 if ran is not None
                 else None,
             ),
@@ -1082,6 +1082,12 @@ def _facts(session, runs: list[Run]) -> dict[uuid.UUID, dict]:
 
 
 _NOT_RAN = {"subscriptions": [], "all": False}
+
+
+def _did_work(ran_on: dict, cost: float) -> bool:
+    """M-desk-5 L1: a run (or lane) did work once it ran on a plan or spent on a key; one that
+    hasn't started, or ended before any step ran, did none — never "key" work."""
+    return bool(ran_on["subscriptions"]) or (cost or 0) > 0
 
 
 def _not_ran_yet(session, cmp: Compare, team: TeamGraph, number: int, desktop: bool) -> dict:
@@ -1298,11 +1304,16 @@ def _set_view(session, cmp: Compare, runs: list[Run], ran: dict | None = None) -
         for label, number in zip(LABELS, (cmp.version_a, cmp.version_b), strict=True)
         if not any(label in g for g in groups)
     ]
+    worked = (
+        [r for r in runs if _did_work(ran[r.workflow_id], facts[r.id]["cost"])]
+        if ran is not None
+        else []
+    )
     ran_by = (
         {
             **{
                 label: desktop_jobs.ran_union(
-                    ran[g[label].workflow_id] for g in groups if label in g
+                    ran[r.workflow_id] for r in worked if r.pair_label == label
                 )
                 for label in LABELS
             },
@@ -1314,7 +1325,10 @@ def _set_view(session, cmp: Compare, runs: list[Run], ran: dict | None = None) -
     head = _head(
         cmp,
         sum(f["cost"] for f in facts.values()),
-        [*ran.values(), *(ran_by[lb] for lb, _ in unrun if ran_by[lb]["subscriptions"])]
+        [
+            *(ran[r.workflow_id] for r in worked),
+            *(ran_by[lb] for lb, _ in unrun if ran_by[lb]["subscriptions"]),
+        ]
         if ran is not None
         else None,
     )

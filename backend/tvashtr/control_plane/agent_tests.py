@@ -874,12 +874,16 @@ def _run_view(session, run: AgentTestRun, desktop: bool = False) -> dict:
 
 
 def _ran_on(session, run: AgentTestRun, results: list[AgentTestResult], ran: dict) -> dict:
-    """M-desk-4 (H1): where the replays really ran. M-desk-5 L1: a Desktop run that has no job yet
-    names the subscription its replays are routed to (M-desk-2's routes), never "$0.00 so far"."""
-    union = desktop_jobs.ran_union(ran[str(r.id)] for r in results if r.status != "waiting")
-    if not union["subscriptions"] and run.status == "running" and run.desktop_target:
+    """M-desk-4 (H1): where the replays really ran. M-desk-5 L1: only replays that did work count —
+    one on a Desktop job, or one that spent on a key; a replay not started yet (or stopped, or
+    failed before its job) did none. A Desktop run where nothing has run yet names the subscription
+    its replays are routed to (M-desk-2's routes), never "$0.00 so far"."""
+    worked = [
+        ran[str(r.id)] for r in results if ran[str(r.id)]["subscriptions"] or (r.cost_usd or 0) > 0
+    ]
+    if not worked and run.status == "running" and run.desktop_target:
         return desktop_routes(session, run.owner_id, [run.node_id])
-    return union
+    return desktop_jobs.ran_union(worked)
 
 
 def _desktop_waiting(session, run: AgentTestRun, results: list[AgentTestResult]) -> dict:

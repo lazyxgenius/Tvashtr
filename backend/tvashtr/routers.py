@@ -5,6 +5,7 @@ GET endpoints return plain dicts (matching the P0.1 style) to avoid coupling the
 API to ORM/gateway types.
 """
 
+import http.client
 import logging
 import os
 import uuid
@@ -1793,19 +1794,25 @@ _GITHUB_FILE_STATUS = {"added": "added", "removed": "deleted"}
 
 
 def _github_run_diff(run_id, owner_id, github_repo, base_ref, ship_branch, pr_url) -> dict:
-    """L3: ``compute_run_diff``'s answer for a GitHub run, from GitHub's comparison of its base and
-    ship branch through the owner's GitHub App installation. When GitHub can't answer (the branch
-    deleted, the App removed, offline) the files are empty and ``github_error`` says so, with the
-    run's pull request so the Changes tab can link to it."""
+    """L3: ``compute_run_diff``'s answer for a GitHub run, through the owner's GitHub App
+    installation: its pull request's Files changed (GitHub's comparison of its base and ship
+    branch, kept right after a merge), else the comparison of the two branches. When GitHub can't
+    answer (the App removed, the branch gone, offline) the files are empty and ``github_error``
+    says so, with the run's pull request so the Changes tab can link to it."""
     shape = {"run_id": run_id, "base_ref": base_ref, "ship_branch": ship_branch}
+    number = pr_url.rstrip("/").rsplit("/", 1)[-1] if pr_url else ""
     try:
         found = github_targets.owner_repo(owner_id, github_repo)
         if found is None:
             raise github_app.GithubAppError("the repo isn't in the owner's App installations")
-        raw = github_app.compare_files(
-            found[0], github_repo, base_ref or "main", ship_branch or f"tvashtr/{run_id}"
-        )
-    except (github_app.GithubAppError, OSError, ValueError):  # OSError: a socket timeout mid-read
+        if number.isdigit():
+            raw = github_app.pull_request_files(found[0], github_repo, int(number))
+        else:
+            raw = github_app.compare_files(
+                found[0], github_repo, base_ref or "main", ship_branch or f"tvashtr/{run_id}"
+            )
+    # OSError: a socket timeout mid-read; HTTPException: a response cut off mid-body.
+    except (github_app.GithubAppError, OSError, ValueError, http.client.HTTPException):
         return {**shape, "files": [], "total": 0, "github_error": True, "pr_url": pr_url}
     files = [
         {

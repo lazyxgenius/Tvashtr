@@ -25,7 +25,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from home_fixtures import clone_node, fresh_account, make_run
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from test_agent_tests import _create, _tests
 from test_compare import _node, _seed_compare
 from test_desk_routes import _desk_tests_account, _desk_versions
@@ -229,6 +229,104 @@ def test_l1_a_desktop_test_names_its_subscription_before_its_first_job(tmp_path,
         assert "ran_on" not in _tests(c, team, eng["id"])["run"]  # the website's read
     finally:
         c.post(f"/api/teams/{team}/nodes/{eng['id']}/tests/stop")
+
+
+def _replay_rows(c, team, eng, made, n: int) -> tuple[dict, list[uuid.UUID]]:
+    """A Desktop test run of ``n`` tests started (no replay worker): its view and result ids."""
+    for i in range(n):
+        _create(c, team, eng["id"], made["ids"]["eng2"], {"kind": "must_say", "value": f"x{i}"})
+    run = c.post(
+        f"/api/teams/{team}/nodes/{eng['id']}/tests/run", json={"desktop_target": True}
+    ).json()["run"]
+    return run, [uuid.UUID(r["id"]) for r in run["results"]]
+
+
+def _result(rid: uuid.UUID, **values) -> None:
+    from tvashtr.models import AgentTestResult
+
+    with session_scope() as session:
+        session.execute(update(AgentTestResult).where(AgentTestResult.id == rid).values(**values))
+
+
+def _replay_job(owner, rid: uuid.UUID, tmp_path) -> None:
+    desktop_jobs.enqueue_job(
+        owner_id=owner,
+        run_id=str(rid),
+        node_id="n",
+        iteration=1,
+        invocation_id=None,
+        provider="claude",
+        model=CLAUDE_MODEL,
+        instruction="x",
+        workspace_dir=str(tmp_path),
+        sidecars=[],
+        purpose=desktop_jobs.TEST_REPLAY,
+    )
+
+
+def test_l1_a_desktop_tests_line_counts_only_replays_that_did_work(tmp_path, monkeypatch):
+    """Review: replay 1 ran on the Claude plan; replay 2 is set up but has no job yet, then is
+    stopped — neither is key work, so the line stays "on your Claude subscription"."""
+    c, owner, team, made = _desk_tests_account(tmp_path)
+    eng = _node(c, team, "engineer")
+    _connect_desktop(c, "claude")
+    monkeypatch.setattr(agent_test_runner, "_spawn", lambda target, *a: None)
+    claude = {"subscriptions": ["claude"], "all": True}
+    url = f"/api/teams/{team}/nodes/{eng['id']}/tests"
+    _, (first, second) = _replay_rows(c, team, eng, made, 2)
+    try:
+        _replay_job(owner, first, tmp_path)
+        _result(first, status="passed")
+        _result(second, status="running")  # its job isn't there yet (setting up)
+        assert c.get(f"{url}?desktop_target=1").json()["run"]["ran_on"] == claude
+        stopped = c.post(f"{url}/stop").json()["run"]
+        assert stopped["ran_on"] == claude
+    finally:
+        c.post(f"{url}/stop")
+
+
+def test_l1_a_desktop_tests_key_spend_is_never_hidden_by_the_routes(tmp_path, monkeypatch):
+    """Review: replay 1 ran on a key ($0.14, no job) before the runner was fresh; the routes now
+    say Claude, but the line still shows the key spend."""
+    c, owner, team, made = _desk_tests_account(tmp_path)
+    eng = _node(c, team, "engineer")
+    _connect_desktop(c, "claude")
+    monkeypatch.setattr(agent_test_runner, "_spawn", lambda target, *a: None)
+    url = f"/api/teams/{team}/nodes/{eng['id']}/tests"
+    _, (first, _second) = _replay_rows(c, team, eng, made, 2)
+    try:
+        _result(first, status="passed", cost_usd=0.14)
+        assert c.get(f"{url}?desktop_target=1").json()["run"]["ran_on"] == NONE
+    finally:
+        c.post(f"{url}/stop")
+
+
+def test_l1_a_compare_lane_that_did_no_work_is_not_key_work(client):
+    from test_compare import _side
+
+    c, owner = fresh_account("desk5-l1-cmp-nowork")
+    team = _desk_versions(c)
+    cid = _seed_compare(team, owner, status="finished")
+    with session_scope() as session:
+        session.add(CompareDesktopTarget(compare_id=uuid.UUID(cid)))
+    a = _side(owner, team, cid, "A", 1)  # ran wholly on Claude
+    b = _side(owner, team, cid, "B", 2, status="failed", rounds=0)  # ended before any step
+    with session_scope() as session:  # neither spent on a key
+        session.execute(delete(CostRecord).where(CostRecord.workflow_id.in_([a, b])))
+    desktop_jobs.enqueue_job(
+        owner_id=owner,
+        run_id=a,
+        node_id="n",
+        iteration=1,
+        invocation_id=None,
+        provider="claude",
+        model=CLAUDE_MODEL,
+        instruction="x",
+        workspace_dir="/nonexistent",
+        sidecars=[],
+    )
+    desk = c.get(f"/api/compares/{cid}?desktop_target=1").json()
+    assert desk["ran_on"] == {"subscriptions": ["claude"], "all": True}
 
 
 def test_l1_a_desktop_compare_waiting_for_a_slot_names_its_routed_plans(client):
@@ -567,45 +665,49 @@ def _shipped_github_run(client, monkeypatch, tmp_path) -> tuple[str, dict]:
     return rid, before
 
 
-def _compare_answer(rid: str, before: dict) -> dict:
-    """GitHub's compare answer for the run's ship branch: the files Files changed shows."""
-    files = []
-    for f in before["files"]:
-        hunks = f["patch"][f["patch"].index("@@") :].rstrip("\n")
-        files.append(
-            {
-                "filename": f["path"],
-                "status": f["status"],
-                "additions": f["additions"],
-                "deletions": f["deletions"],
-                "changes": f["additions"] + f["deletions"],
-                "patch": hunks,
-            }
-        )
-    return {"status": "ahead", "files": files}
+def _github_files(before: dict) -> list[dict]:
+    """GitHub's file entries for the run's change (a PR's Files changed, or a compare's files)."""
+    return [
+        {
+            "filename": f["path"],
+            "status": f["status"],
+            "additions": f["additions"],
+            "deletions": f["deletions"],
+            "changes": f["additions"] + f["deletions"],
+            "patch": f["patch"][f["patch"].index("@@") :].rstrip("\n"),
+        }
+        for f in before["files"]
+    ]
 
 
-def test_l3_a_finished_github_runs_changes_come_from_github(client, monkeypatch, tmp_path):
+@pytest.mark.parametrize("pr", [True, False])
+def test_l3_a_finished_github_runs_changes_come_from_github(client, monkeypatch, tmp_path, pr):
+    """With a pull request: its Files changed (right after a merge-commit merge too, where the
+    branch comparison is empty); without one: the comparison of its base and ship branch."""
     from tvashtr.control_plane import github_app
 
     rid, before = _shipped_github_run(client, monkeypatch, tmp_path)
     assert [f["path"] for f in before["files"]] == ["README.md"]  # today's read, clone there
+    if not pr:
+        with session_scope() as session:
+            session.execute(update(Run).where(Run.id == uuid.UUID(rid)).values(pr_url=None))
     asked = []
 
     def fake_http(method, url, *, token=None, body=None, accept=None):
         asked.append((method, url, token))
-        return _compare_answer(rid, before)
+        files = _github_files(before)
+        return files if "/pulls/" in url else {"status": "ahead", "files": files}
 
     monkeypatch.setattr(github_app, "get_installation_token", lambda inst: "TOK")
     monkeypatch.setattr(github_app, "_http", fake_http)
     after = client.get(f"/api/runs/{rid}/diff").json()
-    assert asked == [
-        (
-            "GET",
-            f"https://api.github.com/repos/lazyxgenius/trade_mcp/compare/main...tvashtr/{rid}",
-            "TOK",
-        )
-    ]
+    repo = "https://api.github.com/repos/lazyxgenius/trade_mcp"
+    want = (
+        f"{repo}/pulls/5/files?per_page=100&page=1"
+        if pr
+        else f"{repo}/compare/main...tvashtr/{rid}"
+    )
+    assert asked == [("GET", want, "TOK")]
     assert set(after) == {"run_id", "base_ref", "ship_branch", "files", "total"}
     assert after["total"] == 1
     got, had = after["files"][0], before["files"][0]
@@ -616,15 +718,16 @@ def test_l3_a_finished_github_runs_changes_come_from_github(client, monkeypatch,
     )
 
 
-@pytest.mark.parametrize("failure", ["deleted_branch", "no_installation", "offline"])
+@pytest.mark.parametrize("failure", ["not_found", "no_installation", "offline", "cut_off"])
 def test_l3_when_github_cant_answer_the_changes_say_so(client, monkeypatch, tmp_path, failure):
+    import http.client
     import urllib.error
 
     from tvashtr.control_plane import github_app
 
     rid, _ = _shipped_github_run(client, monkeypatch, tmp_path)
     monkeypatch.setattr(github_app, "get_installation_token", lambda inst: "TOK")
-    if failure == "deleted_branch":
+    if failure == "not_found":
 
         def gone(*a, **k):
             raise github_app.GithubAppError("Not Found", status=404)
@@ -632,12 +735,18 @@ def test_l3_when_github_cant_answer_the_changes_say_so(client, monkeypatch, tmp_
         monkeypatch.setattr(github_app, "_http", gone)
     elif failure == "no_installation":
         monkeypatch.setattr(github_app, "list_installation_repositories", lambda inst: [])
-    else:
+    elif failure == "offline":
 
         def down(*a, **k):
             raise urllib.error.URLError("no route to host")
 
         monkeypatch.setattr(github_app.urllib.request, "urlopen", down)
+    else:
+
+        def cut(*a, **k):
+            raise http.client.IncompleteRead(b"[{", 4096)
+
+        monkeypatch.setattr(github_app, "_http", cut)
     after = client.get(f"/api/runs/{rid}/diff")
     assert after.status_code == 200
     assert after.json()["files"] == [] and after.json()["github_error"] is True
