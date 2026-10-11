@@ -110,9 +110,10 @@ registry count the tests pin).
   the Reviewer's drawer and Changes — 3.2/3.3/3.4/3.6 replayed without an unanswered request.
 - **G6** the notifications ask is asked **once per account** (`notify_asked`): 3.1 answered "Not
   now" on camera (22.8 s), so 4.1 never sees it. MAC-3 stays the operator's.
-- **G7** AI checks: the app's Tests read says `ai.available: false` (no server checks model on this
-  stack). 6.1 now probes it and films the AI-check moments from sample data listed in take.json
-  `sample` — not filmed yet (6.1 owed).
+- **G7** AI checks: the stack's settings have no checks key (read as a boolean only, never printed),
+  so the server's `ai_status` reports AI checks unavailable. The probe *through the app* (6.1 reads
+  its Tests answer first) has **not run** — 6.1 is owed; when it runs and AI checks are unavailable,
+  6.1 films those moments from sample data listed in take.json `sample`.
 - **G8** 0.1 filmed on PR #53 with the operator's GitHub session; then
   `video/out/github-session.json` was **deleted** (never opened).
 - **G9** the Engines "N to fix" badge counts team × surface pairs that can't run (Claude/Grok teams
