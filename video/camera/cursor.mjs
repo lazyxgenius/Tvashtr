@@ -253,6 +253,10 @@ export function makeCursor(page, { speed = 1 } = {}) {
     start(at = Date.now()) {
       t0 = at;
     },
+    /** V2: an off-camera stretch of `ms` was cut from the video — the clock skips it too. */
+    shift(ms) {
+      if (t0 !== null) t0 += ms;
+    },
     glide: async (tx, ty, label) => {
       await glide(tx, ty);
       if (label) log("move", label);

@@ -1,7 +1,7 @@
 // 4.1 The Engineer goes Quiet → Stalled → Failed (shortened timers; its CLI paused on purpose).
 // Start the stack with QUIET=20 STALLED=60 FAIL=180. The Mac notification is a MAC shot.
 import { execFileSync } from "node:child_process";
-import { buildFilmTeam } from "../film.mjs";
+import { filmTeam } from "../film.mjs";
 import { activity, answerNotifyAsk, composeAndLaunch, editAndApproveSpec, gateWaiting, nowBar, watch } from "../flows.mjs";
 import { processTree } from "../desktop.mjs";
 
@@ -13,10 +13,7 @@ export default {
   mode: "live",
   castEvery: 2,
   budget: 30,
-  setup: async (ctx) => {
-    const { id } = await buildFilmTeam(ctx.api, { upTo: "final", skipDomain: true });
-    return { team: id, task: ctx.story.runs.stall };
-  },
+  setup: async (ctx) => ({ team: await filmTeam(ctx.api), task: ctx.story.runs.stall }),
   before: (ctx) => ctx.go(`#/teams/${ctx.state.team}`, ctx.page.getByRole("button", { name: "Run this team", exact: true })),
   film: async (ctx) => {
     const { page, cam, app } = ctx;

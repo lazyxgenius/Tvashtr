@@ -1,7 +1,7 @@
 // 3.4 The Engineer in its own copy of the repo on the Claude sign-in; the Reviewer (Grok) rejects
 // round 1; round 2 approved. Re-taken from the hero recording (V4 speeds it up), from just before
 // the first verdict.
-import { activity, answerNotifyAsk, MARK, nowBar, runPath, watch } from "../flows.mjs";
+import { activity, answerNotifyAsk, closeDrawer, MARK, nowBar, openRunAgent, runPath, watch } from "../flows.mjs";
 
 export default {
   id: "3.4",
@@ -21,6 +21,11 @@ export default {
     const { page, cam } = ctx;
     await cam.roi("activity", activity(page));
     await cam.hover(nowBar(page).getByRole("button", { name: /^Engineer/ }), "the Engineer");
+    // G5: the Engineer's drawer — its own copy of the repo, on the Claude sign-in (3.1 opened it).
+    const d = await openRunAgent(ctx, "Engineer");
+    await cam.roi("engineer", d);
+    await cam.pause(5000);
+    await closeDrawer(ctx);
     await watch(ctx, async () => (await activity(page).locator("li.lv-line").filter({ hasText: /^.*(Asked for|Approved)/ }).count()) > 0, {
       label: "a Reviewer verdict",
       timeout: 40 * 60000,

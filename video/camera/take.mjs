@@ -2,7 +2,7 @@
 /**
  * The take runner (V1, F8): re-records any scene by name, in any order.
  *
- *   node video/camera/take.mjs 2.4            # setup off camera → pre-roll → film → video/takes/v1/2.4/
+ *   node video/camera/take.mjs 2.4            # setup off camera → pre-roll → film → video/takes/v2/2.4/
  *   node video/camera/take.mjs 2.4 --dry      # stop before anything that spends a subscription
  *   node video/camera/take.mjs 8.1-web        # one part of a scene
  *   node video/camera/take.mjs list           # the registry
@@ -14,7 +14,7 @@
  * renderer, F5) · web (the local frontend in Chromium, not Desktop mode) · run (scripted; films for
  * real only within the run budget) · mac / motion (not filmed by the camera: video/SCENES.md).
  *
- * Output per take: take.mp4 (2880×1800, 30 fps), take.json (scene, mode, recording or fixtures,
+ * Output per take (V2: video/takes/v2/<take>/): take.mp4 (2880×1800, 30 fps), take.json (scene, mode, recording or fixtures,
  * steps with time/kind/label/position, regions of interest), poster.png, shots/.
  */
 import { execFileSync, spawn } from "node:child_process";
@@ -42,13 +42,18 @@ import { clockScript, loadRecording, recordApi, replayApi, serveFixtures } from 
 
 const VIDEO = path.join(repoRoot, "video");
 const SCENES = path.join(VIDEO, "camera", "scenes");
-export const TAKES = path.join(VIDEO, "takes", "v1");
+// V2 (the real runs): takes in takes/v2, the spend ledger in out/v2 (V1's stay where they are).
+export const TAKES = path.join(VIDEO, "takes", "v2");
 const RECORDINGS = path.join(VIDEO, "recordings");
-const LEDGER = path.join(VIDEO, "out", "v1", "budget.json");
+const OUT = path.join(VIDEO, "out", "v2");
+const LEDGER = path.join(OUT, "budget.json");
 export const story = JSON.parse(fs.readFileSync(path.join(VIDEO, "story.json"), "utf8"));
 
-/** F3: the V1 subscription budget. Compares and task sets are not allowed at all. */
-const CAPS = { run: 2, test: 1, ask: 1, compare: 0, task_set: 0, save_with_tests: 0 };
+/** V2's real-work budget (brief m-desk-5-v2, Part B): 12 real Desktop runs, 12 test replays, 2
+ *  Asks. A compare is 2 runs, a task-set compare 2 per task, save-with-tests one replay per test:
+ *  `ctx.spend(kind, label, fn, units)` counts `units` against the kind's cap. */
+const CAPS = { run: 12, test: 12, ask: 2 };
+const BUCKET = { run: "run", compare: "run", task_set: "run", test: "test", save_with_tests: "test", ask: "ask" };
 
 /** --preview's stand-in for the Desktop's preload bridge (the real one exists in Electron). */
 const PREVIEW_BRIDGE = `(() => {
@@ -109,8 +114,10 @@ function ledger() {
     return { spends: [] };
   }
 }
-function spent(kind) {
-  return ledger().spends.filter((s) => s.kind === kind).length;
+function spent(bucket) {
+  return ledger()
+    .spends.filter((s) => (BUCKET[s.kind] ?? s.kind) === bucket)
+    .reduce((n, s) => n + (s.units ?? 1), 0);
 }
 function addSpend(entry) {
   const l = ledger();
@@ -155,7 +162,7 @@ function guards() {
  * taken over. Released when this process exits.
  */
 function lock() {
-  const dir = path.join(VIDEO, "out", "v1", "desktop.lock");
+  const dir = path.join(OUT, "desktop.lock");
   fs.mkdirSync(path.dirname(dir), { recursive: true });
   for (let i = 0; ; i += 1) {
     try {
@@ -219,7 +226,7 @@ async function runTake(spec, { dry, keepFrames, preview = false, browser: debugB
   // real stack — never a take, never a spend.
   if (debugBrowser && !(mode === "live" || mode === "run")) throw new Error(`--browser is for live scenes, not ${mode}`);
   if (debugBrowser) preview = true;
-  const out = preview ? path.join(VIDEO, "out", "v1", "preview", id) : path.join(TAKES, id);
+  const out = preview ? path.join(OUT, "preview", id) : path.join(TAKES, id);
   fs.rmSync(out, { recursive: true, force: true });
   fs.mkdirSync(path.join(out, "shots"), { recursive: true });
 
@@ -424,19 +431,39 @@ async function runTake(spec, { dry, keepFrames, preview = false, browser: debugB
       ctx.shots.push({ t: cam.t, name, file: path.relative(repoRoot, file) });
       return file;
     };
-    ctx.spend = async (kind, label, fn) => {
+    ctx.spend = async (kind, label, fn, units = 1) => {
       if (mode === "replay" && !dry) return fn(); // answered from the recording: nothing is spent
       if (dry || debugBrowser) throw new DryStop(label);
-      // A spend needs the operator's say-so for this process (V1: the F3 budget is the architect's).
+      // A spend needs the operator's say-so for this process (the budget is the architect's).
       if (process.env.VIDEO_ALLOW_SPEND !== "1")
         throw new Error(`refusing to spend (${kind}: ${label}) without VIDEO_ALLOW_SPEND=1 — rehearse with --dry`);
-      if (!(kind in CAPS)) throw new Error(`unknown spend kind ${kind}`);
-      if (spent(kind) >= CAPS[kind]) throw new Error(`budget: no ${kind} left (F3 cap ${CAPS[kind]})`);
-      addSpend({ kind, take: id, label });
-      ctx.spends.push({ kind, label, t: cam.t });
+      const bucket = BUCKET[kind];
+      if (!bucket) throw new Error(`unknown spend kind ${kind}`);
+      if (spent(bucket) + units > CAPS[bucket])
+        throw new Error(`budget: ${units} ${bucket}(s) would pass the V2 cap (${spent(bucket)} of ${CAPS[bucket]} used)`);
+      addSpend({ kind, take: id, label, units });
+      ctx.spends.push({ kind, label, units, t: cam.t });
       return fn();
     };
     ctx.roi = cam.roi;
+    /**
+     * V2: a long wait inside a take (a compare's 2–3 hours, a stall's timers) happens off camera:
+     * the screencast pauses, the wait is cut from take.mp4 (a jump cut), and take.json marks the cut
+     * with its real length for V4's captions. The Desktop stays open: its runner keeps working.
+     */
+    ctx.offCamera = async (label, fn) => {
+      cam.mark(`off camera: ${label}`);
+      await cast?.pause();
+      const at = Date.now();
+      try {
+        return await fn();
+      } finally {
+        const gap = Date.now() - at;
+        await cast?.resume();
+        cam.shift(gap);
+        cam.mark(`back on camera: ${label}`, { off_s: Math.round(gap / 1000) });
+      }
+    };
     /** A step inside a run that is already paid for (a gate, a resume click): --dry stops here. */
     ctx.advance = async (label, fn) => {
       if ((dry || debugBrowser) && mode !== "replay") throw new DryStop(label);

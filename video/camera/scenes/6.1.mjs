@@ -4,7 +4,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { latestRun, openRunAgent } from "../flows.mjs";
+import { heroRun, openRunAgent } from "../flows.mjs";
 
 const CSV = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "fixtures", "files", "reviewer-tests.csv");
 
@@ -14,9 +14,9 @@ export default {
   mode: "live",
   budget: 30,
   setup: async ({ api }) => {
-    const run = await latestRun(api, "completed");
+    const run = await heroRun(api);
     if (!run) throw new Error("6.1 needs a finished run with a Reviewer round (V2: the hero run)");
-    return { team: run.library_team_id ?? run.team?.id, run: run.run_id };
+    return { team: run.team, run: run.run_id };
   },
   before: async (ctx) => {
     await ctx.go(`#/teams/${ctx.state.team}/runs/${ctx.state.run}`);

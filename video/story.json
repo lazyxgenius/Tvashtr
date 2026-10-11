@@ -53,11 +53,12 @@
     "hero": "Add a Hull moving average indicator",
     "stall": "Add a TRIX indicator",
     "next": "Add a DEMA indicator",
+    "compare": "Add a TEMA indicator",
     "proof": "Add one line to README.md: Indicators live in core/indicators.py. Change nothing else."
   },
   "task_set": {
     "name": "Indicators",
     "tasks": ["Add a Vortex indicator", "Add a Chande momentum oscillator"]
   },
-  "versions": { "before": 7, "after": 8 }
+  "versions": { "before": 1, "after": 2 }
 }

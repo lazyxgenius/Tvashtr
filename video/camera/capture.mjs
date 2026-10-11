@@ -31,18 +31,37 @@ export async function startScreencast(page, dir, { every = 1 } = {}) {
   const cdp = await page.context().newCDPSession(page);
   const frames = [];
   const writes = [];
+  // V2: time spent paused (an off-camera wait) is cut out — later frames move back by it.
+  let cut = 0;
+  let pausedAt = null;
   cdp.on("Page.screencastFrame", ({ data, metadata, sessionId }) => {
     const file = path.join(dir, `f${String(frames.length).padStart(6, "0")}.png`);
-    frames.push({ file, ts: metadata.timestamp ?? Date.now() / 1000 });
+    frames.push({ file, ts: (metadata.timestamp ?? Date.now() / 1000) - cut });
     writes.push(fs.promises.writeFile(file, Buffer.from(data, "base64")));
     cdp.send("Page.screencastFrameAck", { sessionId }).catch(() => {});
   });
   await cdp.send("Page.startScreencast", { format: "png", everyNthFrame: every });
   return {
     frames,
+    /** An off-camera stretch (V2: a long wait inside a take): no frames until resume(). */
+    async pause() {
+      if (pausedAt !== null) return;
+      pausedAt = Date.now() / 1000;
+      await cdp.send("Page.stopScreencast").catch(() => {});
+    },
+    /** Back on camera: the paused time is cut from the video (a jump cut). Returns it in seconds. */
+    async resume() {
+      if (pausedAt === null) return 0;
+      const gap = Date.now() / 1000 - pausedAt;
+      cut += gap;
+      pausedAt = null;
+      await cdp.send("Page.startScreencast", { format: "png", everyNthFrame: every });
+      return gap;
+    },
     /** Stops the screencast; returns the end time (epoch seconds) for the last frame's duration. */
     async stop() {
-      const endTs = Date.now() / 1000;
+      if (pausedAt !== null) await this.resume();
+      const endTs = Date.now() / 1000 - cut;
       await cdp.send("Page.stopScreencast").catch(() => {});
       await Promise.all(writes);
       await cdp.detach().catch(() => {});

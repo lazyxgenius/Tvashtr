@@ -1,7 +1,7 @@
 // 5.1 Start the next run from this: carry the spec, decisions, memories, summaries; start from the
 // PR branch; then Recent tasks while typing on Home. Live on the newest finished run (V2: the hero
 // run); --dry stops before "Start run".
-import { latestRun, summary } from "../flows.mjs";
+import { heroRun, summary, toTheEnd } from "../flows.mjs";
 
 export default {
   id: "5.1",
@@ -9,9 +9,9 @@ export default {
   mode: "live",
   budget: 25,
   setup: async ({ api }) => {
-    const run = await latestRun(api, "completed");
+    const run = await heroRun(api);
     if (!run) throw new Error("5.1 needs a finished run (V2: the hero run)");
-    return { team: run.library_team_id ?? run.team?.id, run: run.run_id };
+    return { team: run.team, run: run.run_id };
   },
   before: async (ctx) => {
     await ctx.go(`#/teams/${ctx.state.team}/runs/${ctx.state.run}`);
@@ -38,6 +38,10 @@ export default {
     await cam.pause(1500);
     await ctx.spend("run", "Start run", () => cam.click(d.getByRole("button", { name: "Start run" }), "Start run"));
     await page.getByRole("link", { name: /^From run #\d+$/ }).waitFor({ timeout: 60000 });
+    await cam.pause(3000);
+    // V2: the run goes on to ship (off camera; the Desktop stays open for its jobs).
+    await toTheEnd(ctx, "the DEMA run");
+    await cam.roi("summary", summary(page));
     await cam.pause(3000);
   },
   parts: [

@@ -1,5 +1,5 @@
 // 3.6 The guardrail passes; Ship; the PR; the Done row. Re-taken from the hero recording.
-import { answerNotifyAsk, MARK, nowBar, runEnded, runPath, summary, watch } from "../flows.mjs";
+import { answerNotifyAsk, approveWaiting, MARK, nowBar, runEnded, runPath, summary, watch } from "../flows.mjs";
 
 export default {
   id: "3.6",
@@ -18,7 +18,16 @@ export default {
   film: async (ctx) => {
     const { page, cam } = ctx;
     await cam.hover(page.locator(".rf-gate--approved").last(), "the guardrail passed").catch(() => {});
-    await watch(ctx, () => runEnded(page), { label: "the end", timeout: 10 * 60000 });
+    // V2: the run waits at the Escalation gate just before Ship (3 Grok rounds); the replay holds
+    // there until it is approved on camera, as the live take did.
+    await watch(
+      ctx,
+      async () => {
+        await approveWaiting(ctx);
+        return runEnded(page);
+      },
+      { label: "the end", timeout: 10 * 60000 },
+    );
     await cam.roi("summary", summary(page));
     const pr = summary(page).getByRole("link", { name: /^Open pull request/ });
     if (await pr.count()) await cam.hover(pr, "the pull request");

@@ -1,6 +1,6 @@
 // 4.2 Needs you → Resume from here; the confirm (kept / runs again / skipped); Carried over; it
 // ships. Live on the newest failed run (V2: 4.1's TRIX run); --dry stops before "Resume run".
-import { latestRun, nowBar, runEnded, summary, watch } from "../flows.mjs";
+import { latestRun, nowBar, summary, toTheEnd } from "../flows.mjs";
 
 export default {
   id: "4.2",
@@ -35,7 +35,7 @@ export default {
     await ctx.spend("run", "Resume run", () => cam.click(confirm.getByRole("button", { name: "Resume run" }), "Resume run"));
     await nowBar(page).getByText("Carried over").first().waitFor({ timeout: 60000 });
     await cam.pause(2500);
-    await watch(ctx, () => runEnded(page), { label: "the resumed run", timeout: 40 * 60000 });
+    await toTheEnd(ctx, "the resumed run");
     await cam.roi("summary", summary(page));
     await cam.pause(3000);
   },

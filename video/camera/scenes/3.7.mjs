@@ -2,7 +2,7 @@
 // sign-in); cost per round; Memory: confirm one fact, reject one. Live on the newest finished run
 // (V2: the hero run; V1 rehearses on the proof run and stops before the Ask).
 import { must } from "../film.mjs";
-import { latestRun, openRunAgent } from "../flows.mjs";
+import { heroRun, openRunAgent } from "../flows.mjs";
 
 export default {
   id: "3.7",
@@ -10,11 +10,11 @@ export default {
   mode: "live",
   budget: 30,
   setup: async ({ api }) => {
-    const run = await latestRun(api, "completed");
+    const run = await heroRun(api);
     if (!run) throw new Error("3.7 needs a finished run (V2: the hero run)");
     // New memories wait for review, so one can be confirmed and one rejected on camera.
     must(await api("PATCH", "/api/memory/review-mode", { review_mode: true }), "memory review mode");
-    return { team: run.library_team_id ?? run.team?.id, run: run.run_id };
+    return { team: run.team, run: run.run_id };
   },
   before: async (ctx) => {
     await ctx.go(`#/teams/${ctx.state.team}/runs/${ctx.state.run}`);

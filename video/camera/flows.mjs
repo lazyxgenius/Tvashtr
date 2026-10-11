@@ -3,7 +3,9 @@
  * (cam), every subscription spend through ctx.spend (a --dry rehearsal stops there), every step
  * inside a paid run through ctx.advance. Selectors follow frontend/e2e and video/SCENES.md.
  */
-import { sleep } from "./desktop.mjs";
+import fs from "node:fs";
+import path from "node:path";
+import { repoRoot, sleep } from "./desktop.mjs";
 
 export const nowBar = (page) => page.getByRole("region", { name: "Now" });
 export const activity = (page) => page.getByRole("region", { name: "Activity" });
@@ -140,6 +142,29 @@ export async function editAndApproveSpec(ctx, line) {
   );
 }
 
+/**
+ * G1: a gate the run waits on (the Escalation gate after 3 review rounds: "ship the last build
+ * as-is, or stop") is approved on camera — its blocker card's Approve, a step inside the paid run.
+ * Returns the card's title, or null when nothing waits.
+ */
+export async function approveWaiting(ctx) {
+  const { page, cam } = ctx;
+  const blocker = page.locator("article.tv-task").filter({ hasText: "Awaiting your approval" }).first();
+  if (!(await blocker.count())) return null;
+  const title = (await blocker.locator(".tv-task__title").first().innerText()).trim();
+  await cam.roi("blocker", blocker);
+  await cam.pause(1500);
+  await ctx.advance(`Approve: ${title}`, () =>
+    cam.click(blocker.getByRole("button", { name: "Approve", exact: true }), "Approve"),
+  );
+  await blocker.waitFor({ state: "detached", timeout: 60000 }).catch(() => {});
+  ctx.note(`approved on camera: ${title}`);
+  return title;
+}
+
+const engineerWorking = (page) =>
+  nowBar(page).getByRole("button", { name: /^Engineer/ }).filter({ hasText: /Working|Running/ });
+
 /** The run ended: the summary shows (shipped) or a failed callout does. */
 export const runEnded = async (page) =>
   (await summary(page).count()) > 0 ||
@@ -224,8 +249,9 @@ export const runPath = (ctx) => `#/teams/${ids(ctx).team}/runs/${ids(ctx).run}`;
 
 /**
  * The whole recorded run, as 3.1 (V2's hero) and the F5 proof film it: the composer → Launch → the
- * notifications ask → the spec gate (one line edited, approved) → to the end → the Reviewer's
- * drawer and Changes (so replays of 3.7 have them). Pair moments are taken on a record take.
+ * notifications ask → the spec gate (one line edited, approved) → the Engineer's drawer while it
+ * works → to the end (a waiting Escalation gate approved on camera) → the Reviewer's drawer and
+ * Changes. G5: every view a replay of 3.2–3.6 shows is opened here. Pair moments on a record take.
  */
 export async function recordedRun(ctx, { folder = null, branch = null, edit = "Keep the change small and tested." } = {}) {
   const { page, cam } = ctx;
@@ -240,14 +266,36 @@ export async function recordedRun(ctx, { folder = null, branch = null, edit = "K
   if (ctx.mode === "record") await ctx.pair("spec gate waiting");
   await editAndApproveSpec(ctx, edit);
   if (ctx.mode === "record") await ctx.pair("approved with edits");
-  await watch(ctx, () => runEnded(page), { label: "the run" });
+  // G5: the Engineer's drawer while it works — 3.4's replay shows it.
+  await watch(ctx, async () => (await engineerWorking(page).count()) > 0, {
+    label: "the Engineer working",
+    timeout: 20 * 60000,
+  });
+  await openRunAgent(ctx, "Engineer");
+  await cam.pause(6000);
+  if (ctx.mode === "record") await ctx.pair("the Engineer's drawer");
+  await ctx.shot("running"); // the live smoke: the toolbar chip and banner while it runs
+  await closeDrawer(ctx);
+  // To the end; a gate it waits on (Escalation) is approved on camera (G1).
+  await watch(
+    ctx,
+    async () => {
+      await approveWaiting(ctx);
+      return runEnded(page);
+    },
+    { label: "the run", timeout: 120 * 60000 },
+  );
   if (ctx.mode === "record") await ctx.pair("the end");
   await cam.pause(3000);
+  await ctx.shot("done"); // the live smoke: Done line, Done summary, banner, toolbar
   const drawer = await openRunAgent(ctx, "Reviewer");
+  await cam.pause(1500);
+  await ctx.shot("reviewer-verdict");
   const changes = drawer.getByRole("button", { name: "Changes", exact: true });
   if (await changes.count()) {
     await cam.click(changes, "Changes");
     await cam.pause(2500);
+    await ctx.shot("reviewer-changes");
   }
   if (ctx.mode === "record") await ctx.pair("the Reviewer's drawer");
 }
@@ -277,4 +325,35 @@ export async function edgePoint(page, edgeId) {
     const m = path.getScreenCTM();
     return { x: p.x * m.a + p.y * m.c + m.e, y: p.x * m.b + p.y * m.d + m.f };
   }, edgeId);
+}
+
+/**
+ * V2: the hero run (3.1's recording, "Add a Hull moving average indicator") — 0.1, 3.7, 5.1 and 6.1
+ * work on it by id, never on "the newest run" (4.2's resumed run is newer).
+ */
+export async function heroRun(api) {
+  const meta = path.join(repoRoot, "video", "recordings", "hero", "meta.json");
+  if (!fs.existsSync(meta)) throw new Error("no hero recording yet: film 3.1 first");
+  const { team, run } = JSON.parse(fs.readFileSync(meta, "utf8"));
+  const r = await api("GET", `/api/runs/${run}`);
+  if (r.status !== 200) throw new Error(`hero run ${run}: HTTP ${r.status}`);
+  return { team, run_id: run, status: r.json.run?.status ?? null, pr_url: r.json.run?.pr_url ?? null };
+}
+
+/**
+ * V2: a long run to its end OFF camera (a jump cut), coming back on camera for each gate it waits
+ * on (approved on camera, G1) and for the end. The Desktop stays open: its runner does the work.
+ */
+export async function toTheEnd(ctx, label, { timeout = 120 * 60000 } = {}) {
+  const { page } = ctx;
+  const blocker = page.locator("article.tv-task").filter({ hasText: "Awaiting your approval" });
+  const end = Date.now() + timeout;
+  while (Date.now() < end) {
+    await ctx.offCamera(label, async () => {
+      while (Date.now() < end && !(await runEnded(page)) && !(await blocker.count())) await sleep(3000);
+    });
+    if (await approveWaiting(ctx)) continue;
+    if (await runEnded(page)) return true;
+  }
+  throw new Error(`timed out: ${label}`);
 }

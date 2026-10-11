@@ -283,4 +283,15 @@ export async function buildFilmTeam(
   return { id, g, validate: v };
 }
 
+/**
+ * V2 continuity: chapters 3–6 work on ONE film team — the one 3.1 built (its hero run, its v1,
+ * 6.2's v2). Its id; built (final, no Query domain step: READING_KEY = none, brief G3) only when
+ * missing.
+ */
+export async function filmTeam(api) {
+  const t = (await teams(api)).find((x) => x.name === story.team.name);
+  if (t) return t.team_graph_id;
+  return (await buildFilmTeam(api, { upTo: "final", skipDomain: true })).id;
+}
+
 export { must, story };

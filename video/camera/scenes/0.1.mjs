@@ -1,6 +1,6 @@
 // 0.1 The pull request on GitHub, opened by Tvashtr, with the Reviewer's approval — the PR page
 // in Playwright's Chromium (not the app). V2 films the hero run's PR; V1 rehearses on the newest PR.
-import { latestRun } from "../flows.mjs";
+import { heroRun } from "../flows.mjs";
 
 export default {
   id: "0.1",
@@ -9,7 +9,7 @@ export default {
   githubSession: true, // trade_mcp is private: the operator's session (video/camera/github-login.mjs)
   budget: 20,
   setup: async ({ api }) => {
-    const run = await latestRun(api, "completed");
+    const run = await heroRun(api);
     if (!run?.pr_url) throw new Error("0.1 needs a shipped run with a pull request");
     return { pr: run.pr_url };
   },
