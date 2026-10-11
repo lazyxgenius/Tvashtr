@@ -3,6 +3,7 @@
 # account, the DeepSeek key only, the GitHub App installation) → backend :8000 → Vite :5173.
 #   video/stack/up                       # normal timers
 #   QUIET=20 STALLED=60 FAIL=180 video/stack/up   # shortened stall timers (scene 4.1)
+#   HOSTED=0 video/stack/up                       # self-hosted: the email sign-up (scene 7.2)
 # Exits 2 with STACK_WAITING when another checkout holds :8000 or :5173.
 . "$(dirname "$0")/lib.sh"
 
@@ -43,6 +44,8 @@ if [[ -z "$(listeners 8000)" ]]; then
   [[ -n "${QUIET:-}" ]] && knobs+=("TVASHTR_QUIET_AFTER_S=$QUIET")
   [[ -n "${STALLED:-}" ]] && knobs+=("TVASHTR_STALLED_AFTER_S=$STALLED")
   [[ -n "${FAIL:-}" ]] && knobs+=("TVASHTR_STALL_FAIL_AFTER_S=$FAIL")
+  # HOSTED=0: a self-hosted backend, whose sign-in page offers the email sign-up (scene 7.2).
+  [[ "${HOSTED:-}" == 0 ]] && knobs+=("TVASHTR_HOSTED_MODE=false")
   # A run clones its repo under backend/; the reloader must not restart the server mid-run
   # (absolute paths: uvicorn only matches excluded directories by absolute path).
   UVICORN_RELOAD_EXCLUDES="$ROOT/backend/.tvashtr_clones $ROOT/backend/.tvashtr_workspaces" \

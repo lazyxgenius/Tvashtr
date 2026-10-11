@@ -28,7 +28,10 @@ function takes() {
 async function htmlShot(html, file, width = 1920) {
   const b = await chromium.launch({ headless: true });
   const p = await b.newPage({ viewport: { width, height: 800 }, deviceScaleFactor: 1 });
-  await p.setContent(html, { waitUntil: "load" });
+  // A file:// page, so its file:// images load (a page set from a string can't reach them).
+  const htmlFile = file.replace(/\.png$/, ".html");
+  fs.writeFileSync(htmlFile, html);
+  await p.goto(`file://${htmlFile}`, { waitUntil: "load" });
   await p.screenshot({ path: file, fullPage: true });
   await b.close();
 }
@@ -82,8 +85,33 @@ async function pairs(replayTake) {
   console.log(`PAIRS: ${path.relative(repoRoot, file)} ${t.pairs_matched}`);
 }
 
+/** SCENES.md's status table: one row per take on disk (and per registry entry without one). */
+async function scenesTable() {
+  const { registry, takesOf } = await import("./take.mjs");
+  const CH = { 0: 20, 1: 55, 2: 70, 3: 90, 4: 45, 5: 30, 6: 75, 7: 30, 8: 25 };
+  const onDisk = Object.fromEntries(takes().map((t) => [t.take, t]));
+  const rows = ["| take | mode | status | raw length | scene budget · chapter budget |", "|---|---|---|---|---|"];
+  for (const sc of await registry())
+    for (const t of takesOf(sc)) {
+      const real = onDisk[t.take];
+      const dry = onDisk[`${t.take}-dry`];
+      const got = real ?? dry;
+      const status = !got
+        ? t.mode === "mac" || t.mode === "motion" ? t.mode.toUpperCase() : "not filmed"
+        : got.status === "dry"
+          ? `dry · stopped before “${got.stopped_before}”`
+          : got.status === "ok"
+            ? "clip"
+            : `${got.status}: ${(got.error ?? "").split("\n")[0].slice(0, 90)}`;
+      const ch = Number(t.id.split(".")[0]);
+      rows.push(`| ${t.take} | ${got?.mode ?? t.mode} | ${status} | ${got?.duration_s ? `${got.duration_s} s` : "—"} | ${t.budget ?? "—"} s · ch ${ch}: ${CH[ch]} s |`);
+    }
+  console.log(rows.join("\n"));
+}
+
 const [cmd, arg] = process.argv.slice(2);
 if (cmd === "contact-sheet") await contactSheet();
 else if (cmd === "ch2-preview") ch2Preview();
 else if (cmd === "pairs") await pairs(arg);
+else if (cmd === "scenes-table") await scenesTable();
 else console.log("usage: sheet.mjs contact-sheet | ch2-preview | pairs <replay take>");

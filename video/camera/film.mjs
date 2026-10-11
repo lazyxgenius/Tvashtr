@@ -177,15 +177,20 @@ export async function buildFilmTeam(
         await api("POST", `/api/teams/${id}/nodes`, { node_kind: "gate", title: cfg.title, position: pos }),
         "add gate",
       );
-      if (bareGuardrail) return n;
+      const description =
+        cfg.gate_kind === "secret_leak_scan"
+          ? "Scans the run's workspace for secrets before anything ships."
+          : "Stops the run if the change touches servers/.";
+      if (bareGuardrail) {
+        // A plain approval gate with its real title and description: 2.4 sets its check on camera.
+        must(await api("PATCH", `/api/teams/${id}/nodes/${n.id}`, { title: cfg.title, description }), "name gate");
+        return n;
+      }
       must(
         await api("PATCH", `/api/teams/${id}/nodes/${n.id}`, {
           gate_kind: cfg.gate_kind,
           title: cfg.title,
-          description:
-            cfg.gate_kind === "secret_leak_scan"
-              ? "Scans the run's workspace for secrets before anything ships."
-              : "Stops the run if the change touches servers/.",
+          description,
           ...(cfg.paths ? { forbidden_paths: cfg.paths } : {}),
         }),
         "set gate",

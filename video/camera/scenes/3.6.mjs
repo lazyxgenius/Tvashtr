@@ -1,5 +1,5 @@
 // 3.6 The guardrail passes; Ship; the PR; the Done row. Re-taken from the hero recording.
-import { MARK, nowBar, runEnded, runPath, summary, watch } from "../flows.mjs";
+import { answerNotifyAsk, MARK, nowBar, runEnded, runPath, summary, watch } from "../flows.mjs";
 
 export default {
   id: "3.6",
@@ -12,6 +12,8 @@ export default {
   before: async (ctx) => {
     await ctx.go(runPath(ctx));
     await ctx.page.locator(".react-flow__node").first().waitFor({ timeout: 60000 });
+    // The live page answered the notifications ask before this moment; the replay asks again.
+    await answerNotifyAsk(ctx, "Not now", { wait: 4000, offCamera: true });
   },
   film: async (ctx) => {
     const { page, cam } = ctx;

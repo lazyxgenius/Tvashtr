@@ -189,7 +189,7 @@ const regionTexts = (page) =>
     const t = (n) => document.querySelector(`section[aria-label="${n}"]`)?.innerText?.trim() ?? null;
     return { now: t("Now"), activity: t("Activity"), summary: t("Run summary") };
   });
-const norm = (x) => JSON.stringify(x).replace(/\d+(h|m|s)\b/g, "#");
+const norm = (x) => JSON.stringify(x).replace(/\b\d+\s?(h|m|s)\b( \d+\s?s\b)?/g, "#");
 
 // ---- one take -------------------------------------------------------------------------------
 
@@ -469,19 +469,27 @@ async function runTake(spec, { dry, keepFrames, preview = false, browser: debugB
       const live = JSON.parse(fs.readFileSync(path.join(TAKES, spec.pairsFrom, "take.json"), "utf8")).pairs ?? [];
       pairTask = (async () => {
         for (const [i, lp] of live.entries()) {
-          const wait = ctx.anchor + lp.t_ms - 1500 - Date.now();
+          const wait = ctx.anchor + lp.t_ms + (intercept?.shift ?? 0) - 1500 - Date.now();
           if (wait > 0) await sleep(wait);
+          // The replay's moment: within one poll of the live one (t − 1.5 s … t + 3 s), the first
+          // exact match; else the first match apart from relative ages ("4 s ago"); else the
+          // sample nearest the live moment.
           let best = null;
-          const until = ctx.anchor + lp.t_ms + 3000;
+          let aged = null;
+          let near = null;
+          const until = ctx.anchor + lp.t_ms + (intercept?.shift ?? 0) + 3000;
           while (Date.now() < until) {
             const tx = await regionTexts(page).catch(() => null);
+            const at = Date.now() - ctx.anchor - (intercept?.shift ?? 0);
             if (tx && JSON.stringify(tx) === JSON.stringify(lp.texts)) {
-              best = { tx, exact: true, t_ms: Date.now() - ctx.anchor };
+              best = { tx, exact: true, t_ms: at };
               break;
             }
-            if (tx && !best) best = { tx, exact: false, t_ms: Date.now() - ctx.anchor };
+            if (tx && !aged && norm(tx) === norm(lp.texts)) aged = { tx, exact: false, aged: true, t_ms: at };
+            if (tx && (!near || Math.abs(at - lp.t_ms) < Math.abs(near.t_ms - lp.t_ms))) near = { tx, exact: false, t_ms: at };
             await sleep(250);
           }
+          best ??= aged ?? near;
           const file = path.join(out, "shots", `pair-${String(i + 1).padStart(2, "0")}-replay.png`);
           await page.screenshot({ path: file }).catch(() => {});
           ctx.pairs.push({
@@ -489,6 +497,7 @@ async function runTake(spec, { dry, keepFrames, preview = false, browser: debugB
             t_ms: lp.t_ms,
             replay_t_ms: best?.t_ms ?? null,
             match: Boolean(best?.exact),
+            same_but_ages: Boolean(best?.exact || best?.aged),
             texts: best?.tx ?? null,
             live: lp.file,
             file: path.relative(repoRoot, file),
@@ -516,7 +525,10 @@ async function runTake(spec, { dry, keepFrames, preview = false, browser: debugB
     if (spec.after) await spec.after(ctx);
 
     if (intercept?.missing?.size) failures.push(`unanswered /api requests: ${[...intercept.missing].join(", ")}`);
-    if (intercept && "served" in intercept) result.replay_served = intercept.served;
+    if (intercept && "served" in intercept) {
+      result.replay_served = intercept.served;
+      ctx.note(`replay holds: ${JSON.stringify(intercept.holds)}; held ${Math.round(intercept.shift / 1000)} s in all`);
+    }
   } catch (e) {
     result.status = "failed";
     result.error = String(e && e.stack ? e.stack : e).slice(0, 2000);
@@ -565,6 +577,8 @@ async function runTake(spec, { dry, keepFrames, preview = false, browser: debugB
     shots: ctx.shots,
     pairs: ctx.pairs,
     pairs_matched: ctx.pairs.length && mode === "replay" ? `${ctx.pairs.filter((p) => p.match).length}/${ctx.pairs.length}` : null,
+    pairs_same_but_ages:
+      ctx.pairs.length && mode === "replay" ? `${ctx.pairs.filter((p) => p.same_but_ages).length}/${ctx.pairs.length}` : null,
     notes: ctx.notes,
     recorded_at: new Date().toISOString(),
   };

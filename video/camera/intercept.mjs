@@ -111,14 +111,14 @@ export function recordApi(page, dir) {
  */
 export function clockScript(offsetMs) {
   return `(() => {
-    const off = ${Math.round(offsetMs)};
+    window.__tvOff = ${Math.round(offsetMs)};
     const R = Date;
     function D(...a) {
-      if (!new.target) return new R(R.now() + off).toString();
-      return a.length ? new R(...a) : new R(R.now() + off);
+      if (!new.target) return new R(R.now() + window.__tvOff).toString();
+      return a.length ? new R(...a) : new R(R.now() + window.__tvOff);
     }
     D.prototype = R.prototype;
-    D.now = () => R.now() + off;
+    D.now = () => R.now() + window.__tvOff;
     D.parse = R.parse;
     D.UTC = R.UTC;
     window.Date = D;
@@ -135,6 +135,8 @@ export function loadRecording(dir) {
  * (the first one when the replay asks earlier than the live take did). Returns { missing, served,
  * start(at) }. Unknown requests answer 599 and are listed: the take fails.
  */
+const PEEK = 1000;
+
 export async function replayApi(page, recording) {
   const byKey = new Map();
   for (const e of recording.entries) {
@@ -142,9 +144,39 @@ export async function replayApi(page, recording) {
     if (!byKey.has(k)) byKey.set(k, []);
     byKey.get(k).push(e);
   }
+  const activityByPath = new Map();
+  for (const e of recording.entries)
+    if (e.method === "GET" && /\/activity$/.test(e.path) && e.status === 200) {
+      if (!activityByPath.has(e.path)) activityByPath.set(e.path, []);
+      activityByPath.get(e.path).push(e);
+    }
   const missing = new Set();
   let served = 0;
   let t0 = Date.now();
+  // The run waits for the person, as it did live: each gate decision the page posted is a hold —
+  // the recording's clock stops just before it until the replay's page posts it too, then goes on
+  // (the page clock and the pair moments shift by the time held).
+  const holds = recording.entries
+    .filter((e) => e.method === "POST" && /\/tasks\/[^/]+\/resolve$/.test(e.path))
+    .map((e) => ({ at: Math.max(0, e.t - 300), key: `POST ${e.path}${e.search}`, released: false, froze: null }));
+  let shift = 0;
+  const clock = () => {
+    const raw = Date.now() - t0 - shift;
+    const h = holds.find((x) => !x.released && x.at <= raw);
+    if (!h) return raw;
+    h.froze ??= Date.now() - (raw - h.at);
+    return h.at;
+  };
+  const release = async (k) => {
+    const h = holds.find((x) => !x.released && x.key === k);
+    if (!h) return;
+    const held = h.froze === null ? 0 : Date.now() - h.froze;
+    h.released = true;
+    shift += held;
+    await page.evaluate((ms) => {
+      window.__tvOff -= ms;
+    }, held).catch(() => {});
+  };
   await page.route(API_RE, async (route) => {
     const req = route.request();
     const u = new URL(req.url());
@@ -154,9 +186,43 @@ export async function replayApi(page, recording) {
       missing.add(k);
       return route.fulfill({ status: 599, json: { detail: "not in the recording (video replay)" } });
     }
-    const t = Date.now() - t0;
+    if (req.method() === "POST") await release(k);
+    const t = clock();
+    // A replay that starts part-way in asks for the run's Activity from scratch, which the live page
+    // asked only at the start: answer with the Activity as it stood then — the newest response's
+    // state and every line the recording had shown by then (all from the recording).
+    if (/\/activity$/.test(u.pathname) && !u.searchParams.has("after")) {
+      const next = holds.find((x) => !x.released);
+      const limit = next ? Math.min(t + PEEK, next.at) : t + PEEK;
+      const acts = (activityByPath.get(u.pathname) ?? []).filter((e) => e.t <= limit);
+      if (acts.length && acts[acts.length - 1].t > (list[0]?.t ?? 0) + 3000) {
+        const lines = new Map();
+        let top = null;
+        for (const e of acts) {
+          const b = JSON.parse(Buffer.from(e.body, "base64").toString("utf8"));
+          for (const l of b.lines ?? []) lines.set(l.id, l);
+          top = b;
+        }
+        served += 1;
+        return route.fulfill({
+          status: 200,
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ ...top, lines: [...lines.values()] }),
+        });
+      }
+    }
+    // The live page polled on its own timers; the replay's polls land at other phases. Answer with
+    // the recorded response nearest in time, looking at most PEEK ms ahead, so a poll that comes a
+    // moment before the live one doesn't show the state one poll older than the live page did.
+    // Never look past a hold the page hasn't released (the state after a person's decision).
+    const next = holds.find((x) => !x.released);
+    const limit = next ? Math.min(t + PEEK, next.at) : t + PEEK;
     let hit = list[0];
-    for (const e of list) if (e.t <= t) hit = e;
+    for (const e of list) if (e.t <= limit) hit = e;
+    if (hit.t > t) {
+      const before = [...list].reverse().find((e) => e.t <= t);
+      if (before && t - before.t < hit.t - t) hit = before;
+    }
     served += 1;
     return route.fulfill({
       status: hit.status,
@@ -169,8 +235,18 @@ export async function replayApi(page, recording) {
     get served() {
       return served;
     },
+    /** ms held so far (pair moments after a hold move by this much). */
+    get shift() {
+      return shift;
+    },
+    get holds() {
+      return holds.map(({ at, key, released }) => ({ at, key, released }));
+    },
     start(at = Date.now()) {
       t0 = at;
+      // A replay that starts part-way in (spec.from) is past the holds before its start.
+      const from = Date.now() - at;
+      for (const h of holds) if (h.at < from) h.released = true;
     },
   };
 }

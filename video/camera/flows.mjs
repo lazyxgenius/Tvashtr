@@ -82,13 +82,17 @@ export async function composeAndLaunch(ctx, { task, repo, folder = null, branch 
 }
 
 /** Answer the run view's notifications ask, if it opened (F9: "Not now" unless the scene shows it). */
-export async function answerNotifyAsk(ctx, choice = "Not now", { wait = 6000 } = {}) {
+export async function answerNotifyAsk(ctx, choice = "Not now", { wait = 6000, offCamera = false } = {}) {
   const { page, cam } = ctx;
   const ask = page.getByRole("dialog", { name: "Notifications" });
   try {
     await ask.waitFor({ timeout: wait });
   } catch {
     return false;
+  }
+  if (offCamera) {
+    await ask.getByRole("button", { name: choice, exact: true }).click();
+    return true;
   }
   await cam.roi("notify-ask", ask);
   await cam.pause(1800);
@@ -146,7 +150,7 @@ export const runEnded = async (page) =>
 export const card = (page, title) =>
   page.locator(".react-flow__node").filter({ has: page.locator(".rf-node__role", { hasText: new RegExp(`^${title}$`) }) });
 export const gateCard = (page, label) =>
-  page.locator(".react-flow__node").filter({ has: page.locator(".rf-gate__label", { hasText: label }) });
+  page.locator(".react-flow__node").filter({ has: page.locator(".rf-gate__label", { hasText: new RegExp(`^${label}$`) }) });
 
 /** Wait for the canvas to draw its cards. */
 export async function canvasReady(page) {
@@ -185,10 +189,12 @@ export async function pickModel(ctx, drawer, group, option) {
   return page;
 }
 
-/** Close a drawer by clicking an empty part of the canvas. */
+/** Close the open drawer with its own close button (Escape where it has none). */
 export async function closeDrawer(ctx) {
   const { page, cam } = ctx;
-  await cam.press("Escape", "close the drawer");
+  const x = page.getByRole("complementary").getByRole("button", { name: /^Close( panel)?$/ }).first();
+  if (await x.isVisible().catch(() => false)) await cam.click(x, "close the drawer");
+  else await cam.press("Escape", "close the drawer");
   await sleep(500);
   return page;
 }

@@ -1,5 +1,5 @@
 // 3.3 The gate → Needs you; open the spec, fix one line, approve. Re-taken from the hero recording.
-import { activity, editAndApproveSpec, gateWaiting, MARK, nowBar, runPath } from "../flows.mjs";
+import { answerNotifyAsk, activity, editAndApproveSpec, gateWaiting, MARK, nowBar, runPath } from "../flows.mjs";
 
 export default {
   id: "3.3",
@@ -12,6 +12,8 @@ export default {
   before: async (ctx) => {
     await ctx.go(runPath(ctx));
     await gateWaiting(ctx.page).waitFor({ timeout: 60000 });
+    // The live page answered the notifications ask before this moment; the replay asks again.
+    await answerNotifyAsk(ctx, "Not now", { wait: 4000, offCamera: true });
   },
   film: async (ctx) => {
     const { page, cam } = ctx;
