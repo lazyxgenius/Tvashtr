@@ -19,6 +19,7 @@ import uuid
 
 from sqlalchemy import select
 
+from tvashtr.control_plane import github_targets
 from tvashtr.control_plane.run_diff import compute_run_diff
 from tvashtr.db import session_scope
 from tvashtr.models import (
@@ -124,23 +125,40 @@ def _render_events(session, invocation_id: int) -> list[str]:
     return lines
 
 
-def _render_diff(run: Run, snapshot: dict | None = None) -> str:
-    """The bounded per-file summary of what the run shipped (worker nodes only).
+def _render_diff(of: dict) -> str:
+    """The bounded per-file summary of what the run shipped (worker nodes only). ``of`` holds the
+    run's diff inputs, read in the caller's session; this renders after it closes.
 
     ``snapshot`` is the run's DURABLE ``run_artifacts.files`` dict when it has one — the same
     persist-then-reap fallback ``GET /api/runs/{id}/diff`` uses, and required for the same reason.
     M-wsgc S1 lets the reaper reclaim a greenfield workspace once its diff is in the database, so a
     live recompute for such a run finds no directory and returns ``[]`` — and this section would
-    then tell the model the run changed NOTHING, which ``_INSTRUCTION`` pins it to repeat. The
-    caller reads the row (it already holds a session; this module stays DB-read-free at this level)
-    and passes it here. ``None`` ⇒ recompute live, exactly as before: brownfield always, and any
-    greenfield run whose diff is not yet persisted (whose workspace is correspondingly spared)."""
-    diff = snapshot or compute_run_diff(
-        run_id=run.workflow_id,
-        repo_path=run.repo_path,
-        base_ref=run.base_ref,
-        ship_branch=run.ship_branch,
-    )
+    then tell the model the run changed NOTHING, which ``_INSTRUCTION`` pins it to repeat. M-desk-5
+    L3: a finished GitHub run's clone is reaped at run end for the same reason, so its changes are
+    read from GitHub (outside any DB session), as its Changes tab reads them. Otherwise (``None``
+    snapshot) recompute live, exactly as before: brownfield always, and any greenfield run whose
+    diff is not yet persisted (whose workspace is correspondingly spared)."""
+    if of["snapshot"]:
+        diff = of["snapshot"]
+    elif github_targets.reads_from_github(of["github_repo"], of["status"], of["repo_path"]):
+        files = github_targets.run_files(
+            of["owner_id"],
+            of["run_id"],
+            of["github_repo"],
+            of["base_ref"],
+            of["ship_branch"],
+            of["pr_url"],
+        )
+        if files is None:
+            return "The code changes couldn't be loaded from GitHub for this run."
+        diff = {"files": files}
+    else:
+        diff = compute_run_diff(
+            run_id=of["run_id"],
+            repo_path=of["repo_path"],
+            base_ref=of["base_ref"],
+            ship_branch=of["ship_branch"],
+        )
     files = diff.get("files") or []
     if not files:
         return "No file changes are recorded for this run."
@@ -224,18 +242,28 @@ def build_system_prompt(*, run_id: str, node_id: str) -> str:
 
         # A worker (agent) node: show the code the run actually shipped. M-wsgc S1: prefer the
         # DURABLE snapshot for a greenfield run — its workspace may already have been reclaimed.
+        diff_of = None
         if node is not None and node.kind == "agent" and run is not None:
-            snapshot = (
-                session.execute(
-                    select(RunArtifact.files).where(RunArtifact.run_id == run.id)
-                ).scalar_one_or_none()
-                if run.repo_path is None
-                else None
-            )
-            sections.append(
-                "=== CODE CHANGES SHIPPED BY THIS RUN ===\n" + _render_diff(run, snapshot)
-            )
+            diff_of = {
+                "snapshot": (
+                    session.execute(
+                        select(RunArtifact.files).where(RunArtifact.run_id == run.id)
+                    ).scalar_one_or_none()
+                    if run.repo_path is None
+                    else None
+                ),
+                "owner_id": run.owner_id,
+                "run_id": run.workflow_id,
+                "repo_path": run.repo_path,
+                "base_ref": run.base_ref,
+                "ship_branch": run.ship_branch,
+                "github_repo": run.github_repo,
+                "status": run.status,
+                "pr_url": run.pr_url,
+            }
 
+    if diff_of is not None:
+        sections.append("=== CODE CHANGES SHIPPED BY THIS RUN ===\n" + _render_diff(diff_of))
     return _clip("\n\n".join(sections), _MAX_TOTAL_CHARS)
 
 

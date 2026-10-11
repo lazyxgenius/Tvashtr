@@ -773,3 +773,23 @@ def test_l3_github_is_not_asked_for_a_live_run_or_a_non_github_run(client, monke
         )
     body = client.get(f"/api/runs/{local}/diff").json()
     assert body["files"] == [] and "github_error" not in body
+
+
+def test_l3_the_ask_after_done_sees_the_github_runs_changes(client, monkeypatch, tmp_path):
+    """L3's sibling: Ask the agent about a finished GitHub run — its prompt's code changes come
+    from GitHub too, never "No file changes are recorded" (which the model is pinned to repeat)."""
+    from tvashtr.control_plane import github_app
+    from tvashtr.control_plane.run_explain import build_system_prompt
+    from tvashtr.models import AgentNode
+
+    rid, before = _shipped_github_run(client, monkeypatch, tmp_path)
+    monkeypatch.setattr(github_app, "get_installation_token", lambda inst: "TOK")
+    monkeypatch.setattr(github_app, "_http", lambda *a, **k: _github_files(before))
+    with session_scope() as session:
+        graph = session.get(Run, uuid.UUID(rid)).team_graph_id
+        worker = session.execute(
+            select(AgentNode.id).where(AgentNode.team_graph_id == graph, AgentNode.kind == "agent")
+        ).scalar_one()
+    prompt = build_system_prompt(run_id=rid, node_id=str(worker))
+    assert "- README.md (modified +1/-0)" in prompt
+    assert "No file changes are recorded" not in prompt

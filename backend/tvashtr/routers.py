@@ -5,7 +5,6 @@ GET endpoints return plain dicts (matching the P0.1 style) to avoid coupling the
 API to ORM/gateway types.
 """
 
-import http.client
 import logging
 import os
 import uuid
@@ -26,7 +25,6 @@ from tvashtr.control_plane import (
     activity,
     agent_test_runner,
     agent_tests,
-    clone_reaper,
     desktop_asks,
     desktop_jobs,
     document_views,
@@ -1775,57 +1773,20 @@ def get_run_diff(run_id: str, current_user: Annotated[UserOut, Depends(get_curre
         )
     if snapshot is not None:
         return snapshot
-    # M-desk-5 L3: a finished GitHub run's clone is gone (M-clonegc reaps it at run end) — read its
-    # ship branch from GitHub instead, the same files the pull request's Files changed shows.
-    if (
-        github_repo
-        and status not in clone_reaper.LIVE_STATUSES
-        and not (repo_path and os.path.isdir(repo_path))
-    ):
-        return _github_run_diff(
-            run_id, uuid.UUID(current_user.id), github_repo, base_ref, ship_branch, pr_url
+    # M-desk-5 L3: a finished GitHub run's clone is gone (M-clonegc reaps it at run end) — read
+    # its changes from GitHub instead, the same files the pull request's Files changed shows. When
+    # GitHub can't answer, say so (``github_error``) with the run's pull request to link to.
+    if github_targets.reads_from_github(github_repo, status, repo_path):
+        shape = {"run_id": run_id, "base_ref": base_ref, "ship_branch": ship_branch}
+        files = github_targets.run_files(
+            uuid.UUID(current_user.id), run_id, github_repo, base_ref, ship_branch, pr_url
         )
+        if files is None:
+            return {**shape, "files": [], "total": 0, "github_error": True, "pr_url": pr_url}
+        return {**shape, "files": files, "total": len(files)}
     return compute_run_diff(
         run_id=run_id, repo_path=repo_path, base_ref=base_ref, ship_branch=ship_branch
     )
-
-
-_GITHUB_FILE_STATUS = {"added": "added", "removed": "deleted"}
-
-
-def _github_run_diff(run_id, owner_id, github_repo, base_ref, ship_branch, pr_url) -> dict:
-    """L3: ``compute_run_diff``'s answer for a GitHub run, through the owner's GitHub App
-    installation: its pull request's Files changed (GitHub's comparison of its base and ship
-    branch, kept right after a merge), else the comparison of the two branches. When GitHub can't
-    answer (the App removed, the branch gone, offline) the files are empty and ``github_error``
-    says so, with the run's pull request so the Changes tab can link to it."""
-    shape = {"run_id": run_id, "base_ref": base_ref, "ship_branch": ship_branch}
-    number = pr_url.rstrip("/").rsplit("/", 1)[-1] if pr_url else ""
-    try:
-        found = github_targets.owner_repo(owner_id, github_repo)
-        if found is None:
-            raise github_app.GithubAppError("the repo isn't in the owner's App installations")
-        if number.isdigit():
-            raw = github_app.pull_request_files(found[0], github_repo, int(number))
-        else:
-            raw = github_app.compare_files(
-                found[0], github_repo, base_ref or "main", ship_branch or f"tvashtr/{run_id}"
-            )
-    # OSError: a socket timeout mid-read; HTTPException: a response cut off mid-body.
-    except (github_app.GithubAppError, OSError, ValueError, http.client.HTTPException):
-        return {**shape, "files": [], "total": 0, "github_error": True, "pr_url": pr_url}
-    files = [
-        {
-            "path": f["filename"],
-            "status": _GITHUB_FILE_STATUS.get(f.get("status"), "modified"),
-            "additions": int(f.get("additions") or 0),
-            "deletions": int(f.get("deletions") or 0),
-            "patch": f.get("patch") or "",
-        }
-        for f in raw
-        if isinstance(f, dict) and f.get("filename") and f["filename"] != "TVASHTR_REMEMBER.jsonl"
-    ]
-    return {**shape, "files": files, "total": len(files)}
 
 
 @router.get("/api/runs/{run_id}/memories")

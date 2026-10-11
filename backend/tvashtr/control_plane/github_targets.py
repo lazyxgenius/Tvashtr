@@ -9,6 +9,8 @@ Every function authorizes first: the repo must be reachable through an installat
 controls (a user may send any ``owner/name``). GitHub I/O never runs inside a DB session.
 """
 
+import http.client
+import os
 import uuid
 
 from sqlalchemy import select
@@ -90,3 +92,59 @@ def subpaths_for(installation_id: int, repo: dict, ref: str | None) -> dict | No
         return None
     subpaths, truncated = github_app.tree_subpaths(installation_id, full_name, sha)
     return {"ref": ref, "subpaths": subpaths, "truncated": truncated}
+
+
+# ---- M-desk-5 L3: a finished GitHub run's changes, from GitHub ---------------------------------
+
+_FILE_STATUS = {"added": "added", "removed": "deleted"}
+
+
+def reads_from_github(github_repo: str | None, status: str | None, repo_path: str | None) -> bool:
+    """A finished GitHub run whose clone is gone (M-clonegc reaps it at run end): its changes come
+    from GitHub. A live run, a local-folder run and a greenfield run keep reading their own copy."""
+    from tvashtr.control_plane.clone_reaper import LIVE_STATUSES
+
+    return (
+        bool(github_repo)
+        and status not in LIVE_STATUSES
+        and not (repo_path and os.path.isdir(repo_path))
+    )
+
+
+def run_files(
+    owner_id: uuid.UUID,
+    run_id: str,
+    github_repo: str,
+    base_ref: str | None,
+    ship_branch: str | None,
+    pr_url: str | None,
+) -> list[dict] | None:
+    """``compute_run_diff``'s ``files`` for a finished GitHub run, through the owner's GitHub App
+    installation: its pull request's Files changed (GitHub's comparison of its base and ship
+    branch, kept right after a merge), else the comparison of the two branches. ``None`` when
+    GitHub can't answer (the App removed, the branch gone, offline)."""
+    number = pr_url.rstrip("/").rsplit("/", 1)[-1] if pr_url else ""
+    try:
+        found = owner_repo(owner_id, github_repo)
+        if found is None:
+            return None
+        if number.isdigit():
+            raw = github_app.pull_request_files(found[0], github_repo, int(number))
+        else:
+            raw = github_app.compare_files(
+                found[0], github_repo, base_ref or "main", ship_branch or f"tvashtr/{run_id}"
+            )
+    # OSError: a socket timeout mid-read; HTTPException: a response cut off mid-body.
+    except (github_app.GithubAppError, OSError, ValueError, http.client.HTTPException):
+        return None
+    return [
+        {
+            "path": f["filename"],
+            "status": _FILE_STATUS.get(f.get("status"), "modified"),
+            "additions": int(f.get("additions") or 0),
+            "deletions": int(f.get("deletions") or 0),
+            "patch": f.get("patch") or "",
+        }
+        for f in raw
+        if isinstance(f, dict) and f.get("filename") and f["filename"] != "TVASHTR_REMEMBER.jsonl"
+    ]
