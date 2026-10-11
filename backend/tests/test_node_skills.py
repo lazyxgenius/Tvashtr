@@ -456,3 +456,73 @@ def test_repo_resolved_sha_wins_over_ref_and_comma_filter_and_mode(
     )
     assert {s.name for s in out} == {"greet", "farewell"}
     assert all(s.trigger is None and s.is_agentskills_format is False for s in out)
+
+
+# ---------------------------------------------------------------------------------------------
+# M-desk-5 L4 — a skill imported from GitHub loads in the run, at the pinned commit
+# ---------------------------------------------------------------------------------------------
+
+_ANTHROPICS_SKILLS = "https://github.com/anthropics/skills"
+
+
+def _make_anthropics_like_repo(tmp_path: Path) -> tuple[str, str]:
+    """A local repo laid out like ``anthropics/skills``: ``skills/<name>/SKILL.md`` (with a
+    ``reference/`` folder beside one), a top-level ``README.md`` and a ``template/SKILL.md``."""
+    repo = tmp_path / "anthropics-skills"
+    for name, body in {"mcp-builder": "MCP_BUILDER_BODY", "pdf": "PDF_BODY"}.items():
+        d = repo / "skills" / name
+        d.mkdir(parents=True)
+        (d / "SKILL.md").write_text(
+            f"---\nname: {name}\ndescription: the {name} skill\nlicense: Apache-2.0\n---\n{body}\n",
+            encoding="utf-8",
+        )
+    (repo / "skills" / "mcp-builder" / "reference").mkdir()
+    (repo / "skills" / "mcp-builder" / "reference" / "notes.md").write_text("notes\n")
+    (repo / "template").mkdir()
+    (repo / "template" / "SKILL.md").write_text("---\nname: template\n---\nT\n")
+    (repo / "README.md").write_text("# Skills\n")
+    _git(repo, "init", "-q")
+    _git(repo, "-c", "user.email=t@t", "-c", "user.name=t", "add", "-A")
+    _git(repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "init")
+    return str(repo), _git(repo, "rev-parse", "HEAD")
+
+
+def test_pinned_library_repo_skill_loads_after_another_repo_used_the_cache(
+    tmp_path, monkeypatch, _isolated_skills_cache
+):
+    """L4 (V1 run 610661d5): the import dialog listed mcp-builder from anthropics/skills, but the
+    run said "repo produced no skills" — another repo had used the skills clone cache first."""
+    from tvashtr.control_plane import skill_repo
+
+    # Another repo resolves first on this machine (V1: a leftover from an earlier run).
+    other, other_sha = _make_skill_repo(tmp_path, {"greet": "G"})
+    assert {
+        s.name for s in build_skills([{"type": "repo", "url": other, "ref": other_sha}], "/w", _RUN)
+    } == {"greet"}
+
+    # The real URL, served offline by a local repo shaped like anthropics/skills.
+    fixture, sha = _make_anthropics_like_repo(tmp_path)
+    monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
+    monkeypatch.setenv("GIT_CONFIG_KEY_0", f"url.{fixture}.insteadOf")
+    monkeypatch.setenv("GIT_CONFIG_VALUE_0", _ANTHROPICS_SKILLS)
+
+    owner = _make_user()
+    run_id = _make_owned_run(owner)
+    added = skill_repo.import_skills(owner, _ANTHROPICS_SKILLS, "main", sha, ["mcp-builder"])
+    sid = added["added"][0]["id"]
+
+    out = build_skills([{"type": "library", "id": sid}], "/w", run_id)
+
+    assert [s.name for s in out] == ["mcp-builder"]
+    assert "MCP_BUILDER_BODY" in out[0].content
+    with session_scope() as session:
+        warned = (
+            session.execute(
+                select(RunWarning.reason).where(
+                    RunWarning.run_id == uuid.UUID(run_id), RunWarning.source_kind == "skill"
+                )
+            )
+            .scalars()
+            .all()
+        )
+    assert warned == []

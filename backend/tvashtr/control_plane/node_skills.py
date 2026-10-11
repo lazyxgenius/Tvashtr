@@ -31,7 +31,7 @@ continues — and records a warning through C7.A's recorder via the lazy shim
 
 INVARIANT 1 (openhands-free import): this module is imported by ``team_run.py``, which must stay
 ``openhands``-free at import. So NO module-level ``openhands`` import here — every ``openhands.*``
-import (``Skill``, ``KeywordTrigger``, ``load_public_skills``, ``load_project_skills``) is
+import (``Skill``, ``KeywordTrigger``, the git clone cache, ``load_project_skills``) is
 FUNCTION-LOCAL inside the bodies below.
 """
 
@@ -39,8 +39,10 @@ from __future__ import annotations
 
 import fnmatch
 import glob
+import hashlib
 import os
 import re
+import subprocess
 
 # =================================================================================================
 # The resolution-warning recorder shim (SHARED CONTRACT S1 — owned by C7.A; C7.B emits through it)
@@ -229,16 +231,19 @@ _FULL_SHA = re.compile(r"^[0-9a-f]{40}$")
 
 
 def _resolve_repo(source: dict) -> list:
-    """repo → clone at the PINNED ref via the SDK loader, then apply ``filter``. Subsumes
-    marketplaces (a marketplace is a repo + manifest). ``load_public_skills`` never raises — it
-    returns ``[]`` on any failure — so an empty result is treated as a resolution failure.
+    """repo → clone at the PINNED ref into its own cache folder, load every skill in its
+    ``skills/`` dir, then apply ``filter``. Subsumes marketplaces (a marketplace is a repo +
+    manifest). An empty result is a resolution failure.
+
+    M-desk-5 L4: the SDK's ``load_public_skills`` keeps ONE ``public-skills`` clone for every repo
+    URL and, when the pin isn't in it, silently loads whatever repo is there — so a second repo on
+    a machine "produced no skills". Each (url, pin) now gets its own clone, loaded the way that
+    loader loads (``Skill.load`` per file, relative to the repo root).
 
     Revamp: ``resolved_sha`` (a full commit SHA recorded when the skills were added from GitHub)
     wins over ``ref`` so runs stay repeatable ("Skills update when you change the version");
     ``filter`` is a comma-separated list of globs (any match keeps a skill); an optional
     ``mode``/``triggers`` sets how every loaded skill loads (default: each file's own format)."""
-    from openhands.sdk.skills import load_public_skills
-
     url = source.get("url")
     ref = source.get("ref")
     if not url:
@@ -247,8 +252,7 @@ def _resolve_repo(source: dict) -> list:
         raise ValueError("repo skill needs a ref (pins reproducibility)")
     sha = source.get("resolved_sha")
     pin = sha if isinstance(sha, str) and _FULL_SHA.match(sha) else str(ref)
-    # marketplace_path=None → load ALL skills in the repo's skills/ dir (no manifest required).
-    loaded = load_public_skills(repo_url=str(url), ref=pin, marketplace_path=None)
+    loaded = _load_repo_skills(str(url), pin)
     filt = source.get("filter")
     patterns = [p.strip() for p in str(filt).split(",") if p.strip()] if filt else []
     if patterns:
@@ -257,6 +261,40 @@ def _resolve_repo(source: dict) -> list:
         raise ValueError(f"repo produced no skills (url={url!r}, ref={pin!r}, filter={filt!r})")
     if source.get("mode"):
         loaded = [_with_mode(s, source.get("mode"), source.get("triggers")) for s in loaded]
+    return loaded
+
+
+def _load_repo_skills(url: str, pin: str) -> list:
+    """Every skill in ``<repo>/skills`` at ``pin``, from a clone kept for this (url, pin) only."""
+    from openhands.sdk.git.cached_repo import try_cached_clone_or_update
+    from openhands.sdk.skills import Skill
+    from openhands.sdk.skills import skill as sdk_skill
+    from openhands.sdk.skills.utils import find_regular_md_files, find_skill_md_directories
+
+    # ponytail: one clone per (url, pin) (~18 MB for anthropics/skills), never pruned.
+    key = hashlib.sha256(f"{url}@{pin}".encode()).hexdigest()[:16]
+    repo = sdk_skill.get_skills_cache_dir() / f"tvashtr-{key}"
+    if try_cached_clone_or_update(url, repo, ref=pin) is None:
+        raise ValueError(f"couldn't fetch {url} at {pin}")
+    if _FULL_SHA.match(pin):  # the SDK falls back to "the cached version" when a checkout fails
+        head = subprocess.run(
+            ["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True
+        ).stdout.strip()
+        if head != pin:
+            raise ValueError(f"couldn't check out {pin} from {url}")
+    skills_dir = repo / "skills"
+    if not skills_dir.is_dir():
+        return []
+    files = find_skill_md_directories(skills_dir)
+    files += find_regular_md_files(skills_dir, {f.parent for f in files})
+    loaded = []
+    for path in files:
+        try:  # like the SDK loader: one unreadable skill file doesn't sink the others
+            skill = Skill.load(path=path, skill_base_dir=repo)
+        except Exception:  # noqa: BLE001, S112
+            continue
+        if skill is not None:
+            loaded.append(skill)
     return loaded
 
 
