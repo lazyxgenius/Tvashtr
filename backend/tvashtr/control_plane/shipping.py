@@ -44,6 +44,24 @@ _OWN_FILES = ("REPORT.md", "REVIEW_VERDICT.json", "SPEC.md")
 
 _REMEMBER_FILE = "TVASHTR_REMEMBER.jsonl"
 
+# The files a node can carry home from its sandbox (its pull scope / a Desktop job's sidecars).
+_CARRIED = ("REPORT.md", "REVIEW_VERDICT.json", _REMEMBER_FILE)
+
+
+def hidden_own_files(workspace_dir: str, carried) -> set[str]:
+    """M-desk-5 L2: Tvashtr's own root files an agent is not shown — the ones its job doesn't carry
+    home (``carried``: a pull scope or a Desktop job's sidecars; ``None`` carries everything). A
+    Reviewer carries only its verdict, so the REPORT.md and remember lines earlier steps left in the
+    workspace are not part of the change it reviews. SPEC.md is an input (the large-spec handle),
+    never hidden; a file the repo tracks is the user's own and stays."""
+    if carried is None:
+        return set()
+    hidden = set(_CARRIED) - set(carried)
+    if hidden and (Path(workspace_dir) / ".git").exists():
+        tracked = _git(workspace_dir, "ls-files", "--", *sorted(hidden), check=False).stdout
+        hidden -= set(tracked.split())
+    return hidden
+
 
 def _ship_excludes(workspace_dir: str) -> list[str]:
     """The ``git add`` exclude pathspecs for this ship. Git refuses an ``add`` whose pathspec names

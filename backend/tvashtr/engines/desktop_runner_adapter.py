@@ -70,7 +70,9 @@ class DesktopRunnerAdapter:
             model=task.model or "",
             instruction=task.instruction,
             workspace_dir=task.workspace_dir,
-            sidecars=list(SIDECARS),
+            # M-desk-5 L2: only what the node carries home; the snapshot hides the rest of Tvashtr's
+            # own files (a Reviewer carries its verdict, not earlier steps' REPORT.md).
+            sidecars=[s for s in SIDECARS if task.pull_paths is None or s in task.pull_paths],
             purpose=spec.purpose,
         )
         emit(

@@ -39,6 +39,7 @@ from openhands.tools.terminal import TerminalTool
 from openhands.workspace import DockerWorkspace
 
 from tvashtr.config import agent_llm_routing, get_settings
+from tvashtr.control_plane.shipping import hidden_own_files
 from tvashtr.engines import sandbox_cache
 from tvashtr.engines.base import AgentRunResult, AgentTask, EngineEvent
 from tvashtr.engines.docker_runtime import (
@@ -166,7 +167,12 @@ def _pull_workspace(
 
 
 def _push_workspace(
-    workspace, host_dir: str, mode: str = "greenfield", *, strict: bool = False
+    workspace,
+    host_dir: str,
+    mode: str = "greenfield",
+    *,
+    strict: bool = False,
+    pull_paths: tuple[str, ...] | None = None,
 ) -> list[str]:
     """Seed the container's working dir from the host BEFORE the agent runs — the
     mirror of :func:`_pull_workspace` (P1.5c). The cyclic loop reworks the prior
@@ -186,13 +192,17 @@ def _push_workspace(
     copy. ``file_upload(source_path, destination_path)`` takes the HOST path first, the CONTAINER
     path second (confirmed against the installed SDK). Returns the relative paths pushed (for the
     log). ``strict`` (M9's hidden check) raises on a file that couldn't be pushed instead of
-    logging it — a check on half the files would be a wrong result."""
+    logging it — a check on half the files would be a wrong result. ``pull_paths`` (the node's pull
+    scope, M-desk-5 L2): Tvashtr's own files the node doesn't carry home are not pushed — a Reviewer
+    reviews the user's change, not the REPORT.md or remember lines earlier steps left."""
     working_dir = workspace.working_dir
     rels = (
         enumerate_push_files_git(host_dir)
         if mode == "brownfield"
         else enumerate_push_files(host_dir)
     )
+    hidden = hidden_own_files(host_dir, pull_paths)
+    rels = [r for r in rels if r not in hidden]
     if not rels:
         return []
     pushed: list[str] = []
@@ -466,7 +476,9 @@ class OpenHandsDockerAdapter:
                 # P1.5c loop-seeding: push the host workspace into the fresh container so a
                 # docker-mode iteration > 1 resumes on iteration N-1's files. Iteration 1's host
                 # holds only .git -> [] -> a clean no-op.
-                seeded = _push_workspace(workspace, host_dir, task.workspace_mode)
+                seeded = _push_workspace(
+                    workspace, host_dir, task.workspace_mode, pull_paths=task.pull_paths
+                )
                 if seeded:
                     logger.warning(
                         "OpenHandsDockerAdapter (%s): seeded %d file(s) from the host into the "
@@ -499,7 +511,9 @@ class OpenHandsDockerAdapter:
                     getattr(workspace, "host_port", "?"),
                     usage_before[0] + usage_before[1],
                 )
-                reseeded = _push_workspace(workspace, host_dir, task.workspace_mode)
+                reseeded = _push_workspace(
+                    workspace, host_dir, task.workspace_mode, pull_paths=task.pull_paths
+                )
                 if reseeded:
                     logger.warning(
                         "OpenHandsDockerAdapter (%s): re-seeded %d file(s) into the reused "

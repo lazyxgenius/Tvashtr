@@ -640,7 +640,9 @@ class OpenHandsFlyAdapter:
 
             # Seed the node's working dir from the host (the cross-round source of truth the prior
             # round's pull wrote). Reused from the docker adapter, unchanged.
-            seeded = _push_workspace(handle.workspace, host_dir, task.workspace_mode)
+            seeded = _push_workspace(
+                handle.workspace, host_dir, task.workspace_mode, pull_paths=task.pull_paths
+            )
             if seeded:
                 logger.warning(
                     "OpenHandsFlyAdapter (%s): seeded %d file(s) into %s",

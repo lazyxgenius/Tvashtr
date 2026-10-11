@@ -33,6 +33,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from tvashtr.config import get_settings
+from tvashtr.control_plane import shipping
 from tvashtr.control_plane.credential_gate import RUNNER_SUBSCRIPTIONS
 from tvashtr.db import session_scope
 from tvashtr.engines.base import EngineEvent
@@ -661,6 +662,7 @@ def build_snapshot(owner_id: uuid.UUID, job_id: str) -> bytes:
         workspace = job.workspace_dir
         holder = job.workspace_machine_id
         purpose = job.purpose
+        carried = list(job.sidecars or [])
     if purpose == ASK:
         return _empty_snapshot()
     if not workspace:  # never Path(""): that is this server's own working directory
@@ -672,10 +674,12 @@ def build_snapshot(owner_id: uuid.UUID, job_id: str) -> bytes:
     if not root.is_dir():
         raise JobConflict("the run workspace is not on this server")
     limit = get_settings().desktop_snapshot_max_bytes
+    # M-desk-5 L2: Tvashtr's own files this job doesn't carry home aren't part of what it sees.
+    hidden = shipping.hidden_own_files(workspace, carried)
 
     def keep(info: tarfile.TarInfo) -> tarfile.TarInfo | None:
         rel = info.name[2:] if info.name.startswith("./") else info.name
-        if rel == ".git" or rel.startswith(".git/"):
+        if rel == ".git" or rel.startswith(".git/") or rel in hidden:
             return None
         if not (info.isfile() or info.isdir() or info.issym()):
             return None
