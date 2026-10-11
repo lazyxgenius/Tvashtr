@@ -1,58 +1,177 @@
-# The demo film's scenes (V1)
+# The demo film's scenes (V1, V2)
 
 Every scene of the storyboard (`prompts/video-v1.md`) as a take script that re-records by name:
-`make -C video take SCENE=<id>` (`DRY=1` to rehearse; `"<id>*"` for a scene's parts). Takes land in
-`video/takes/v1/<take>/` (`take.mp4` 2880×1800 · 30 fps, `take.json`, `poster.png`); the review files
-are `video/out/v1/contact-sheet.png` and `video/out/v1/ch2-preview.mp4`. How the camera works:
-`video/README.md`.
+`make -C video take SCENE=<id>` (`DRY=1` to rehearse; `"<id>*"` for a scene's parts). V2's takes land
+in `video/takes/v2/<take>/` (V1's stay in `video/takes/v1/`; a V2 rehearsal in `<take>-dry/`) —
+`take.mp4` 2880×1800 · 30 fps, `take.json`, `poster.png`, `shots/`. Review files:
+`video/out/v2/contact-sheet.png` (the newest take of every scene), `video/out/v2/ch3-preview.mp4`,
+`video/out/v2/ch4-preview.mp4` (V1's `video/out/v1/…` stay). How the camera works: `video/README.md`.
 
 ## Status
 
-Generated from the takes on disk (`node video/camera/sheet.mjs scenes-table`). "clip" = a filmed
-take; "dry" = rehearsed up to the named spend (a run scene's launch point, or a replay of the F5
-proof recording); budgets are the scene's own and the plan's chapter budget — raw takes run longer
-on purpose (record more, V4 trims).
+Generated from the takes on disk (`node video/camera/sheet.mjs scenes-table`): one row per take,
+its V1 and its V2 status. "clip" = a filmed take (mode, raw length); "rehearsed" = a `--dry` take
+that stopped before the named spend (or ran through when it spends nothing); "—" = not taken in that
+version. Budgets are the scene's own and the plan's chapter budget — raw takes run longer on purpose
+(record more, V4 trims). V2 was **wrapped up on the operator's request** after chapter 5: 6.1, 6.2,
+6.3 and the 2.7 re-take are still owed (below).
 
 <!-- scenes-table -->
-| take | script | mode | status | raw length | scene budget · chapter budget |
-|---|---|---|---|---|---|
-| 0.1 | `scenes/0.1.mjs` | web (dry) | blocked: trade_mcp is private — run node video/camera/github-login.mjs once (operator) | — | 20 s · ch 0: 20 s |
-| 0.2 | `scenes/0.2.mjs` | motion | MOTION | — | — s · ch 0: 20 s |
-| 1.1 | `scenes/1.1.mjs` | mac | MAC | — | — s · ch 1: 55 s |
-| 1.2 | `scenes/1.2.mjs` | live | clip | 15.3 s | 20 s · ch 1: 55 s |
-| 1.3 | `scenes/1.3.mjs` | live | clip | 43.1 s | 20 s · ch 1: 55 s |
-| 1.4 | `scenes/1.4.mjs` | sample | clip | 20.2 s | 12 s · ch 1: 55 s |
-| 1.5 | `scenes/1.5.mjs` | sample | clip | 36.9 s | 15 s · ch 1: 55 s |
-| 2.1 | `scenes/2.1.mjs` | live | clip | 14.3 s | 12 s · ch 2: 70 s |
-| 2.2 | `scenes/2.2.mjs` | live | clip | 18.8 s | 12 s · ch 2: 70 s |
-| 2.3 | `scenes/2.3.mjs` | live | clip | 12.6 s | 12 s · ch 2: 70 s |
-| 2.4 | `scenes/2.4.mjs` | live | clip | 80.7 s | 30 s · ch 2: 70 s |
-| 2.5 | `scenes/2.5.mjs` | live | clip | 40.8 s | 25 s · ch 2: 70 s |
-| 2.6 | `scenes/2.6.mjs` | live | clip | 29.2 s | 25 s · ch 2: 70 s |
-| 2.7 | `scenes/2.7.mjs` | live | clip | 154.6 s | 30 s · ch 2: 70 s |
-| 3.1 | `scenes/3.1.mjs` | live (dry) | rehearsed · stopped before “Launch” | 15.8 s | 15 s · ch 3: 90 s |
-| 3.2 | `scenes/3.2.mjs` | replay (dry) | rehearsed · ran through (replay, no spend) | 18.8 s | 25 s · ch 3: 90 s |
-| 3.2-proof | `scenes/3.2.mjs` | record | clip | 1869.2 s | 25 s · ch 3: 90 s |
-| 3.2-replay | `scenes/3.2.mjs` | replay | clip | 1867 s | 25 s · ch 3: 90 s |
-| 3.3 | `scenes/3.3.mjs` | replay (dry) | rehearsed · ran through (replay, no spend) | 32.6 s | 25 s · ch 3: 90 s |
-| 3.4 | `scenes/3.4.mjs` | replay (dry) | rehearsed · ran through (replay, no spend) | 15.2 s | 30 s · ch 3: 90 s |
-| 3.5 | `scenes/3.5.mjs` | sample | clip | 21 s | 15 s · ch 3: 90 s |
-| 3.6 | `scenes/3.6.mjs` | replay (dry) | rehearsed · ran through (replay, no spend) | 24.1 s | 20 s · ch 3: 90 s |
-| 3.7 | `scenes/3.7.mjs` | live (dry) | rehearsed · stopped before “Send” | 17.4 s | 30 s · ch 3: 90 s |
-| 4.1 | `scenes/4.1.mjs` | live (dry) | rehearsed · stopped before “Launch” | 13.6 s | 30 s · ch 4: 45 s |
-| 4.2 | `scenes/4.2.mjs` | live (dry) | rehearsed · stopped before “Resume (needs 4.1's failed run)” | — | 25 s · ch 4: 45 s |
-| 5.1 | `scenes/5.1.mjs` | live (dry) | rehearsed · stopped before “Start run” | 9.7 s | 25 s · ch 5: 30 s |
-| 5.1-recent | `scenes/5.1.mjs` | live (dry) | rehearsed · ran through (live, no spend) | 7 s | 25 s · ch 5: 30 s |
-| 6.1 | `scenes/6.1.mjs` | live (dry) | rehearsed · stopped before “Run all” | 28 s | 30 s · ch 6: 75 s |
-| 6.2 | `scenes/6.2.mjs` | sample | clip | 23.9 s | 25 s · ch 6: 75 s |
-| 6.2-save | `scenes/6.2.mjs` | run (dry) | rehearsed · stopped before “Save and run tests” | 38.3 s | 40 s · ch 6: 75 s |
-| 6.3 | `scenes/6.3.mjs` | live (dry) | rehearsed · stopped before “Start compare” | 36.2 s | 40 s · ch 6: 75 s |
-| 7.1 | `scenes/7.1.mjs` | live | clip | 27.6 s | 20 s · ch 7: 30 s |
-| 7.2 | `scenes/7.2.mjs` | live | clip | 33.3 s | 30 s · ch 7: 30 s |
-| 8.1 | `scenes/8.1.mjs` | sample | clip | 23.6 s | 25 s · ch 8: 25 s |
-| 8.1-web | `scenes/8.1.mjs` | web | clip | 23.5 s | 25 s · ch 8: 25 s |
-| 8.2 | `scenes/8.2.mjs` | motion | MOTION | — | — s · ch 8: 25 s |
+| take | script | V1 | V2 | scene budget · chapter budget |
+|---|---|---|---|---|
+| 0.1 | `scenes/0.1.mjs` (web) | blocked: trade_mcp is private — run node video/camera/github-login.mjs once (operator) | clip (web) 12.7 s | 20 s · ch 0: 20 s |
+| 0.2 | `scenes/0.2.mjs` (motion) | MOTION | MOTION | — s · ch 0: 20 s |
+| 1.1 | `scenes/1.1.mjs` (mac) | MAC | MAC | — s · ch 1: 55 s |
+| 1.2 | `scenes/1.2.mjs` (live) | clip (live) 15.3 s | — | 20 s · ch 1: 55 s |
+| 1.3 | `scenes/1.3.mjs` (live) | clip (live) 43.1 s | — | 20 s · ch 1: 55 s |
+| 1.4 | `scenes/1.4.mjs` (sample) | clip (sample) 20.2 s | — | 12 s · ch 1: 55 s |
+| 1.5 | `scenes/1.5.mjs` (sample) | clip (sample) 36.9 s | — | 15 s · ch 1: 55 s |
+| 2.1 | `scenes/2.1.mjs` (live) | clip (live) 14.3 s | — | 12 s · ch 2: 70 s |
+| 2.2 | `scenes/2.2.mjs` (live) | clip (live) 18.8 s | — | 12 s · ch 2: 70 s |
+| 2.3 | `scenes/2.3.mjs` (live) | clip (live) 12.6 s | — | 12 s · ch 2: 70 s |
+| 2.4 | `scenes/2.4.mjs` (live) | clip (live) 80.7 s | — | 30 s · ch 2: 70 s |
+| 2.5 | `scenes/2.5.mjs` (live) | clip (live) 40.8 s | — | 25 s · ch 2: 70 s |
+| 2.6 | `scenes/2.6.mjs` (live) | clip (live) 29.2 s | — | 25 s · ch 2: 70 s |
+| 2.7 | `scenes/2.7.mjs` (live) | clip (live) 154.6 s | — | 30 s · ch 2: 70 s |
+| 3.1 | `scenes/3.1.mjs` (record) | rehearsed · stopped before “Launch” | clip (record) 2281.1 s | 15 s · ch 3: 90 s |
+| 3.2 | `scenes/3.2.mjs` (replay) | rehearsed (replay, no spend) | clip (replay) 15.8 s | 25 s · ch 3: 90 s |
+| 3.2-proof | `scenes/3.2.mjs` (record) | clip (record) 1869.2 s | — | 25 s · ch 3: 90 s |
+| 3.2-replay | `scenes/3.2.mjs` (replay) | clip (replay) 1867 s | — | 25 s · ch 3: 90 s |
+| 3.3 | `scenes/3.3.mjs` (replay) | rehearsed (replay, no spend) | clip (replay) 22 s | 25 s · ch 3: 90 s |
+| 3.4 | `scenes/3.4.mjs` (replay) | rehearsed (replay, no spend) | clip (replay) 29.8 s | 30 s · ch 3: 90 s |
+| 3.5 | `scenes/3.5.mjs` (sample) | clip (sample) 21 s | — | 15 s · ch 3: 90 s |
+| 3.6 | `scenes/3.6.mjs` (replay) | rehearsed (replay, no spend) | clip (replay) 25.6 s | 20 s · ch 3: 90 s |
+| 3.7 | `scenes/3.7.mjs` (live) | rehearsed · stopped before “Send” | clip (live) 52.6 s | 30 s · ch 3: 90 s |
+| 4.1 | `scenes/4.1.mjs` (live) | rehearsed · stopped before “Launch” | clip (live) 282.4 s | 30 s · ch 4: 45 s |
+| 4.2 | `scenes/4.2.mjs` (live) | rehearsed · stopped before “Resume (needs 4.1's failed run)” | clip (live) 24.7 s | 25 s · ch 4: 45 s |
+| 5.1 | `scenes/5.1.mjs` (live) | rehearsed · stopped before “Start run” | clip (live) 26.5 s | 25 s · ch 5: 30 s |
+| 5.1-recent | `scenes/5.1.mjs` (live) | rehearsed (live, no spend) | clip (live) 7 s | 25 s · ch 5: 30 s |
+| 6.1 | `scenes/6.1.mjs` (live) | rehearsed · stopped before “Run all” | — | 30 s · ch 6: 75 s |
+| 6.2 | `scenes/6.2.mjs` (run) | clip (sample) 23.9 s | — | 40 s · ch 6: 75 s |
+| 6.3 | `scenes/6.3.mjs` (run) | rehearsed · stopped before “Start compare” | — | 40 s · ch 6: 75 s |
+| 7.1 | `scenes/7.1.mjs` (live) | clip (live) 27.6 s | — | 20 s · ch 7: 30 s |
+| 7.2 | `scenes/7.2.mjs` (live) | clip (live) 33.3 s | — | 30 s · ch 7: 30 s |
+| 8.1 | `scenes/8.1.mjs` (sample) | clip (sample) 23.6 s | — | 25 s · ch 8: 25 s |
+| 8.1-web | `scenes/8.1.mjs` (web) | clip (web) 23.5 s | — | 25 s · ch 8: 25 s |
+| 8.2 | `scenes/8.2.mjs` (motion) | MOTION | MOTION | — s · ch 8: 25 s |
 <!-- /scenes-table -->
+
+## V2 (2026-10-11): the real runs — wrapped up after chapter 5
+
+Brief `prompts/m-desk-5-v2.md` Part B, on `video/v2-runs`, after Part A (M-desk-5) fixed L1–L4.
+`video/stack/reset` first (a clean `tvashtr_film`), Claude and Grok **Connected** on the Desktop, the
+Claude CLI log `apiKeySource: none` on every job, `READING_KEY = none`. Sittings 1 (chapter 3 + 0.1)
+and 2 (chapter 4) are done; sitting 3 stopped after 5.1 on the operator's request: **6.1, 6.2, 6.3
+and the 2.7 re-take are still owed** (and with them the 6.1/6.2 and 6.3 smoke checks and the
+ch5/ch6 previews).
+
+### The real runs (ledger `video/out/v2/budget.json`: runs 6 of 12 · test replays 0 of 12 · Asks 1 of 2)
+
+Run numbers are the app's (the account's runs in order). Times per job are the Desktop runner's
+claim → finish; a run's length is the app's own where it showed one.
+
+| run | # | scene | task | what happened | length | PR |
+|---|---|---|---|---|---|---|
+| `86bff6c6` | 1 | 3.1 hero (recorded) | Add a Hull moving average indicator — trade_mcp, `main`, scope `core/`, budget $5.00 | PM 1.5 min → spec gate (one line added, approved on camera) → Engineer 2.0 → Grok Reviewer 5.5 (changes requested: the indicator registry) → Engineer 3.5 → Reviewer 12.0 → Engineer 3.2 → Reviewer 9.0 → Escalation approved on camera → Ship | "Done in 37m 16s" (37m 36s later: see bends) | [#53](https://github.com/lazyxgenius/trade_mcp/pull/53) |
+| `e0078405` | 2 | 4.1, take 1 | Add a TRIX indicator | the camera found no job CLI to pause (a camera bug, fixed) → **cancelled through the app**; its Engineer had already edited `core/indicators.py` +1 | — | — |
+| `99115ced` | 3 | 4.1 | Add a TRIX indicator | PM 0.6 → spec gate approved → Engineer's CLI paused at its start (SIGSTOP, the Desktop's own process tree) → Quiet → Stalled → Failed | "Failed after 4m 17s" | — |
+| `77b1547e` | 4 | 4.2, take 1 | resume of run #3 | camera slip: the scene clicked the first "Resume from here" (the PM's) → nothing kept → **cancelled through the app**; run #3 now reads "Picked up again as run #4" | — | — |
+| `828210b9` | 5 | 4.2 | resume of run #2 from Engineer, round 1 | spec v2 + approval kept ("Skips 1 min of finished work") → Engineer 2.7 → Reviewer 8.7 → Engineer 2.3 → Reviewer 9.8 → Engineer 2.2 → Reviewer 8.5 → Escalation approved on camera → Ship | ≈34.6 min | [#54](https://github.com/lazyxgenius/trade_mcp/pull/54) |
+| `95a2d956` | 6 | 5.1 | Add a DEMA indicator, started from run #1 (spec, decisions, memories, summaries carried; from the PR branch `tvashtr/86bff6c6-…`) | PM 1.3 (this run's spec v1) → PRD gate approved on camera → Engineer 2.3 → Reviewer 7.4 → Engineer 2.2 → Reviewer 10.0 → Engineer 2.1 → Reviewer 7.3 → Escalation approved on camera → Ship | ≈33.2 min | [#55](https://github.com/lazyxgenius/trade_mcp/pull/55) |
+
+The one Ask (3.7, the Reviewer on Grok): "Why did you reject round 1?" → answered in ≈20 s (Grok job
+0.2 min): round 1 was `changes_requested` because adding `hma` grows `INDICATORS` from 28 to 29 (the
+registry count the tests pin).
+
+### The live smoke (M-desk-4 + M-desk-5)
+
+| check | result | screenshot |
+|---|---|---|
+| 3.6 / hero (L1, H1): chip, banner, Done summary, Activity's last line name the subscriptions | **PASS** — "on your Claude and Grok subscriptions" everywhere; "Done in 37m 16s · on your Claude and Grok subscriptions"; no "$0.00 +", no "$0.0000" | `video/takes/v2/3.1/shots/done.png` (+ `running.png`, 3.6's `poster.png`) |
+| hero (L2): no verdict names `REPORT.md`, `REVIEW_VERDICT.json`, `SPEC.md`, `TVASHTR_REMEMBER.jsonl` | **PASS** — 0 of 3 verdicts; the Grok jobs carried only `REVIEW_VERDICT.json` home | `video/takes/v2/3.1/shots/reviewer-verdict.png` |
+| 3.7 (L3): after Done, Changes lists the PR's "Files changed" | **PASS** — 3 of 3: `core/indicators.py` +21, `tests/test_indicators.py` +13 −2, `web/lib/engine-facts.ts` +1 −1 (= `gh api …/pulls/53/files`); the run's workspace is gone | `video/takes/v2/3.7/shots/changes-list.png` |
+| hero (L4): no "repo produced no skills" line | **PASS** — the only banner is the by-design "1 library tool(s) — tools aren't used by Desktop subscription agents yet"; `mcp-builder` was in all 3 Engineer jobs | `video/takes/v2/3.1/shots/running.png` |
+| 4.1 (H1, H2): failure line "· on your Claude subscription"; "Next: resume from …" says Tvashtr skips done work | **PASS** — "Failed after 4m 17s · on your Claude subscription"; "Next: resume from Engineer, round 1. Tvashtr skips the work that is done, so it doesn't run again." | `video/takes/v2/4.1/shots/failed.png` |
+| 4.2 (H2): "Skips N min of finished work." + "Only the steps that run again use your Claude subscription."; no dollar per step | **PASS** — both lines, word for word; the picker shows plans, no dollars | `video/takes/v2/4.2/shots/confirm.png`, `picker.png` |
+| 6.3 (H4, H5, H1): queued set cell; estimate minutes add up the turns; header/lanes/results/set cards name the subscriptions | **NOT RUN** (owed with 6.3) | — |
+| 6.1/6.2 (L1, D8): a running test's line names its subscription from its first second | **NOT RUN** (owed with 6.1/6.2; the scenes now shoot `running`/`testing` for it) | — |
+
+### Decisions G1–G9, as filmed
+
+- **G1** real numbers and bends: this section and the scene notes below.
+- **G2** real versions: `story.json` says v1 → v2 and V1's v7/v8 sample (`fixtures/history.mjs`) is
+  retired; the film team is still at **v1** — 6.2 (which saves v2) and 6.3 (which compares them) are
+  owed.
+- **G3** `READING_KEY = none`: the hero team has no Query domain step; 1.5 stays SAMPLE; **2.3 is for
+  V4: "an example step — cut or caption".**
+- **G4** no team-instruction workarounds: the Reviewer's instructions are chapter 2's; `mcp-builder`
+  stays on the Engineer.
+- **G5** the record take (3.1) opened the spec gate's spec, the Engineer's drawer while it worked,
+  the Reviewer's drawer and Changes — 3.2/3.3/3.4/3.6 replayed without an unanswered request.
+- **G6** the notifications ask is asked **once per account** (`notify_asked`): 3.1 answered "Not
+  now" on camera (22.8 s), so 4.1 never sees it. MAC-3 stays the operator's.
+- **G7** AI checks: the app's Tests read says `ai.available: false` (no server checks model on this
+  stack). 6.1 now probes it and films the AI-check moments from sample data listed in take.json
+  `sample` — not filmed yet (6.1 owed).
+- **G8** 0.1 filmed on PR #53 with the operator's GitHub session; then
+  `video/out/github-session.json` was **deleted** (never opened).
+- **G9** the Engines "N to fix" badge counts team × surface pairs that can't run (Claude/Grok teams
+  on the website, which has no keys for them) — by design, not hidden.
+
+### Bends from the storyboard (V2)
+
+- **Every Desktop run ends at the Escalation gate.** The Grok Reviewer has no shell on the Desktop
+  (file tools only), so it can't run `pytest`/`git diff`: round 1 is a real review, rounds 2–3 ask
+  for test output it can't get. All three shipped runs (#1, #5, #6) took 3 rounds and were approved
+  on camera ("ship the last build as-is"). The storyboard's "round 1 back, round 2 approved" (3.4)
+  is round 1 back, rounds 2–3 back, Escalation.
+- **The Done line rewrites itself:** the hero read "Done in 37m 16s" at Done and "Done in 37m 36s"
+  after the post-ship memory save ("Saved 8 new memories from this run", 20 s later). 3.6 shows the
+  first, 3.7 the second.
+- **4.2 resumes run #2, not 4.1's run #3.** A camera slip resumed #3 from the PM (run #4,
+  cancelled); the product then counts #3 as picked up. Run #2 (the same TRIX task, stopped while its
+  Engineer worked) is resumed from its own run view's callout — Needs you lists failed runs, not
+  stopped ones — so 4.2 opens on "You stopped this run at Engineer, round 1", not on Home's Needs you.
+  The confirm reads "This starts run #5. It picks up where run #2 stopped."
+- **5.1's PM writes a new spec** (the run's spec v1) even with "The final spec" carried, and the
+  PRD gate asks again (approved on camera); the Now bar reads "From run #1".
+- **The Reviewer's own files show in Activity:** "Edited REVIEW_VERDICT.json", "Edited REPORT.md"
+  (its sidecars) — the verdicts no longer mention them (L2), the Activity still lists the edits.
+- **3.7's Memory beat is on the Engineer's drawer:** the hero's 8 new memories wait for review (5 the
+  Engineer's, 3 with no source agent); the Reviewer learned none.
+- **Off-camera cuts:** 4.2 waits 2064 s off camera (the resumed run), 5.1 waits 81 s + 1893 s (each a
+  jump cut marked "back on camera" with `off_s` in take.json); the Desktop stays open throughout.
+- **Layout seen on every run view at 1440×900** (product, not camera): the run card under the
+  toolbar overlaps the toolbar row ("Opened PR" clipped), and the Done summary clips "total time" and
+  wraps "on your Claude and Grok subscriptions" onto two lines.
+
+### Still owed (V2 → next sitting)
+
+| scene | real work | note |
+|---|---|---|
+| 6.1 | 4 test replays (1 round test + 3 CSV) on Grok | AI checks from sample data (G7); smoke L1/D8 (`shots/running`) |
+| 6.2 | 4 test replays ("Save and run tests") | saves **v2** (G2); smoke L1/D8 (`shots/testing`) |
+| 6.3 | 6 runs (one task × 2 versions + "Indicators" 2 tasks × 2 versions) | after 6.2; smoke H4/H5/H1; 2–3 h unattended |
+| 2.7 re-take | 1 test replay | the test line's subscription from its first second (L1); builds its own team — film it last |
+| ch5/ch6 previews | none | after 6.x |
+
+Budget left for them: 6 runs, 12 test replays, 1 Ask — exactly 6.3's six runs; no retry room.
+
+### What V3 needs (per filmed scene)
+
+- **0.1** (12.7 s, PR #53): fine as is; a fresh GitHub session is needed for any re-take (the file
+  was deleted).
+- **3.1** (record, 2281 s): V4 uses only its first minute; the hero can stay.
+- **3.2–3.6** (replays 15.8 / 22 / 29.8 / 25.6 s): re-takes are free; 3.4 must narrate three
+  rounds + Escalation (or V3 decides on a Reviewer that can run tests on the Desktop — a product
+  decision, not a camera one).
+- **3.7** (52.6 s, 1 Ask): the Changes list sits below the drawer's fold — scroll it into view
+  before the shot (`changes-list.png` was taken separately for the smoke).
+- **4.1** (282.4 s): keep; the Quiet/Stalled/Failed holds can be trimmed in V4.
+- **4.2** (24.7 s on camera): the "Needs you" opening is lost (see bends); a clean re-take needs a
+  fresh 4.1 failure (1 run) plus the resume (1 run) in one sitting.
+- **5.1** (26.5 s) + **5.1-recent** (7 s): keep.
+- Captions for V4: the Escalation approvals, the Done-line rewrite, the run card overlap.
 
 ## Scene by scene: how it is filmed, and what doesn't match the story
 
@@ -64,7 +183,8 @@ API before the take, because filming it reliably isn't possible (named per scene
 **0.1 PR on GitHub** — RUN/WEB, `scenes/0.1.mjs`. trade_mcp is **private**: the PR page needs the
 operator's GitHub session (`node video/camera/github-login.mjs` once; saved to the ignored
 `video/out/github-session.json`). Until then the take stops with "BLOCKED". The V1 proof PR is
-https://github.com/lazyxgenius/trade_mcp/pull/51 (V2 films the hero run's PR).
+https://github.com/lazyxgenius/trade_mcp/pull/51. **V2:** filmed on the hero PR #53 (12.7 s), then
+`video/out/github-session.json` was deleted (G8) — a re-take needs a new session.
 **0.2 title** — MOTION (V5).
 **1.1 Sign in with GitHub; install the App** — MAC (below): the Desktop's sign-in opens the system
 browser, which the camera can't film.
@@ -72,13 +192,15 @@ browser, which the camera can't film.
 key, DeepSeek, shown `•••• <last4>`). The Terminal sign-in is MAC-2. "A backup model" is per agent
 (Advanced → Backup model), filmed in 2.5 on the Engineer. Seen once: the Desktop's launch probe
 read Grok as "Needs login" while `grok models` answered in 1 s — the pre-roll now uses the app's own
-Refresh (never a Terminal sign-in) and stops NEEDS_HUMAN if still not Connected.
+Refresh (never a Terminal sign-in) and stops NEEDS_HUMAN if still not Connected. The Engines nav's
+"N to fix" badge (team × surface pairs that can't run: Claude/Grok teams on the website) is by
+design (G9) and stays on screen.
 **1.3 Toolkit** — LIVE. Web fetch (Browse → Add), a secret by name `EXCHANGE_API_KEY` (a placeholder
 value, deleted after the take), and `mcp-builder` imported from `anthropics/skills` (the only public
 skills repo checked; trade_mcp is an MCP server). The dialog finds 19 skills; the take keeps only
 mcp-builder. **Product finding:** in a run, that library skill fails to load — the run view's banner
-reads "repo produced no skills (… filter='mcp-builder')" (proof run 610661d5). V2 must drop the skill
-from the Engineer or wait for a fix.
+reads "repo produced no skills (… filter='mcp-builder')" (proof run 610661d5). **Fixed by M-desk-5
+L4:** in V2's hero run `mcp-builder` loaded into all three Engineer jobs and no such line appeared.
 **1.4 Connectors: Linear** — SAMPLE (`fixtures/connectors.mjs`). No Linear account: the browser half
 never happens (window.open / shell.openExternal stubbed in the take), the connection turns
 connected on the 3rd poll; the tool list is a guess at Linear's MCP tools (not on screen).
@@ -94,8 +216,8 @@ be switched on camera); Save.
 as a step in a team". **Mismatch:** a Query domain can't come *before* the PM (the first node must
 be a thinker: `root_not_thinker`), so it sits PM → Query domain → PRD gate and feeds the spec the
 Engineer and Reviewer read. The domain has no files and no embeddings key on the film account:
-**a run through this step would fail** (V2 must add a key + files, or film the hero run without it —
-the proof run did).
+**a run through this step would fail**. **V2 (G3, `READING_KEY = none`):** the hero team has no
+domain step; 2.3 is marked for V4 — "an example step — cut or caption".
 **2.4 Spec gate; Engineer tools and skills; Reviewer loop; guardrail; Ship and Stop** — LIVE. The
 gate card reads **"PRD approval"**, not "Spec approval". The guardrail is **two gates** (a gate has
 one check): their cards read the raw kinds `secret_leak_scan` and `diff_touches_forbidden_paths`,
@@ -132,7 +254,8 @@ replay poll on their own timers, so a replay matches the live take to the poll, 
 **3.3 Gate → Needs you → fix one line → approve** — REPLAY from the gate (V2); rehearsed on proof.
 **3.4 Engineer on Claude; Reviewer on Grok; round 1 back, round 2 approved** — REPLAY (V2). "Its own
 copy of the repo" has no visible copy (the raw log names "Running on this computer with your own
-Claude Code"). Rounds are the real run's: the proof run needed 3 rounds then the escalation gate.
+Claude Code"). Rounds are the real run's: the proof run needed 3 rounds then the escalation gate,
+and so did V2's hero (the Grok Reviewer has no shell: rounds 2–3 ask for test output) — 29.8 s replay.
 **3.5 Retrying → backup switch** — SAMPLE (`fixtures/retrying.mjs`). **Not reachable live:** a
 Desktop subscription job never emits retry/backup events (only the API-key gateway path does), and
 the film account has no second provider for a backup. V4 must caption it as an illustration or drop it.
@@ -140,24 +263,35 @@ the film account has no second provider for a backup. V4 must caption it as an i
 (its card turns Approved).
 **3.7 Changes; Ask; cost per round; Memory** — LIVE on the newest finished run (V2: hero; V1
 rehearsed on the proof run, stops before the Ask's Send). Memory review mode is switched on in setup
-so new memories wait for Keep/Discard.
+so new memories wait for Keep/Discard. **V2:** 52.6 s on the hero run, one Ask ("Why did you reject
+round 1?"); Keep/Discard on the **Engineer's** drawer (the Reviewer learned nothing); the Changes list
+sits below the drawer's fold (`shots/changes-list.png` shows all three files).
 **4.1 Quiet → Stalled → Failed** — RUN (V2): stack with `QUIET=20 STALLED=60 FAIL=180`; the
 Engineer's CLI is paused through the Desktop's own process tree (SIGSTOP). The Mac notification is
-MAC-3.
-**4.2 Resume** — RUN (V2) on 4.1's failed run. V1 has no failed run, so its rehearsal only opens
+MAC-3. **V2:** 282.4 s, run #3 — Quiet ≈92 s, Stalled ≈131 s, Failed ≈274 s into the take ("Failed
+after 4m 17s · on your Claude subscription"). The camera finds the CLI by `--output-format` once the
+runner claims the job (Claude reads its prompt on stdin, so its command line has no `runner-jobs/`
+path — take 1 failed on that); the notifications ask doesn't come (3.1 answered it).
+**4.2 Resume** — RUN (V2). **V2:** 24.7 s on camera (2064 s off camera), run #5 resumed from run
+#2 at "Engineer, round 1" via the stopped run's own callout (see "Bends"); PR #54. V1 has no failed run, so its rehearsal only opens
 Home's Needs you and stops there. The confirm's sections are "Kept", "Runs again" and a
 "Skips N min of finished work" line — there is no "saved" heading ("Safe:" is in the failed callout).
 **5.1 Start the next run from this** — RUN (V2) on the hero run: "Add a DEMA indicator", carry
 spec/decisions/memories/summaries, Start from the PR branch. Recent tasks exist only in Home's
-composer: part `5.1-recent`.
+composer: part `5.1-recent`. **V2:** 26.5 s on camera (81 s + 1893 s off camera), run #6 from the
+hero's branch → PR #55; the PM still writes the run's own spec and the PRD gate asks again; 5.1-recent
+7 s.
 **6.1 Tests** — RUN. Make this a test (round 1, an AI check) → tests from a CSV (the column mapped
 on camera) → Run all (a spend: V1's one test went to 2.7). "Check the AI check" opens only from a
 failed AI-check result, after Run all.
-**6.2 History** — SAMPLE (`fixtures/history.mjs`) + part `6.2-save` (RUN, V2). **Mismatch:** chapter
-2 ends at v1 (nothing is saved there) while 6.2 is "2 changes since v7": V2 must either save v2…v7
-through the story or relabel 6.2 (the sample assumes chapter 2's edits were saved one by one).
+**6.2 History** — V1: SAMPLE (`fixtures/history.mjs`, v7/v8). **V2 (G2):** rewritten LIVE on the film
+team — edit the Reviewer, "N changes since v1", Save as **v2** with "Save and run the Reviewer's 4
+tests", History, What changed in v2; the v7/v8 sample is retired. **Not filmed yet (owed).**
 **6.3 Compare; task set; Restore** — RUN (V2; compares and task sets spend). The task set
-"Indicators" with hidden checks is saved on camera; the compare stops before "Start compare".
+"Indicators" with hidden checks is saved on camera; the compare stops before "Start compare". **V2:**
+compares v1 and v2 (after 6.2) on "Add a TEMA indicator", then the set on both versions, each wait
+off camera; Restore shows only when the winning version isn't current. **Not filmed yet (owed);
+rehearsed in V1 only.**
 **7.1 My agents** — LIVE. Save the Reviewer as "Strict Reviewer" → another team ("Bugfix squad") →
 Templates → Strict Reviewer → Undo → again → "Based on Strict Reviewer v1".
 **7.2 Team file; Import on a second account** — LIVE with `HOSTED=0 video/stack/up` (the email
@@ -176,11 +310,13 @@ indicator with tests" (product copy).
 ### Across the film
 
 - **Money on subscriptions:** the live proof run's toolbar read "$0.00 + your Claude and Grok
-  subscriptions" (the mixed wording) with no API-key work in it.
+  subscriptions" (the mixed wording) with no API-key work in it. **V2 (M-desk-5 L1):** "on your
+  Claude and Grok subscriptions" from launch to Done.
 - **Escalation:** in the proof run the Grok Reviewer asked three rounds running for the agents'
   scratch files (`REPORT.md`, `TVASHTR_REMEMBER…`) to be removed; the run parked at the Escalation
   gate, which V1 approved through the app's API ("ship the last build as-is") so the recording could
-  end — PR #51 carries those files. V2's hero run may hit the same.
+  end — PR #51 carries those files. **V2 (M-desk-5 L2):** no verdict names those files any more;
+  the runs still escalate, now because the Grok Reviewer can't run tests (no shell).
 - **Local paths on screen:** an Activity line shows the Desktop job's temp path
   (`…/runner-jobs/<id>/prompt.txt`).
 - **2.4's first take configured the wrong gate** ("approval" matched "PRD approval"); gates are found
@@ -191,6 +327,9 @@ indicator with tests" (product copy).
 
 
 ## Before V2 (measured in V1)
+
+V1's measurements and plan, kept as written; what V2 did with each item is in "V2" above (1 → G3,
+2 → L4, 3 → L2, 4 → G2, 5 → G8, 7 → G5, 8 → done).
 
 **What a real run costs on the subscriptions** — the F5 proof run (one README line, the full film
 team without the domain step): PM spec 0.6 min · Engineer round 1 0.2 min · Grok Reviewer 6.5 min ·
@@ -291,7 +430,8 @@ The Desktop opens Terminal only when the CLI is signed out (an already signed-in
 
 **MAC-3 — 4.1 the Mac notification ("Indicator sprint team stalled")**
 
-1. In the run view of the 4.1 take (V2), when the notifications ask shows, click **"Turn on"**
+1. In the run view of a 4.1-style run, turn notifications on: the ask comes once per account and
+   V2's 3.1 answered it "Not now", so use the run toolbar's bell (Notifications) → **"Turn on"**
    (keep "When a run stalls or fails" ticked). macOS may ask **"“Electron” Would Like to Send You
    Notifications"** (the dev Desktop is "Electron"; the installed app is "Tvashtr") → **"Allow"**.
    That macOS permission is yours to grant (V1 never clicks it).

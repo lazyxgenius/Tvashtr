@@ -1,11 +1,87 @@
-# video/ — the demo-film toolchain (V0 toolchain, V1 camera)
+# video/ — the demo-film toolchain (V0 toolchain, V1 camera, V2 real runs)
 
 Everything the Tvashtr demo film is made with, and nothing of the product: the Desktop **camera**
 (Playwright driving the real dev Desktop), the **reel** builder (Product Demo Director), and two
-report-only **probes**. Briefs: `prompts/video-v0.md`, `prompts/video-v1.md`. Media and run data
+report-only **probes**. Briefs: `prompts/video-v0.md`, `prompts/video-v1.md`, `prompts/m-desk-5-v2.md`
+(Part B). Media and run data
 never enter git: `video/out/`, `video/takes/`, `video/recordings/`, `video/vendor/` and
 `video/node_modules/` are ignored. V1 (below) made every scene a take script that re-records by
-name; `video/SCENES.md` has each scene's status and the operator's MAC scripts.
+name; V2 (below) filmed the run scenes on real runs; `video/SCENES.md` has each scene's status, the
+V2 numbers and bends, and the operator's MAC scripts.
+
+## V2 — real runs (2026-10-11, wrapped up after chapter 5)
+
+Branch `video/v2-runs` (from `feat/m-desk-5`, whose M-desk-5 fixes L1–L4 the run scenes show). The
+same stack, camera and take runner as V1, with:
+
+- **V2 output:** takes in `video/takes/v2/<take>/` (a `--dry` rehearsal in `<take>-dry/`, so it never
+  overwrites a filmed take), review files in `video/out/v2/`, the Desktop lock
+  `video/out/v2/desktop.lock`.
+- **The V2 ledger** `video/out/v2/budget.json`: caps 12 runs (a compare or task-set run counts as a
+  run), 12 test replays (`save_with_tests` counts its tests), 2 Asks; `ctx.spend(kind, label, fn,
+  units)` refuses past a cap, and only with `VIDEO_ALLOW_SPEND=1`.
+- **Off-camera waits:** `ctx.offCamera(label, fn)` pauses the screencast (`capture.mjs`
+  `pause`/`resume`, frame times shifted), shifts the cursor clock, and marks "back on camera" with
+  `off_s` in take.json — a 35-minute run becomes a jump cut while the Desktop keeps working.
+  `flows.toTheEnd` waits a run out that way and comes back on camera for each gate that needs the
+  operator (`approveWaiting`: the "Awaiting your approval" card → Approve) and for the end.
+- **Hero continuity:** 3.1 records the hero run to `video/recordings/hero/` (`meta.json`: team, run,
+  task); 3.2–3.6 replay it; 0.1, 3.7, 5.1 and 6.1 find it with `flows.heroRun`. The record take opens
+  every view a replay shows (G5). `film.filmTeam` reuses the "Indicator sprint team" or builds it.
+- **Sample moments inside a live take:** `ctx.sample(label)` lists them under `sample` in take.json
+  (6.1's AI checks, G7: the stack has no server checks model).
+- **Review files:** `node video/camera/sheet.mjs contact-sheet` (the newest take of every scene: a
+  filmed clip over a rehearsal over a failed take, V2 over V1), `preview <ch>` (chapter `ch`'s newest
+  filmed takes at 1920×1080, no narration; a record take contributes its first minute), and
+  `scenes-table` (V1 and V2 columns).
+
+```bash
+video/stack/reset                                         # V2 starts on a clean tvashtr_film
+VIDEO_ALLOW_SPEND=1 caffeinate -dimsu node video/camera/take.mjs 3.1      # the hero, recorded
+node video/camera/take.mjs 3.2 3.3 3.4 3.6                # replays (no spend)
+VIDEO_ALLOW_SPEND=1 caffeinate -dimsu node video/camera/take.mjs 3.7 0.1
+video/stack/down && QUIET=20 STALLED=60 FAIL=180 video/stack/up
+VIDEO_ALLOW_SPEND=1 caffeinate -dimsu node video/camera/take.mjs 4.1     # then 4.2
+video/stack/down && video/stack/up                        # normal timers again
+VIDEO_ALLOW_SPEND=1 caffeinate -dimsu node video/camera/take.mjs '5.1*'
+node video/camera/sheet.mjs contact-sheet && node video/camera/sheet.mjs preview 3
+```
+
+### V2 results (2026-10-11)
+
+- Runs (ledger: **6 of 12 runs, 0 of 12 test replays, 1 of 2 Asks**): the hero `86bff6c6` (#1, "Add a
+  Hull moving average indicator", 3 Grok rounds → Escalation approved on camera → PR
+  https://github.com/lazyxgenius/trade_mcp/pull/53, "Done in 37m 16s · on your Claude and Grok
+  subscriptions"); TRIX `99115ced` (#3, 4.1, "Failed after 4m 17s · on your Claude subscription"); the
+  resume `828210b9` (#5, 4.2, from run #2 → PR https://github.com/lazyxgenius/trade_mcp/pull/54);
+  DEMA `95a2d956` (#6, 5.1, from run #1's branch → PR https://github.com/lazyxgenius/trade_mcp/pull/55);
+  two cancelled through the app after camera faults (#2 `e0078405`, #4 `77b1547e`).
+- Takes (11 V2): 0.1 web 12.7 s · 3.1 record 2281.1 s · 3.2 15.8 s · 3.3 22 s · 3.4 29.8 s · 3.6
+  25.6 s (replays) · 3.7 live 52.6 s · 4.1 live 282.4 s · 4.2 live 24.7 s · 5.1 live 26.5 s ·
+  5.1-recent live 7 s.
+- The live smoke: hero L1/H1, L2, L4, 3.7 L3, 4.1 H1/H2, 4.2 H2 all **PASS** (screenshots in
+  SCENES.md); 6.1/6.2 (L1/D8) and 6.3 (H4/H5/H1) not run — owed with those scenes.
+- Review files: `video/out/v2/contact-sheet.png` (33 takes: 11 V2, 22 V1),
+  `video/out/v2/ch3-preview.mp4` (226.7 s), `video/out/v2/ch4-preview.mp4` (307.1 s).
+- `video/out/github-session.json` deleted after 0.1 (G8).
+- Owed: 6.1, 6.2 (saves v2), 6.3 (6 runs), the 2.7 re-take, the ch5/ch6 previews.
+
+### What didn't work (V2)
+
+- **4.1 looked for the job CLI too early and by the wrong mark.** It searched the Electron tree 3 s
+  after "Working", before the runner had claimed the job, and matched `runner-jobs/` — only the Grok
+  CLI has that (its `--prompt-file`); Claude reads its prompt on stdin. A run was spent and cancelled.
+  Fixed: poll up to 90 s for `--output-format` (both CLIs).
+- **Recent tasks covered the repo picker.** Home's composer opens Recent tasks once its matches load;
+  an Esc pressed before that does nothing. Fixed in `composeAndLaunch`: wait for the list, then Esc.
+- **`.first()` picked the wrong step.** 4.2 clicked the first "Resume from here" (the PM's), so the
+  resume kept nothing; cancelling it still counts as picking run #3 up (the resumed run opened a
+  step). Fixed: the "Suggested" row's button; 4.2 resumes the newest failed *or stopped* run whose
+  suggested step skips work, from its run view when Needs you doesn't list it.
+- **Rehearsals in the contact sheet.** `<take>-dry` folders showed as their own cells; `newest()` now
+  ranks one take per scene.
+- **Every run escalates.** The Desktop's Grok Reviewer can't run tests (no shell); each shipped run
+  needed 3 rounds and an Escalation approval (filmed, G4: no instruction workarounds).
 
 ## V1 — the camera for every scene
 

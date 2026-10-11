@@ -29,13 +29,14 @@ function takes(v = "v2") {
     .filter((t) => /^\d/.test(t.take))
     .sort((a, b) => order(a.take).localeCompare(order(b.take)));
 }
-/** The newest take of each take id: a filmed V2 take over V1's (a V2 rehearsal never replaces a V1 clip). */
+/** The newest take of each take id (a rehearsal in `<take>-dry` counts as its take's): a filmed clip over
+ *  a rehearsal over a failed take, V2 over V1 among equals — a V2 rehearsal never replaces a V1 clip. */
+const rank = (t) => (/-dry$/.test(t.take) ? 1 : t.status === "ok" ? 2 : 0) + (t.v === "v2" ? 0.5 : 0);
 function newest() {
   const by = new Map();
-  for (const t of takes("v1")) by.set(t.take, t);
-  for (const t of takes("v2")) {
-    const had = by.get(t.take);
-    if (!had || t.status === "ok" || had.status !== "ok") by.set(t.take, t);
+  for (const t of [...takes("v1"), ...takes("v2")]) {
+    const id = t.take.replace(/-dry$/, "");
+    if (!by.has(id) || rank(t) > rank(by.get(id))) by.set(id, t);
   }
   return [...by.values()].sort((a, b) => order(a.take).localeCompare(order(b.take)));
 }
