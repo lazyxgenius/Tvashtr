@@ -34,6 +34,8 @@ function DiffPatch({ patch }: { patch: string }) {
  */
 export function RunDiff({ runId }: { runId: string | null }) {
   const [files, setFiles] = useState<RunDiffFile[]>([]);
+  // M-desk-5 L3: GitHub couldn't answer for a finished GitHub run — null, or its PR link ("" none).
+  const [githubError, setGithubError] = useState<string | null>(null);
   const [state, setState] = useState<LoadState>("idle");
   const [open, setOpen] = useState<Set<string>>(new Set());
 
@@ -49,6 +51,7 @@ export function RunDiff({ runId }: { runId: string | null }) {
         const res = await getRunDiff(runId);
         if (cancelled) return;
         setFiles(res.files);
+        setGithubError(res.github_error ? (res.pr_url ?? "") : null);
         setState("ready");
       } catch {
         if (!cancelled) setState((s) => (s === "ready" ? s : "error"));
@@ -74,6 +77,22 @@ export function RunDiff({ runId }: { runId: string | null }) {
     body = <p className="tv-panel-note">Couldn't load the changes.</p>;
   } else if (state === "idle" || state === "loading") {
     body = <p className="tv-panel-note">Loading changes…</p>;
+  } else if (githubError !== null) {
+    body = (
+      <>
+        <p className="tv-panel-note">Couldn't load the changes from GitHub.</p>
+        {githubError && (
+          <a
+            className="lv-linkbtn lv-linkbtn--accent"
+            href={githubError}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Open the pull request →
+          </a>
+        )}
+      </>
+    );
   } else if (files.length === 0) {
     body = <p className="tv-panel-note">No file changes — this run didn't modify any files.</p>;
   } else {

@@ -711,6 +711,9 @@ export interface RunDiff {
   ship_branch: string | null;
   files: RunDiffFile[];
   total: number;
+  /** M-desk-5 L3: a finished GitHub run's branch couldn't be read from GitHub (files empty). */
+  github_error?: boolean;
+  pr_url?: string | null;
 }
 
 // The run's changed files (owner-scoped server-side, like every other run read). Mirrors getGraph.

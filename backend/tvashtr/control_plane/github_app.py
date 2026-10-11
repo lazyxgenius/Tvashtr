@@ -518,6 +518,20 @@ def get_branch_sha(installation_id: int, full_name: str, branch: str) -> str | N
     return commit.get("sha") if isinstance(commit, dict) else None
 
 
+def compare_files(installation_id: int, full_name: str, base: str, head: str) -> list[dict]:
+    """The ``files`` of GitHub's ``base...head`` comparison (merge-base, what a pull request's
+    Files changed shows). Raises :class:`GithubAppError` when GitHub can't answer (a deleted
+    branch: 404)."""
+    token = get_installation_token(installation_id)
+    result = _http(
+        "GET",
+        f"{_GITHUB_API}/repos/{full_name}/compare/{quote(f'{base}...{head}', safe='./')}",
+        token=token,
+    )
+    files = result.get("files") if isinstance(result, dict) else None
+    return files if isinstance(files, list) else []
+
+
 def tree_subpaths(installation_id: int, full_name: str, sha: str) -> tuple[list[dict], bool]:
     """``([{"path", "file_count"}, …], truncated)`` — the TOP-LEVEL folders of the tree at ``sha``,
     each with the number of files anywhere under it (the shape of ``worktree.repo_subpaths``),

@@ -25,6 +25,7 @@ from tvashtr.control_plane import (
     activity,
     agent_test_runner,
     agent_tests,
+    clone_reaper,
     desktop_asks,
     desktop_jobs,
     document_views,
@@ -1763,6 +1764,7 @@ def get_run_diff(run_id: str, current_user: Annotated[UserOut, Depends(get_curre
         repo_path = run.repo_path
         base_ref = run.base_ref
         ship_branch = run.ship_branch
+        github_repo, status, pr_url = run.github_repo, run.status, run.pr_url
         snapshot = (
             session.execute(
                 select(RunArtifact.files).where(RunArtifact.run_id == run.id)
@@ -1772,9 +1774,51 @@ def get_run_diff(run_id: str, current_user: Annotated[UserOut, Depends(get_curre
         )
     if snapshot is not None:
         return snapshot
+    # M-desk-5 L3: a finished GitHub run's clone is gone (M-clonegc reaps it at run end) — read its
+    # ship branch from GitHub instead, the same files the pull request's Files changed shows.
+    if (
+        github_repo
+        and status not in clone_reaper.LIVE_STATUSES
+        and not (repo_path and os.path.isdir(repo_path))
+    ):
+        return _github_run_diff(
+            run_id, uuid.UUID(current_user.id), github_repo, base_ref, ship_branch, pr_url
+        )
     return compute_run_diff(
         run_id=run_id, repo_path=repo_path, base_ref=base_ref, ship_branch=ship_branch
     )
+
+
+_GITHUB_FILE_STATUS = {"added": "added", "removed": "deleted"}
+
+
+def _github_run_diff(run_id, owner_id, github_repo, base_ref, ship_branch, pr_url) -> dict:
+    """L3: ``compute_run_diff``'s answer for a GitHub run, from GitHub's comparison of its base and
+    ship branch through the owner's GitHub App installation. When GitHub can't answer (the branch
+    deleted, the App removed, offline) the files are empty and ``github_error`` says so, with the
+    run's pull request so the Changes tab can link to it."""
+    shape = {"run_id": run_id, "base_ref": base_ref, "ship_branch": ship_branch}
+    try:
+        found = github_targets.owner_repo(owner_id, github_repo)
+        if found is None:
+            raise github_app.GithubAppError("the repo isn't in the owner's App installations")
+        raw = github_app.compare_files(
+            found[0], github_repo, base_ref or "main", ship_branch or f"tvashtr/{run_id}"
+        )
+    except (github_app.GithubAppError, OSError, ValueError):  # OSError: a socket timeout mid-read
+        return {**shape, "files": [], "total": 0, "github_error": True, "pr_url": pr_url}
+    files = [
+        {
+            "path": f["filename"],
+            "status": _GITHUB_FILE_STATUS.get(f.get("status"), "modified"),
+            "additions": int(f.get("additions") or 0),
+            "deletions": int(f.get("deletions") or 0),
+            "patch": f.get("patch") or "",
+        }
+        for f in raw
+        if isinstance(f, dict) and f.get("filename") and f["filename"] != "TVASHTR_REMEMBER.jsonl"
+    ]
+    return {**shape, "files": files, "total": len(files)}
 
 
 @router.get("/api/runs/{run_id}/memories")

@@ -512,3 +512,155 @@ def test_l2_the_docker_and_fly_adapters_seed_with_the_nodes_pull_scope(tmp_path)
     finally:
         fly._RUNS.clear()
         sandbox_cache.clear()
+
+
+# ------------------------------------------------------------------------------------- L3
+
+
+def _shipped_github_run(client, monkeypatch, tmp_path) -> tuple[str, dict]:
+    """A GitHub run's row exactly as ``team_run`` writes it: the clone step sets ``repo_path`` (a
+    clone under ``.tvashtr_clones``), the run's worktree ships its branch, the delivery step records
+    the PR; the run completes and M-clonegc deletes its clone. Returns ``(run id, the Changes read
+    while the clone was there)``."""
+    from conftest import auth_user_id
+    from test_hosted_github_run import _REPO, _make_hosted_run, _mock_repos, _seed_installation
+
+    from tvashtr.control_plane import clone_reaper, github_app
+    from tvashtr.control_plane.shipping import idempotent_ship
+    from tvashtr.control_plane.team_run import clone_github_repo_step, push_and_open_pr_step
+    from tvashtr.control_plane.worktree import add_worktree, resolve_start_point
+
+    _seed_installation(auth_user_id(), uuid.uuid4().int % 2_000_000_000)
+    _mock_repos(monkeypatch, [{"full_name": _REPO, "default_branch": "main"}])
+    upstream = _clone_like(tmp_path)
+    subprocess.run([*_GIT, "branch", "-M", "main"], cwd=upstream, check=True)
+    monkeypatch.setattr(
+        github_app,
+        "clone_repo",
+        lambda inst, full, dest: subprocess.run(
+            ["git", "clone", "-q", str(upstream), dest], check=True
+        ),
+    )
+    monkeypatch.setattr(github_app, "push_branch", lambda *a, **k: None)
+    monkeypatch.setattr(
+        github_app,
+        "open_pull_request_idempotent",
+        lambda *a, **k: "https://github.com/lazyxgenius/trade_mcp/pull/5",
+    )
+    rid = str(_make_hosted_run(base_ref="main"))
+    clone_github_repo_step(rid)
+    with session_scope() as session:
+        repo_path = session.get(Run, uuid.UUID(rid)).repo_path
+    assert repo_path == clone_reaper.clone_dir_for_run(rid)
+    ws = tmp_path / "ws"
+    branch = add_worktree(repo_path, str(ws), rid, resolve_start_point(repo_path, "main"))
+    with session_scope() as session:
+        session.execute(update(Run).where(Run.id == uuid.UUID(rid)).values(ship_branch=branch))
+    (ws / "README.md").write_text("# trade_mcp\nIndicators live in core/indicators.py.\n")
+    idempotent_ship(str(ws), rid)
+    push_and_open_pr_step(rid, str(ws), branch)
+    before = client.get(f"/api/runs/{rid}/diff").json()
+    with session_scope() as session:
+        session.execute(update(Run).where(Run.id == uuid.UUID(rid)).values(status="completed"))
+    subprocess.run(["git", "-C", repo_path, "worktree", "remove", "--force", str(ws)], check=True)
+    assert clone_reaper.delete_run_clone(rid) is True
+    return rid, before
+
+
+def _compare_answer(rid: str, before: dict) -> dict:
+    """GitHub's compare answer for the run's ship branch: the files Files changed shows."""
+    files = []
+    for f in before["files"]:
+        hunks = f["patch"][f["patch"].index("@@") :].rstrip("\n")
+        files.append(
+            {
+                "filename": f["path"],
+                "status": f["status"],
+                "additions": f["additions"],
+                "deletions": f["deletions"],
+                "changes": f["additions"] + f["deletions"],
+                "patch": hunks,
+            }
+        )
+    return {"status": "ahead", "files": files}
+
+
+def test_l3_a_finished_github_runs_changes_come_from_github(client, monkeypatch, tmp_path):
+    from tvashtr.control_plane import github_app
+
+    rid, before = _shipped_github_run(client, monkeypatch, tmp_path)
+    assert [f["path"] for f in before["files"]] == ["README.md"]  # today's read, clone there
+    asked = []
+
+    def fake_http(method, url, *, token=None, body=None, accept=None):
+        asked.append((method, url, token))
+        return _compare_answer(rid, before)
+
+    monkeypatch.setattr(github_app, "get_installation_token", lambda inst: "TOK")
+    monkeypatch.setattr(github_app, "_http", fake_http)
+    after = client.get(f"/api/runs/{rid}/diff").json()
+    assert asked == [
+        (
+            "GET",
+            f"https://api.github.com/repos/lazyxgenius/trade_mcp/compare/main...tvashtr/{rid}",
+            "TOK",
+        )
+    ]
+    assert set(after) == {"run_id", "base_ref", "ship_branch", "files", "total"}
+    assert after["total"] == 1
+    got, had = after["files"][0], before["files"][0]
+    for key in ("path", "status", "additions", "deletions"):
+        assert got[key] == had[key]
+    assert (
+        got["patch"].startswith("@@") and "+Indicators live in core/indicators.py." in got["patch"]
+    )
+
+
+@pytest.mark.parametrize("failure", ["deleted_branch", "no_installation", "offline"])
+def test_l3_when_github_cant_answer_the_changes_say_so(client, monkeypatch, tmp_path, failure):
+    import urllib.error
+
+    from tvashtr.control_plane import github_app
+
+    rid, _ = _shipped_github_run(client, monkeypatch, tmp_path)
+    monkeypatch.setattr(github_app, "get_installation_token", lambda inst: "TOK")
+    if failure == "deleted_branch":
+
+        def gone(*a, **k):
+            raise github_app.GithubAppError("Not Found", status=404)
+
+        monkeypatch.setattr(github_app, "_http", gone)
+    elif failure == "no_installation":
+        monkeypatch.setattr(github_app, "list_installation_repositories", lambda inst: [])
+    else:
+
+        def down(*a, **k):
+            raise urllib.error.URLError("no route to host")
+
+        monkeypatch.setattr(github_app.urllib.request, "urlopen", down)
+    after = client.get(f"/api/runs/{rid}/diff")
+    assert after.status_code == 200
+    assert after.json()["files"] == [] and after.json()["github_error"] is True
+    assert after.json()["pr_url"] == "https://github.com/lazyxgenius/trade_mcp/pull/5"
+
+
+def test_l3_github_is_not_asked_for_a_live_run_or_a_non_github_run(client, monkeypatch):
+    from test_hosted_github_run import _make_hosted_run
+
+    from tvashtr.control_plane import github_app
+
+    def never(*a, **k):
+        raise AssertionError("GitHub was asked")
+
+    monkeypatch.setattr(github_app, "_http", never)
+    live = _make_hosted_run()  # running, its clone not made yet
+    with session_scope() as session:
+        session.execute(update(Run).where(Run.id == live).values(repo_path="/gone/clone"))
+    assert client.get(f"/api/runs/{live}/diff").json()["files"] == []
+    local = _make_hosted_run(github_repo=None)  # a local-folder run whose clone is gone
+    with session_scope() as session:
+        session.execute(
+            update(Run).where(Run.id == local).values(repo_path="/gone/clone", status="completed")
+        )
+    body = client.get(f"/api/runs/{local}/diff").json()
+    assert body["files"] == [] and "github_error" not in body
