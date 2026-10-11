@@ -161,8 +161,11 @@ export async function canvasReady(page) {
 /** Click an agent's card; returns its settings drawer. */
 export async function openAgent(ctx, title, { label } = {}) {
   const { page, cam } = ctx;
-  await cam.click(card(page, title).locator(".rf-node__role"), label ?? title);
   const drawer = page.getByRole("complementary", { name: `${title} settings` });
+  await cam.click(card(page, title).locator(".rf-node__role"), label ?? title);
+  // A click that lands while the canvas is still settling only selects the card: click again.
+  if (!(await drawer.waitFor({ timeout: 6000 }).then(() => true, () => false)))
+    await cam.click(card(page, title).locator(".rf-node__role"), label ?? title);
   await drawer.waitFor({ timeout: 30000 });
   await sleep(400);
   return drawer;

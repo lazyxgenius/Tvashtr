@@ -189,7 +189,11 @@ const regionTexts = (page) =>
     const t = (n) => document.querySelector(`section[aria-label="${n}"]`)?.innerText?.trim() ?? null;
     return { now: t("Now"), activity: t("Activity"), summary: t("Run summary") };
   });
-const norm = (x) => JSON.stringify(x).replace(/\b\d+\s?(h|m|s)\b( \d+\s?s\b)?/g, "#");
+// Relative ages ("4 s ago", "1m 05s") tick with each poll: normalised per text, not on the JSON
+// string (there "\n1 s ago" has no word boundary before the digit).
+export const ageless = (x) =>
+  x && Object.fromEntries(Object.entries(x).map(([k, v]) => [k, typeof v === "string" ? v.replace(/\b\d+\s?(h|m|s)\b( \d+\s?s\b)?/g, "#") : v]));
+const norm = (x) => JSON.stringify(ageless(x));
 
 // ---- one take -------------------------------------------------------------------------------
 

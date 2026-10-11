@@ -102,10 +102,60 @@ real app answered for the film team on tvashtr_film (`video/fixtures/capture-liv
 node video/camera/sheet.mjs contact-sheet      # video/out/v1/contact-sheet.png
 node video/camera/sheet.mjs ch2-preview        # video/out/v1/ch2-preview.mp4 (1920×1080, no narration)
 node video/camera/sheet.mjs scenes-table       # the status table in video/SCENES.md
+node video/camera/sheet.mjs pairs 3.2-replay   # video/out/v1/pairs-3.2-replay.png (live | replay)
 ```
+
+### V1 results (2026-10-11)
+
+- Filming stack: `tvashtr_film` at `0053_desktop_routes`, the account shown as "Lazyx"
+  (`video/takes/v1/1.2/shots/account-menu.png`).
+- F5 proof: run `610661d5` ("Add one line to README.md …", the film team without the domain step)
+  recorded live in `3.2-proof` (1869 s, 4,189 responses, `video/recordings/proof-3.2/`), PR
+  https://github.com/lazyxgenius/trade_mcp/pull/51 (shipped through the Escalation gate: see
+  SCENES.md); replayed in `3.2-replay` with the Desktop runner signed out (every claim 401).
+  Pairs (`video/out/v1/pairs-3.2-replay.png`): 53/74 identical, 71/74 identical apart from relative
+  ages, 3/74 one Activity poll apart.
+- Takes: every LIVE-now, SAMPLE-now and WEB scene filmed in the real Desktop; every run scene
+  rehearsed with `--dry` (3.2/3.3/3.4/3.6 as replays of the proof recording); 0.1 blocked on the
+  operator's GitHub session. `video/out/v1/contact-sheet.png`, `video/out/v1/ch2-preview.mp4`.
+- Spends: 1 run (the proof), 1 test (2.7: 1 of 1 passed on Grok), 0 asks — `video/out/v1/budget.json`.
+
+### What didn't work (V1)
+
+- **Time-based replay alone isn't a re-take.** A replay that only follows the recording's clock
+  moves on while the camera is still walking to the gate (the live approval came 12 s after the
+  gate opened); fixed with holds. Answering a poll with "the latest response before now" showed a
+  poll-old state when the replay's timer fired just before the live one; fixed with the nearest
+  response (≤ 1 s ahead, never past a hold). A replay starting part-way in asked for Activity from
+  scratch and crawled through the cursor chain; fixed by rebuilding that answer from the recording.
+- **A replay can only show what the live take asked for:** a drawer the record take never opened is
+  an unanswered request (3.4's Engineer drawer). V2's record take must open every view its replays show.
+- **Relative ages ("4 s ago")** tick with each poll, so a replay matches them only to the poll; the
+  pair report counts exact matches and matches apart from relative ages separately.
+- **Selectors by visible text can match too much:** "approval" matched "PRD approval" (2.4's first
+  take configured the wrong gate); gates are now found by node id.
+- **The Desktop's launch probe once read Grok as "Needs login"** while `grok models` answered in
+  1 s; the pre-roll now asks the app to Refresh and waits for the server to count the runner fresh.
+- **Hidden switches** (`role=switch` inputs) have no box to aim at: the cursor aims at their label.
+- **trade_mcp is private:** the PR page (0.1) needs the operator's GitHub session.
+
+## Files
 
 | Path | What |
 |---|---|
+| `story.json` | the film's story (F2): one source for every take and fixture |
+| `stack/` | the filming stack on `tvashtr_film` (`up`, `down`, `reset`, `lib.sh`) |
+| `Makefile` | `make -C video take SCENE=<id> [DRY=1]`, `list`, `up`/`down`/`reset`, review files |
+| `SCENES.md` | every scene's status, story mismatches, V2's needs, the operator's MAC scripts |
+| `camera/take.mjs` | the take runner (modes, pre-roll, spends ledger, Desktop lock, pairs) |
+| `camera/cursor.mjs` | the in-page cursor (F7) and the step log |
+| `camera/intercept.mjs` | sample fixtures, record, replay (holds, nearest poll, clock shift) |
+| `camera/film.mjs` | off-camera setup through the app's API (the film team by stage, Toolkit, domain) |
+| `camera/flows.mjs` | on-camera flows (composer, gates, run views, canvas) and recording markers |
+| `camera/scenes/<id>.mjs` | one script per scene (31) |
+| `camera/sheet.mjs` | contact sheet, chapter-2 preview, pairs sheet, SCENES.md table |
+| `camera/github-login.mjs` | operator, once: a GitHub session for 0.1 (trade_mcp is private) |
+| `fixtures/` | sample data: `base.mjs`, `live-base.json` (+ `capture-live.mjs`, `export-live.mjs`), one module per SAMPLE scene, `files/` |
 | `package.json` | pinned tools: `ffmpeg-static` 5.3.0 (ffmpeg 6.0), `@ffprobe-installer/ffprobe` 2.1.2 (ffprobe n4.4.1), `@playwright/test` 1.61.1, `testreel` 0.2.0 |
 | `env.sh` | puts that ffmpeg/ffprobe first on PATH (`. video/env.sh` from the repo root) |
 | `camera/desktop.mjs` | launches the dev Electron Desktop like `desktop/scripts/live-subscription-gate.mjs`, signs in, gets past setup, drives the current UI |
@@ -138,6 +188,9 @@ Never run `./pdd install-skill` (it links into `~/.claude` and `~/.agents`). PDD
 needed until narration (V3): doctor's two NOTE lines are the missing ElevenLabs/Gemini keys.
 
 ## Start the local stack for filming
+
+V1: `video/stack/up` does all of this on `tvashtr_film` (above). V0's manual recipe, on the dev
+database, for the record:
 
 ```bash
 make db-up

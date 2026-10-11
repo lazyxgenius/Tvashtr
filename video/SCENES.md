@@ -14,6 +14,45 @@ proof recording); budgets are the scene's own and the plan's chapter budget — 
 on purpose (record more, V4 trims).
 
 <!-- scenes-table -->
+| take | script | mode | status | raw length | scene budget · chapter budget |
+|---|---|---|---|---|---|
+| 0.1 | `scenes/0.1.mjs` | web (dry) | blocked: trade_mcp is private — run node video/camera/github-login.mjs once (operator) | — | 20 s · ch 0: 20 s |
+| 0.2 | `scenes/0.2.mjs` | motion | MOTION | — | — s · ch 0: 20 s |
+| 1.1 | `scenes/1.1.mjs` | mac | MAC | — | — s · ch 1: 55 s |
+| 1.2 | `scenes/1.2.mjs` | live | clip | 15.3 s | 20 s · ch 1: 55 s |
+| 1.3 | `scenes/1.3.mjs` | live | clip | 43.1 s | 20 s · ch 1: 55 s |
+| 1.4 | `scenes/1.4.mjs` | sample | clip | 20.2 s | 12 s · ch 1: 55 s |
+| 1.5 | `scenes/1.5.mjs` | sample | clip | 36.9 s | 15 s · ch 1: 55 s |
+| 2.1 | `scenes/2.1.mjs` | live | clip | 14.3 s | 12 s · ch 2: 70 s |
+| 2.2 | `scenes/2.2.mjs` | live | clip | 18.8 s | 12 s · ch 2: 70 s |
+| 2.3 | `scenes/2.3.mjs` | live | clip | 12.6 s | 12 s · ch 2: 70 s |
+| 2.4 | `scenes/2.4.mjs` | live | clip | 80.7 s | 30 s · ch 2: 70 s |
+| 2.5 | `scenes/2.5.mjs` | live | clip | 40.8 s | 25 s · ch 2: 70 s |
+| 2.6 | `scenes/2.6.mjs` | live | clip | 29.2 s | 25 s · ch 2: 70 s |
+| 2.7 | `scenes/2.7.mjs` | live | clip | 154.6 s | 30 s · ch 2: 70 s |
+| 3.1 | `scenes/3.1.mjs` | live (dry) | rehearsed · stopped before “Launch” | 15.8 s | 15 s · ch 3: 90 s |
+| 3.2 | `scenes/3.2.mjs` | replay (dry) | rehearsed · ran through (replay, no spend) | 18.8 s | 25 s · ch 3: 90 s |
+| 3.2-proof | `scenes/3.2.mjs` | record | clip | 1869.2 s | 25 s · ch 3: 90 s |
+| 3.2-replay | `scenes/3.2.mjs` | replay | clip | 1867 s | 25 s · ch 3: 90 s |
+| 3.3 | `scenes/3.3.mjs` | replay (dry) | rehearsed · ran through (replay, no spend) | 32.6 s | 25 s · ch 3: 90 s |
+| 3.4 | `scenes/3.4.mjs` | replay (dry) | rehearsed · ran through (replay, no spend) | 15.2 s | 30 s · ch 3: 90 s |
+| 3.5 | `scenes/3.5.mjs` | sample | clip | 21 s | 15 s · ch 3: 90 s |
+| 3.6 | `scenes/3.6.mjs` | replay (dry) | rehearsed · ran through (replay, no spend) | 24.1 s | 20 s · ch 3: 90 s |
+| 3.7 | `scenes/3.7.mjs` | live (dry) | rehearsed · stopped before “Send” | 17.4 s | 30 s · ch 3: 90 s |
+| 4.1 | `scenes/4.1.mjs` | live (dry) | rehearsed · stopped before “Launch” | 13.6 s | 30 s · ch 4: 45 s |
+| 4.2 | `scenes/4.2.mjs` | live (dry) | rehearsed · stopped before “Resume (needs 4.1's failed run)” | — | 25 s · ch 4: 45 s |
+| 5.1 | `scenes/5.1.mjs` | live (dry) | rehearsed · stopped before “Start run” | 9.7 s | 25 s · ch 5: 30 s |
+| 5.1-recent | `scenes/5.1.mjs` | live (dry) | rehearsed · ran through (live, no spend) | 7 s | 25 s · ch 5: 30 s |
+| 6.1 | `scenes/6.1.mjs` | live (dry) | rehearsed · stopped before “Run all” | 28 s | 30 s · ch 6: 75 s |
+| 6.2 | `scenes/6.2.mjs` | sample | clip | 23.9 s | 25 s · ch 6: 75 s |
+| 6.2-save | `scenes/6.2.mjs` | run (dry) | rehearsed · stopped before “Save and run tests” | 38.3 s | 40 s · ch 6: 75 s |
+| 6.3 | `scenes/6.3.mjs` | live (dry) | rehearsed · stopped before “Start compare” | 36.2 s | 40 s · ch 6: 75 s |
+| 7.1 | `scenes/7.1.mjs` | live | clip | 27.6 s | 20 s · ch 7: 30 s |
+| 7.2 | `scenes/7.2.mjs` | live | clip | 33.3 s | 30 s · ch 7: 30 s |
+| 8.1 | `scenes/8.1.mjs` | sample | clip | 23.6 s | 25 s · ch 8: 25 s |
+| 8.1-web | `scenes/8.1.mjs` | web | clip | 23.5 s | 25 s · ch 8: 25 s |
+| 8.2 | `scenes/8.2.mjs` | motion | MOTION | — | — s · ch 8: 25 s |
+<!-- /scenes-table -->
 
 ## Scene by scene: how it is filmed, and what doesn't match the story
 
@@ -85,7 +124,11 @@ the spend.
 Scope `core`, Budget $5.00 → Launch, then the whole hero run is recorded (3.2–3.6 are replays of it).
 On a fresh account Desktop Home shows the ready card instead of the composer; the flow handles it.
 **3.2 Live run view** — REPLAY of "hero" from the launch (V2); V1: rehearsed on the proof
-recording, and the F5 proof is its "proof" (record) and "replay" parts.
+recording, and the F5 proof is its "proof" (record) and "replay" parts: run 610661d5 recorded live
+(1869 s, 74 pair moments), replayed with the Desktop runner signed out (every claim 401). Pairs
+(`video/out/v1/pairs-3.2-replay.png`): **53/74 identical; 71/74 identical apart from relative ages
+("1 s ago" vs "3 s ago"); 3/74 (pairs 4, 19, 43) one Activity poll apart.** The live page and the
+replay poll on their own timers, so a replay matches the live take to the poll, not to the second.
 **3.3 Gate → Needs you → fix one line → approve** — REPLAY from the gate (V2); rehearsed on proof.
 **3.4 Engineer on Claude; Reviewer on Grok; round 1 back, round 2 approved** — REPLAY (V2). "Its own
 copy of the repo" has no visible copy (the raw log names "Running on this computer with your own
@@ -101,7 +144,8 @@ so new memories wait for Keep/Discard.
 **4.1 Quiet → Stalled → Failed** — RUN (V2): stack with `QUIET=20 STALLED=60 FAIL=180`; the
 Engineer's CLI is paused through the Desktop's own process tree (SIGSTOP). The Mac notification is
 MAC-3.
-**4.2 Resume** — RUN (V2) on 4.1's failed run. The confirm's sections are "Kept", "Runs again" and a
+**4.2 Resume** — RUN (V2) on 4.1's failed run. V1 has no failed run, so its rehearsal only opens
+Home's Needs you and stops there. The confirm's sections are "Kept", "Runs again" and a
 "Skips N min of finished work" line — there is no "saved" heading ("Safe:" is in the failed callout).
 **5.1 Start the next run from this** — RUN (V2) on the hero run: "Add a DEMA indicator", carry
 spec/decisions/memories/summaries, Start from the PR branch. Recent tasks exist only in Home's
@@ -120,7 +164,9 @@ Templates → Strict Reviewer → Undo → again → "Based on Strict Reviewer v
 sign-up exists only on a self-hosted backend; hosted mode offers only GitHub). The panel's lock line
 reads **"No secrets or sign-ins inside"**. Account B finishes this Mac's first-run setup the moment
 it is created (a camera hook on the sign-up response, not product code); each re-take makes a new
-`lazyx.teammate+<n>@tvashtr.local`.
+`lazyx.teammate+<n>@tvashtr.local`. The Desktop saves the team file through Electron's own download
+(a native Save panel): the camera sets the save path in the main process first. On the imported
+team's canvas the "things to fix" card covers the Product manager's card.
 **8.1 Home** — SAMPLE (`fixtures/home.mjs`) + part `8.1-web` (WEB, the same Home on the website).
 The local-folder run ("Branch tvashtr/…") is sample data; **product layout bug:** a long branch name
 squeezes that Recent runs row (the idea disappears). The composer placeholder still says "Add an RSI
@@ -137,6 +183,8 @@ indicator with tests" (product copy).
   end — PR #51 carries those files. V2's hero run may hit the same.
 - **Local paths on screen:** an Activity line shows the Desktop job's temp path
   (`…/runner-jobs/<id>/prompt.txt`).
+- **2.4's first take configured the wrong gate** ("approval" matched "PRD approval"); gates are found
+  by node id now, and 2.4 was re-filmed.
 - **Team names:** each scene rebuilds "Indicator sprint team"; a same-named team that already has
   runs is renamed "… (earlier)" (deleting would delete its runs). For V2's clean account,
   `video/stack/reset` first.

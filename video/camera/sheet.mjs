@@ -70,19 +70,30 @@ function ch2Preview() {
 }
 
 async function pairs(replayTake) {
+  const { ageless } = await import("./take.mjs");
   const t = JSON.parse(fs.readFileSync(path.join(TAKES, replayTake, "take.json"), "utf8"));
+  const live = JSON.parse(fs.readFileSync(path.join(TAKES, t.pairs?.[0]?.live?.split("/").at(-3) ?? "3.2-proof", "take.json"), "utf8")).pairs;
+  // Each pair: exact (identical texts), ages (identical apart from relative ages), or differs.
+  const cls = (t.pairs ?? []).map((p, i) =>
+    p.match ? "exact" : JSON.stringify(ageless(p.texts)) === JSON.stringify(ageless(live[i]?.texts)) ? "ages" : "differs",
+  );
+  const n = (c) => cls.filter((x) => x === c).length;
+  const summary = `${n("exact")}/${cls.length} identical · ${n("exact") + n("ages")}/${cls.length} identical apart from relative ages · ${n("differs")}/${cls.length} differ`;
+  const label = { exact: "identical", ages: "identical apart from relative ages", differs: "differs" };
   const rows = (t.pairs ?? [])
     .map(
-      (p, i) => `<tr><td>${i + 1}<br>${esc(p.name)}<br>${(p.t_ms / 1000).toFixed(1)}s<br><b>${p.match ? "identical" : "differs"}</b></td><td><img src="file://${path.join(repoRoot, p.live)}"></td><td><img src="file://${path.join(repoRoot, p.file)}"></td></tr>`,
+      (p, i) => `<tr><td>${i + 1}<br>${esc(p.name)}<br>${(p.t_ms / 1000).toFixed(1)}s<br><b>${label[cls[i]]}</b></td><td><img src="file://${path.join(repoRoot, p.live)}"></td><td><img src="file://${path.join(repoRoot, p.file)}"></td></tr>`,
     )
     .join("");
+  t.pairs_matched = summary;
   const html = `<!doctype html><meta charset="utf-8"><style>body{margin:0;padding:20px;background:#fff;font:13px Helvetica,Arial}
     table{border-collapse:collapse} td{border:1px solid #ddd;padding:6px;vertical-align:top} img{width:860px;display:block}</style>
     <h2>${esc(replayTake)}: live (left) vs replay (right) — ${esc(t.pairs_matched)} identical Now bar + Activity texts</h2>
     <table><tr><th></th><th>live</th><th>replay</th></tr>${rows}</table>`;
   const file = path.join(OUT, `pairs-${replayTake}.png`);
   await htmlShot(html, file, 1860);
-  console.log(`PAIRS: ${path.relative(repoRoot, file)} ${t.pairs_matched}`);
+  console.log(`PAIRS: ${path.relative(repoRoot, file)} ${summary}`);
+  console.log(`  differ: ${cls.map((c, i) => (c === "differs" ? i + 1 : null)).filter(Boolean).join(", ")}`);
 }
 
 /** SCENES.md's status table: one row per take on disk (and per registry entry without one). */
@@ -90,21 +101,28 @@ async function scenesTable() {
   const { registry, takesOf } = await import("./take.mjs");
   const CH = { 0: 20, 1: 55, 2: 70, 3: 90, 4: 45, 5: 30, 6: 75, 7: 30, 8: 25 };
   const onDisk = Object.fromEntries(takes().map((t) => [t.take, t]));
-  const rows = ["| take | mode | status | raw length | scene budget · chapter budget |", "|---|---|---|---|---|"];
+  const rows = ["| take | script | mode | status | raw length | scene budget · chapter budget |", "|---|---|---|---|---|---|"];
   for (const sc of await registry())
     for (const t of takesOf(sc)) {
       const real = onDisk[t.take];
       const dry = onDisk[`${t.take}-dry`];
       const got = real ?? dry;
+      const err = (got?.error ?? "").split("\n")[0];
       const status = !got
         ? t.mode === "mac" || t.mode === "motion" ? t.mode.toUpperCase() : "not filmed"
-        : got.status === "dry"
-          ? `dry · stopped before “${got.stopped_before}”`
-          : got.status === "ok"
-            ? "clip"
-            : `${got.status}: ${(got.error ?? "").split("\n")[0].slice(0, 90)}`;
+        : /BLOCKED/.test(err)
+          ? `blocked: ${err.replace(/^Error: BLOCKED: /, "")}`
+          : real
+            ? real.status === "ok"
+              ? "clip"
+              : `${real.status}: ${err.slice(0, 90)}`
+            : dry.status === "dry"
+              ? `rehearsed · stopped before “${dry.stopped_before}”`
+              : dry.status === "ok"
+                ? `rehearsed · ran through (${dry.mode.replace(" (dry)", "")}, no spend)`
+                : `rehearsal ${dry.status}: ${err.slice(0, 90)}`;
       const ch = Number(t.id.split(".")[0]);
-      rows.push(`| ${t.take} | ${got?.mode ?? t.mode} | ${status} | ${got?.duration_s ? `${got.duration_s} s` : "—"} | ${t.budget ?? "—"} s · ch ${ch}: ${CH[ch]} s |`);
+      rows.push(`| ${t.take} | \`scenes/${t.id}.mjs\` | ${got?.mode ?? t.mode} | ${status} | ${got?.duration_s ? `${got.duration_s} s` : "—"} | ${t.budget ?? "—"} s · ch ${ch}: ${CH[ch]} s |`);
     }
   console.log(rows.join("\n"));
 }

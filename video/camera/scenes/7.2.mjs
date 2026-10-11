@@ -43,12 +43,30 @@ export default {
     await cam.roi("team-file", panel);
     await cam.hover(panel.getByText("No secrets or sign-ins inside"), "No secrets or sign-ins inside");
     await cam.pause(1500);
-    const [dl] = await Promise.all([
-      page.waitForEvent("download"),
-      cam.click(panel.getByRole("button", { name: "Download" }), "Download"),
-    ]);
-    const file = path.join(out, dl.suggestedFilename());
-    await dl.saveAs(file);
+    let file;
+    if (ctx.app) {
+      // The Desktop saves through Electron's own download (a native Save panel): the camera gives
+      // it a path in the main process first (instrumentation, not product code), then waits.
+      await ctx.app.evaluate(({ session }, dir) => {
+        session.defaultSession.once("will-download", (_e, item) => item.setSavePath(`${dir}/${item.getFilename()}`));
+      }, out);
+      const before = new Set(fs.readdirSync(out));
+      await cam.click(panel.getByRole("button", { name: "Download" }), "Download");
+      for (let i = 0; i < 60 && !file; i += 1) {
+        const fresh = fs.readdirSync(out).find((f) => !before.has(f) && /\.(ya?ml|json)$/.test(f));
+        if (fresh) file = path.join(out, fresh);
+        else await new Promise((r) => setTimeout(r, 500));
+      }
+      if (!file) throw new Error("the team file never arrived");
+    } else {
+      const [dl] = await Promise.all([
+        page.waitForEvent("download"),
+        cam.click(panel.getByRole("button", { name: "Download" }), "Download"),
+      ]);
+      file = path.join(out, dl.suggestedFilename());
+      await dl.saveAs(file);
+    }
+    ctx.note(`team file saved: ${path.basename(file)}`);
     await cam.pause(1000);
     // Log out; a second account through the app's own sign-up.
     await cam.click(page.getByRole("button", { name: "Account" }), "Account");
