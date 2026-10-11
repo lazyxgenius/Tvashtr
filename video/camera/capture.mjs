@@ -26,7 +26,7 @@ export function probe(file) {
 }
 
 /** Start a PNG screencast of `page`; frames land in `dir` as fNNNNNN.png with their timestamps. */
-export async function startScreencast(page, dir) {
+export async function startScreencast(page, dir, { every = 1 } = {}) {
   fs.mkdirSync(dir, { recursive: true });
   const cdp = await page.context().newCDPSession(page);
   const frames = [];
@@ -37,7 +37,7 @@ export async function startScreencast(page, dir) {
     writes.push(fs.promises.writeFile(file, Buffer.from(data, "base64")));
     cdp.send("Page.screencastFrameAck", { sessionId }).catch(() => {});
   });
-  await cdp.send("Page.startScreencast", { format: "png", everyNthFrame: 1 });
+  await cdp.send("Page.startScreencast", { format: "png", everyNthFrame: every });
   return {
     frames,
     /** Stops the screencast; returns the end time (epoch seconds) for the last frame's duration. */
@@ -52,7 +52,7 @@ export async function startScreencast(page, dir) {
 }
 
 /** Frames (with timestamps) → a constant 30 fps H.264 video; frame i holds until frame i+1. */
-export function assemble(frames, endTs, out, { fps = 30, crf = 12 } = {}) {
+export function assemble(frames, endTs, out, { fps = 30, crf = 12, preset = "slow" } = {}) {
   if (!frames.length) throw new Error("no screencast frames to assemble");
   const lines = ["ffconcat version 1.0"];
   frames.forEach((f, i) => {
@@ -64,7 +64,7 @@ export function assemble(frames, endTs, out, { fps = 30, crf = 12 } = {}) {
   fs.writeFileSync(list, `${lines.join("\n")}\n`);
   ffmpeg([
     "-f", "concat", "-safe", "0", "-i", list,
-    "-vf", `fps=${fps},format=yuv420p`, "-c:v", "libx264", "-preset", "slow", "-crf", String(crf),
+    "-vf", `fps=${fps},format=yuv420p`, "-c:v", "libx264", "-preset", preset, "-crf", String(crf),
     "-movflags", "+faststart", out,
   ]);
   return out;

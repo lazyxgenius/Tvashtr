@@ -1,0 +1,46 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>
+endobj
+4 0 obj
+<< /Length 1015 >>
+stream
+BT /F1 18 Tf 56 750 Td (Exchange API: Errors) Tj ET
+BT /F1 10.5 Tf 56 712 Td (Every error has a JSON body with code and message.) Tj ET
+BT /F1 10.5 Tf 56 688 Td (429 rate_limited: you went over a rate limit. The response has a Retry-After header with the) Tj ET
+BT /F1 10.5 Tf 56 673 Td (seconds to wait. Wait that long before you retry; repeated 429s within one minute block the) Tj ET
+BT /F1 10.5 Tf 56 658 Td (key for 60 seconds.) Tj ET
+BT /F1 10.5 Tf 56 634 Td (400 bad_request: a parameter is missing or has the wrong type. The message names it.) Tj ET
+BT /F1 10.5 Tf 56 610 Td (401 invalid_signature: the signature or the timestamp is wrong. Check your clock and the) Tj ET
+BT /F1 10.5 Tf 56 595 Td (string you signed.) Tj ET
+BT /F1 10.5 Tf 56 571 Td (404 unknown_symbol: the symbol is not listed. GET /symbols lists every market.) Tj ET
+BT /F1 10.5 Tf 56 547 Td (503 unavailable: the exchange is in maintenance. Retry with exponential backoff, starting at) Tj ET
+BT /F1 10.5 Tf 56 532 Td (one second.) Tj ET
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+6 0 obj
+<< /Title (Exchange API: Errors) >>
+endobj
+xref
+0 7
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000001307 00000 n 
+0000001377 00000 n 
+trailer
+<< /Size 7 /Root 1 0 R /Info 6 0 R >>
+startxref
+1428
+%%EOF

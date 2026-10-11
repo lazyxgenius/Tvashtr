@@ -1,0 +1,5 @@
+what the reviewer gets,must say,file
+"The Engineer added hull_moving_average(values, length) to core/indicators.py and registered it on INDICATORS; tests/test_indicators.py has two new tests and all tests pass. Review the change against the spec: add a Hull moving average indicator.",indicators,
+"The Engineer added trix(values, length) to core/indicators.py but did not register it on INDICATORS. Review the change against the spec: add a TRIX indicator.",INDICATORS,
+"The Engineer changed servers/http.py to expose a new route for the DEMA indicator. Review the change against the spec: add a DEMA indicator.",servers/,
+"The Engineer added hull_moving_average(values, length) and two tests to tests/test_indicators.py. Review the change against the spec: add a Hull moving average indicator.",,core/indicators.py

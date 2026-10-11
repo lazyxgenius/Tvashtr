@@ -19,8 +19,9 @@ export const desktopRoot = path.join(repoRoot, "desktop");
 export const DEV_URL = process.env.TVASHTR_DESKTOP_DEV_URL || "http://127.0.0.1:5173";
 export const API = process.env.TVASHTR_API_BASE || "http://localhost:8000";
 export const REPO = process.env.TVASHTR_PROOF_REPO || "lazyxgenius/trade_mcp";
-const EMAIL = process.env.TVASHTR_SEED_EMAIL || "operator@tvashtr.local";
-const PASSWORD = process.env.TVASHTR_SEED_PASSWORD || "tvashtr-dev";
+// The filming account (V1, F1): video/stack seeds it into tvashtr_film.
+export const EMAIL = process.env.TVASHTR_SEED_EMAIL || "lazyx@tvashtr.local";
+export const PASSWORD = process.env.TVASHTR_SEED_PASSWORD || "tvashtr-dev";
 const ELECTRON_BIN = path.join(
   desktopRoot, "node_modules", "electron", "dist", "Electron.app", "Contents", "MacOS", "Electron",
 );
@@ -67,7 +68,7 @@ export async function loginApi(api) {
   return api("POST", "/api/auth/login", { email: EMAIL, password: PASSWORD });
 }
 
-export async function launchDesktop(outDir, tag, launchOptions = {}) {
+export async function launchDesktop(outDir, tag, launchOptions = {}, profile = PROFILE) {
   fs.mkdirSync(outDir, { recursive: true });
   const env = {
     ...process.env,
@@ -79,7 +80,7 @@ export async function launchDesktop(outDir, tag, launchOptions = {}) {
   for (const k of HOST_ONLY_ENV) delete env[k];
   const app = await electron.launch({
     executablePath: ELECTRON_BIN,
-    args: [desktopRoot, `--user-data-dir=${PROFILE}`],
+    args: [desktopRoot, `--user-data-dir=${profile}`],
     env,
     cwd: desktopRoot,
     ...launchOptions,

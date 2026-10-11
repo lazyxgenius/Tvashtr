@@ -1,0 +1,47 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>
+endobj
+4 0 obj
+<< /Length 1122 >>
+stream
+BT /F1 18 Tf 56 750 Td (Exchange API: Rate limits) Tj ET
+BT /F1 10.5 Tf 56 712 Td (Limits are counted per API key over a rolling one-second window.) Tj ET
+BT /F1 10.5 Tf 56 688 Td (Order endpoints \(POST /orders, DELETE /orders/{id}\): 10 requests per second.) Tj ET
+BT /F1 10.5 Tf 56 664 Td (Market data endpoints \(GET /ticker, GET /candles, GET /orderbook\): 20 requests per second.) Tj ET
+BT /F1 10.5 Tf 56 640 Td (GET /candles returns at most 1,000 candles per request; page back with the end parameter for) Tj ET
+BT /F1 10.5 Tf 56 625 Td (older data.) Tj ET
+BT /F1 10.5 Tf 56 601 Td (Every response carries the X-RateLimit-Remaining and X-RateLimit-Reset headers, so a client) Tj ET
+BT /F1 10.5 Tf 56 586 Td (can slow down before it is refused.) Tj ET
+BT /F1 10.5 Tf 56 562 Td (Intervals: 1m, 5m, 15m, 1h, 4h and 1d. A request for more than 1,000 candles is cut to the) Tj ET
+BT /F1 10.5 Tf 56 547 Td (newest 1,000; it is not an error.) Tj ET
+BT /F1 10.5 Tf 56 523 Td (WebSocket: up to 5 subscribe messages per second on each connection, and up to 10) Tj ET
+BT /F1 10.5 Tf 56 508 Td (connections per API key.) Tj ET
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+6 0 obj
+<< /Title (Exchange API: Rate limits) >>
+endobj
+xref
+0 7
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000001414 00000 n 
+0000001484 00000 n 
+trailer
+<< /Size 7 /Root 1 0 R /Info 6 0 R >>
+startxref
+1540
+%%EOF

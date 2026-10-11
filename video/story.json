@@ -1,0 +1,63 @@
+{
+  "_": "The demo film's story (V1 brief F2): the one source every take and every fixture reads. Live footage is shot on tvashtr_film; sample data must agree with it.",
+  "account": {
+    "email": "lazyx@tvashtr.local",
+    "display_name": "Lazyx",
+    "second_email": "lazyx.teammate@tvashtr.local"
+  },
+  "repo": {
+    "full_name": "lazyxgenius/trade_mcp",
+    "branch": "main",
+    "folder": "core",
+    "registry": "core/indicators.py",
+    "tests": "tests/test_indicators.py"
+  },
+  "team": {
+    "name": "Indicator sprint team",
+    "template": "review_loop",
+    "other_team": "Bugfix squad",
+    "scratch_team": "Indicator sprint team (draft)"
+  },
+  "agents": {
+    "pm": { "title": "Product manager", "model": "anthropic/claude-sonnet-5", "runs_on": "claude" },
+    "engineer": { "title": "Engineer", "model": "anthropic/claude-sonnet-5", "runs_on": "claude" },
+    "reviewer": {
+      "title": "Reviewer",
+      "model_before": "anthropic/claude-sonnet-5",
+      "model": "xai/grok-4.7",
+      "runs_on": "grok"
+    },
+    "fixer": { "title": "Fixer", "model": "deepseek/deepseek-chat", "runs_on": "deepseek" }
+  },
+  "api_key": { "provider": "deepseek", "label": "DeepSeek" },
+  "backup_model": "deepseek/deepseek-chat",
+  "guardrail": {
+    "secret_scan": { "title": "Secret scan", "gate_kind": "secret_leak_scan" },
+    "forbidden": { "title": "No edits to servers/", "gate_kind": "diff_touches_forbidden_paths", "paths": ["servers/**"] }
+  },
+  "loop": { "max_rounds": 3, "group": "Review loop" },
+  "budget_usd": 5,
+  "domain": {
+    "name": "Exchange API docs",
+    "question": "What do our exchange API docs say about {idea}?",
+    "files": ["exchange-api-getting-started.pdf", "exchange-api-limits.pdf", "exchange-api-errors.pdf"]
+  },
+  "toolkit": {
+    "tool": "fetch",
+    "secret": "EXCHANGE_API_KEY",
+    "skills_repo": "anthropics/skills"
+  },
+  "connector": "Linear",
+  "my_agent": "Strict Reviewer",
+  "runs": {
+    "hero": "Add a Hull moving average indicator",
+    "stall": "Add a TRIX indicator",
+    "next": "Add a DEMA indicator",
+    "proof": "Add one line to README.md: Indicators live in core/indicators.py. Change nothing else."
+  },
+  "task_set": {
+    "name": "Indicators",
+    "tasks": ["Add a Vortex indicator", "Add a Chande momentum oscillator"]
+  },
+  "versions": { "before": 7, "after": 8 }
+}

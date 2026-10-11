@@ -1,0 +1,46 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>
+endobj
+4 0 obj
+<< /Length 1111 >>
+stream
+BT /F1 18 Tf 56 750 Td (Exchange API: Getting started) Tj ET
+BT /F1 10.5 Tf 56 712 Td (Base URL: https://api.exchange.example/v1. All requests and responses are JSON.) Tj ET
+BT /F1 10.5 Tf 56 688 Td (Sign every private request with your API key and secret: an HMAC-SHA256 of the timestamp,) Tj ET
+BT /F1 10.5 Tf 56 673 Td (the method, the path and the body, sent in the X-Signature header.) Tj ET
+BT /F1 10.5 Tf 56 649 Td (Timestamps are Unix milliseconds in UTC. A request more than 5 seconds old is refused.) Tj ET
+BT /F1 10.5 Tf 56 625 Td (Symbols use the BASE-QUOTE form, for example BTC-USD or ETH-USD.) Tj ET
+BT /F1 10.5 Tf 56 601 Td (Try your code against the sandbox first: https://sandbox.exchange.example/v1 holds test) Tj ET
+BT /F1 10.5 Tf 56 586 Td (balances and the same endpoints.) Tj ET
+BT /F1 10.5 Tf 56 562 Td (Candles: GET /candles?symbol=BTC-USD&interval=1h returns open, high, low, close and volume) Tj ET
+BT /F1 10.5 Tf 56 547 Td (for each interval, oldest first.) Tj ET
+BT /F1 10.5 Tf 56 523 Td (Order book: GET /orderbook?symbol=BTC-USD&depth=50 returns the best 50 bids and asks.) Tj ET
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+6 0 obj
+<< /Title (Exchange API: Getting started) >>
+endobj
+xref
+0 7
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000001403 00000 n 
+0000001473 00000 n 
+trailer
+<< /Size 7 /Root 1 0 R /Info 6 0 R >>
+startxref
+1533
+%%EOF

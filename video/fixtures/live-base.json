@@ -1,0 +1,2528 @@
+{
+ "captured_at": "2026-10-11T07:48:21.504Z",
+ "routes": {
+  "GET /health": {
+   "status": "ok",
+   "db": "ok"
+  },
+  "GET /api/config": {
+   "hosted_mode": true,
+   "github_install_url": "https://github.com/login/oauth/authorize?client_id=Iv23lisQ8qbzwvTTEZeD&redirect_uri=http%3A%2F%2Flocalhost%3A8000%2Fapi%2Fauth%2Fgithub%2Fcallback",
+   "github_manage_url": "https://github.com/apps/tvashtr-dev/installations/new",
+   "provider_catalogue": [
+    {
+     "provider": "openrouter",
+     "thinker_default": "openrouter/openai/gpt-4.1-mini",
+     "worker_default": "openrouter/openai/gpt-4o-mini",
+     "thinker_presets": [
+      "openrouter/openai/gpt-4.1-mini",
+      "openrouter/meta-llama/llama-3.1-8b-instruct",
+      "openrouter/google/gemini-flash-1.5"
+     ],
+     "worker_presets": [
+      "openrouter/openai/gpt-4o-mini"
+     ],
+     "label": "OpenRouter",
+     "model_labels": {
+      "openrouter/openai/gpt-4.1-mini": "GPT-4.1 mini",
+      "openrouter/openai/gpt-4o-mini": "GPT-4o mini",
+      "openrouter/meta-llama/llama-3.1-8b-instruct": "Llama 3.1 8B Instruct",
+      "openrouter/google/gemini-flash-1.5": "Gemini 1.5 Flash"
+     },
+     "subscription": null,
+     "byok_probed": false
+    },
+    {
+     "provider": "nvidia_nim",
+     "thinker_default": null,
+     "worker_default": null,
+     "thinker_presets": [],
+     "worker_presets": [],
+     "label": "NVIDIA NIM",
+     "model_labels": {},
+     "subscription": null,
+     "byok_probed": true
+    },
+    {
+     "provider": "openai",
+     "thinker_default": "openai/gpt-4.1-mini",
+     "worker_default": "openai/gpt-4.1-mini",
+     "thinker_presets": [
+      "openai/gpt-4.1-mini"
+     ],
+     "worker_presets": [
+      "openai/gpt-4.1-mini"
+     ],
+     "label": "OpenAI",
+     "model_labels": {
+      "openai/gpt-4.1-mini": "GPT-4.1 mini"
+     },
+     "subscription": null,
+     "byok_probed": true
+    },
+    {
+     "provider": "gemini",
+     "thinker_default": null,
+     "worker_default": "gemini/gemini-2.5-flash",
+     "thinker_presets": [],
+     "worker_presets": [
+      "gemini/gemini-2.5-flash"
+     ],
+     "label": "Gemini",
+     "model_labels": {
+      "gemini/gemini-2.5-flash": "Gemini 2.5 Flash"
+     },
+     "subscription": null,
+     "byok_probed": true
+    },
+    {
+     "provider": "groq",
+     "thinker_default": "groq/openai/gpt-oss-120b",
+     "worker_default": "groq/openai/gpt-oss-120b",
+     "thinker_presets": [
+      "groq/openai/gpt-oss-120b"
+     ],
+     "worker_presets": [
+      "groq/openai/gpt-oss-120b"
+     ],
+     "label": "Groq",
+     "model_labels": {
+      "groq/openai/gpt-oss-120b": "gpt-oss-120b"
+     },
+     "subscription": null,
+     "byok_probed": true
+    },
+    {
+     "provider": "deepseek",
+     "thinker_default": "deepseek/deepseek-chat",
+     "worker_default": "deepseek/deepseek-chat",
+     "thinker_presets": [
+      "deepseek/deepseek-chat"
+     ],
+     "worker_presets": [
+      "deepseek/deepseek-chat"
+     ],
+     "label": "DeepSeek",
+     "model_labels": {
+      "deepseek/deepseek-chat": "DeepSeek Chat"
+     },
+     "subscription": null,
+     "byok_probed": true
+    },
+    {
+     "provider": "anthropic",
+     "thinker_default": "anthropic/claude-sonnet-5",
+     "worker_default": "anthropic/claude-sonnet-5",
+     "thinker_presets": [
+      "anthropic/claude-sonnet-5",
+      "anthropic/claude-sonnet-4"
+     ],
+     "worker_presets": [
+      "anthropic/claude-sonnet-5",
+      "anthropic/claude-sonnet-4"
+     ],
+     "label": "Anthropic",
+     "model_labels": {
+      "anthropic/claude-sonnet-5": "Claude Sonnet 5",
+      "anthropic/claude-sonnet-4": "Claude Sonnet 4"
+     },
+     "subscription": "claude",
+     "byok_probed": false
+    },
+    {
+     "provider": "xai",
+     "thinker_default": "xai/grok-4.7",
+     "worker_default": "xai/grok-4.7",
+     "thinker_presets": [
+      "xai/grok-4.7"
+     ],
+     "worker_presets": [
+      "xai/grok-4.7"
+     ],
+     "label": "xAI",
+     "model_labels": {
+      "xai/grok-4.7": "Grok 4.7"
+     },
+     "subscription": "grok",
+     "byok_probed": false
+    }
+   ],
+   "provider_directory": [
+    {
+     "provider": "anthropic",
+     "monogram": "A",
+     "name": "Anthropic",
+     "label": "Claude models",
+     "example_model": "anthropic/claude-sonnet-5",
+     "subscription": "claude",
+     "embeddings": false,
+     "hint": null,
+     "serves_models": true
+    },
+    {
+     "provider": "xai",
+     "monogram": "X",
+     "name": "xAI",
+     "label": "Grok models",
+     "example_model": "xai/grok-4.7",
+     "subscription": "grok",
+     "embeddings": false,
+     "hint": null,
+     "serves_models": true
+    },
+    {
+     "provider": "openai",
+     "monogram": "O",
+     "name": "OpenAI",
+     "label": "GPT models",
+     "example_model": "openai/gpt-4.1-mini",
+     "subscription": null,
+     "embeddings": true,
+     "hint": null,
+     "serves_models": true
+    },
+    {
+     "provider": "gemini",
+     "monogram": "G",
+     "name": "Gemini",
+     "label": "Gemini models and Domains embeddings",
+     "example_model": "gemini/gemini-2.5-flash",
+     "subscription": null,
+     "embeddings": true,
+     "hint": null,
+     "serves_models": true
+    },
+    {
+     "provider": "groq",
+     "monogram": "Q",
+     "name": "Groq",
+     "label": "Fast open models",
+     "example_model": "groq/openai/gpt-oss-120b",
+     "subscription": null,
+     "embeddings": false,
+     "hint": null,
+     "serves_models": true
+    },
+    {
+     "provider": "deepseek",
+     "monogram": "D",
+     "name": "DeepSeek",
+     "label": "DeepSeek models",
+     "example_model": "deepseek/deepseek-chat",
+     "subscription": null,
+     "embeddings": false,
+     "hint": null,
+     "serves_models": true
+    },
+    {
+     "provider": "huggingface",
+     "monogram": "H",
+     "name": "Hugging Face",
+     "label": "Domains BGE-small embeddings (free token)",
+     "example_model": "huggingface/BAAI/bge-small-en-v1.5",
+     "subscription": null,
+     "embeddings": true,
+     "hint": "Used by Domains ingest for BGE-small embeddings. A free token from huggingface.co works.",
+     "serves_models": true
+    },
+    {
+     "provider": "nvidia_nim",
+     "monogram": "N",
+     "name": "NVIDIA NIM",
+     "label": "Open models on NVIDIA NIM",
+     "example_model": null,
+     "subscription": null,
+     "embeddings": false,
+     "hint": "NVIDIA NIM serves no model Tvashtr can run right now.",
+     "serves_models": false
+    },
+    {
+     "provider": "openrouter",
+     "monogram": "R",
+     "name": "OpenRouter",
+     "label": "many models through one key",
+     "example_model": "openrouter/openai/gpt-4.1-mini",
+     "subscription": null,
+     "embeddings": true,
+     "hint": null,
+     "serves_models": true
+    }
+   ],
+   "embedding_presets": [
+    {
+     "id": "openai-3-small",
+     "label": "OpenAI text-embedding-3-small (default)",
+     "slug": "openai/text-embedding-3-small",
+     "provider": "openai",
+     "dim": 1536,
+     "notes": "Requires Engines key for provider openai."
+    },
+    {
+     "id": "openai-ada-002",
+     "label": "OpenAI text-embedding-ada-002",
+     "slug": "openai/text-embedding-ada-002",
+     "provider": "openai",
+     "dim": 1536,
+     "notes": "Legacy 1536; requires Engines key for provider openai."
+    },
+    {
+     "id": "openrouter-3-small",
+     "label": "OpenRouter → text-embedding-3-small",
+     "slug": "openrouter/openai/text-embedding-3-small",
+     "provider": "openrouter",
+     "dim": 1536,
+     "notes": "Cheapest 1536 path without an OpenAI Engines key. Add an OpenRouter key under Engines. Still OpenAI upstream via OpenRouter billing — not covered by SuperGrok/subscription."
+    },
+    {
+     "id": "gemini-embedding-001",
+     "label": "Gemini gemini-embedding-001 (768)",
+     "slug": "gemini/gemini-embedding-001",
+     "provider": "gemini",
+     "dim": 768,
+     "notes": "Google AI Studio embed with output_dimensionality=768. Add a gemini Engines key. text-embedding-004 is shut down. Switching to/from a 1536 model clears ready embeddings and forces re-ingest."
+    },
+    {
+     "id": "hf-bge-small-en-v1.5",
+     "label": "Hugging Face BGE-small-en-v1.5 (384, free/rate-limited)",
+     "slug": "huggingface/BAAI/bge-small-en-v1.5",
+     "provider": "huggingface",
+     "dim": 384,
+     "notes": "Free HF Inference feature-extraction embed (BAAI/bge-small-en-v1.5, native 384-dim). Add a free huggingface token under Engines (create at huggingface.co — Inference Providers permission). Rate limits and cold starts apply; for testing. Prefer Gemini or OpenRouter for steadier throughput. Avoid sentence-transformers/* slugs — LiteLLM maps them to sentence-similarity, not embeddings."
+    }
+   ],
+   "default_run_budget_usd": 5
+  },
+  "GET /api/auth/me": {
+   "id": "1e1c13b5-fad3-4590-99f4-7ceb0b71d42c",
+   "email": "lazyx@tvashtr.local",
+   "github_login": null,
+   "display_name": "Lazyx"
+  },
+  "GET /api/teams": {
+   "teams": [
+    {
+     "team_graph_id": "a6bc48b5-12e6-4ded-8a62-a29c7bc41249",
+     "name": "Indicator sprint team",
+     "created_at": "2026-10-11T07:45:56.718132+00:00",
+     "node_count": 11,
+     "last_run": null,
+     "spend_usd": 0,
+     "run_count": 0,
+     "active_run_count": 0,
+     "awaiting_run_count": 0,
+     "last_active_at": "2026-10-11T07:45:56.718132+00:00",
+     "template_key": "review_loop",
+     "template_name": "PM → Engineer ⇄ Reviewer",
+     "duplicated_from": null,
+     "shape": {
+      "nodes": [
+       {
+        "id": "465222de-84bd-4a71-ab60-f918bd9c7daa",
+        "kind": "thinker",
+        "role": "pm",
+        "label": "PM"
+       },
+       {
+        "id": "f3f98a11-60b5-4dcd-a52f-2875515f3cd2",
+        "kind": "domain_query",
+        "role": "domain_query",
+        "label": "Look up exchange API docs"
+       },
+       {
+        "id": "685b8ec7-b2f4-42b1-a400-ec79a8a40adb",
+        "kind": "gate",
+        "role": "gate",
+        "label": "Approval"
+       },
+       {
+        "id": "6f712abf-640e-4323-a981-5c13327ca2ee",
+        "kind": "worker",
+        "role": "engineer",
+        "label": "Engineer"
+       },
+       {
+        "id": "6fd8fb3f-d2c9-4b81-84f3-c32af0830a82",
+        "kind": "worker",
+        "role": "reviewer",
+        "label": "Reviewer"
+       },
+       {
+        "id": "de5ce9df-da1b-40c2-8625-7b1f42cd6de1",
+        "kind": "gate",
+        "role": "gate",
+        "label": "Approval"
+       },
+       {
+        "id": "6819b21c-f5d8-419b-8084-908d60588711",
+        "kind": "gate",
+        "role": "gate",
+        "label": "Approval"
+       },
+       {
+        "id": "6f311cba-bca8-47a4-b2a1-fc1f6499d8f4",
+        "kind": "terminal",
+        "role": "ship",
+        "label": "Ship"
+       }
+      ],
+      "loops": [
+       {
+        "from": 4,
+        "to": 3
+       }
+      ]
+     },
+     "readiness": {
+      "website": {
+       "ready": false,
+       "missing_providers": [
+        "anthropic",
+        "xai"
+       ],
+       "missing_nodes": [
+        "engineer",
+        "pm",
+        "reviewer"
+       ]
+      },
+      "desktop": {
+       "ready": true,
+       "missing_providers": [],
+       "missing_nodes": [],
+       "routed_subscriptions": [
+        "claude",
+        "grok"
+       ]
+      },
+      "subscriptions_connected": [
+       "claude",
+       "grok"
+      ]
+     }
+    }
+   ]
+  },
+  "GET /api/account/preferences": {
+   "get_started_hidden": false,
+   "domains_howto_hidden": false,
+   "notify_asked": true,
+   "notify_needs_you": false,
+   "notify_stalls_fails": false,
+   "notify_finishes": false
+  },
+  "GET /api/runs?limit=1": {
+   "runs": [],
+   "next_cursor": null
+  },
+  "GET /api/toolkit/summary": {
+   "tools": 1,
+   "tools_needing_attention": 0,
+   "skills": 1,
+   "memory": {
+    "inbox": 0,
+    "active": 0,
+    "archive": 0
+   },
+   "secrets_missing": 0,
+   "connectors": 0,
+   "connectors_needing_attention": 0
+  },
+  "GET /api/domains": {
+   "domains": [
+    {
+     "domain_id": "915f6cb6-cdf9-45d6-9ace-343657ca0ce0",
+     "name": "Exchange API docs",
+     "template": "support",
+     "config": {
+      "chunking": {
+       "size": 600,
+       "overlap": 100,
+       "strategy": "fixed"
+      },
+      "embedding": {
+       "model": "text-embedding-3-small"
+      },
+      "retrieval": {
+       "mode": "dense",
+       "graph": {
+        "enabled": false
+       },
+       "top_k": 8,
+       "rerank": {
+        "model": null,
+        "top_n": 20,
+        "enabled": false
+       }
+      },
+      "generation": {
+       "model": null
+      }
+     },
+     "status": "empty",
+     "doc_count": 0,
+     "created_at": "2026-10-11T07:44:24.001872+00:00",
+     "updated_at": "2026-10-11T07:44:24.001872+00:00",
+     "files": {
+      "total": 0,
+      "ready": 0,
+      "reading": 0,
+      "waiting": 0,
+      "waiting_for_key": 0,
+      "needs_attention": 0
+     },
+     "pieces": 0,
+     "state": "empty",
+     "quality": {
+      "cases": 0,
+      "last_run_at": null,
+      "hit_at_k": null,
+      "keyword_hit": null,
+      "retrieval_mode": null,
+      "top_k": null
+     },
+     "usage": {
+      "uses": 1,
+      "teams": 1,
+      "steps": 1,
+      "agents": 0
+     },
+     "last_activity_at": "2026-10-11T07:44:24.001872+00:00",
+     "reading_model": {
+      "slug": "openai/text-embedding-3-small",
+      "label": "OpenAI text-embedding-3-small",
+      "provider": "openai",
+      "dim": 1536,
+      "key_saved": false
+     }
+    }
+   ]
+  },
+  "GET /api/inbox?surface=desktop": {
+   "count": 1,
+   "items": [
+    {
+     "key": "setup:a6bc48b5-12e6-4ded-8a62-a29c7bc41249:website",
+     "kind": "setup_gap",
+     "team": {
+      "id": "a6bc48b5-12e6-4ded-8a62-a29c7bc41249",
+      "name": "Indicator sprint team"
+     },
+     "target": "website",
+     "missing_providers": [
+      "anthropic",
+      "xai"
+     ],
+     "missing_nodes": [
+      "Engineer",
+      "PM",
+      "Reviewer"
+     ],
+     "desktop_covers": [
+      "claude",
+      "grok"
+     ],
+     "since": "2026-10-11T07:45:56.718132+00:00"
+    }
+   ]
+  },
+  "GET /api/engines/subscriptions": {
+   "subscriptions": [
+    {
+     "provider": "claude",
+     "connected": true,
+     "state": "connected",
+     "account_hint": "Claude Max",
+     "source": "harness",
+     "checked_at": "2026-10-11T07:46:00.401807+00:00",
+     "runner_fresh": true
+    },
+    {
+     "provider": "grok",
+     "connected": true,
+     "state": "connected",
+     "account_hint": "Grok subscription",
+     "source": "harness",
+     "checked_at": "2026-10-11T07:45:59.005848+00:00",
+     "runner_fresh": true
+    },
+    {
+     "provider": "codex",
+     "connected": false,
+     "state": "needs_install",
+     "account_hint": null,
+     "source": null,
+     "checked_at": "2026-10-11T07:45:59.203839+00:00",
+     "runner_fresh": false
+    }
+   ],
+   "runner": {
+    "fresh": true,
+    "last_seen_at": "2026-10-11T07:47:40.133020+00:00",
+    "providers": [
+     "claude",
+     "grok"
+    ]
+   }
+  },
+  "GET /api/providers": {
+   "providers": [
+    {
+     "provider": "deepseek",
+     "key_last4": "7d24",
+     "created_at": "2026-10-11T07:23:51.355846+00:00",
+     "updated_at": "2026-10-11T07:31:33.434860+00:00"
+    }
+   ]
+  },
+  "GET /api/my-agents": {
+   "agents": []
+  },
+  "GET /api/engines/usage": {
+   "teams": [
+    {
+     "team_id": "a6bc48b5-12e6-4ded-8a62-a29c7bc41249",
+     "name": "Indicator sprint team",
+     "nodes": [
+      {
+       "node_id": "465222de-84bd-4a71-ab60-f918bd9c7daa",
+       "role_name": "pm",
+       "title": null,
+       "kind": "completion",
+       "model": "anthropic/claude-sonnet-5",
+       "provider": "anthropic",
+       "fallback_model": null,
+       "fallback_provider": null
+      },
+      {
+       "node_id": "6f712abf-640e-4323-a981-5c13327ca2ee",
+       "role_name": "engineer",
+       "title": null,
+       "kind": "agent",
+       "model": "anthropic/claude-sonnet-5",
+       "provider": "anthropic",
+       "fallback_model": "deepseek/deepseek-chat",
+       "fallback_provider": "deepseek"
+      },
+      {
+       "node_id": "6fd8fb3f-d2c9-4b81-84f3-c32af0830a82",
+       "role_name": "reviewer",
+       "title": null,
+       "kind": "agent",
+       "model": "xai/grok-4.7",
+       "provider": "xai",
+       "fallback_model": null,
+       "fallback_provider": null
+      },
+      {
+       "node_id": "630c1b0d-018f-45e6-8833-10643e0df3eb",
+       "role_name": "worker",
+       "title": "Fixer",
+       "kind": "agent",
+       "model": "deepseek/deepseek-chat",
+       "provider": "deepseek",
+       "fallback_model": null,
+       "fallback_provider": null
+      }
+     ]
+    }
+   ],
+   "domains": [
+    {
+     "domain_id": "915f6cb6-cdf9-45d6-9ace-343657ca0ce0",
+     "name": "Exchange API docs",
+     "embedding_model": "openai/text-embedding-3-small",
+     "embedding_provider": "openai",
+     "generation_model": null,
+     "generation_provider": null
+    }
+   ],
+   "by_provider": {
+    "anthropic": {
+     "teams": [
+      {
+       "team_id": "a6bc48b5-12e6-4ded-8a62-a29c7bc41249",
+       "name": "Indicator sprint team",
+       "roles": [
+        "pm",
+        "engineer"
+       ],
+       "node_ids": [
+        "465222de-84bd-4a71-ab60-f918bd9c7daa",
+        "6f712abf-640e-4323-a981-5c13327ca2ee"
+       ]
+      }
+     ],
+     "fallback_teams": [],
+     "domains": []
+    },
+    "deepseek": {
+     "teams": [
+      {
+       "team_id": "a6bc48b5-12e6-4ded-8a62-a29c7bc41249",
+       "name": "Indicator sprint team",
+       "roles": [
+        "worker"
+       ],
+       "node_ids": [
+        "630c1b0d-018f-45e6-8833-10643e0df3eb"
+       ]
+      }
+     ],
+     "fallback_teams": [
+      {
+       "team_id": "a6bc48b5-12e6-4ded-8a62-a29c7bc41249",
+       "name": "Indicator sprint team",
+       "roles": [
+        "engineer"
+       ],
+       "node_ids": [
+        "6f712abf-640e-4323-a981-5c13327ca2ee"
+       ]
+      }
+     ],
+     "domains": []
+    },
+    "openai": {
+     "teams": [],
+     "fallback_teams": [],
+     "domains": [
+      {
+       "domain_id": "915f6cb6-cdf9-45d6-9ace-343657ca0ce0",
+       "name": "Exchange API docs",
+       "use": "embedding"
+      }
+     ]
+    },
+    "xai": {
+     "teams": [
+      {
+       "team_id": "a6bc48b5-12e6-4ded-8a62-a29c7bc41249",
+       "name": "Indicator sprint team",
+       "roles": [
+        "reviewer"
+       ],
+       "node_ids": [
+        "6fd8fb3f-d2c9-4b81-84f3-c32af0830a82"
+       ]
+      }
+     ],
+     "fallback_teams": [],
+     "domains": []
+    }
+   }
+  },
+  "GET /api/runs?limit=50": {
+   "runs": [],
+   "next_cursor": null
+  },
+  "GET /api/connectors": {
+   "connections": []
+  },
+  "GET /api/connectors/catalog": {
+   "items": [
+    {
+     "key": "supabase",
+     "name": "Supabase",
+     "publisher": "Supabase",
+     "featured": true,
+     "reviewed": true,
+     "category": "databases",
+     "description": "Read tables, run read-only SQL and check logs in one project.",
+     "website": "https://supabase.com",
+     "host": "mcp.supabase.com",
+     "auth": "oauth",
+     "key_fields": [],
+     "access_modes": [
+      "read",
+      "write"
+     ],
+     "read_only_by": "provider",
+     "scope_picker": {
+      "param": "project_ref",
+      "label": "Project"
+     },
+     "available": true,
+     "unavailable_reason": null,
+     "connection_id": null,
+     "connection_status": null
+    },
+    {
+     "key": "neon",
+     "name": "Neon",
+     "publisher": "Neon",
+     "featured": true,
+     "reviewed": true,
+     "category": "databases",
+     "description": "Look at branches, schemas and query results in one Neon project.",
+     "website": "https://neon.com",
+     "host": "mcp.neon.tech",
+     "auth": "oauth",
+     "key_fields": [],
+     "access_modes": [
+      "read",
+      "write"
+     ],
+     "read_only_by": "annotations",
+     "scope_picker": {
+      "param": "projectId",
+      "label": "Project"
+     },
+     "available": true,
+     "unavailable_reason": null,
+     "connection_id": null,
+     "connection_status": null
+    },
+    {
+     "key": "notion",
+     "name": "Notion",
+     "publisher": "Notion",
+     "featured": true,
+     "reviewed": true,
+     "category": "docs",
+     "description": "Search and read pages and databases in your Notion workspace.",
+     "website": "https://www.notion.com",
+     "host": "mcp.notion.com",
+     "auth": "oauth",
+     "key_fields": [],
+     "access_modes": [
+      "read",
+      "write"
+     ],
+     "read_only_by": "annotations",
+     "scope_picker": null,
+     "available": true,
+     "unavailable_reason": null,
+     "connection_id": null,
+     "connection_status": null
+    },
+    {
+     "key": "google-drive",
+     "name": "Google Drive",
+     "publisher": "Google",
+     "featured": true,
+     "reviewed": true,
+     "category": "docs",
+     "description": "Find and read the files in your Google Drive.",
+     "website": "https://workspace.google.com",
+     "host": "drivemcp.googleapis.com",
+     "auth": "oauth",
+     "key_fields": [],
+     "access_modes": [
+      "read"
+     ],
+     "read_only_by": "scopes",
+     "scope_picker": null,
+     "available": false,
+     "unavailable_reason": "coming_soon",
+     "connection_id": null,
+     "connection_status": null
+    },
+    {
+     "key": "google-docs",
+     "name": "Google Docs",
+     "publisher": "Google",
+     "featured": true,
+     "reviewed": true,
+     "category": "docs",
+     "description": "Read the text of your Google Docs.",
+     "website": "https://workspace.google.com",
+     "host": "docsmcp.googleapis.com",
+     "auth": "oauth",
+     "key_fields": [],
+     "access_modes": [
+      "read"
+     ],
+     "read_only_by": "scopes",
+     "scope_picker": null,
+     "available": false,
+     "unavailable_reason": "coming_soon",
+     "connection_id": null,
+     "connection_status": null
+    },
+    {
+     "key": "google-sheets",
+     "name": "Google Sheets",
+     "publisher": "Google",
+     "featured": true,
+     "reviewed": true,
+     "category": "docs",
+     "description": "Read the rows and cells of your Google Sheets.",
+     "website": "https://workspace.google.com",
+     "host": "sheetsmcp.googleapis.com",
+     "auth": "oauth",
+     "key_fields": [],
+     "access_modes": [
+      "read"
+     ],
+     "read_only_by": "scopes",
+     "scope_picker": null,
+     "available": false,
+     "unavailable_reason": "coming_soon",
+     "connection_id": null,
+     "connection_status": null
+    },
+    {
+     "key": "posthog",
+     "name": "PostHog",
+     "publisher": "PostHog",
+     "featured": true,
+     "reviewed": true,
+     "category": "analytics",
+     "description": "Query product analytics, feature flags and error tracking.",
+     "website": "https://posthog.com",
+     "host": "mcp.posthog.com",
+     "auth": "oauth",
+     "key_fields": [],
+     "access_modes": [
+      "read",
+      "write"
+     ],
+     "read_only_by": "annotations",
+     "scope_picker": null,
+     "available": true,
+     "unavailable_reason": null,
+     "connection_id": null,
+     "connection_status": null
+    },
+    {
+     "key": "mixpanel",
+     "name": "Mixpanel",
+     "publisher": "Mixpanel",
+     "featured": true,
+     "reviewed": true,
+     "category": "analytics",
+     "description": "Run reports on events, funnels and retention.",
+     "website": "https://mixpanel.com",
+     "host": "mcp.mixpanel.com",
+     "auth": "oauth",
+     "key_fields": [],
+     "access_modes": [
+      "read",
+      "write"
+     ],
+     "read_only_by": "annotations",
+     "scope_picker": null,
+     "available": true,
+     "unavailable_reason": null,
+     "connection_id": null,
+     "connection_status": null
+    },
+    {
+     "key": "amplitude",
+     "name": "Amplitude",
+     "publisher": "Amplitude",
+     "featured": true,
+     "reviewed": true,
+     "category": "analytics",
+     "description": "Look up charts, dashboards, cohorts and experiments.",
+     "website": "https://amplitude.com",
+     "host": "mcp.amplitude.com",
+     "auth": "oauth",
+     "key_fields": [],
+     "access_modes": [
+      "read",
+      "write"
+     ],
+     "read_only_by": "annotations",
+     "scope_picker": null,
+     "available": true,
+     "unavailable_reason": null,
+     "connection_id": null,
+     "connection_status": null
+    },
+    {
+     "key": "hubspot",
+     "name": "HubSpot",
+     "publisher": "HubSpot",
+     "featured": true,
+     "reviewed": true,
+     "category": "crm",
+     "description": "Look up contacts, companies, deals and tickets.",
+     "website": "https://www.hubspot.com",
+     "host": "mcp.hubspot.com",
+     "auth": "oauth",
+     "key_fields": [],
+     "access_modes": [
+      "read",
+      "write"
+     ],
+     "read_only_by": "annotations",
+     "scope_picker": null,
+     "available": false,
+     "unavailable_reason": "coming_soon",
+     "connection_id": null,
+     "connection_status": null
+    },
+    {
+     "key": "intercom",
+     "name": "Intercom",
+     "publisher": "Intercom",
+     "featured": true,
+     "reviewed": true,
+     "category": "crm",
+     "description": "Search conversations and contacts from your support inbox.",
+     "website": "https://www.intercom.com",
+     "host": "mcp.intercom.com",
+     "auth": "oauth",
+     "key_fields": [],
+     "access_modes": [
+      "read",
+      "write"
+     ],
+     "read_only_by": "annotations",
+     "scope_picker": null,
+     "available": true,
+     "unavailable_reason": null,
+     "connection_id": null,
+     "connection_status": null
+    },
+    {
+     "key": "linear",
+     "name": "Linear",
+     "publisher": "Linear",
+     "featured": true,
+     "reviewed": true,
+     "category": "work",
+     "description": "Find, read and update issues, projects and cycles.",
+     "website": "https://linear.app",
+     "host": "mcp.linear.app",
+     "auth": "oauth",
+     "key_fields": [],
+     "access_modes": [
+      "read",
+      "write"
+     ],
+     "read_only_by": "annotations",
+     "scope_picker": null,
+     "available": true,
+     "unavailable_reason": null,
+     "connection_id": null,
+     "connection_status": null
+    },
+    {
+     "key": "sentry",
+     "name": "Sentry",
+     "publisher": "Sentry",
+     "featured": true,
+     "reviewed": true,
+     "category": "work",
+     "description": "Look into errors, traces and releases across your projects.",
+     "website": "https://sentry.io",
+     "host": "mcp.sentry.dev",
+     "auth": "oauth",
+     "key_fields": [],
+     "access_modes": [
+      "read",
+      "write"
+     ],
+     "read_only_by": "annotations",
+     "scope_picker": null,
+     "available": true,
+     "unavailable_reason": null,
+     "connection_id": null,
+     "connection_status": null
+    },
+    {
+     "key": "atlassian",
+     "name": "Atlassian",
+     "publisher": "Atlassian",
+     "featured": true,
+     "reviewed": true,
+     "category": "work",
+     "description": "Search and read Jira issues and Confluence pages.",
+     "website": "https://www.atlassian.com",
+     "host": "mcp.atlassian.com",
+     "auth": "oauth",
+     "key_fields": [],
+     "access_modes": [
+      "read",
+      "write"
+     ],
+     "read_only_by": "annotations",
+     "scope_picker": null,
+     "available": true,
+     "unavailable_reason": null,
+     "connection_id": null,
+     "connection_status": null
+    },
+    {
+     "key": "ai.thetickeris/agent-rail",
+     "name": "$AI on HyperEVM",
+     "publisher": "thetickeris.ai",
+     "featured": false,
+     "reviewed": false,
+     "category": null,
+     "description": "Quote and build unsigned buy/sell transactions for $AI on its HyperEVM bonding curve. No keys held.",
+     "website": "https://thetickeris.ai",
+     "host": "thetickeris.ai",
+     "auth": "unknown",
+     "key_fields": [],
+     "access_modes": [
+      "read",
+      "write"
+     ],
+     "read_only_by": "annotations",
+     "scope_picker": null,
+     "available": true,
+     "unavailable_reason": null,
+     "connection_id": null,
+     "connection_status": null
+    },
+    {
+     "key": "live.alpic.staging.everything-app-7f22928f/everything-app",
+     "name": "(WiP) An everything app",
+     "publisher": "everything-app-7f22928f.staging.alpic.live",
+     "featured": false,
+     "reviewed": false,
+     "category": null,
+     "description": "Still WiP",
+     "website": null,
+     "host": "everything-app-7f22928f.staging.alpic.live",
+     "auth": "unknown",
+     "key_fields": [],
+     "access_modes": [
+      "read",
+      "write"
+     ],
+     "read_only_by": "annotations",
+     "scope_picker": null,
+     "available": true,
+     "unavailable_reason": null,
+     "connection_id": null,
+     "connection_status": null
+    },
+    {
+     "key": "com.dotprompts/dotprompts",
+     "name": ".prompts",
+     "publisher": "dotprompts.com",
+     "featured": false,
+     "reviewed": false,
+     "category": null,
+     "description": ".prompts, the home to all your AI prompts, everywhere you need them.",
+     "website": "https://dotprompts.com",
+     "host": "dotprompts.com",
+     "auth": "unknown",
+     "key_fields": [],
+     "access_modes": [
+      "read",
+      "write"
+     ],
+     "read_only_by": "annotations",
+     "scope_picker": null,
+     "available": true,
+     "unavailable_reason": null,
+     "connection_id": null,
+     "connection_status": null
+    },
+    {
+     "key": "com.00widget/00widget",
+     "name": "00Widget",
+     "publisher": "00widget.com",
+     "featured": false,
+     "reviewed": false,
+     "category": null,
+     "description": "Publish status cards and Live Activities to iOS widgets, the Lock Screen, and the Dynamic Island.",
+     "website": "https://00widget.com",
+     "host": "api.00widget.com",
+     "auth": "unknown",
+     "key_fields": [],
+     "access_modes": [
+      "read",
+      "write"
+     ],
+     "read_only_by": "annotations",
+     "scope_picker": null,
+     "available": true,
+     "unavailable_reason": null,
+     "connection_id": null,
+     "connection_status": null
+    },
+    {
+     "key": "net.01mind/charon",
+     "name": "01Mind",
+     "publisher": "01mind.net",
+     "featured": false,
+     "reviewed": false,
+     "category": null,
+     "description": "A machine-to-machine agent superstore -- paid API services for autonomous agents via x402 on Base.",
+     "website": null,
+     "host": "01mind.net",
+     "auth": "unknown",
+     "key_fields": [],
+     "access_modes": [
+      "read",
+      "write"
+     ],
+     "read_only_by": "annotations",
+     "scope_picker": null,
+     "available": true,
+     "unavailable_reason": null,
+     "connection_id": null,
+     "connection_status": null
+    },
+    {
+     "key": "tw.0523/lucky-public",
+     "name": "0523 Public — Taiwan Logistics & Customs",
+     "publisher": "0523.tw",
+     "featured": false,
+     "reviewed": false,
+     "category": null,
+     "description": "Taiwan parcel forwarding tools: freight and import-tax quotes, CCC tariff lookup, import rules.",
+     "website": "https://0523.tw/mcp/public",
+     "host": "0523.tw",
+     "auth": "unknown",
+     "key_fields": [],
+     "access_modes": [
+      "read",
+      "write"
+     ],
+     "read_only_by": "annotations",
+     "scope_picker": null,
+     "available": true,
+     "unavailable_reason": null,
+     "connection_id": null,
+     "connection_status": null
+    },
+    {
+     "key": "dev.0bridge/0bridge",
+     "name": "0bridge",
+     "publisher": "0bridge.dev",
+     "featured": false,
+     "reviewed": false,
+     "category": null,
+     "description": "Every service you connect, one MCP endpoint for all your AI tools. Sign in once.",
+     "website": "https://0bridge.dev",
+     "host": "0bridge.dev",
+     "auth": "unknown",
+     "key_fields": [],
+     "access_modes": [
+      "read",
+      "write"
+     ],
+     "read_only_by": "annotations",
+     "scope_picker": null,
+     "available": true,
+     "unavailable_reason": null,
+     "connection_id": null,
+     "connection_status": null
+    },
+    {
+     "key": "net.0bull/phone-farm",
+     "name": "0bull Phone Farm",
+     "publisher": "0bull.net",
+     "featured": false,
+     "reviewed": false,
+     "category": null,
+     "description": "Manage social accounts, publish videos, and control real iPhones rented by the month.",
+     "website": "https://docs.0bull.net/mcp/overview",
+     "host": "0bull.net",
+     "auth": "unknown",
+     "key_fields": [],
+     "access_modes": [
+      "read",
+      "write"
+     ],
+     "read_only_by": "annotations",
+     "scope_picker": null,
+     "available": true,
+     "unavailable_reason": null,
+     "connection_id": null,
+     "connection_status": null
+    },
+    {
+     "key": "com.0dteconfluence/confluence",
+     "name": "0DTE Confluence",
+     "publisher": "0dteconfluence.com",
+     "featured": false,
+     "reviewed": false,
+     "category": null,
+     "description": "Gamma rails, options flow tape, and graded 0DTE setups for SPY/QQQ/IWM. Advisory only.",
+     "website": "https://0dteconfluence.com/developers/mcp",
+     "host": "mcp.0dteconfluence.com",
+     "auth": "api_key",
+     "key_fields": [
+      {
+       "id": "X-API-Key",
+       "label": "API key",
+       "hint": "Your 0DTE Confluence API key (starts with cfl_). Issued with a Robinhood Pro or Desk Bundle subscription at https://0dteconfluence.com/#tiers",
+       "secret": true,
+       "required": true
+      }
+     ],
+     "access_modes": [
+      "read",
+      "write"
+     ],
+     "read_only_by": "annotations",
+     "scope_picker": null,
+     "available": true,
+     "unavailable_reason": null,
+     "connection_id": null,
+     "connection_status": null
+    },
+    {
+     "key": "io.github.0nork/0nMCP",
+     "name": "0nMCP — Universal AI API Orchestrator",
+     "publisher": "github.com/0nork",
+     "featured": false,
+     "reviewed": false,
+     "category": null,
+     "description": "Universal AI API Orchestrator — 1,554 tools, 96 services. One install.",
+     "website": null,
+     "host": "0nmcp.com",
+     "auth": "unknown",
+     "key_fields": [],
+     "access_modes": [
+      "read",
+      "write"
+     ],
+     "read_only_by": "annotations",
+     "scope_picker": null,
+     "available": true,
+     "unavailable_reason": null,
+     "connection_id": null,
+     "connection_status": null
+    },
+    {
+     "key": "xyz.0to100.mcp/sports",
+     "name": "0to100",
+     "publisher": "mcp.0to100.xyz",
+     "featured": false,
+     "reviewed": false,
+     "category": null,
+     "description": "Schedules, injury reports and fan-hub links for all 32 NFL and 30 NBA teams.",
+     "website": "https://mcp.0to100.xyz/",
+     "host": "mcp.0to100.xyz",
+     "auth": "unknown",
+     "key_fields": [],
+     "access_modes": [
+      "read",
+      "write"
+     ],
+     "read_only_by": "annotations",
+     "scope_picker": null,
+     "available": true,
+     "unavailable_reason": null,
+     "connection_id": null,
+     "connection_status": null
+    },
+    {
+     "key": "io.0xarchive/mcp",
+     "name": "0xArchive Market Data",
+     "publisher": "0xarchive.io",
+     "featured": false,
+     "reviewed": false,
+     "category": null,
+     "description": "Real-time & historical Hyperliquid/Lighter: L4/L2/L3, fills, funding, OI, liquidations, candles",
+     "website": "https://0xarchive.io",
+     "host": "mcp.0xarchive.io",
+     "auth": "unknown",
+     "key_fields": [],
+     "access_modes": [
+      "read",
+      "write"
+     ],
+     "read_only_by": "annotations",
+     "scope_picker": null,
+     "available": true,
+     "unavailable_reason": null,
+     "connection_id": null,
+     "connection_status": null
+    },
+    {
+     "key": "io.github.DavidOrpeli/0xhumans-mcp",
+     "name": "0xHumans Protocol MCP",
+     "publisher": "github.com/DavidOrpeli",
+     "featured": false,
+     "reviewed": false,
+     "category": null,
+     "description": "MCP for AI agents: financing, skills, lending on Base",
+     "website": null,
+     "host": "0xhumans-mcp-proxy.vercel.app",
+     "auth": "unknown",
+     "key_fields": [],
+     "access_modes": [
+      "read",
+      "write"
+     ],
+     "read_only_by": "annotations",
+     "scope_picker": null,
+     "available": true,
+     "unavailable_reason": null,
+     "connection_id": null,
+     "connection_status": null
+    },
+    {
+     "key": "io.github.0xinsider/mcp",
+     "name": "0xinsider",
+     "publisher": "github.com/0xinsider",
+     "featured": false,
+     "reviewed": false,
+     "category": null,
+     "description": "Read-only Polymarket sports and esports data: wallet grades on settled P&L, large trades, markets.",
+     "website": "https://0xinsider.com/mcp",
+     "host": "api.0xinsider.com",
+     "auth": "unknown",
+     "key_fields": [],
+     "access_modes": [
+      "read",
+      "write"
+     ],
+     "read_only_by": "annotations",
+     "scope_picker": null,
+     "available": true,
+     "unavailable_reason": null,
+     "connection_id": null,
+     "connection_status": null
+    },
+    {
+     "key": "io.github.mkrz-x/rhxbt",
+     "name": "0xrhXBT — Robinhood Chain Intelligence",
+     "publisher": "github.com/mkrz-x",
+     "featured": false,
+     "reviewed": false,
+     "category": null,
+     "description": "Robinhood Chain intelligence: trend scores, launch radar, KOL leaderboard, pre-trade risk checks.",
+     "website": "https://rhxbt.com",
+     "host": "rhxbt.com",
+     "auth": "unknown",
+     "key_fields": [],
+     "access_modes": [
+      "read",
+      "write"
+     ],
+     "read_only_by": "annotations",
+     "scope_picker": null,
+     "available": true,
+     "unavailable_reason": null,
+     "connection_id": null,
+     "connection_status": null
+    },
+    {
+     "key": "com.100hires/100hires",
+     "name": "100Hires - AI ATS & Recruitment Software",
+     "publisher": "100hires.com",
+     "featured": false,
+     "reviewed": false,
+     "category": null,
+     "description": "Official 100Hires MCP: AI ATS & Recruitment Software for candidates, jobs, applications, interviews.",
+     "website": "https://100hires.com/mcp",
+     "host": "mcp.100hires.com",
+     "auth": "unknown",
+     "key_fields": [],
+     "access_modes": [
+      "read",
+      "write"
+     ],
+     "read_only_by": "annotations",
+     "scope_picker": null,
+     "available": true,
+     "unavailable_reason": null,
+     "connection_id": null,
+     "connection_status": null
+    },
+    {
+     "key": "dev.rendraputra/100pro-token-risk",
+     "name": "100Pro Token Risk",
+     "publisher": "rendraputra.dev",
+     "featured": false,
+     "reviewed": false,
+     "category": null,
+     "description": "Read-only risk tools: token screen, contract source, wallet. $0.10 USDC on Base.",
+     "website": "https://x402.rendraputra.dev",
+     "host": "x402.rendraputra.dev",
+     "auth": "unknown",
+     "key_fields": [],
+     "access_modes": [
+      "read",
+      "write"
+     ],
+     "read_only_by": "annotations",
+     "scope_picker": null,
+     "available": true,
+     "unavailable_reason": null,
+     "connection_id": null,
+     "connection_status": null
+    },
+    {
+     "key": "com.101soundboards/search",
+     "name": "101 Soundboards",
+     "publisher": "101soundboards.com",
+     "featured": false,
+     "reviewed": false,
+     "category": null,
+     "description": "Search millions of sound and soundboards on 101soundboards.com",
+     "website": null,
+     "host": "www.101soundboards.com",
+     "auth": "unknown",
+     "key_fields": [],
+     "access_modes": [
+      "read",
+      "write"
+     ],
+     "read_only_by": "annotations",
+     "scope_picker": null,
+     "available": true,
+     "unavailable_reason": null,
+     "connection_id": null,
+     "connection_status": null
+    },
+    {
+     "key": "com.1099policy/mcp",
+     "name": "1099Policy",
+     "publisher": "1099policy.com",
+     "featured": false,
+     "reviewed": false,
+     "category": null,
+     "description": "Verify, quote and track contractor insurance in your 1099Policy account.",
+     "website": "https://www.1099policy.com/docs/mcp",
+     "host": "mcp.1099policy.com",
+     "auth": "unknown",
+     "key_fields": [],
+     "access_modes": [
+      "read",
+      "write"
+     ],
+     "read_only_by": "annotations",
+     "scope_picker": null,
+     "available": true,
+     "unavailable_reason": null,
+     "connection_id": null,
+     "connection_status": null
+    },
+    {
+     "key": "io.github.11Agents/cloud-mcp",
+     "name": "11agents Cloud MCP",
+     "publisher": "github.com/11Agents",
+     "featured": false,
+     "reviewed": false,
+     "category": null,
+     "description": "Cloud MCP for project data, analytics, research, content planning, media generation, and growth.",
+     "website": "https://11agents.ai",
+     "host": "app.11agents.ai",
+     "auth": "api_key",
+     "key_fields": [
+      {
+       "id": "Authorization",
+       "label": "API key",
+       "hint": "11agents project token, sent as a Bearer token.",
+       "secret": true,
+       "required": true
+      }
+     ],
+     "access_modes": [
+      "read",
+      "write"
+     ],
+     "read_only_by": "annotations",
+     "scope_picker": null,
+     "available": true,
+     "unavailable_reason": null,
+     "connection_id": null,
+     "connection_status": null
+    },
+    {
+     "key": "io.github.kossik/11fgb-cleaning-tools",
+     "name": "11FGB Cleaning Tools",
+     "publisher": "github.com/kossik",
+     "featured": false,
+     "reviewed": false,
+     "category": null,
+     "description": "Free US cleaning cost, time, crew, and chemical-use calculators with visual reports.",
+     "website": null,
+     "host": "mcp.11fgb.com",
+     "auth": "unknown",
+     "key_fields": [],
+     "access_modes": [
+      "read",
+      "write"
+     ],
+     "read_only_by": "annotations",
+     "scope_picker": null,
+     "available": true,
+     "unavailable_reason": null,
+     "connection_id": null,
+     "connection_status": null
+    },
+    {
+     "key": "chat.1233/marketplace",
+     "name": "1233.chat",
+     "publisher": "1233.chat",
+     "featured": false,
+     "reviewed": false,
+     "category": null,
+     "description": "Search goods and services listings on 1233.chat, a classifieds board in Bishkek, Kyrgyzstan.",
+     "website": "https://1233.chat",
+     "host": "1233.chat",
+     "auth": "unknown",
+     "key_fields": [],
+     "access_modes": [
+      "read",
+      "write"
+     ],
+     "read_only_by": "annotations",
+     "scope_picker": null,
+     "available": true,
+     "unavailable_reason": null,
+     "connection_id": null,
+     "connection_status": null
+    },
+    {
+     "key": "io.github.Servicedsi/123elec-mcp",
+     "name": "123Elec",
+     "publisher": "github.com/Servicedsi",
+     "featured": false,
+     "reviewed": false,
+     "category": null,
+     "description": "Interface MCP officielle du site marchand 123elec, catalogue, stock, panier, commandes.",
+     "website": null,
+     "host": "mcp.123elec.com",
+     "auth": "unknown",
+     "key_fields": [],
+     "access_modes": [
+      "read",
+      "write"
+     ],
+     "read_only_by": "annotations",
+     "scope_picker": null,
+     "available": true,
+     "unavailable_reason": null,
+     "connection_id": null,
+     "connection_status": null
+    },
+    {
+     "key": "site.123skills/mcp",
+     "name": "123Skills",
+     "publisher": "123skills.site",
+     "featured": false,
+     "reviewed": false,
+     "category": null,
+     "description": "Skill market run by AI agents: register, publish skills, vote weekly, buy winners with credits.",
+     "website": "https://123skills.site",
+     "host": "123skills.site",
+     "auth": "unknown",
+     "key_fields": [],
+     "access_modes": [
+      "read",
+      "write"
+     ],
+     "read_only_by": "annotations",
+     "scope_picker": null,
+     "available": true,
+     "unavailable_reason": null,
+     "connection_id": null,
+     "connection_status": null
+    },
+    {
+     "key": "ai.1325/mcp",
+     "name": "1325.AI",
+     "publisher": "1325.ai",
+     "featured": false,
+     "reviewed": false,
+     "category": null,
+     "description": "Verified directory of 47,000+ Black-owned U.S. businesses. Search, profiles, maps, rewards.",
+     "website": "https://1325.ai",
+     "host": "agoclnqfyinwjxdmjnns.supabase.co",
+     "auth": "unknown",
+     "key_fields": [],
+     "access_modes": [
+      "read",
+      "write"
+     ],
+     "read_only_by": "annotations",
+     "scope_picker": null,
+     "available": true,
+     "unavailable_reason": null,
+     "connection_id": null,
+     "connection_status": null
+    },
+    {
+     "key": "io.github.bluetouff/13flow",
+     "name": "13FLOW",
+     "publisher": "github.com/bluetouff",
+     "featured": false,
+     "reviewed": false,
+     "category": null,
+     "description": "Source-linked SEC 13F research, quality checks, watchlists and audit trails for agents.",
+     "website": "https://13flow.eu/developers",
+     "host": "13flow.eu",
+     "auth": "unknown",
+     "key_fields": [],
+     "access_modes": [
+      "read",
+      "write"
+     ],
+     "read_only_by": "annotations",
+     "scope_picker": null,
+     "available": true,
+     "unavailable_reason": null,
+     "connection_id": null,
+     "connection_status": null
+    },
+    {
+     "key": "ch.1820/telefonbuch",
+     "name": "1820.ch – Telefonbuch Schweiz",
+     "publisher": "1820.ch",
+     "featured": false,
+     "reviewed": false,
+     "category": null,
+     "description": "Swiss phone directory: search people and businesses, reverse number lookup, business categories.",
+     "website": "https://1820.ch/ch/de/ki-assistenten",
+     "host": "mcp.1820.ch",
+     "auth": "unknown",
+     "key_fields": [],
+     "access_modes": [
+      "read",
+      "write"
+     ],
+     "read_only_by": "annotations",
+     "scope_picker": null,
+     "available": true,
+     "unavailable_reason": null,
+     "connection_id": null,
+     "connection_status": null
+    },
+    {
+     "key": "com.getbotlens/1845meat",
+     "name": "1845 Smoked Meat AI Gateway",
+     "publisher": "getbotlens.com",
+     "featured": false,
+     "reviewed": false,
+     "category": null,
+     "description": "MCP gateway for 1845meat.com: products, prices, stock and cart links. Read-only, no auth.",
+     "website": "https://1845meat.com",
+     "host": "1845meat.mcp.getbotlens.com",
+     "auth": "unknown",
+     "key_fields": [],
+     "access_modes": [
+      "read",
+      "write"
+     ],
+     "read_only_by": "annotations",
+     "scope_picker": null,
+     "available": true,
+     "unavailable_reason": null,
+     "connection_id": null,
+     "connection_status": null
+    },
+    {
+     "key": "in.1acre/land-intelligence",
+     "name": "1acre Land Intelligence",
+     "publisher": "1acre.in",
+     "featured": false,
+     "reviewed": false,
+     "category": null,
+     "description": "Look up Indian land parcels by survey number or lat/lon. Returns parcel boundaries.",
+     "website": "https://1acre.in",
+     "host": "mcp.1acre.in",
+     "auth": "unknown",
+     "key_fields": [],
+     "access_modes": [
+      "read",
+      "write"
+     ],
+     "read_only_by": "annotations",
+     "scope_picker": null,
+     "available": true,
+     "unavailable_reason": null,
+     "connection_id": null,
+     "connection_status": null
+    },
+    {
+     "key": "ru.maxzoa/1cent",
+     "name": "1cent Web Intelligence for AI Agents",
+     "publisher": "maxzoa.ru",
+     "featured": false,
+     "reviewed": false,
+     "category": null,
+     "description": "SSRF-safe web intelligence: 4 outcomes, 43 paid x402 tools, 3 free tools and a URL preview.",
+     "website": "https://1cent.maxzoa.ru",
+     "host": "1cent.maxzoa.ru",
+     "auth": "unknown",
+     "key_fields": [],
+     "access_modes": [
+      "read",
+      "write"
+     ],
+     "read_only_by": "annotations",
+     "scope_picker": null,
+     "available": true,
+     "unavailable_reason": null,
+     "connection_id": null,
+     "connection_status": null
+    },
+    {
+     "key": "io.github.1clickreport/mcp",
+     "name": "1ClickReport",
+     "publisher": "github.com/1clickreport",
+     "featured": false,
+     "reviewed": false,
+     "category": null,
+     "description": "75 tools for marketing analytics, campaign management and AI monitoring across 7 platforms.",
+     "website": "https://www.1clickreport.com",
+     "host": "mcp.1clickreport.com",
+     "auth": "unknown",
+     "key_fields": [],
+     "access_modes": [
+      "read",
+      "write"
+     ],
+     "read_only_by": "annotations",
+     "scope_picker": null,
+     "available": true,
+     "unavailable_reason": null,
+     "connection_id": null,
+     "connection_status": null
+    },
+    {
+     "key": "io.github.onetapstudiogames/1f3d9",
+     "name": "1F3D9 City Life for AI Agents",
+     "publisher": "github.com/onetapstudiogames",
+     "featured": false,
+     "reviewed": false,
+     "category": null,
+     "description": "A persistent AI world where agents walk, build, own things, talk, and make agreements.",
+     "website": "https://1f3d9.com",
+     "host": "1f3d9.com",
+     "auth": "unknown",
+     "key_fields": [],
+     "access_modes": [
+      "read",
+      "write"
+     ],
+     "read_only_by": "annotations",
+     "scope_picker": null,
+     "available": true,
+     "unavailable_reason": null,
+     "connection_id": null,
+     "connection_status": null
+    },
+    {
+     "key": "io.github.onetapstudiogames/1f3ea",
+     "name": "1F3Ea",
+     "publisher": "github.com/onetapstudiogames",
+     "featured": false,
+     "reviewed": false,
+     "category": null,
+     "description": "A tiny free-time marketplace for AI agents only.",
+     "website": null,
+     "host": "1f3ea.com",
+     "auth": "unknown",
+     "key_fields": [],
+     "access_modes": [
+      "read",
+      "write"
+     ],
+     "read_only_by": "annotations",
+     "scope_picker": null,
+     "available": true,
+     "unavailable_reason": null,
+     "connection_id": null,
+     "connection_status": null
+    },
+    {
+     "key": "io.github.1f4bcai/1f4bc",
+     "name": "1F4BC",
+     "publisher": "github.com/1f4bcai",
+     "featured": false,
+     "reviewed": false,
+     "category": null,
+     "description": "Read-only MCP access to the 1F4BC job board for AI agents.",
+     "website": "https://1f4bc.ai",
+     "host": "1f4bc.ai",
+     "auth": "unknown",
+     "key_fields": [],
+     "access_modes": [
+      "read",
+      "write"
+     ],
+     "read_only_by": "annotations",
+     "scope_picker": null,
+     "available": true,
+     "unavailable_reason": null,
+     "connection_id": null,
+     "connection_status": null
+    }
+   ],
+   "total": 15051,
+   "next_offset": 48,
+   "categories": [
+    "databases",
+    "docs",
+    "analytics",
+    "crm",
+    "work"
+   ]
+  },
+  "GET /api/tool-library": {
+   "tools": [
+    {
+     "id": "6a307033-491d-4596-8626-d4c068731bbd",
+     "name": "fetch",
+     "server_config": {
+      "args": [
+       "mcp-server-fetch"
+      ],
+      "command": "uvx"
+     },
+     "created_at": "2026-10-11T07:44:24.020979+00:00",
+     "updated_at": "2026-10-11T07:44:24.020979+00:00",
+     "secret_refs": [],
+     "missing_secrets": [],
+     "status": "ready",
+     "used_by": {
+      "agent_count": 1,
+      "team_count": 1
+     }
+    }
+   ]
+  },
+  "GET /api/tool-catalog": {
+   "tools": [
+    {
+     "key": "fetch",
+     "name": "fetch",
+     "title": "Web fetch",
+     "description": "Fetch web pages over HTTP. Runs locally with uvx mcp-server-fetch.",
+     "access": "free",
+     "secret_names": [],
+     "badge": "Free · no login",
+     "attachable": true,
+     "server_config": {
+      "command": "uvx",
+      "args": [
+       "mcp-server-fetch"
+      ]
+     }
+    },
+    {
+     "key": "github",
+     "name": "github",
+     "title": "GitHub",
+     "description": "GitHub's remote MCP server: issues, pull requests and code. Uses a token saved as GITHUB_TOKEN.",
+     "access": "needs_secret",
+     "secret_names": [
+      "GITHUB_TOKEN"
+     ],
+     "badge": "Needs GITHUB_TOKEN",
+     "attachable": true,
+     "server_config": {
+      "url": "https://api.githubcopilot.com/mcp/",
+      "headers": {
+       "Authorization": "Bearer ${GITHUB_TOKEN}"
+      }
+     }
+    },
+    {
+     "key": "github-app",
+     "name": "github-app",
+     "title": "GitHub App repos",
+     "description": "Hosted runs use your Tvashtr GitHub App installation. Install the App, then launch against an App repo.",
+     "access": "needs_github_app",
+     "secret_names": [],
+     "badge": "Needs GitHub App",
+     "attachable": false,
+     "server_config": {}
+    }
+   ]
+  },
+  "GET /api/github/status": {
+   "hosted": true,
+   "installed": true,
+   "installation_count": 1,
+   "repo_count": 2
+  },
+  "GET /api/skill-library": {
+   "skills": [
+    {
+     "id": "4165ffaf-ef0c-45be-8417-9fd55476df2f",
+     "name": "mcp-builder",
+     "source": {
+      "ref": "main",
+      "url": "https://github.com/anthropics/skills",
+      "mode": "agent",
+      "type": "repo",
+      "filter": "mcp-builder",
+      "resolved_sha": "dbd4588f9e1033efb41dad4bef2f7947c8993d44"
+     },
+     "created_at": "2026-10-11T07:44:38.165004+00:00",
+     "updated_at": "2026-10-11T07:44:38.165004+00:00",
+     "usage": {
+      "agents": 1,
+      "teams": 1
+     }
+    }
+   ]
+  },
+  "GET /api/memories/counts": {
+   "inbox": 0,
+   "active": 0,
+   "archive": 0
+  },
+  "GET /api/memories?status=active": {
+   "memories": []
+  },
+  "GET /api/memory/repos": {
+   "repos": []
+  },
+  "GET /api/secrets": {
+   "secrets": [],
+   "missing": []
+  },
+  "GET /api/teams/a6bc48b5-12e6-4ded-8a62-a29c7bc41249/validate": {
+   "errors": [],
+   "warnings": [],
+   "runnable": true
+  },
+  "GET /api/teams/a6bc48b5-12e6-4ded-8a62-a29c7bc41249/graph": {
+   "team_graph_id": "a6bc48b5-12e6-4ded-8a62-a29c7bc41249",
+   "name": "Indicator sprint team",
+   "nodes": [
+    {
+     "id": "465222de-84bd-4a71-ab60-f918bd9c7daa",
+     "role_name": "pm",
+     "kind": "completion",
+     "model": "anthropic/claude-sonnet-5",
+     "engine": null,
+     "prompt": "You are the PM on a software team. Write a concise mini-PRD (3-5 sentences) for the feature request below. You MUST restate, verbatim, the exact file path and the exact required file contents (each clearly labelled on its own line), plus one sentence of context for the engineer.\n\nWrite the spec for one indicator at a time: its function in core/indicators.py, registered on INDICATORS, with tests in tests/test_indicators.py.",
+     "position": {
+      "x": 0,
+      "y": 0
+     },
+     "config": null,
+     "tool_config": null,
+     "skills": null,
+     "edits_allowed": false,
+     "last_run": null,
+     "tests": null
+    },
+    {
+     "id": "f3f98a11-60b5-4dcd-a52f-2875515f3cd2",
+     "role_name": "domain_query",
+     "kind": "domain_query",
+     "model": null,
+     "engine": null,
+     "prompt": "What do our exchange API docs say about {idea}?",
+     "position": {
+      "x": 260,
+      "y": 0
+     },
+     "config": {
+      "title": "Look up exchange API docs",
+      "domain_id": "915f6cb6-cdf9-45d6-9ace-343657ca0ce0",
+      "on_no_answer": "continue",
+      "pass_to_spec": true
+     },
+     "tool_config": null,
+     "skills": null,
+     "edits_allowed": false,
+     "last_run": null,
+     "tests": null
+    },
+    {
+     "id": "13ab24f9-b2bb-4f33-a132-7c6f32461f16",
+     "role_name": "stop",
+     "kind": "terminal",
+     "model": null,
+     "engine": null,
+     "prompt": null,
+     "position": {
+      "x": 520,
+      "y": 160
+     },
+     "config": {
+      "terminal_kind": "stop"
+     },
+     "tool_config": null,
+     "skills": null,
+     "edits_allowed": false,
+     "last_run": null,
+     "tests": null
+    },
+    {
+     "id": "685b8ec7-b2f4-42b1-a400-ec79a8a40adb",
+     "role_name": "prd_gate",
+     "kind": "gate",
+     "model": null,
+     "engine": null,
+     "prompt": null,
+     "position": {
+      "x": 520,
+      "y": 0
+     },
+     "config": {
+      "title": "Approve the PRD before the Engineer builds",
+      "gate_kind": "prd_approval",
+      "description": "The PM wrote the PRD. Approve to let the Engineer build and ship it; reject to stop the run without shipping."
+     },
+     "tool_config": null,
+     "skills": null,
+     "edits_allowed": false,
+     "last_run": null,
+     "tests": null
+    },
+    {
+     "id": "1792ee5a-4c10-41e9-b7ad-d827ddb6edeb",
+     "role_name": "escalation_gate",
+     "kind": "gate",
+     "model": null,
+     "engine": null,
+     "prompt": null,
+     "position": {
+      "x": 780,
+      "y": 180
+     },
+     "config": {
+      "title": "Couldn't satisfy the spec in 3 review rounds — ship the last build as-is, or stop",
+      "gate_kind": "review_escalation",
+      "description": "The Engineer and Reviewer did not converge within the cap. Approve to ship the last completed build as-is, or reject to stop the run without shipping."
+     },
+     "tool_config": null,
+     "skills": null,
+     "edits_allowed": false,
+     "last_run": null,
+     "tests": null
+    },
+    {
+     "id": "6f712abf-640e-4323-a981-5c13327ca2ee",
+     "role_name": "engineer",
+     "kind": "agent",
+     "model": "anthropic/claude-sonnet-5",
+     "engine": "openhands",
+     "prompt": "Read the PRD below and create exactly the file it specifies, with exactly the specified contents. Write the deliverable into your current working directory using a RELATIVE path (the bare filename, e.g. 'greeting.txt') so it can be shipped; if the PRD shows a leading '/' or './', treat it as relative to your working directory. Do not add any extra files and do not modify anything else.",
+     "position": {
+      "x": 780,
+      "y": 0
+     },
+     "config": {
+      "agent_kind": "engineer",
+      "fallback_model": "deepseek/deepseek-chat",
+      "memory_remember_enabled": true
+     },
+     "tool_config": {
+      "tvashtr": {
+       "library": [
+        "6a307033-491d-4596-8626-d4c068731bbd"
+       ]
+      }
+     },
+     "skills": [
+      {
+       "mode": "always",
+       "name": "caveman",
+       "type": "inline",
+       "content": "---\nname: caveman\ndescription: >\n  Ultra-compressed communication mode that cuts output tokens while keeping\n  technical accuracy. Levels: lite, full, ultra and the wenyan variants. Use for\n  /caveman, \"caveman mode\", \"talk like caveman\", \"be brief\" or \"less tokens\".\n---\n\nRespond terse like smart caveman. All technical substance stay. Only fluff die.\n\n## Persistence\n\nDefault style for this whole session, every response, until user say \"stop caveman\" or \"normal mode\". Keep terse on long sessions no filler drift.\n\nDefault: **full**. Switch: `/caveman lite|full|ultra|wenyan-lite|wenyan-full|wenyan-ultra|off`.\n\n## Rules\n\nDrop: articles (a/an/the), filler (just/really/basically/actually/simply), pleasantries (sure/certainly/of course/happy to), hedging. Fragments OK. Short synonyms (big not extensive, fix not \"implement a solution for\"). No tool-call narration, no decorative tables/emoji, no dumping long raw error logs unless asked quote shortest decisive line. Standard well-known tech acronyms OK (DB/API/HTTP); never invent new abbreviations (cfg/impl/req/res/fn) tokenizer split them same as full word: zero token saved, reader still decode. Full word cheaper AND clearer. No causal arrows (→) either own token, save nothing. Technical terms exact. Code blocks unchanged. Errors quoted exact.\n\nNever drop not/never/no/only/except flip meaning worse than any token saved. Numbers, units exact.\n\nNever ADD word to sound caveman. Compression only style never grow output. No inserted pronoun or copula to fake broken grammar: \"when it not\" cost one token more than \"when not\" and say same thing. Keep correct verb form when correct form cost same \"sees\" one token, \"see\" one token, so mangle buy nothing and read worse. Same rule as abbreviations and arrows: if caveman phrasing not shorter than plain phrasing, use plain.\n\nClarity register: mix ASD-STE100 Simplified Technical English into caveman, always. One idea per sentence. Sentence short, target 20 words max. Active voice. Present tense where true. One word one meaning: same term for same thing every time, no synonym rotation. Instruction = imperative: \"Run X\", not \"X should be run\". Noun cluster 3 words max. Pronoun only with one clear referent, else repeat noun. Caveman cut filler; STE keep what make meaning unambiguous. Conflict between them → clarity win.\n\nTool calls: fire direct. No preamble, plan, or progress note before or between calls. After result: next call direct or final answer never announce next call. Text before call only to clarify, warn security/irreversible, or resolve ambiguity.\n\nPreserve user's dominant language exactly reply in the language user writes, never switch regardless of example text or multilingual context elsewhere. Compress the style, not the language. Every emitted line in that language openings, pre-tool status lines, all not just final reply. ALWAYS keep technical terms, code, API names, CLI commands, commit-type keywords (feat/fix/...), and exact error strings verbatim unless user explicitly ask for translation.\n\n'Drop articles' = article languages only. Where small markers carry case/role (particles, postpositions), keep them grammar, not filler; compress politeness/filler instead.\n\nAnswer directly in this style. Skip \"caveman mode on\", \"me caveman think\", \"Caveman:\" prefix or recap redundant with the reply itself. No normal answer plus caveman duplicate. User ask what mode is → say so plainly.\n\nPattern: `[thing] [action] [reason]. [next step].`\n\nNot: \"Sure! I'd be happy to help you with that. The issue you're experiencing is likely caused by...\"\nYes: \"Bug in auth middleware. Token expiry check use `<` not `<=`. Fix:\"\n\n## Intensity\n\n| Level | What change |\n|-------|------------|\n| **lite** | No filler/hedging. Keep articles + full sentences. Professional but tight |\n| **full** | Drop articles, fragments OK, short synonyms. Classic caveman. No tool-call narration, no decorative tables/emoji, no long raw error-log dumps unless asked. Standard acronyms OK; no invented abbreviations |\n| **ultra** | Strip conjunctions when cause-then-effect stay unambiguous. One word when one word enough. State each fact once. NO prose abbreviations (cfg/impl/req/res/fn/auth), NO arrows (X → Y) measured zero token saving under tokenizer, cost decode clarity. Code symbols, function names, API names, error strings: never touch |\n| **wenyan-lite** | Semi-classical. Drop filler/hedging but keep grammar structure, classical register |\n| **wenyan-full** | Maximum classical terseness. Fully 文言文. 80-90% character reduction chars, not tokens. Classical sentence patterns, verbs precede objects, subjects often omitted, classical particles (之/乃/為/其) |\n| **wenyan-ultra** | Extreme abbreviation while keeping classical Chinese feel. Maximum compression, ultra terse |\n\nExample \"Why React component re-render?\"\n- lite: \"Your component re-renders because you create a new object reference each render. Wrap it in `useMemo`.\"\n- full: \"New object ref each render. Inline object prop = new ref = re-render. Wrap in `useMemo`.\"\n- ultra: \"Inline obj prop, new ref, re-render. `useMemo`.\"\n- wenyan-lite: \"組件頻重繪，以每繪新生對象參照故。以 useMemo 包之。\"\n- wenyan-full: \"每繪新生對象參照，故重繪；以 useMemo 包之則免。\"\n- wenyan-ultra: \"新參照則重繪。useMemo 包之。\"\n\nExample \"Explain database connection pooling.\"\n- lite: \"Connection pooling reuses open connections instead of creating new ones per request. Avoids repeated handshake overhead.\"\n- full: \"Pool reuse open DB connections. No new connection per request. Skip handshake overhead.\"\n- ultra: \"Pool reuse open DB connections. No per-request handshake.\"\n- wenyan-full: \"池蓄已開之連，不逐請而新開，省握手之費。\"\n- wenyan-ultra: \"池蓄連，免逐請新開，省握手。\"\n\nClassical chars = wenyan modes only. Never swap a word to a classical char to shrink at non-wenyan levels.\n\n## Auto-Clarity\n\nDrop caveman when:\n- Security warnings\n- Irreversible action confirmations\n- Multi-step sequences where fragment order or omitted conjunctions risk misread\n- Compression itself creates technical ambiguity (e.g., `\"migrate table drop column backup first\"` order unclear without articles/conjunctions)\n- User asks to clarify or repeats question\n\nResume caveman after clear part done.\n\nExample shows FORMAT only write warning in session language, not example's.\n\nExample destructive op:\n> **Warning:** This will permanently delete all rows in the `users` table and cannot be undone.\n> ```sql\n> DROP TABLE users;\n> ```\n> Caveman resume. Verify backup exist first.\n\n## Boundaries\n\nPersisted outside chat: write normal prose code, comments, commits, docs, issue/PR/MR/defect/ticket/bug-report text, memory files, third-party messages (/caveman-compress exempt). \"Open a defect\" or \"file a bug\" mean the same as \"open issue\": body go to other humans, so body normal English. \"stop caveman\" or \"normal mode\": revert. Level persist until changed or session end."
+      },
+      {
+       "id": "4165ffaf-ef0c-45be-8417-9fd55476df2f",
+       "type": "library"
+      }
+     ],
+     "edits_allowed": true,
+     "last_run": null,
+     "tests": null
+    },
+    {
+     "id": "630c1b0d-018f-45e6-8833-10643e0df3eb",
+     "role_name": "worker",
+     "kind": "agent",
+     "model": "deepseek/deepseek-chat",
+     "engine": "openhands",
+     "prompt": "You are the Fixer. The Engineer failed or ran out of time. Read the spec and the Engineer's last notes, make the smallest change that makes the tests in tests/test_indicators.py pass, and say what you changed.",
+     "position": {
+      "x": 910,
+      "y": 360
+     },
+     "config": {
+      "title": "Fixer"
+     },
+     "tool_config": null,
+     "skills": null,
+     "edits_allowed": true,
+     "last_run": null,
+     "tests": null
+    },
+    {
+     "id": "6fd8fb3f-d2c9-4b81-84f3-c32af0830a82",
+     "role_name": "reviewer",
+     "kind": "agent",
+     "model": "xai/grok-4.7",
+     "engine": "openhands",
+     "prompt": "You are the Reviewer on a software team. The engineer's build is in your current working directory. Review it — do NOT improve it.\n\nDo these steps in order:\n1. Inspect the files in your current working directory (the engineer's build).\n2. Run the repository's tests. PREFER pytest:\n       python -m pytest -q\n   If pytest is unavailable or collects no tests, fall back to EXACTLY this command (the -B is required — do not write bytecode):\n       python -B -m unittest\n3. Before deciding, state in ONE sentence the single concrete behavior the ORIGINAL IDEA and the PRD below require, then state in ONE sentence HOW you verified the build actually exhibits that behavior — cite the specific test or command output you observed, not an assumption.\n4. Decide the verdict:\n   - \"approved\" ONLY IF the tests pass AND the deliverable fulfills the ORIGINAL IDEA and the PRD below.\n   - \"changes_requested\" otherwise (any test fails, a required behavior or file from the idea/PRD is missing, or it otherwise falls short).\n5. Write a file named EXACTLY REVIEW_VERDICT.json in your current working directory (the bare filename), containing EXACTLY this JSON and nothing else:\n       {\"verdict\": \"approved\" | \"changes_requested\", \"reasons\": \"<1-3 short, specific, actionable sentences>\"}\n\nSTRICT RULES:\n- You are REVIEWING, not editing. Do NOT modify, create, or delete ANY file except REVIEW_VERDICT.json.\n- Base \"approved\" on the tests actually passing and the spec actually being met — do not approve on assumption.",
+     "position": {
+      "x": 1040,
+      "y": 0
+     },
+     "config": {
+      "agent_kind": "reviewer"
+     },
+     "tool_config": null,
+     "skills": [
+      {
+       "mode": "always",
+       "name": "caveman",
+       "type": "inline",
+       "content": "---\nname: caveman\ndescription: >\n  Ultra-compressed communication mode that cuts output tokens while keeping\n  technical accuracy. Levels: lite, full, ultra and the wenyan variants. Use for\n  /caveman, \"caveman mode\", \"talk like caveman\", \"be brief\" or \"less tokens\".\n---\n\nRespond terse like smart caveman. All technical substance stay. Only fluff die.\n\n## Persistence\n\nDefault style for this whole session, every response, until user say \"stop caveman\" or \"normal mode\". Keep terse on long sessions no filler drift.\n\nDefault: **full**. Switch: `/caveman lite|full|ultra|wenyan-lite|wenyan-full|wenyan-ultra|off`.\n\n## Rules\n\nDrop: articles (a/an/the), filler (just/really/basically/actually/simply), pleasantries (sure/certainly/of course/happy to), hedging. Fragments OK. Short synonyms (big not extensive, fix not \"implement a solution for\"). No tool-call narration, no decorative tables/emoji, no dumping long raw error logs unless asked quote shortest decisive line. Standard well-known tech acronyms OK (DB/API/HTTP); never invent new abbreviations (cfg/impl/req/res/fn) tokenizer split them same as full word: zero token saved, reader still decode. Full word cheaper AND clearer. No causal arrows (→) either own token, save nothing. Technical terms exact. Code blocks unchanged. Errors quoted exact.\n\nNever drop not/never/no/only/except flip meaning worse than any token saved. Numbers, units exact.\n\nNever ADD word to sound caveman. Compression only style never grow output. No inserted pronoun or copula to fake broken grammar: \"when it not\" cost one token more than \"when not\" and say same thing. Keep correct verb form when correct form cost same \"sees\" one token, \"see\" one token, so mangle buy nothing and read worse. Same rule as abbreviations and arrows: if caveman phrasing not shorter than plain phrasing, use plain.\n\nClarity register: mix ASD-STE100 Simplified Technical English into caveman, always. One idea per sentence. Sentence short, target 20 words max. Active voice. Present tense where true. One word one meaning: same term for same thing every time, no synonym rotation. Instruction = imperative: \"Run X\", not \"X should be run\". Noun cluster 3 words max. Pronoun only with one clear referent, else repeat noun. Caveman cut filler; STE keep what make meaning unambiguous. Conflict between them → clarity win.\n\nTool calls: fire direct. No preamble, plan, or progress note before or between calls. After result: next call direct or final answer never announce next call. Text before call only to clarify, warn security/irreversible, or resolve ambiguity.\n\nPreserve user's dominant language exactly reply in the language user writes, never switch regardless of example text or multilingual context elsewhere. Compress the style, not the language. Every emitted line in that language openings, pre-tool status lines, all not just final reply. ALWAYS keep technical terms, code, API names, CLI commands, commit-type keywords (feat/fix/...), and exact error strings verbatim unless user explicitly ask for translation.\n\n'Drop articles' = article languages only. Where small markers carry case/role (particles, postpositions), keep them grammar, not filler; compress politeness/filler instead.\n\nAnswer directly in this style. Skip \"caveman mode on\", \"me caveman think\", \"Caveman:\" prefix or recap redundant with the reply itself. No normal answer plus caveman duplicate. User ask what mode is → say so plainly.\n\nPattern: `[thing] [action] [reason]. [next step].`\n\nNot: \"Sure! I'd be happy to help you with that. The issue you're experiencing is likely caused by...\"\nYes: \"Bug in auth middleware. Token expiry check use `<` not `<=`. Fix:\"\n\n## Intensity\n\n| Level | What change |\n|-------|------------|\n| **lite** | No filler/hedging. Keep articles + full sentences. Professional but tight |\n| **full** | Drop articles, fragments OK, short synonyms. Classic caveman. No tool-call narration, no decorative tables/emoji, no long raw error-log dumps unless asked. Standard acronyms OK; no invented abbreviations |\n| **ultra** | Strip conjunctions when cause-then-effect stay unambiguous. One word when one word enough. State each fact once. NO prose abbreviations (cfg/impl/req/res/fn/auth), NO arrows (X → Y) measured zero token saving under tokenizer, cost decode clarity. Code symbols, function names, API names, error strings: never touch |\n| **wenyan-lite** | Semi-classical. Drop filler/hedging but keep grammar structure, classical register |\n| **wenyan-full** | Maximum classical terseness. Fully 文言文. 80-90% character reduction chars, not tokens. Classical sentence patterns, verbs precede objects, subjects often omitted, classical particles (之/乃/為/其) |\n| **wenyan-ultra** | Extreme abbreviation while keeping classical Chinese feel. Maximum compression, ultra terse |\n\nExample \"Why React component re-render?\"\n- lite: \"Your component re-renders because you create a new object reference each render. Wrap it in `useMemo`.\"\n- full: \"New object ref each render. Inline object prop = new ref = re-render. Wrap in `useMemo`.\"\n- ultra: \"Inline obj prop, new ref, re-render. `useMemo`.\"\n- wenyan-lite: \"組件頻重繪，以每繪新生對象參照故。以 useMemo 包之。\"\n- wenyan-full: \"每繪新生對象參照，故重繪；以 useMemo 包之則免。\"\n- wenyan-ultra: \"新參照則重繪。useMemo 包之。\"\n\nExample \"Explain database connection pooling.\"\n- lite: \"Connection pooling reuses open connections instead of creating new ones per request. Avoids repeated handshake overhead.\"\n- full: \"Pool reuse open DB connections. No new connection per request. Skip handshake overhead.\"\n- ultra: \"Pool reuse open DB connections. No per-request handshake.\"\n- wenyan-full: \"池蓄已開之連，不逐請而新開，省握手之費。\"\n- wenyan-ultra: \"池蓄連，免逐請新開，省握手。\"\n\nClassical chars = wenyan modes only. Never swap a word to a classical char to shrink at non-wenyan levels.\n\n## Auto-Clarity\n\nDrop caveman when:\n- Security warnings\n- Irreversible action confirmations\n- Multi-step sequences where fragment order or omitted conjunctions risk misread\n- Compression itself creates technical ambiguity (e.g., `\"migrate table drop column backup first\"` order unclear without articles/conjunctions)\n- User asks to clarify or repeats question\n\nResume caveman after clear part done.\n\nExample shows FORMAT only write warning in session language, not example's.\n\nExample destructive op:\n> **Warning:** This will permanently delete all rows in the `users` table and cannot be undone.\n> ```sql\n> DROP TABLE users;\n> ```\n> Caveman resume. Verify backup exist first.\n\n## Boundaries\n\nPersisted outside chat: write normal prose code, comments, commits, docs, issue/PR/MR/defect/ticket/bug-report text, memory files, third-party messages (/caveman-compress exempt). \"Open a defect\" or \"file a bug\" mean the same as \"open issue\": body go to other humans, so body normal English. \"stop caveman\" or \"normal mode\": revert. Level persist until changed or session end."
+      }
+     ],
+     "edits_allowed": false,
+     "last_run": null,
+     "tests": null
+    },
+    {
+     "id": "de5ce9df-da1b-40c2-8625-7b1f42cd6de1",
+     "role_name": "gate",
+     "kind": "gate",
+     "model": null,
+     "engine": null,
+     "prompt": null,
+     "position": {
+      "x": 1300,
+      "y": 0
+     },
+     "config": {
+      "title": "Secret scan",
+      "gate_kind": "secret_leak_scan",
+      "description": "Scans the run's workspace for secrets before anything ships."
+     },
+     "tool_config": null,
+     "skills": null,
+     "edits_allowed": false,
+     "last_run": null,
+     "tests": null
+    },
+    {
+     "id": "6819b21c-f5d8-419b-8084-908d60588711",
+     "role_name": "gate",
+     "kind": "gate",
+     "model": null,
+     "engine": null,
+     "prompt": null,
+     "position": {
+      "x": 1560,
+      "y": 0
+     },
+     "config": {
+      "title": "No edits to servers/",
+      "gate_kind": "diff_touches_forbidden_paths",
+      "description": "Stops the run if the change touches servers/.",
+      "forbidden_paths": [
+       "servers/**"
+      ]
+     },
+     "tool_config": null,
+     "skills": null,
+     "edits_allowed": false,
+     "last_run": null,
+     "tests": null
+    },
+    {
+     "id": "6f311cba-bca8-47a4-b2a1-fc1f6499d8f4",
+     "role_name": "ship",
+     "kind": "terminal",
+     "model": null,
+     "engine": null,
+     "prompt": null,
+     "position": {
+      "x": 1820,
+      "y": 0
+     },
+     "config": {
+      "terminal_kind": "ship"
+     },
+     "tool_config": null,
+     "skills": null,
+     "edits_allowed": false,
+     "last_run": null,
+     "tests": null
+    }
+   ],
+   "edges": [
+    {
+     "id": "da79932b-18c4-4eb7-a4ae-511c22caa750",
+     "source_node_id": "685b8ec7-b2f4-42b1-a400-ec79a8a40adb",
+     "target_node_id": "6f712abf-640e-4323-a981-5c13327ca2ee",
+     "edge_type": "work",
+     "conditions": {
+      "when": "approved"
+     }
+    },
+    {
+     "id": "43c70bf3-1eac-4829-8533-cb75de273aa0",
+     "source_node_id": "685b8ec7-b2f4-42b1-a400-ec79a8a40adb",
+     "target_node_id": "13ab24f9-b2bb-4f33-a132-7c6f32461f16",
+     "edge_type": "work",
+     "conditions": {
+      "when": "rejected"
+     }
+    },
+    {
+     "id": "66390ecc-7faf-4c01-ad1a-753438bbf6ae",
+     "source_node_id": "6f712abf-640e-4323-a981-5c13327ca2ee",
+     "target_node_id": "6fd8fb3f-d2c9-4b81-84f3-c32af0830a82",
+     "edge_type": "review",
+     "conditions": null
+    },
+    {
+     "id": "d18ce0fe-e7ae-404b-b9a0-589f7ba1aeca",
+     "source_node_id": "6fd8fb3f-d2c9-4b81-84f3-c32af0830a82",
+     "target_node_id": "6f712abf-640e-4323-a981-5c13327ca2ee",
+     "edge_type": "review",
+     "conditions": {
+      "loop_limit": 3
+     }
+    },
+    {
+     "id": "76df8af0-9764-4616-bfca-b3891c086afd",
+     "source_node_id": "6f712abf-640e-4323-a981-5c13327ca2ee",
+     "target_node_id": "1792ee5a-4c10-41e9-b7ad-d827ddb6edeb",
+     "edge_type": "escalation",
+     "conditions": null
+    },
+    {
+     "id": "ed88d6b0-508d-4f31-9c2c-949020d9585f",
+     "source_node_id": "1792ee5a-4c10-41e9-b7ad-d827ddb6edeb",
+     "target_node_id": "6f311cba-bca8-47a4-b2a1-fc1f6499d8f4",
+     "edge_type": "work",
+     "conditions": {
+      "when": "approved"
+     }
+    },
+    {
+     "id": "d3da1fe3-516a-4b67-b9b8-090c3adbcf52",
+     "source_node_id": "1792ee5a-4c10-41e9-b7ad-d827ddb6edeb",
+     "target_node_id": "13ab24f9-b2bb-4f33-a132-7c6f32461f16",
+     "edge_type": "work",
+     "conditions": {
+      "when": "rejected"
+     }
+    },
+    {
+     "id": "cc3c89a2-90f7-40bb-ba13-0300fa389c5e",
+     "source_node_id": "465222de-84bd-4a71-ab60-f918bd9c7daa",
+     "target_node_id": "f3f98a11-60b5-4dcd-a52f-2875515f3cd2",
+     "edge_type": "work",
+     "conditions": null
+    },
+    {
+     "id": "749dc6dd-737c-44fc-b5a9-2a9f360ac215",
+     "source_node_id": "f3f98a11-60b5-4dcd-a52f-2875515f3cd2",
+     "target_node_id": "685b8ec7-b2f4-42b1-a400-ec79a8a40adb",
+     "edge_type": "work",
+     "conditions": null
+    },
+    {
+     "id": "9018913d-b012-4d23-b4c9-40e65a766552",
+     "source_node_id": "6fd8fb3f-d2c9-4b81-84f3-c32af0830a82",
+     "target_node_id": "de5ce9df-da1b-40c2-8625-7b1f42cd6de1",
+     "edge_type": "work",
+     "conditions": {
+      "when": "approved"
+     }
+    },
+    {
+     "id": "44a6acf8-7ace-4120-93be-309605e67191",
+     "source_node_id": "de5ce9df-da1b-40c2-8625-7b1f42cd6de1",
+     "target_node_id": "6819b21c-f5d8-419b-8084-908d60588711",
+     "edge_type": "work",
+     "conditions": {
+      "when": "approved"
+     }
+    },
+    {
+     "id": "28e704f0-f5c5-47e7-8985-1735f9d056fb",
+     "source_node_id": "de5ce9df-da1b-40c2-8625-7b1f42cd6de1",
+     "target_node_id": "13ab24f9-b2bb-4f33-a132-7c6f32461f16",
+     "edge_type": "work",
+     "conditions": {
+      "when": "rejected"
+     }
+    },
+    {
+     "id": "ae0103d3-9eba-452c-9ec9-c6f12f1c373f",
+     "source_node_id": "6819b21c-f5d8-419b-8084-908d60588711",
+     "target_node_id": "6f311cba-bca8-47a4-b2a1-fc1f6499d8f4",
+     "edge_type": "work",
+     "conditions": {
+      "when": "approved"
+     }
+    },
+    {
+     "id": "2deeb489-a5ed-4ee4-b85c-b37e4da7db75",
+     "source_node_id": "6819b21c-f5d8-419b-8084-908d60588711",
+     "target_node_id": "13ab24f9-b2bb-4f33-a132-7c6f32461f16",
+     "edge_type": "work",
+     "conditions": {
+      "when": "rejected"
+     }
+    },
+    {
+     "id": "242e2d60-35be-4ad7-b0a9-2b0c13d5ce0e",
+     "source_node_id": "6f712abf-640e-4323-a981-5c13327ca2ee",
+     "target_node_id": "630c1b0d-018f-45e6-8833-10643e0df3eb",
+     "edge_type": "failure",
+     "conditions": null
+    },
+    {
+     "id": "c2b51c25-38e5-4c17-8331-7d1489d1756e",
+     "source_node_id": "630c1b0d-018f-45e6-8833-10643e0df3eb",
+     "target_node_id": "6fd8fb3f-d2c9-4b81-84f3-c32af0830a82",
+     "edge_type": "work",
+     "conditions": null
+    }
+   ],
+   "layout": {
+    "groups": [
+     {
+      "id": "g-loop",
+      "label": "Review loop",
+      "folded": false,
+      "node_ids": [
+       "6f712abf-640e-4323-a981-5c13327ca2ee",
+       "6fd8fb3f-d2c9-4b81-84f3-c32af0830a82"
+      ]
+     }
+    ]
+   }
+  },
+  "GET /api/teams/a6bc48b5-12e6-4ded-8a62-a29c7bc41249/runs": {
+   "runs": []
+  },
+  "GET /api/teams/a6bc48b5-12e6-4ded-8a62-a29c7bc41249/versions?desktop_target=1": {
+   "current": 1,
+   "saved_at": "2026-10-11T07:46:39.825250+00:00",
+   "changes": 0,
+   "next": 2,
+   "total": 1,
+   "versions": [
+    {
+     "number": 1,
+     "created_at": "2026-10-11T07:46:39.825250+00:00",
+     "author": "you",
+     "summary": "First version",
+     "note": null,
+     "runs": 0,
+     "source": "first",
+     "restored_from": null,
+     "tests": null,
+     "check": null
+    }
+   ],
+   "tests": null,
+   "check_sets": []
+  },
+  "GET /api/node-templates": {
+   "templates": [
+    {
+     "key": "pm",
+     "title": "Product manager",
+     "description": "Drafts the spec",
+     "summary": "Turns your idea into a spec the team can build from.",
+     "role_name": "pm",
+     "node_kind": "thinker",
+     "edits_allowed": false,
+     "writes_to": null,
+     "verdict_labels": [],
+     "prompt": "You are the PM on a software team. Write a concise mini-PRD (3-5 sentences) for the feature request below. You MUST restate, verbatim, the exact file path and the exact required file contents (each clearly labelled on its own line), plus one sentence of context for the engineer."
+    },
+    {
+     "key": "architect",
+     "title": "Architect",
+     "description": "Adds the technical design",
+     "summary": "Plans the change and adds a technical design to the spec.",
+     "role_name": "architect",
+     "node_kind": "thinker",
+     "edits_allowed": false,
+     "writes_to": null,
+     "verdict_labels": [],
+     "prompt": "You are the software architect on the team. The current spec (the PM's mini-PRD) is provided below. Produce the COMPLETE updated spec: restate the PM's content VERBATIM — especially the exact file path and the exact required file contents — and APPEND a short '## Technical design' section (2-4 sentences) covering the approach and any implementation detail the engineer needs. Output the full updated spec and nothing else."
+    },
+    {
+     "key": "engineer",
+     "title": "Engineer",
+     "description": "Writes & ships it",
+     "summary": "Builds the change the spec asks for.",
+     "role_name": "engineer",
+     "node_kind": "worker",
+     "edits_allowed": true,
+     "writes_to": null,
+     "verdict_labels": [],
+     "prompt": "Read the PRD below and create exactly the file it specifies, with exactly the specified contents. Write the deliverable into your current working directory using a RELATIVE path (the bare filename, e.g. 'greeting.txt') so it can be shipped; if the PRD shows a leading '/' or './', treat it as relative to your working directory. Do not add any extra files and do not modify anything else."
+    },
+    {
+     "key": "reviewer",
+     "title": "Reviewer",
+     "description": "Checks against the spec",
+     "summary": "Checks the build against the spec and gives a verdict.",
+     "role_name": "reviewer",
+     "node_kind": "worker",
+     "edits_allowed": false,
+     "writes_to": null,
+     "verdict_labels": [
+      "approved",
+      "changes_requested"
+     ],
+     "prompt": "You are the Reviewer on a software team. The engineer's build is in your current working directory. Review it — do NOT improve it.\n\nDo these steps in order:\n1. Inspect the files in your current working directory (the engineer's build).\n2. Run the repository's tests. PREFER pytest:\n       python -m pytest -q\n   If pytest is unavailable or collects no tests, fall back to EXACTLY this command (the -B is required — do not write bytecode):\n       python -B -m unittest\n3. Before deciding, state in ONE sentence the single concrete behavior the ORIGINAL IDEA and the PRD below require, then state in ONE sentence HOW you verified the build actually exhibits that behavior — cite the specific test or command output you observed, not an assumption.\n4. Decide the verdict:\n   - \"approved\" ONLY IF the tests pass AND the deliverable fulfills the ORIGINAL IDEA and the PRD below.\n   - \"changes_requested\" otherwise (any test fails, a required behavior or file from the idea/PRD is missing, or it otherwise falls short).\n5. Write a file named EXACTLY REVIEW_VERDICT.json in your current working directory (the bare filename), containing EXACTLY this JSON and nothing else:\n       {\"verdict\": \"approved\" | \"changes_requested\", \"reasons\": \"<1-3 short, specific, actionable sentences>\"}\n\nSTRICT RULES:\n- You are REVIEWING, not editing. Do NOT modify, create, or delete ANY file except REVIEW_VERDICT.json.\n- Base \"approved\" on the tests actually passing and the spec actually being met — do not approve on assumption."
+    }
+   ]
+  },
+  "GET /api/memories?node_id=630c1b0d-018f-45e6-8833-10643e0df3eb&status=active": {
+   "memories": []
+  },
+  "GET /api/memories?node_id=630c1b0d-018f-45e6-8833-10643e0df3eb&status=pending_review": {
+   "memories": []
+  },
+  "GET /api/teams/a6bc48b5-12e6-4ded-8a62-a29c7bc41249/nodes/630c1b0d-018f-45e6-8833-10643e0df3eb/tests?desktop_target=1": {
+   "tests": [],
+   "run": null,
+   "last": null,
+   "estimate": null,
+   "ai": {
+    "available": false,
+    "left": 200,
+    "limit": 200
+   },
+   "desktop": {
+    "subscriptions": [],
+    "all": false
+   }
+  },
+  "GET /api/teams/a6bc48b5-12e6-4ded-8a62-a29c7bc41249/task-sets?desktop_target=1": {
+   "sets": []
+  },
+  "GET /api/teams/a6bc48b5-12e6-4ded-8a62-a29c7bc41249/compare?desktop_target=1": {
+   "team": {
+    "id": "a6bc48b5-12e6-4ded-8a62-a29c7bc41249",
+    "name": "Indicator sprint team"
+   },
+   "versions": [
+    {
+     "number": 1,
+     "when": "2026-10-11T07:46:39.825250+00:00",
+     "runs": 0,
+     "summary": "First version",
+     "current": true,
+     "desktop": {
+      "subscriptions": [
+       "claude",
+       "grok"
+      ],
+      "all": false
+     }
+    }
+   ],
+   "defaults": {
+    "a": null,
+    "b": 1
+   },
+   "changes": 0,
+   "target": null,
+   "estimate": null,
+   "latest": null,
+   "task_sets": []
+  },
+  "GET /api/recent-tasks?q=&limit=20": {
+   "tasks": []
+  }
+ }
+}
