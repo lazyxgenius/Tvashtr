@@ -33,8 +33,12 @@ export function RunBanner({
   costs: CostRow[];
 }) {
   const { tone, label } = deriveOverall(run, workflowStatus);
-  const cost = run?.cost_total_usd;
   const totalFromRows = costs.reduce((sum, c) => sum + c.cost_usd, 0);
+  // M-desk-5 L1: a live run's figure is its rows so far, worded like the toolbar chip at every
+  // poll — and a Desktop run routed to subscriptions names them before its first row.
+  const cost =
+    run?.cost_total_usd ??
+    (costs.length > 0 || run?.ran_on?.subscriptions.length ? totalFromRows : null);
 
   return (
     <div
@@ -47,11 +51,7 @@ export function RunBanner({
       </span>
       <Item label="run" value={runId ? runId.slice(0, 8) : "—"} />
       {run?.team_version_number != null && <VersionTag number={run.team_version_number} />}
-      {cost != null ? (
-        <Item label="cost" value={spendText(`$${cost.toFixed(4)}`, run?.ran_on)} />
-      ) : (
-        costs.length > 0 && <Item label="cost" value={`$${totalFromRows.toFixed(4)}`} />
-      )}
+      {cost != null && <Item label="cost" value={spendText(`$${cost.toFixed(4)}`, run?.ran_on)} />}
       {run?.pr_url ? (
         // M-h1b: a hosted run's deliverable is the opened pull request — surface it as a clickable
         // link (it supersedes the raw branch/ship text; the PR IS what the hosted user came for).

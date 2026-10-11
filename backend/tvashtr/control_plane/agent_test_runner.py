@@ -157,7 +157,7 @@ def start(
     sweep_workspaces()
     _spawn(_work, run_id)
     with session_scope() as session:
-        return agent_tests._run_view(session, session.get(AgentTestRun, run_id))
+        return agent_tests._run_view(session, session.get(AgentTestRun, run_id), desktop_target)
 
 
 def sweep_workspaces() -> None:
@@ -207,7 +207,7 @@ def stop(owner_id: uuid.UUID, team_id: str, node_id: str) -> dict:
             if running is None:
                 run.status, run.ended_at = "stopped", _now()
         session.flush()
-        return agent_tests._run_view(session, run)
+        return agent_tests._run_view(session, run, bool(run.desktop_target))
 
 
 def end_if_stale(session, run: AgentTestRun) -> bool:

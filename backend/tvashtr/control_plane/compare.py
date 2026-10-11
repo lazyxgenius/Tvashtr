@@ -970,7 +970,11 @@ def view(owner_id: uuid.UUID, compare_id: str, read_desktop: bool = False) -> di
                     "current": None,
                     "lines": [],
                     "gate_task_id": None,
-                    **({"ran_on": dict(_NOT_RAN)} if ran is not None else {}),
+                    **(
+                        {"ran_on": _not_ran_yet(session, cmp, team, number, desktop)}
+                        if ran is not None
+                        else {}
+                    ),
                 }
             else:
                 lane = _lane(
@@ -998,7 +1002,10 @@ def view(owner_id: uuid.UUID, compare_id: str, read_desktop: bool = False) -> di
             **_head(
                 cmp,
                 sum(f["cost"] for f in facts.values()),
-                ran.values() if ran is not None else None,
+                # A lane with no run counts only when it is routed to a plan (L1).
+                [s["ran_on"] for s in sides if s["run_id"] or s["ran_on"]["subscriptions"]]
+                if ran is not None
+                else None,
             ),
             "waiting": _slots(session, cmp.owner_id) if cmp.status == "waiting" else None,
             "sides": sides,
@@ -1075,6 +1082,19 @@ def _facts(session, runs: list[Run]) -> dict[uuid.UUID, dict]:
 
 
 _NOT_RAN = {"subscriptions": [], "all": False}
+
+
+def _not_ran_yet(session, cmp: Compare, team: TeamGraph, number: int, desktop: bool) -> dict:
+    """A lane with no run yet: nothing ran — but a live Desktop compare's lane names the plans its
+    version is routed to (M-desk-5 L1: M-desk-2's routes), never "$0.00 so far"."""
+    if not desktop or cmp.status in ("finished", "stopped"):
+        return dict(_NOT_RAN)
+    graph = versions._version(session, team, number).graph or {}
+    models = [n.get("model") for n in graph.get("nodes") or []]
+    fresh = desktop_jobs.fresh_subscription_ids(cmp.owner_id)
+    return desktop_routes(models, fresh_subscriptions=fresh)
+
+
 _NO_CELL = {
     "run_id": None,
     "status": "waiting",
@@ -1270,17 +1290,33 @@ def _set_view(session, cmp: Compare, runs: list[Run], ran: dict | None = None) -
     team = session.get(TeamGraph, cmp.team_graph_id)
     items, facts, groups, pending = _set_items(session, cmp, runs, ran)
     by = _sides_facts(groups, facts)
-    head = _head(
-        cmp, sum(f["cost"] for f in facts.values()), ran.values() if ran is not None else None
-    )
-    # M-desk-4 (H1): where each side's runs really ran (from the Desktop: the Cost card's words).
+    # M-desk-4 (H1): where each side's runs really ran (from the Desktop: the Cost card's words);
+    # M-desk-5 L1: a side with no run yet names the plans its version is routed to.
+    desktop = ran is not None and _is_desktop(session, cmp)
+    unrun = [
+        (label, number)
+        for label, number in zip(LABELS, (cmp.version_a, cmp.version_b), strict=True)
+        if not any(label in g for g in groups)
+    ]
     ran_by = (
         {
-            label: desktop_jobs.ran_union(ran[g[label].workflow_id] for g in groups if label in g)
-            for label in LABELS
+            **{
+                label: desktop_jobs.ran_union(
+                    ran[g[label].workflow_id] for g in groups if label in g
+                )
+                for label in LABELS
+            },
+            **{label: _not_ran_yet(session, cmp, team, number, desktop) for label, number in unrun},
         }
         if ran is not None
         else None
+    )
+    head = _head(
+        cmp,
+        sum(f["cost"] for f in facts.values()),
+        [*ran.values(), *(ran_by[lb] for lb, _ in unrun if ran_by[lb]["subscriptions"])]
+        if ran is not None
+        else None,
     )
     sides = []
     for label, number in zip(LABELS, (cmp.version_a, cmp.version_b), strict=True):

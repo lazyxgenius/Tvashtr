@@ -783,8 +783,12 @@ _PLAN_NAMES = {"claude": "Claude", "grok": "Grok"}
 def ran_on(session, run_ids, purpose: str = RUN_NODE) -> dict[str, dict]:
     """H1: where each run's work really ran — ``{"subscriptions": [...], "all": bool}`` per id
     (a run's ``workflow_id``; a replay's id for ``test_replay``). ``subscriptions``: the plans its
-    Desktop jobs ran on; ``all``: some did and none of its work was metered on a key (no cost
-    row). A run with no Desktop job is ``{"subscriptions": [], "all": False}``."""
+    Desktop jobs ran on; ``all``: some did and none of its work was metered on a key. A run with
+    no Desktop job is ``{"subscriptions": [], "all": False}``.
+
+    M-desk-5 L1: a Desktop step's own cost row (the $0 usage record ``team_run`` meters from the
+    CLI's token counts, on the job's invocation) is not key spend; any other row is. A live
+    Desktop run also names the plans it is routed to, so it reads the same from launch to Done."""
     ids = list(dict.fromkeys(str(i) for i in run_ids))
     out = {i: {"subscriptions": [], "all": False} for i in ids}
     if not ids:
@@ -796,9 +800,29 @@ def ran_on(session, run_ids, purpose: str = RUN_NODE) -> dict[str, dict]:
         .distinct()
     ).all():
         subs.setdefault(rid, set()).add(provider)
+    if purpose == RUN_NODE:
+        for rid, routed in session.execute(
+            select(Run.workflow_id, Run.desktop_subscriptions).where(
+                Run.workflow_id.in_(ids),
+                Run.desktop_target.is_(True),
+                Run.status.not_in(_TERMINAL_RUN_STATUSES),
+            )
+        ).all():
+            if routed:
+                subs.setdefault(rid, set()).update(routed)
+    usage_record = (
+        select(DesktopNodeJob.id)
+        .where(
+            DesktopNodeJob.run_id == CostRecord.workflow_id,
+            DesktopNodeJob.invocation_id == CostRecord.invocation_id,
+        )
+        .exists()
+    )
     keyed = set(
         session.execute(
-            select(CostRecord.workflow_id).where(CostRecord.workflow_id.in_(ids)).distinct()
+            select(CostRecord.workflow_id)
+            .where(CostRecord.workflow_id.in_(ids), ~usage_record)
+            .distinct()
         ).scalars()
     )
     for rid, plans in subs.items():
