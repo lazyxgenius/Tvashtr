@@ -247,7 +247,12 @@ async function runTake(spec, { dry, keepFrames, preview = false, browser: debugB
     shots: [],
     pairs: [],
     spends: [],
+    samples: [],
     note: (t) => ctx.notes.push(t),
+  };
+  /** V2 (brief G7): a moment of a live take answered from sample data — listed in take.json. */
+  ctx.sample = (label) => {
+    if (!ctx.samples.some((x) => x.label === label)) ctx.samples.push({ t: ctx.cam?.t ?? null, label });
   };
   // A preview never changes the account: no setup (sample scenes need none); --browser does.
   ctx.state = spec.setup && (!preview || debugBrowser || mode === "web") ? (await spec.setup(ctx)) ?? {} : {};
@@ -603,6 +608,7 @@ async function runTake(spec, { dry, keepFrames, preview = false, browser: debugB
     video: fs.existsSync(path.join(out, "take.mp4")) ? { file: "take.mp4", width: 2880, height: 1800, fps: 30, css: [1440, 900], scale: 2 } : null,
     account: ctx.me?.display_name ?? null,
     spends: ctx.spends,
+    sample: ctx.samples,
     steps: ctx.cam?.steps ?? [],
     regions: ctx.cam?.regions ?? {},
     shots: ctx.shots,

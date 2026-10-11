@@ -25,6 +25,7 @@ export default {
     const d = await openRunAgent(ctx, "Reviewer");
     await cam.click(d.getByRole("button", { name: "Changes", exact: true }), "Changes");
     await cam.pause(2500);
+    await ctx.shot("changes"); // the live smoke (L3): after Done, Tvashtr's copy of the repo is gone
     const rows = d.locator(".tv-diff__row");
     if (await rows.count()) await cam.click(rows.first(), "the changed file");
     await cam.pause(2000);
@@ -38,12 +39,16 @@ export default {
     await ctx.spend("ask", "Send", () => cam.click(d.getByRole("button", { name: "Send", exact: true }), "Send"));
     await d.locator(".tv-chat__msg--assistant").last().waitFor({ timeout: 10 * 60000 });
     await cam.pause(4000);
-    // Memory: keep one, discard one.
-    await cam.click(d.getByRole("tab", { name: /^Memory/ }), "Memory");
-    const learned = d.locator("section[aria-label='Learned this run']");
+    await ctx.shot("ask");
+    // Memory: keep one, discard one — on the Engineer, the agent that learned them (V2: the
+    // Reviewer learned nothing in the hero run).
+    const e = await openRunAgent(ctx, "Engineer");
+    await cam.click(e.getByRole("tab", { name: /^Memory/ }), "Memory");
+    const learned = e.locator("section[aria-label='Learned this run']");
     await learned.waitFor({ timeout: 15000 });
     await cam.click(learned.getByRole("button", { name: /^Keep / }).first(), "Keep");
     await cam.click(learned.getByRole("button", { name: /^Discard / }).first(), "Discard");
     await cam.pause(2000);
+    await ctx.shot("memory");
   },
 };
