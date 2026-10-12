@@ -715,6 +715,8 @@ export interface RunDiff {
   total: number;
   /** M-desk-5 L3: a finished GitHub run's branch couldn't be read from GitHub (files empty). */
   github_error?: boolean;
+  /** M-desk-6 S3: a GitHub run that stopped before it pushed — no branch to read (files empty). */
+  not_pushed?: boolean;
   pr_url?: string | null;
 }
 

@@ -36,6 +36,8 @@ export function RunDiff({ runId }: { runId: string | null }) {
   const [files, setFiles] = useState<RunDiffFile[]>([]);
   // M-desk-5 L3: GitHub couldn't answer for a finished GitHub run — null, or its PR link ("" none).
   const [githubError, setGithubError] = useState<string | null>(null);
+  // M-desk-6 S3: a GitHub run that stopped before it pushed — there's no branch to show.
+  const [notPushed, setNotPushed] = useState(false);
   const [state, setState] = useState<LoadState>("idle");
   const [open, setOpen] = useState<Set<string>>(new Set());
 
@@ -52,6 +54,7 @@ export function RunDiff({ runId }: { runId: string | null }) {
         if (cancelled) return;
         setFiles(res.files);
         setGithubError(res.github_error ? (res.pr_url ?? "") : null);
+        setNotPushed(res.not_pushed === true);
         setState("ready");
       } catch {
         if (!cancelled) setState((s) => (s === "ready" ? s : "error"));
@@ -77,6 +80,12 @@ export function RunDiff({ runId }: { runId: string | null }) {
     body = <p className="tv-panel-note">Couldn't load the changes.</p>;
   } else if (state === "idle" || state === "loading") {
     body = <p className="tv-panel-note">Loading changes…</p>;
+  } else if (notPushed) {
+    body = (
+      <p className="tv-panel-note">
+        This run stopped before it pushed its changes, so there's nothing to show here.
+      </p>
+    );
   } else if (githubError !== null) {
     body = (
       <>

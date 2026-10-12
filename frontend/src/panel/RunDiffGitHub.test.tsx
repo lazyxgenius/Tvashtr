@@ -55,6 +55,18 @@ describe("L3 — the Changes tab when GitHub can't answer", () => {
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
 
+  it("a run that stopped before it pushed says so, with no link (M-desk-6 S3)", async () => {
+    stubAnswer({ not_pushed: true });
+    render(<RunDiff runId="r1" />);
+    expect(
+      await screen.findByText(
+        "This run stopped before it pushed its changes, so there's nothing to show here.",
+      ),
+    ).toHaveClass("tv-panel-note");
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    expect(screen.queryByText(/No file changes/)).not.toBeInTheDocument();
+  });
+
   it("an empty answer without the GitHub flag keeps today's words", async () => {
     stubAnswer({});
     render(<RunDiff runId="r1" />);
