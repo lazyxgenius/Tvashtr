@@ -359,11 +359,9 @@ def _check_line(out, inv, nid: str, edges: list[dict], labels: dict, ended: bool
     elif inv.outcome == "rejected":
         lines = detail.split("\n") if detail else []
         refs.update(result="failed", output_tail=lines)
-        back = next(
-            (e["target"] for e in edges
-             if e["source"] == nid and (e.get("conditions") or {}).get("when") == "rejected"),
-            None,
-        )  # fmt: skip
+        from tvashtr.control_plane.team_run import next_node  # lazy: the walk's own routing
+
+        back = next_node(edges, nid, "rejected")  # a "rejected" branch, else the rework loop
         text = "Tests failed" + (
             f" — back to {labels[back]} with the last {len(lines)} lines" if back in labels else ""
         )

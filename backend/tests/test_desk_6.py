@@ -584,3 +584,22 @@ def test_t1_a_running_check_is_working_not_waiting_for_you():
     human = live_state.node_live("gate", inv, {}, {"gate_kind": "prd_approval"})
     assert human["live_state"] == "needs_you"
     assert live_state.node_live("gate", inv, {})["live_state"] == "needs_you"
+
+
+def test_t1_a_failed_check_names_where_the_walk_sends_it_through_a_rework_loop():
+    """Live (run 667351c6): a check wired back to the Engineer as a Rework loop (no `when`, the
+    canvas's bounded loop-back) read only "Tests failed" — the line names the walk's own route."""
+    eng, chk, rev, _ = _tests_world()
+    edges = [
+        {"source": str(chk.id), "target": str(rev.id), "edge_type": "work",
+         "conditions": {"when": "approved"}},
+        {"source": str(chk.id), "target": str(eng.id), "edge_type": "work",
+         "conditions": {"loop_limit": 3}},
+    ]  # fmt: skip
+    reply = _build(
+        _run(), [eng, chk, rev],
+        [_inv(1, eng, end=60), _inv(2, chk, start=61, end=90, outcome="rejected", detail="E1\nE2")],
+        edges=edges,
+    )  # fmt: skip
+    (line,) = _check_lines(reply)
+    assert line["text"] == "Tests failed — back to Engineer with the last 2 lines"
