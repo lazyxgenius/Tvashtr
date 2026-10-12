@@ -20,6 +20,9 @@ export function GateBody({
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(false);
   const [saved, setSaved] = useState(false);
+  // M-desk-6 T1: a Tests pass save with a blank command — shown instead of the generic error until
+  // the user edits again.
+  const [commandMissing, setCommandMissing] = useState(false);
 
   const gateCfg = (node.config ?? {}) as GateConfig;
   const initialGateKind = gateCfg.gate_kind || "gate_approval";
@@ -34,12 +37,14 @@ export function GateBody({
   const initialForbiddenText = (gateCfg.forbidden_paths ?? []).join("\n");
   const initialOutputFile = gateCfg.output_file ?? "";
   const initialSchemaText = gateCfg.schema ? JSON.stringify(gateCfg.schema, null, 2) : "";
+  const initialCommandText = gateCfg.command ?? "";
   const [gateKind, setGateKind] = useState(initialGateKind);
   const [gateTitle, setGateTitle] = useState(initialGateTitle);
   const [gateDesc, setGateDesc] = useState(initialGateDesc);
   const [forbiddenText, setForbiddenText] = useState(initialForbiddenText);
   const [outputFile, setOutputFile] = useState(initialOutputFile);
   const [schemaText, setSchemaText] = useState(initialSchemaText);
+  const [commandText, setCommandText] = useState(initialCommandText);
 
   // M-rails C8/C9: the gate config Save. `gateKind` is the source of truth (Human approval restores
   // the human sub-kind; each guardrail button sets its own kind). The parameterized config is sent
@@ -51,7 +56,8 @@ export function GateBody({
     gateDesc !== initialGateDesc ||
     forbiddenText !== initialForbiddenText ||
     outputFile !== initialOutputFile ||
-    schemaText !== initialSchemaText;
+    schemaText !== initialSchemaText ||
+    commandText !== initialCommandText;
   const handleGateSave = async () => {
     if (!gateDirty) return;
     let extra:
@@ -59,6 +65,7 @@ export function GateBody({
           forbidden_paths?: string[];
           output_file?: string;
           output_schema?: Record<string, unknown>;
+          command?: string;
         }
       | undefined;
     if (gateKind === "diff_touches_forbidden_paths") {
@@ -77,6 +84,12 @@ export function GateBody({
         return;
       }
       extra = { output_file: outputFile.trim(), output_schema: parsed };
+    } else if (gateKind === "tests_pass") {
+      if (!commandText.trim()) {
+        setCommandMissing(true); // nothing to run — say so, do not save
+        return;
+      }
+      extra = { command: commandText.trim() };
     }
     setSaving(true);
     setSaveError(false);
@@ -109,6 +122,7 @@ export function GateBody({
       label: "Output schema",
       pressed: gateKind === "output_schema_check",
     },
+    { kind: "tests_pass", label: "Tests pass", pressed: gateKind === "tests_pass" },
   ];
   const gateTypeHint =
     gateKind === "secret_leak_scan"
@@ -117,7 +131,9 @@ export function GateBody({
         ? "Forbidden paths — rejects automatically if the run’s changes touch any path you list below."
         : gateKind === "output_schema_check"
           ? "Output schema — rejects unless the named output file exists and matches the JSON schema."
-          : "Human approval — the run pauses here for a person to approve or reject.";
+          : gateKind === "tests_pass"
+            ? "Tests pass — runs your test command in Tvashtr’s own sandbox and emits approved / rejected with no human pause."
+            : "Human approval — the run pauses here for a person to approve or reject.";
   return (
     <div className="tv-scroll tv-node-edit">
       <div className="tv-field">
@@ -133,6 +149,7 @@ export function GateBody({
               onClick={() => {
                 setGateKind(opt.kind);
                 setSaved(false);
+                setCommandMissing(false);
               }}
             >
               {opt.label}
@@ -202,6 +219,30 @@ export function GateBody({
         </>
       )}
 
+      {gateKind === "tests_pass" && (
+        <label className="tv-field">
+          <span className="tv-field__label">Command</span>
+          <span className="tv-field__hint">
+            Tvashtr runs this in its own sandbox from the repo’s root, after the step before it.
+            Include any install step, e.g.{" "}
+            <code>pip install -r requirements.txt &amp;&amp; pytest -q</code>. Agents never run it
+            on your computer.
+          </span>
+          <input
+            className="tv-node-model"
+            aria-label="Command"
+            value={commandText}
+            maxLength={1000}
+            spellCheck={false}
+            onChange={(e) => {
+              setCommandText(e.target.value);
+              setSaved(false);
+              setCommandMissing(false);
+            }}
+          />
+        </label>
+      )}
+
       <label className="tv-field">
         <span className="tv-field__label">Title</span>
         <input
@@ -245,7 +286,11 @@ export function GateBody({
         ) : saved ? (
           <span className="tv-prd__saved">Saved — this drives the next run you launch.</span>
         ) : null}
-        {saveError && <span className="tv-prd__saveerr">Couldn’t save — try again.</span>}
+        {commandMissing ? (
+          <span className="tv-prd__saveerr">Add the command Tvashtr runs.</span>
+        ) : (
+          saveError && <span className="tv-prd__saveerr">Couldn’t save — try again.</span>
+        )}
       </div>
     </div>
   );

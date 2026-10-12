@@ -4,6 +4,7 @@ export const GUARDRAIL_GATE_KINDS = new Set([
   "secret_leak_scan",
   "diff_touches_forbidden_paths",
   "output_schema_check",
+  "tests_pass",
 ]);
 
 /** The one-line description under a gate / endpoint / Query-domain node's name in the drawer. */

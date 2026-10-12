@@ -42,6 +42,8 @@ export interface GateConfig {
   forbidden_paths?: string[];
   output_file?: string;
   schema?: Record<string, unknown>;
+  // M-desk-6 T1: the shell command a `tests_pass` gate runs in Tvashtr's own sandbox.
+  command?: string;
 }
 export interface TerminalConfig {
   terminal_kind: "ship" | "stop";
@@ -1308,12 +1310,14 @@ export async function updateGateNode(
     forbidden_paths?: string[];
     output_file?: string;
     output_schema?: Record<string, unknown>;
+    command?: string;
   },
 ): Promise<TeamGraphNode> {
   const body: Record<string, unknown> = { gate_kind: gateKind, title, description };
   if (config?.forbidden_paths !== undefined) body.forbidden_paths = config.forbidden_paths;
   if (config?.output_file !== undefined) body.output_file = config.output_file;
   if (config?.output_schema !== undefined) body.output_schema = config.output_schema;
+  if (config?.command !== undefined) body.command = config.command;
   const res = await fetch(`/api/teams/${teamId}/nodes/${nodeId}`, {
     method: "PATCH",
     headers: { "content-type": "application/json" },

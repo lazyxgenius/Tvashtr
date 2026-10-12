@@ -30,6 +30,7 @@ export const NEW_AGENT_TITLE = "New agent";
 export function gateLabel(gateKind: string): string {
   if (gateKind === "prd_approval") return "PRD approval";
   if (gateKind === "review_escalation") return "Escalation";
+  if (gateKind === "tests_pass") return "Tests pass";
   return gateKind;
 }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { nodeDescription, nodeTitle } from "./nodeNames";
+import { gateLabel, nodeDescription, nodeTitle } from "./nodeNames";
 
 const node = (kind: string, role_name: string, config: Record<string, unknown> | null = null) => ({
   kind,
@@ -34,5 +34,12 @@ describe("nodeTitle / nodeDescription", () => {
     expect(nodeTitle(node("terminal", "ship", { terminal_kind: "ship" }))).toBe("Ship");
     expect(nodeTitle(node("terminal", "stop", { terminal_kind: "stop" }))).toBe("Stop");
     expect(nodeTitle(node("domain_query", "domain_query"))).toBe("Domain ask");
+  });
+
+  it("a Tests pass gate reads Tests pass, not its raw kind (M-desk-6 T1)", () => {
+    expect(gateLabel("tests_pass")).toBe("Tests pass");
+    expect(nodeTitle(node("gate", "g", { gate_kind: "tests_pass", title: "Run the tests" }))).toBe(
+      "Tests pass",
+    );
   });
 });

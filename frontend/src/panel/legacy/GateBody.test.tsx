@@ -9,7 +9,7 @@ import { GateBody } from "./GateBody";
 // editable body — type picker, parameters, title/description — and its dirty-aware Save, which
 // PATCHes only gate fields. Stubs `fetch` so the real client's URL/method/body contract is proven.
 
-function gateNode(): TeamGraphNode {
+function gateNode(config?: Record<string, unknown>): TeamGraphNode {
   return {
     id: "n-gate",
     role_name: "prd_gate",
@@ -18,7 +18,7 @@ function gateNode(): TeamGraphNode {
     engine: null,
     prompt: null,
     position: { x: 0, y: 0 },
-    config: {
+    config: config ?? {
       gate_kind: "prd_approval",
       title: "Approve the PRD",
       description: "Approve the spec before building.",
@@ -122,5 +122,62 @@ describe("GateBody", () => {
       output_file: "result.json",
       output_schema: { type: "object", required: ["ok"] },
     });
+  });
+
+  it("Tests pass: the command PATCHes as command (M-desk-6 T1)", async () => {
+    const user = userEvent.setup();
+    renderGate();
+    expect(screen.queryByRole("textbox", { name: "Command" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Tests pass" }));
+    expect(screen.getByText(/runs your test command in Tvashtr’s own sandbox/)).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("textbox", { name: "Command" }), {
+      target: { value: "  pip install -r requirements.txt && pytest -q  " },
+    });
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(patchCall()).toBeDefined());
+    expect(JSON.parse(patchCall()![1].body as string)).toEqual({
+      gate_kind: "tests_pass",
+      title: "Approve the PRD",
+      description: "Approve the spec before building.",
+      command: "pip install -r requirements.txt && pytest -q",
+    });
+  });
+
+  it("Tests pass: a blank command does not save and says what's missing", async () => {
+    const user = userEvent.setup();
+    renderGate();
+    await user.click(screen.getByRole("button", { name: "Tests pass" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Command" }), {
+      target: { value: "   " },
+    });
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(screen.getByText("Add the command Tvashtr runs.")).toBeInTheDocument();
+    expect(screen.queryByText("Couldn’t save — try again.")).toBeNull();
+    expect(patchCall()).toBeUndefined();
+    fireEvent.change(screen.getByRole("textbox", { name: "Command" }), {
+      target: { value: "pytest" },
+    });
+    expect(screen.queryByText("Add the command Tvashtr runs.")).toBeNull();
+  });
+
+  it("Tests pass: an existing tests_pass gate shows its saved command", () => {
+    render(
+      <GateBody
+        teamId="team-1"
+        node={gateNode({
+          gate_kind: "tests_pass",
+          title: "Tests pass",
+          description: "",
+          command: "npm test",
+        })}
+        onSaved={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Tests pass" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByLabelText<HTMLInputElement>("Command").value).toBe("npm test");
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
   });
 });
