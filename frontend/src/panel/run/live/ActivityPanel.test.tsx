@@ -837,3 +837,52 @@ describe("ActivityPanel — M11 a run takes its failure path (Cnv-FailPathRun)",
     expect(icon?.querySelector("rect")).not.toBeNull();
   });
 });
+
+describe("ActivityPanel — M-desk-6 a Tests pass check", () => {
+  const check = (over: Partial<ActivityLine>) =>
+    line("inv:7:check", { node_id: "n-tests", label: "Tests pass", kind: "check", ...over });
+  const TAIL = Array.from({ length: 12 }, (_, i) => `tests/test_${i}.py F`);
+
+  it("a running check says it is live and how long it has run", () => {
+    const lines = [
+      check({
+        text: "Running the tests…",
+        refs: { running: true, started_at: T(10, 45, 14), result: "running" },
+      }),
+    ];
+    render(<ActivityPanel activity={activity({ lines })} now={NOW} actions={actions()} />);
+    expect(screen.getByText("live · 10 s")).toBeInTheDocument();
+  });
+
+  it("a failed check shows its last lines on demand, with no command line", () => {
+    const lines = [
+      check({
+        text: "Tests failed — back to Engineer with the last 12 lines",
+        tone: "danger",
+        refs: { running: false, output_tail: TAIL, result: "failed" },
+      }),
+    ];
+    const { container } = render(
+      <ActivityPanel activity={activity({ lines })} now={NOW} actions={actions()} />,
+    );
+    expect(container.querySelector(".lv-out")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Show output" }));
+    expect(container.querySelector(".lv-out")?.textContent).toBe(TAIL.join("\n"));
+    fireEvent.click(screen.getByRole("button", { name: "Hide output" }));
+    expect(container.querySelector(".lv-out")).toBeNull();
+  });
+
+  it("a passed check has no output toggle", () => {
+    const lines = [
+      check({
+        text: "Tests passed · 42 passed in 6.1s",
+        tone: "ok",
+        refs: { running: false, result: "passed" },
+      }),
+    ];
+    render(<ActivityPanel activity={activity({ lines })} now={NOW} actions={actions()} />);
+    expect(screen.getByText("Tests passed · 42 passed in 6.1s")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Show output" })).toBeNull();
+    expect(screen.queryByText(/^live ·/)).toBeNull();
+  });
+});

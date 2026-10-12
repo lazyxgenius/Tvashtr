@@ -59,7 +59,9 @@ export type LineKind =
   | "carried"
   | "resumed"
   // M11 (R13): "The Engineer failed, so the run takes its failure path to <target>".
-  | "failure_path";
+  | "failure_path"
+  // M-desk-6: a Tests pass gate's check ("Running the tests…", "Tests failed — back to …").
+  | "check";
 
 export interface ActivityRefs {
   files?: string[];

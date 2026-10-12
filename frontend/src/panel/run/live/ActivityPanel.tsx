@@ -134,6 +134,8 @@ function Line({
   const [open, setOpen] = useState(false);
   const r = line.refs;
   const output = r.output_tail && r.output_tail.length > 0;
+  // A test run, a command, or a Tests pass gate's check (M-desk-6: no `refs.command` of its own).
+  const runsSomething = line.kind === "tests" || line.kind === "command" || line.kind === "check";
   // The server sends a list (an older one sent a string).
   const reasons = Array.isArray(r.reasons) ? r.reasons : r.reasons ? [r.reasons] : [];
   let extra: React.ReactNode = null;
@@ -167,11 +169,11 @@ function Line({
         </button>
       );
     }
-  } else if ((line.kind === "tests" || line.kind === "command") && r.running) {
+  } else if (runsSomething && r.running) {
     extra = <span className="lv-line__note">live · {since(r.started_at ?? line.at, now)}</span>;
   } else if (line.kind === "gate_waiting" && current) {
     extra = <span className="lv-line__note">{since(line.at, now)}</span>;
-  } else if ((line.kind === "tests" || line.kind === "command") && output) {
+  } else if (runsSomething && output) {
     extra = (
       <button
         type="button"
