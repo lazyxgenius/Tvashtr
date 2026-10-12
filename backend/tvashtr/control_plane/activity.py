@@ -808,7 +808,16 @@ def build(
     elapsed_s = int((end_at - run.created_at).total_seconds())
     cost = round(float(spent_usd), 2)
     pr_number = run_views.pr_number(run.pr_url)
-    if run.pr_url:
+    # M-desk-6 S2: the walk closes its endpoint (Ship / Stop) only after the run is finalized and
+    # its memories saved. Until that close the run's end isn't known, so the end lines (the pull
+    # request, Done) and the summary wait for it — written once, never with a time that moves.
+    settled = ended and not any(
+        i.status == "running"
+        and by_id.get(str(i.node_id)) is not None
+        and by_id[str(i.node_id)].kind == "terminal"
+        for i in invs
+    )
+    if run.pr_url and (settled or not ended):
         ship = next(
             (
                 i
@@ -831,7 +840,7 @@ def build(
         )
     # M8 (R5): a compare run's Ship step closed without shipping (its setup's branch never pushed).
     compared = run.status == "completed" and any(i.outcome == "compare" for i in invs)
-    if ended:
+    if settled:
         if compared:
             text, tone = "Finished · no pull request in a compare", "ok"
         elif run.status == "completed":
@@ -1030,7 +1039,7 @@ def build(
         pinned.setdefault("safe", None)
 
     summary = None
-    if run.status == "completed":
+    if run.status == "completed" and settled:
         tests_line = next((ln for ln in reversed(lines) if ln["kind"] == "tests"), None)
         summary = {
             "pr_url": run.pr_url,
@@ -1063,6 +1072,8 @@ def build(
         "lines": [_public(ln) for ln in lines[start_at:]],
         "pinned": pinned,
         "summary": summary,
+        # M-desk-6 S2: an ended run whose end lines are written (a client stops polling on it).
+        "settled": settled,
         "number": number,
         "resumed_from": resumed_from,
         # Every line, whatever ``after`` is: ``run_activity`` hands them to Resume (popped there).

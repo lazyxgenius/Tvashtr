@@ -33,6 +33,15 @@ SIDECARS = ("REPORT.md", "REVIEW_VERDICT.json", REMEMBER_FILENAME)
 
 _DISPLAY = {"claude": ("Claude Code", "Claude"), "grok": ("Grok Build", "Grok")}
 
+# M-desk-6 T2: the Desktop runs its CLIs with file tools only
+# (desktop/electron/runner/cliCommand.cjs), so every job is told so — and where the test results
+# come from instead.
+FILE_TOOLS_ONLY = (
+    "On this computer you have file tools only — you can't run commands, so don't ask for "
+    "command or test output. If the team has a Tests check, Tvashtr runs the tests in its own "
+    "sandbox and passes you the result."
+)
+
 
 def _not_connected_error(provider: str) -> str:
     _, plan = _DISPLAY.get(provider, (provider, provider))
@@ -68,7 +77,7 @@ class DesktopRunnerAdapter:
             invocation_id=spec.invocation_id,
             provider=spec.provider,
             model=task.model or "",
-            instruction=task.instruction,
+            instruction=f"{task.instruction}\n\n{FILE_TOOLS_ONLY}",
             workspace_dir=task.workspace_dir,
             # M-desk-5 L2: only what the node carries home; the snapshot hides the rest of Tvashtr's
             # own files (a Reviewer carries its verdict, not earlier steps' REPORT.md).

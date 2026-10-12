@@ -141,6 +141,8 @@ def _render_diff(of: dict) -> str:
     if of["snapshot"]:
         diff = of["snapshot"]
     elif github_targets.reads_from_github(of["github_repo"], of["status"], of["repo_path"]):
+        if github_targets.never_pushed(of["status"], of["pr_url"], of.get("ship_commit_sha")):
+            return "This run stopped before it pushed its changes, so there are none on GitHub."
         files = github_targets.run_files(
             of["owner_id"],
             of["run_id"],
@@ -260,6 +262,7 @@ def build_system_prompt(*, run_id: str, node_id: str) -> str:
                 "github_repo": run.github_repo,
                 "status": run.status,
                 "pr_url": run.pr_url,
+                "ship_commit_sha": run.ship_commit_sha,
             }
 
     if diff_of is not None:

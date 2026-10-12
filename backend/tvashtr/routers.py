@@ -1764,6 +1764,7 @@ def get_run_diff(run_id: str, current_user: Annotated[UserOut, Depends(get_curre
         base_ref = run.base_ref
         ship_branch = run.ship_branch
         github_repo, status, pr_url = run.github_repo, run.status, run.pr_url
+        ship_sha = run.ship_commit_sha
         snapshot = (
             session.execute(
                 select(RunArtifact.files).where(RunArtifact.run_id == run.id)
@@ -1778,6 +1779,9 @@ def get_run_diff(run_id: str, current_user: Annotated[UserOut, Depends(get_curre
     # GitHub can't answer, say so (``github_error``) with the run's pull request to link to.
     if github_targets.reads_from_github(github_repo, status, repo_path):
         shape = {"run_id": run_id, "base_ref": base_ref, "ship_branch": ship_branch}
+        # M-desk-6 S3: a run that stopped before it pushed has nothing on GitHub to ask for.
+        if github_targets.never_pushed(status, pr_url, ship_sha):
+            return {**shape, "files": [], "total": 0, "not_pushed": True}
         files = github_targets.run_files(
             uuid.UUID(current_user.id), run_id, github_repo, base_ref, ship_branch, pr_url
         )

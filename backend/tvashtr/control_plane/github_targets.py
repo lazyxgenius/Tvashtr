@@ -99,6 +99,13 @@ def subpaths_for(installation_id: int, repo: dict, ref: str | None) -> dict | No
 _FILE_STATUS = {"added": "added", "removed": "deleted"}
 
 
+def never_pushed(status: str | None, pr_url: str | None, ship_commit_sha: str | None) -> bool:
+    """M-desk-6 S3: a GitHub run that stopped before Ship made its commit has nothing on GitHub —
+    the push follows the ship commit, so no commit means no branch was pushed. A completed run
+    always pushed (a failed push fails the run), so only a run that didn't finish counts."""
+    return status != "completed" and not pr_url and not ship_commit_sha
+
+
 def reads_from_github(github_repo: str | None, status: str | None, repo_path: str | None) -> bool:
     """A finished GitHub run whose clone is gone (M-clonegc reaps it at run end): its changes come
     from GitHub. A live run, a local-folder run and a greenfield run keep reading their own copy."""
