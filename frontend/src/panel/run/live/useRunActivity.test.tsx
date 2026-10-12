@@ -99,3 +99,68 @@ describe("useRunActivity — polling", () => {
     vi.useRealTimers();
   });
 });
+
+describe("useRunActivity — an ended run's end lines (M-desk-6 S2)", () => {
+  it("keeps polling an ended run until its end lines are written (settled)", async () => {
+    vi.useFakeTimers();
+    const reply = (settled: boolean) => ({
+      run_id: "r-1",
+      status: "completed",
+      live_state: "done",
+      cursor: "c",
+      total: 0,
+      agents: [],
+      lines: [],
+      pinned: null,
+      summary: null,
+      settled,
+    });
+    const answers = [reply(false), reply(false), reply(true)];
+    const fetchMock = vi.fn(() =>
+      Promise.resolve(
+        new Response(JSON.stringify(answers.shift() ?? reply(true)), { status: 200 }),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    function Ended() {
+      useRunActivity("r-1", true);
+      return null;
+    }
+    render(<Ended />);
+    for (let i = 0; i < 6; i += 1) await vi.advanceTimersByTimeAsync(2000);
+    // Two unsettled replies, then the settled one; nothing after it.
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    vi.useRealTimers();
+  });
+
+  it("an older server's reply (no settled field) ends the polling of an ended run", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            run_id: "r-1",
+            status: "completed",
+            live_state: "done",
+            cursor: "c",
+            total: 0,
+            agents: [],
+            lines: [],
+            pinned: null,
+            summary: null,
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    function Ended() {
+      useRunActivity("r-1", true);
+      return null;
+    }
+    render(<Ended />);
+    for (let i = 0; i < 4; i += 1) await vi.advanceTimersByTimeAsync(2000);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+});

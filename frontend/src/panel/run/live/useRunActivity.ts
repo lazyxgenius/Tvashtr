@@ -8,7 +8,8 @@ export const ACTIVITY_POLL_MS = 2000;
 
 /**
  * The run's Activity, polled every 2 s while the run is in flight (one last read when it ends),
- * each poll asking only for lines newer than the last cursor.
+ * each poll asking only for lines newer than the last cursor. M-desk-6 S2: an ended run is read
+ * until its end lines are written (the server says ``settled``; an older server never says no).
  */
 export function useRunActivity(runId: string | null, terminal: boolean): RunActivity | null {
   const [activity, setActivity] = useState<RunActivity | null>(null);
@@ -23,6 +24,7 @@ export function useRunActivity(runId: string | null, terminal: boolean): RunActi
     if (!runId) return;
     let alive = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let settled = true; // until a reply says otherwise: an ended run is read once, as before
     const pull = async () => {
       try {
         const next = await getRunActivity(runId, cursor.current);
@@ -30,6 +32,7 @@ export function useRunActivity(runId: string | null, terminal: boolean): RunActi
         // nothing new rather than break the run view.
         if (!alive || !Array.isArray(next?.agents) || !Array.isArray(next?.lines)) return;
         cursor.current = next.cursor;
+        settled = next.settled !== false;
         setActivity((prev) => mergeActivity(prev, next));
       } catch {
         // A missed poll is retried on the next tick; the view keeps what it showed.
@@ -39,7 +42,7 @@ export function useRunActivity(runId: string | null, terminal: boolean): RunActi
     // long run never stacks requests, and an older reply never lands after a newer one.
     const loop = async () => {
       await pull();
-      if (alive && !terminal) timer = setTimeout(() => void loop(), ACTIVITY_POLL_MS);
+      if (alive && !(terminal && settled)) timer = setTimeout(() => void loop(), ACTIVITY_POLL_MS);
     };
     void loop();
     return () => {

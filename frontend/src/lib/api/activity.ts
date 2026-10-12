@@ -162,6 +162,8 @@ export interface RunActivity {
   resumed_from?: ResumedFrom | null;
   /** M-desk-4: read from the Desktop, where the run's work really ran. */
   ran_on?: DesktopRoutes;
+  /** M-desk-6 S2: false while an ended run's end lines wait for its last step to close. */
+  settled?: boolean;
 }
 
 export function getRunActivity(runId: string, after?: string | null): Promise<RunActivity> {
