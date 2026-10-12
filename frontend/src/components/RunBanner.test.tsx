@@ -118,4 +118,20 @@ describe("RunBanner — greenfield ship vs brownfield branch", () => {
     expect(screen.queryByText("v7")).toBeNull();
     expect(screen.getByText("run-abc1")).toBeInTheDocument();
   });
+
+  // M-desk-6 S1: the card keeps one line at 1440×900 — it neither wraps nor shrinks in the bar.
+  it("keeps its parts on one line in a card that doesn't shrink", () => {
+    render(
+      <RunBanner
+        runId="run-abc12345"
+        run={run({ team_version_number: 7, ship_branch: "tvashtr/run-1" })}
+        workflowStatus="SUCCESS"
+        costs={[]}
+      />,
+    );
+    const card = screen.getByText("v7").parentElement;
+    expect(card).toHaveClass("tv-card", "flex-nowrap", "whitespace-nowrap", "shrink-0");
+    expect(card).not.toHaveClass("flex-wrap");
+    expect(card).toContainElement(screen.getByText("tvashtr/run-1"));
+  });
 });

@@ -402,14 +402,16 @@
 }
 
 /* ---- the Done summary (Live-Done: it takes the Now bar's row) ---- */
+/* M-desk-6 S1: grows rather than clips when a narrow window squeezes it; at 64px nothing moves. */
 .lv-done {
-  height: 64px;
+  height: auto;
+  min-height: 64px;
   flex: none;
   box-sizing: border-box;
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 0 20px;
+  padding: 8px 20px;
   background: #f3f6ee;
   border-bottom: 1px solid #c9d3b8;
   font-family: var(--font-ui);
@@ -428,6 +430,9 @@
   display: flex;
   flex-direction: column;
   gap: 1px;
+  /* Gives way first when squeezed (its words wrap); never grows, so the stats stay beside it. */
+  min-width: 0;
+  flex: 0 1 auto;
 }
 .lv-done__title {
   font-size: 14px;
@@ -444,11 +449,13 @@
   margin-left: 24px;
   font-size: 12.5px;
   color: var(--ink-600);
+  flex: none;
 }
 .lv-done__stat {
   display: flex;
   flex-direction: column;
   gap: 1px;
+  white-space: nowrap;
 }
 .lv-done__num {
   font-family: var(--font-code);
@@ -459,6 +466,7 @@
   margin-left: auto;
   display: flex;
   gap: 8px;
+  flex: none;
 }
 /* M10 (Next-Finished): the tip under "Start the next run from this" — 8px below the row, on hover
    or keyboard focus. */

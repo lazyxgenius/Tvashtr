@@ -1,22 +1,30 @@
 /* The team canvas chrome (Main / Web-Setup / Web-1024 / Eng-Flow-Blocked-1). Every px value is
    copied from the design's HTML; the `cv-` prefix keeps it clear of the older `tv-topbar` /
    `tv-toolbar` rules. */
+/* M-desk-6 S1: a bar too narrow for its items wraps into more rows instead of painting over what's
+   below. One row is still 56px with every item where it was: 7.5px + a 40px row + 7.5px + the 1px
+   hairline (no item is taller than 40px). */
 .cv-bar {
-  height: 56px;
+  height: auto;
+  min-height: 56px;
   flex: none;
   box-sizing: border-box;
   display: flex;
+  flex-wrap: wrap;
+  row-gap: 4px;
   align-items: center;
   justify-content: space-between;
-  padding: 0 20px;
+  padding: 7.5px 20px;
   background: var(--surface-raised);
   border-bottom: 1px solid var(--border-hairline);
   font-family: var(--font-ui);
 }
 .cv-bar__group {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
+  row-gap: 6px;
   min-width: 0;
 }
 .cv-tagline {
@@ -59,6 +67,7 @@
   line-height: 1.6;
   color: var(--text-secondary);
   flex: none;
+  margin-left: auto;
 }
 .cv-divider {
   width: 1px;

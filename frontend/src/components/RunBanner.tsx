@@ -42,7 +42,7 @@ export function RunBanner({
 
   return (
     <div
-      className="tv-card inline-flex flex-wrap items-center gap-x-5 gap-y-2"
+      className="tv-card inline-flex shrink-0 flex-nowrap items-center gap-x-5 gap-y-2 whitespace-nowrap"
       style={{ borderRadius: "var(--radius-md)", padding: "8px 16px" }}
     >
       <span className={`tv-pill tv-pill--${tone}`}>
