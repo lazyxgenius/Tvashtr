@@ -366,7 +366,7 @@ def run_extras(session, runs: list[Run], *, include_progress: bool = False) -> d
             session, [inv for inv, node in running if node.kind in live_state.STEP_KINDS]
         )
         for inv, node in running:
-            step = live_state.node_live(node.kind, inv, live_by_inv)
+            step = live_state.node_live(node.kind, inv, live_by_inv, node.config)
             step_states.setdefault(inv.run_id, []).append(step["live_state"])
             held = worst_step.get(inv.run_id, {}).get("live_state")
             if held is None or live_state.worst([step["live_state"], held]) != held:

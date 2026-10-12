@@ -97,6 +97,7 @@ from tvashtr.control_plane.graph_validity import (
     owner_domain_ids,
     validate_graph,
 )
+from tvashtr.control_plane.guardrails import COMMAND_MAX
 from tvashtr.control_plane.local_repo import LocalRepoTarget
 from tvashtr.control_plane.mcp_secrets import delete_owner_mcp_secret
 from tvashtr.control_plane.node_templates import NODE_TEMPLATES
@@ -309,6 +310,8 @@ class UpdateTeamNodeRequest(BaseModel):
     forbidden_paths: list | None = None
     output_file: str | None = None
     output_schema: dict | None = None
+    # M-desk-6 T1: a Tests pass check's command (run in Tvashtr's own sandbox, never by an agent).
+    command: str | None = None
     # M-tools C7.0: optional inline tools + skills. Additive — a request omitting them (None) leaves
     # the stored value unchanged (the same is-not-None guard the executor path uses), so existing
     # ``{prompt, model[, capability]}`` saves stay byte-for-byte back-compatible.
@@ -2025,7 +2028,9 @@ def get_run_graph(run_id: str, current_user: Annotated[UserOut, Depends(get_curr
             ],
         )
         live_by_node = {
-            str(n.id): live_state.node_live(n.kind, latest_by_node.get(str(n.id)), live_by_inv)
+            str(n.id): live_state.node_live(
+                n.kind, latest_by_node.get(str(n.id)), live_by_inv, n.config
+            )
             for n in nodes
         }
 
@@ -3954,6 +3959,16 @@ def update_team_node(
                 cfg["output_file"] = body.output_file
             if body.output_schema is not None:
                 cfg["schema"] = body.output_schema
+            if body.command is not None:
+                cfg["command"] = body.command.strip()
+            if cfg.get("gate_kind") == "tests_pass":
+                if not cfg.get("command"):
+                    raise HTTPException(status_code=422, detail="Add the command Tvashtr runs.")
+                if len(cfg["command"]) > COMMAND_MAX:
+                    raise HTTPException(
+                        status_code=422,
+                        detail=f"The command can be at most {COMMAND_MAX:,} characters.",
+                    )
             node.config = cfg
             session.flush()
             return _node_base_dict(node)

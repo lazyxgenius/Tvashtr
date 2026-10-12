@@ -10,7 +10,8 @@ identical** to the pre-refactor assembly (pinned by a golden-string test).
 **Pure**: no DBOS, no DB, no network, **no filesystem** — deterministic given its inputs, so it is
 unit-testable in isolation and stays inside ``team_run``'s openhands-free-at-import boundary (it
 imports only the two plain string builders ``WORKER_PROTOCOL`` / ``worker_focus_directive`` from
-``worktree``, which are stdlib-only, plus the ``Settings`` type for the resolvers). The behaviours
+``worktree``, which are stdlib-only, plus the ``Settings`` type for the resolvers and, M-desk-6,
+``guardrails.parse_check_note`` — a string parser in a stdlib + dbos module). The behaviours
 it adds over the moved assembly:
 
 * **C2 input budget** — every part is token-measured; the caller (the executor) compares
@@ -38,6 +39,7 @@ light; the budget is a coarse safety ceiling, so the heuristic is sufficient and
 from dataclasses import dataclass
 
 from tvashtr.config import Settings
+from tvashtr.control_plane.guardrails import parse_check_note
 from tvashtr.control_plane.worktree import WORKER_PROTOCOL, worker_focus_directive
 
 # C4: the spec-as-handle trigger (estimated tokens). Above it the spec is written to SPEC.md and
@@ -70,6 +72,8 @@ _PART_NODE_PROMPT = "node_prompt"
 _PART_IDEA = "idea"
 _PART_SPEC = "spec"
 _PART_REVISION = "revision"
+# M-desk-6 T1: a check's result Tvashtr ran itself (e.g. the tests passed) for the next agent.
+_PART_CHECK = "check_result"
 _PART_GROUNDING = "grounding"
 _PART_WORKER_PROTOCOL = "worker_protocol"
 _PART_WORKER_FOCUS = "worker_focus"
@@ -203,6 +207,7 @@ _STATIC_FIRST_NAMES = (
     # reads_from ⇒ spec=None ⇒ no spec_part ⇒ the handle never fires).
     _PART_READ_DOCS,
     _PART_REVISION,
+    _PART_CHECK,
     # M-unify U1: the edits-off capability note trails (edits-on nodes never reach the handle path
     # with a note — they have none). Present in the order so ``_static_first`` never KeyErrors when
     # a
@@ -293,6 +298,18 @@ def _revision_text(iteration: int, reviewer_feedback: str) -> str:
         f"{reviewer_feedback}\n"
         "Your prior work is in your current working directory — revise it IN PLACE to "
         "address this feedback. Do not start over and do not delete unrelated files."
+    )
+
+
+def _check_revision_text(iteration: int, result: str) -> str:
+    """The rework block when Tvashtr's own check (the tests, a guardrail) rejected the change —
+    the revision block's shape, worded as the check's result rather than the Reviewer's notes."""
+    return (
+        f"\n\n--- REVISION REQUESTED (round {iteration}) ---\n"
+        "Tvashtr checked your previous attempt and it did not pass:\n"
+        f"{result}\n"
+        "Your prior work is in your current working directory — revise it IN PLACE to "
+        "fix this. Do not start over and do not delete unrelated files."
     )
 
 
@@ -411,7 +428,14 @@ def compile_context(
     # + manifest (the golden test + every existing caller never pass this arg).
     if read_documents:
         parts.append(_part(_PART_READ_DOCS, _render_read_documents(read_documents)))
-    if iteration > 1 and reviewer_feedback:
+    check = parse_check_note(reviewer_feedback)
+    if check is not None:
+        outcome, result = check
+        if outcome in ("failed", "rejected") and iteration > 1:
+            parts.append(_part(_PART_REVISION, _check_revision_text(iteration, result)))
+        else:
+            parts.append(_part(_PART_CHECK, f"\n\n--- TVASHTR'S CHECK ---\n{result}"))
+    elif iteration > 1 and reviewer_feedback:
         parts.append(_part(_PART_REVISION, _revision_text(iteration, reviewer_feedback)))
     if grounding:
         parts.append(_part(_PART_GROUNDING, f"\n\n{grounding}"))

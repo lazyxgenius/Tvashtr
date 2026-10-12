@@ -26,7 +26,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 
 from tvashtr.config import get_settings
-from tvashtr.control_plane.guardrails import mask_secrets
+from tvashtr.control_plane.guardrails import GUARDRAIL_GATE_KINDS, mask_secrets
 from tvashtr.db import session_scope
 from tvashtr.models import AgentInvocation, RunEvent
 
@@ -281,14 +281,22 @@ def _plain(state: str) -> dict:
     }
 
 
-def node_live(kind: str, latest: AgentInvocation | None, live_by_inv: dict[int, dict]) -> dict:
-    """A node's live block for the run view: from its latest invocation (``None`` = not reached)."""
+def node_live(
+    kind: str,
+    latest: AgentInvocation | None,
+    live_by_inv: dict[int, dict],
+    config: dict | None = None,
+) -> dict:
+    """A node's live block for the run view: from its latest invocation (``None`` = not reached).
+    M-desk-6: a running gate needs you only when a person decides it — Tvashtr's own check (the
+    tests running in its sandbox) is working."""
     if latest is None:
         return _plain("waiting")
     if latest.status != "running":
         return _plain(_ENDED_STATE.get(latest.status, latest.status))
     if kind == "gate":
-        return _plain("needs_you")
+        checks = isinstance(config, dict) and config.get("gate_kind") in GUARDRAIL_GATE_KINDS
+        return _plain("working" if checks else "needs_you")
     return live_by_inv.get(latest.id) or _plain("working")
 
 

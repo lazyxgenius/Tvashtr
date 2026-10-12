@@ -3224,7 +3224,14 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
             open_invocation_step(run_id, current, visit)
             cfg = node["config"] or {}
             if cfg.get("gate_kind") in GUARDRAIL_GATE_KINDS:
-                verdict = guardrail_gate_step(run_id, current, cfg["gate_kind"], workspace, cfg)
+                verdict = guardrail_gate_step(
+                    run_id,
+                    current,
+                    cfg["gate_kind"],
+                    workspace,
+                    cfg,
+                    "brownfield" if brownfield else "greenfield",
+                )
                 close_invocation_step(
                     run_id,
                     current,
@@ -3233,6 +3240,10 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                     verdict["resolution"],
                     outcome_detail=verdict["reasons"],
                 )
+                # M-desk-6 T1: the check's result reaches the next agent where a Reviewer's notes
+                # do — a rejection as its rework notes, a pass (or no run) as a line of context.
+                if verdict.get("note"):
+                    reviewer_feedback = verdict["note"]
                 current = next_node(edges, current, verdict["resolution"])
             else:
                 # A human-approval checkpoint node: pause on the durable recv, then route on the

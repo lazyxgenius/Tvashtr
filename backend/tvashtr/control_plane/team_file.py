@@ -22,7 +22,7 @@ from tvashtr.control_plane import teams
 from tvashtr.control_plane.credential_gate import missing_providers_for_launch
 from tvashtr.control_plane.credentials import held_provider_slugs, provider_for_model
 from tvashtr.control_plane.graph_validity import validate_graph
-from tvashtr.control_plane.guardrails import GUARDRAIL_GATE_KINDS, mask_secrets
+from tvashtr.control_plane.guardrails import COMMAND_MAX, GUARDRAIL_GATE_KINDS, mask_secrets
 from tvashtr.control_plane.run_failure import node_label
 from tvashtr.control_plane.run_views import MAX_RUN_BUDGET_USD
 from tvashtr.control_plane.toolkit import owner_secret_names, secret_refs
@@ -108,6 +108,7 @@ _GATE_KEYS = (
     "forbidden_paths",
     "output_file",
     "schema",
+    "command",
 )
 _END_KEYS = ("id", "kind")
 _ROUTE_KEYS = ("from", "to", "when", "loop_limit", "type")
@@ -246,7 +247,14 @@ def export_team(session, team: TeamGraph) -> dict:
                 gate["kind"] = kind
             else:
                 gate["checks"] = kind
-            for key in ("title", "description", "forbidden_paths", "output_file", "schema"):
+            for key in (
+                "title",
+                "description",
+                "forbidden_paths",
+                "output_file",
+                "schema",
+                "command",
+            ):
                 if cfg.get(key) not in (None, "", []):
                     gate[key] = cfg[key]
             gates.append(gate)
@@ -882,6 +890,14 @@ def parse(content: str) -> tuple[dict, list[str]]:
             )
         if "schema" in gate and not isinstance(gate["schema"], dict):
             raise FileError(at(*where, "schema"), "`schema` should be a set of fields.")
+        # M-desk-6 T1: a Tests pass check's command (run in Tvashtr's own sandbox).
+        text(
+            gate.get("command"),
+            (*where, "command"),
+            "`command` should be text.",
+            limit=COMMAND_MAX,
+            required=False,
+        )
     for i, end in enumerate(data.get("ends") or []):
         where = ("ends", i)
         if not isinstance(end, dict):
@@ -1437,7 +1453,7 @@ def _conditions(route: dict) -> dict | None:
 
 def _gate_config(gate: dict) -> dict:
     cfg: dict = {"gate_kind": gate.get("checks") or gate.get("kind") or "approval"}
-    for key in ("title", "description", "forbidden_paths", "output_file", "schema"):
+    for key in ("title", "description", "forbidden_paths", "output_file", "schema", "command"):
         if key in gate:
             cfg[key] = gate[key]
     return cfg

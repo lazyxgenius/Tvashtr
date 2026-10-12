@@ -23,7 +23,9 @@ import fnmatch
 import json
 import os
 import re
+import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 from dbos import DBOS
@@ -31,7 +33,7 @@ from dbos import DBOS
 # The set of ``config.gate_kind`` values the executor's gate arm dispatches DETERMINISTICALLY (no
 # human ``wait_at_gate``). Any other / absent kind stays the human-approval path, byte-identical.
 GUARDRAIL_GATE_KINDS: frozenset[str] = frozenset(
-    {"secret_leak_scan", "diff_touches_forbidden_paths", "output_schema_check"}
+    {"secret_leak_scan", "diff_touches_forbidden_paths", "output_schema_check", "tests_pass"}
 )
 
 # Directories never worth scanning (VCS internals, dependency/build caches) — skipped wholesale
@@ -362,9 +364,109 @@ def output_schema_check(workspace: str, config: dict) -> tuple[str, str | None]:
     return "approved", None
 
 
+# ---- M-desk-6 T1 kind: tests_pass ------------------------------------------
+
+TESTS_LIMIT_S = 600  # 10 minutes: the hidden check's cap
+TESTS_TAIL = 12
+TESTS_TOO_LONG = "The tests didn't finish in 10 minutes."
+COULDNT_RUN = "Couldn't run the tests: "
+COMMAND_MAX = 1000
+_TESTS = "Tests (run by Tvashtr in its sandbox)"
+
+# A guardrail check's result for the NEXT agent. team_run's gate arm hands it on where a Reviewer's
+# notes go; context_compiler knows it by this mark and words it as Tvashtr's check: rework notes
+# when the check rejected the change, one line of context when it passed or couldn't run.
+_NOTE_MARK = "[tvashtr-check:"
+_KIND_NAMES = {
+    "secret_leak_scan": "Secret leak scan",
+    "diff_touches_forbidden_paths": "Forbidden paths",
+    "output_schema_check": "Output schema",
+}
+
+
+def check_note(outcome: str, text: str) -> str:
+    """``text`` marked as a check's result (``outcome``: passed / failed / rejected / couldnt)."""
+    return f"{_NOTE_MARK}{outcome}] {text}"
+
+
+def parse_check_note(feedback: object) -> tuple[str, str] | None:
+    """``(outcome, text)`` of a :func:`check_note`, or ``None`` for anything else (a Reviewer's
+    notes)."""
+    if not isinstance(feedback, str) or not feedback.startswith(_NOTE_MARK):
+        return None
+    outcome, _, text = feedback[len(_NOTE_MARK) :].partition("] ")
+    return outcome, text
+
+
+def _couldnt_run(reason: str) -> dict:
+    """The tests never ran: passed on with the reason — never a false pass, never a rework loop the
+    Engineer can't fix. The run view shows it as a warning."""
+    return {
+        "resolution": "approved",
+        "reasons": COULDNT_RUN + reason,
+        "note": check_note(
+            "couldnt", f"{_TESTS}: couldn't run — {reason} Judge the change by reading it."
+        ),
+    }
+
+
+def tests_pass(run_id: str, workspace: str | None, config: dict, mode: str) -> dict:
+    """Run the check's ``command`` in the run's OWN sandbox — the hidden check's runner (Fly: the
+    run's microVM; docker: a fresh container; LOCAL dev: a copy of the workspace), from the repo's
+    root, 10-minute cap — and turn its result into the gate's verdict: exit 0 approves (the last
+    output line), anything else rejects (the last 12 lines), secrets masked. Never on the hosted
+    control plane itself, never on a user's computer."""
+    from tvashtr.config import get_settings  # lazy: this module stays stdlib + dbos at import
+    from tvashtr.control_plane import hidden_checks  # lazy: it imports this module
+
+    command = str(config.get("command") or "").strip()
+    if not command:
+        return _couldnt_run("no command is set on the check.")
+    if workspace is None:
+        return _couldnt_run("no step before the check made anything to test.")
+    with tempfile.TemporaryDirectory(prefix="tvashtr-tests-") as scratch:
+        where = workspace
+        if get_settings().agent_sandbox_mode == "local":
+            # LOCAL runs a command in place: a copy, so nothing it builds can ship with the run.
+            where = os.path.join(scratch, "ws")
+            shutil.copytree(workspace, where, symlinks=True, ignore=shutil.ignore_patterns(".git"))
+        code, output, timed_out, reason = hidden_checks.run_command(
+            run_id, where, command, mode, TESTS_LIMIT_S
+        )
+    if reason == hidden_checks.NOT_HERE:
+        return _couldnt_run("this server has no sandbox to run them in.")
+    if reason is not None:
+        failed = re.search(r"\((\w+)\)", reason)
+        return _couldnt_run(f"the sandbox failed ({failed.group(1) if failed else 'error'}).")
+    lines = [ln.rstrip() for ln in mask_secrets(output).splitlines() if ln.strip()]
+    if code == 0 and not timed_out:
+        last = lines[-1] if lines else "the command finished with no output"
+        return {
+            "resolution": "approved",
+            "reasons": last,
+            "note": check_note("passed", f"{_TESTS}: passed — {last}"),
+        }
+    if timed_out:
+        lines.append(TESTS_TOO_LONG)
+    tail = lines[-TESTS_TAIL:] or [f"The command exited {code} with no output."]
+    reasons = "\n".join(tail)
+    return {
+        "resolution": "rejected",
+        "reasons": reasons,
+        "note": check_note(
+            "failed", f"{_TESTS}: failed — the last {len(tail)} lines of their output:\n{reasons}"
+        ),
+    }
+
+
 @DBOS.step()
 def guardrail_gate_step(
-    run_id: str, node_id: str, gate_kind: str, workspace: str | None, config: dict
+    run_id: str,
+    node_id: str,
+    gate_kind: str,
+    workspace: str | None,
+    config: dict,
+    mode: str = "greenfield",
 ) -> dict:
     """Recorded deterministic guardrail verdict for a gate node (M-rails C8).
 
@@ -376,7 +478,18 @@ def guardrail_gate_step(
 
     ``workspace is None`` (a guardrail gate reached before any agent node created a workspace) ⇒
     nothing to scan ⇒ ``approved``. An unrecognized ``gate_kind`` (unreachable — the gate arm
-    gates on :data:`GUARDRAIL_GATE_KINDS`) is defensively approved rather than blocking the walk."""
+    gates on :data:`GUARDRAIL_GATE_KINDS`) is defensively approved rather than blocking the walk.
+
+    M-desk-6 T1: ``tests_pass`` runs a command (:func:`tests_pass`; ``mode`` is the run's
+    brownfield/greenfield, for its sandbox). A verdict with something for the next agent carries a
+    ``note`` (:func:`check_note`): every rejection (names, never values) and every Tests result."""
+    if gate_kind == "tests_pass":
+        verdict = tests_pass(run_id, workspace, config or {}, mode)
+        DBOS.logger.info(
+            f"guardrail_gate run_id={run_id} node_id={node_id} kind={gate_kind} "
+            f"resolution={verdict['resolution']}"
+        )
+        return verdict
     if workspace is None:
         return {"resolution": "approved", "reasons": None}
     if gate_kind == "secret_leak_scan":
@@ -390,4 +503,8 @@ def guardrail_gate_step(
     DBOS.logger.info(
         f"guardrail_gate run_id={run_id} node_id={node_id} kind={gate_kind} resolution={resolution}"
     )
-    return {"resolution": resolution, "reasons": reasons}
+    verdict = {"resolution": resolution, "reasons": reasons}
+    if resolution == "rejected" and reasons:
+        name = _KIND_NAMES.get(gate_kind, gate_kind)
+        verdict["note"] = check_note("rejected", f"{name} (run by Tvashtr): rejected — {reasons}")
+    return verdict

@@ -30,7 +30,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from tvashtr.control_plane import desktop_jobs, live_state, run_views
 from tvashtr.control_plane.connector_proxy import EVENT_KINDS as CONNECTOR_EVENT_KINDS
 from tvashtr.control_plane.desktop_jobs import spend_text
-from tvashtr.control_plane.guardrails import mask_secrets
+from tvashtr.control_plane.guardrails import COULDNT_RUN, mask_secrets
 from tvashtr.control_plane.run_failure import describe_run_failure, humanise, node_label
 from tvashtr.models import (
     AgentInvocation,
@@ -332,6 +332,48 @@ def _edited_version(task) -> int | None:
 
 def _approved_with_edits(version: int) -> str:
     return f"Approved with your edits · spec v{version}"
+
+
+def _is_tests_check(node) -> bool:
+    """M-desk-6 T1: a gate that runs the team's tests in Tvashtr's own sandbox."""
+    cfg = getattr(node, "config", None) if node is not None else None
+    return node is not None and node.kind == "gate" and (cfg or {}).get("gate_kind") == "tests_pass"
+
+
+def _check_line(out, inv, nid: str, edges: list[dict], labels: dict, ended: bool, mask) -> None:
+    """M-desk-6 T1: a Tests check's one line per visit — "Running the tests…", then its result
+    (passed with its last line, failed with the last 12 lines, or couldn't run: a warning)."""
+    detail = mask_secrets(mask(inv.outcome_detail) or "")
+    refs: dict = {"running": False, "started_at": inv.started_at.isoformat()}
+    if inv.status == "running" and not ended:
+        refs.update(running=True, result="running")
+        out.add(f"inv:{inv.id}:check", inv.started_at, nid, inv.iteration, "check",
+                "Running the tests…", "neutral", refs, final=False)  # fmt: skip
+        return
+    if inv.outcome == "approved" and detail.startswith(COULDNT_RUN):
+        refs.update(result="skipped", output_tail=[detail])
+        text, tone = "Couldn’t run the tests — passed on without a result", "warn"
+    elif inv.outcome == "approved":
+        refs["result"] = "passed"
+        text, tone = f"Tests passed · {_cap(detail, 120)}" if detail else "Tests passed", "ok"
+    elif inv.outcome == "rejected":
+        lines = detail.split("\n") if detail else []
+        refs.update(result="failed", output_tail=lines)
+        back = next(
+            (e["target"] for e in edges
+             if e["source"] == nid and (e.get("conditions") or {}).get("when") == "rejected"),
+            None,
+        )  # fmt: skip
+        text = "Tests failed" + (
+            f" — back to {labels[back]} with the last {len(lines)} lines" if back in labels else ""
+        )
+        tone = "danger"
+    else:  # the run ended while the tests ran
+        text, tone = "Stopped while running the tests", "neutral"
+    summary = parse_test_summary(detail) if refs.get("result") in ("passed", "failed") else None
+    if summary is not None:
+        refs["passed"], refs["failed"] = summary
+    out.add(f"inv:{inv.id}:check", inv.started_at, nid, inv.iteration, "check", text, tone, refs)
 
 
 def _shown_name(node) -> str | None:
@@ -657,6 +699,8 @@ def build(
             _carried_reads(out, inv, nid, came, carry)
         open_step = inv.status == "running" and not ended
         _event_lines(out, inv, nid, events_by_inv.get(inv.id, []), open_step)
+        if _is_tests_check(node):
+            _check_line(out, inv, nid, edges, labels, ended, _m)
         end_at = inv.ended_at or inv.started_at
         if inv.status == "failed" and inv.outcome != "stalled":  # a stall has its own line
             if inv.id not in stalled_invs:  # (M11: also a stall that then took a failure path)
@@ -876,7 +920,7 @@ def build(
     agents = []
     for nid, nd in by_id.items():
         inv = latest.get(nid)
-        live = dict(live_state.node_live(nd.kind, inv, live_by_inv))
+        live = dict(live_state.node_live(nd.kind, inv, live_by_inv, nd.config))
         if inv is not None and inv.status == "running" and ended:
             live["live_state"] = "failed" if run.status == "failed" else "stopped"
         if nd.kind == "gate" and open_task is not None and open_task[1] == nid:
@@ -884,6 +928,11 @@ def build(
                 live_state="needs_you",
                 activity="Waiting for you",
                 last_event_at=open_task[0].created_at.isoformat(),
+            )
+        elif _is_tests_check(nd) and inv is not None and nid in last_line:
+            # M-desk-6 T1: Tvashtr's own check says what it does ("Running the tests…").
+            live.update(
+                activity=last_line[nid]["text"], last_event_at=last_line[nid]["at"].isoformat()
             )
         elif nd.kind == "gate" and inv is not None and inv.status != "running":
             decided = max(
@@ -1040,7 +1089,15 @@ def build(
 
     summary = None
     if run.status == "completed" and settled:
-        tests_line = next((ln for ln in reversed(lines) if ln["kind"] == "tests"), None)
+        # M-desk-6 T1: the tests Tvashtr ran itself count too (whichever ran last).
+        tests_line = next(
+            (
+                ln
+                for ln in reversed(lines)
+                if ln["kind"] == "tests" or (ln["kind"] == "check" and "passed" in ln["refs"])
+            ),
+            None,
+        )
         summary = {
             "pr_url": run.pr_url,
             "pr_number": pr_number,

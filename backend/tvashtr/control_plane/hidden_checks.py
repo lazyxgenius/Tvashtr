@@ -140,6 +140,31 @@ def _execute(
     return run_local(workspace, command, limit_s)
 
 
+def run_command(
+    run_id: str, workspace: str, command: str, mode: str, limit_s: float
+) -> tuple[int | None, str, bool, str | None]:
+    """``(exit code, output, timed out, couldn't-run reason)`` of ``command`` in the run's own
+    sandbox — the hidden check's runner, shared with M-desk-6's Tests check. A reason means it never
+    ran: :data:`NOT_HERE` on the hosted control plane (it never runs a command on itself), or the
+    sandbox failed. The command is never logged."""
+    settings = get_settings()
+    # The hosted control plane (a Fly machine) never runs a check on itself; a developer's hosted
+    # stack on the LOCAL sandbox runs it where its agents ran.
+    on_fly_host = bool(os.environ.get("FLY_MACHINE_ID"))
+    if (
+        settings.hosted_mode
+        and on_fly_host
+        and settings.agent_sandbox_mode not in ("fly", "docker")
+    ):
+        return None, "", False, NOT_HERE
+    try:
+        code, output, timed_out = _execute(run_id, workspace, command, mode, limit_s)
+    except Exception as exc:  # noqa: BLE001 — a check that can't run fails; the run goes on
+        logger.warning("hidden check could not run run_id=%s (%s)", run_id, type(exc).__name__)
+        return None, "", False, f"The check couldn't run ({type(exc).__name__})."
+    return code, output, timed_out, None
+
+
 def run_for(run_id: str, workspace: str | None, mode: str) -> None:
     """Run (once) the hidden check of a set compare run's task and record the result. A no-op for
     a run that already has one, has ended, or has no task."""
@@ -160,23 +185,9 @@ def run_for(run_id: str, workspace: str | None, mode: str) -> None:
         ).scalar_one_or_none()
     if command is None or workspace is None:
         return
-    settings = get_settings()
     began = time.monotonic()
-    # The hosted control plane (a Fly machine) never runs a check on itself; a developer's hosted
-    # stack on the LOCAL sandbox runs it where its agents ran.
-    on_fly_host = bool(os.environ.get("FLY_MACHINE_ID"))
-    if (
-        settings.hosted_mode
-        and on_fly_host
-        and settings.agent_sandbox_mode not in ("fly", "docker")
-    ):
-        code, output, timed_out = None, NOT_HERE, False
-    else:
-        try:
-            code, output, timed_out = _execute(run_id, workspace, command, mode, REPLAY_CAP_S)
-        except Exception as exc:  # noqa: BLE001 — a check that can't run fails; the run goes on
-            logger.warning("hidden check could not run run_id=%s (%s)", run_id, type(exc).__name__)
-            code, output, timed_out = None, f"The check couldn't run ({type(exc).__name__}).", False
+    code, output, timed_out, reason = run_command(run_id, workspace, command, mode, REPLAY_CAP_S)
+    output = reason or output
     lines = [ln.rstrip() for ln in mask_secrets(output).splitlines() if ln.strip()]
     if timed_out:
         lines.append(TOO_LONG)
