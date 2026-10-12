@@ -1,0 +1,23 @@
+# M-desk-6 — a Tests pass check, S1 (1440×900) and S3 (never pushed): parity record, branch feat/m-desk-6, 2026-10-12.
+# Design: Claude Design "Tvashtr Runs" canvas v17 (1791802477-86fb) — Live-TestsFailedDesktop, Live-TestsFailed, Live-TestsPassedDesktop,
+#   Live-TestsPassed, Live-TestsCouldntDesktop, Live-TestsCouldnt, Live-ChangesNotPushedDesktop, Live-ChangesNotPushed, Live-DoneDesktopLong —
+#   and "Tvashtr Team Setup" canvas v23 (1791802481-0c5e) — Chk-TestsPass. Shot with shoot-design.mjs at 1440x900: 10 design shots, fonts-ok.
+#   v15/v21 drew them first; v17/v23 follow the built app where the first parity run disagreed (the Now bar's state words, the run card's
+#   own chips, "Jump to live" 123px, "Edit this team" 132px, the version tag 11px Inter, the branch label 10px, the last-run detail 13px).
+# App: Vite on this checkout, no backend; scripts/design-parity/scenarios/desk6.mjs answers the new shapes (the Activity line kind "check" with
+#   refs.result running/passed/failed/skipped and output_tail; the check's agent live_state working/done; the run graph's tests_pass gate n-chk
+#   between the Engineer and the Reviewer, rejected → back to the Engineer; the diff's not_pushed; summary.tests_passed 42). A Desktop-framed
+#   board is compared with its -desktop render, a website board with its -web render. Gate: 0 size/type drift.
+Live-TestsFailedDesktop vs -desktop:      matched 64/81 design items · 0 with size/type drift · 25 only moved · 17 not found in app
+Live-TestsFailed vs -web:                 matched 62/79 design items · 0 with size/type drift · 25 only moved · 17 not found in app
+Live-TestsPassedDesktop vs -desktop:      matched 57/69 design items · 0 with size/type drift · 42 only moved · 12 not found in app
+Live-TestsPassed vs -web:                 matched 55/67 design items · 0 with size/type drift · 33 only moved · 12 not found in app
+Live-TestsCouldntDesktop vs -desktop:     matched 62/80 design items · 0 with size/type drift · 33 only moved · 18 not found in app
+Live-TestsCouldnt vs -web:                matched 60/78 design items · 0 with size/type drift · 33 only moved · 18 not found in app
+Live-ChangesNotPushedDesktop vs -desktop: matched 54/73 design items · 0 with size/type drift · 49 only moved · 19 not found in app
+Live-ChangesNotPushed vs -web:            matched 52/71 design items · 0 with size/type drift · 33 only moved · 19 not found in app
+Live-DoneDesktopLong vs -desktop:         matched 70/85 design items · 0 with size/type drift · 32 only moved · 15 not found in app
+Chk-TestsPass vs -desktop:                matched 46/56 design items · 0 with size/type drift · 14 only moved · 10 not found in app
+# Not found in app (texts the app words differently, all known): the boards' older run bar (Running · team › idea · run #12 · 4m 18s · $0.38 of
+#   $5.00 · Stop run) where the app has its current toolbar; the boards' card chips ("Spec written", "Grok plan · this Mac", "Approved by you");
+#   "Show N earlier steps" (the app shows the last 6 lines).
