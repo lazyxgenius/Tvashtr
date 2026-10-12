@@ -223,3 +223,52 @@ describe("NowBar — M3 a resumed run (Prob-Resumed)", () => {
     }
   });
 });
+
+describe("NowBar — a Tests check (M-desk-6)", () => {
+  const CHK_GRAPH = {
+    nodes: [
+      { id: "n-eng", kind: "agent", config: {} },
+      { id: "n-chk", kind: "gate", config: { gate_kind: "tests_pass" } },
+      { id: "n-rev", kind: "agent", config: {} },
+    ],
+    edges: [
+      {
+        id: "e1",
+        source_node_id: "n-eng",
+        target_node_id: "n-chk",
+        edge_type: "default",
+        conditions: null,
+      },
+      {
+        id: "e2",
+        source_node_id: "n-chk",
+        target_node_id: "n-rev",
+        edge_type: "default",
+        conditions: { when: "approved" },
+      },
+    ],
+  } as unknown as GraphData;
+
+  it("shows the running check without a decision's clock, and the Reviewer waits for the tests", () => {
+    const agents = [
+      agent({ node_id: "n-eng", label: "Engineer", live_state: "done", activity: "Edited x" }),
+      agent({
+        node_id: "n-chk",
+        label: "Tests pass",
+        kind: "gate",
+        live_state: "working",
+        activity: "Running the tests…",
+        last_event_at: at(6),
+      }),
+      agent({ node_id: "n-rev", label: "Reviewer", live_state: "waiting" }),
+    ];
+    render(<NowBar agents={agents} graph={CHK_GRAPH} now={NOW} onSelect={() => {}} />);
+    const bar = screen.getByRole("region", { name: "Now" });
+    const chk = within(bar).getByRole("button", { name: /^Tests pass/ });
+    expect(chk).toHaveTextContent("Running the tests…");
+    expect(chk).not.toHaveTextContent(/Running the tests… · \d/);
+    expect(within(bar).getByRole("button", { name: /^Reviewer/ })).toHaveTextContent(
+      "Starts when the tests pass",
+    );
+  });
+});

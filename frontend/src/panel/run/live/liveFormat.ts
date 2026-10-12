@@ -54,8 +54,15 @@ function span(s: number, sep: string): string {
   return `${Math.floor(s / 3600)}h`;
 }
 
-/** A waiting step's line (the Now bar chip and its card): what it starts after. */
-export function startsAfter(before: { kind: string; label: string }): string {
+/** A waiting step's line (the Now bar chip and its card): what it starts after. M-desk-6: behind a
+ *  Tests check it waits for the tests, not for a person's approval. */
+export function startsAfter(before: {
+  kind: string;
+  label: string;
+  gateKind?: string | null;
+}): string {
+  if (before.kind === "gate" && before.gateKind === "tests_pass")
+    return "Starts when the tests pass";
   return before.kind === "gate" ? "Starts after your approval" : `Starts after the ${before.label}`;
 }
 

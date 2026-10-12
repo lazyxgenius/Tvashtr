@@ -43,11 +43,16 @@ function chipLine(
       (e) => e.target_node_id === a.node_id && e.edge_type !== "escalation",
     )?.source_node_id;
     const before = from ? agents.get(from) : undefined;
-    return before ? startsAfter(before) : "";
+    const config = graph?.nodes.find((n) => n.id === from)?.config as
+      | { gate_kind?: string }
+      | null
+      | undefined;
+    return before ? startsAfter({ ...before, gateKind: config?.gate_kind }) : "";
   }
-  // A decided gate: "You approved · 10:43" — the time in the viewer's clock.
+  // A decided gate: "You approved · 10:43" — the time in the viewer's clock (not a check that runs).
   if (
     a.kind === "gate" &&
+    a.live_state !== "working" &&
     a.live_state !== "needs_you" &&
     a.live_state !== "carried_over" &&
     a.activity &&

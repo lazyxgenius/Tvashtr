@@ -119,7 +119,13 @@ function waitingLine(
     (e) => e.target_node_id === n.id && e.edge_type !== "escalation",
   )?.source_node_id;
   const before = graph.nodes.find((x) => x.id === from);
-  return before ? startsAfter({ kind: before.kind, label: nodeTitle(before) }) : null;
+  return before
+    ? startsAfter({
+        kind: before.kind,
+        label: nodeTitle(before),
+        gateKind: (before.config as { gate_kind?: string } | null)?.gate_kind,
+      })
+    : null;
 }
 
 /** The canvas node `data` for one graph node: the thin agent/completion status overlay, plus
