@@ -7,11 +7,18 @@ function Item({ label, value }: { label: string; value: string }) {
   return (
     <span className="inline-flex items-baseline gap-1.5">
       <span style={{ fontSize: "var(--fs-micro)", color: "var(--text-tertiary)" }}>{label}</span>
+      {/* M-desk-7 F2: a long value (a subscriptions line, a `tvashtr/<uuid>` branch) truncates so
+          the toolbar keeps one row; the full value on hover. 11ch keeps a run id and a ship sha. */}
       <span
+        title={value}
         style={{
           fontFamily: "var(--font-code)",
           fontSize: "var(--fs-caption)",
           color: "var(--text-secondary)",
+          maxWidth: "11ch",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
         }}
       >
         {value}
@@ -42,8 +49,8 @@ export function RunBanner({
 
   return (
     <div
-      className="tv-card inline-flex shrink-0 flex-nowrap items-center gap-x-5 gap-y-2 whitespace-nowrap"
-      style={{ borderRadius: "var(--radius-md)", padding: "8px 16px" }}
+      className="tv-card inline-flex shrink-0 flex-nowrap items-center gap-x-3 gap-y-2 whitespace-nowrap"
+      style={{ borderRadius: "var(--radius-md)", padding: "8px 12px" }}
     >
       <span className={`tv-pill tv-pill--${tone}`}>
         <span className="tv-pill__dot" />

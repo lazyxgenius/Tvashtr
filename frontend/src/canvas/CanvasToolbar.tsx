@@ -50,7 +50,8 @@ export function CanvasToolbar({
   children?: ReactNode;
 }) {
   return (
-    <div className="cv-bar" role="toolbar" aria-label="Team">
+    // M-desk-7 F2: the run view's toolbar (no Run button) is the tighter one (chrome.css).
+    <div className={run ? "cv-bar" : "cv-bar cv-bar--run"} role="toolbar" aria-label="Team">
       <div className="cv-bar__group">
         {onBack && (
           <IconButton
@@ -76,7 +77,11 @@ export function CanvasToolbar({
           </Button>
         )}
         {children}
-        {teamName && <span className="cv-team">{teamName}</span>}
+        {teamName && (
+          <span className="cv-team" title={teamName}>
+            {teamName}
+          </span>
+        )}
         {version}
         {docs && (
           <button
@@ -110,7 +115,9 @@ export function CanvasToolbar({
             <span>Team file</span>
           </Button>
         )}
-        <span title="Spend this run">{spend}</span>
+        <span className="cv-spend" title={`Spend this run: ${spend}`}>
+          {spend}
+        </span>
         <span className="cv-divider" aria-hidden />
         <Connection />
       </div>
