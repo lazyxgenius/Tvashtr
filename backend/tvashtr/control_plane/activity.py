@@ -149,7 +149,13 @@ def _path(raw: str) -> str:
     return _ROOT.sub("", raw.strip())
 
 
+# M-desk-7: names that keep their capital at a reason's start ("Failed: Grok Build couldn't …").
+_NAMES = ("Grok", "Claude", "Codex", "Tvashtr", "GitHub")
+
+
 def _lower_first(text: str) -> str:
+    if text.split(" ", 1)[0] in _NAMES:
+        return text
     return text[0].lower() + text[1:] if len(text) > 1 and text[1].islower() else text
 
 

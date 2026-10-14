@@ -565,6 +565,37 @@ def test_a_failed_run_pins_its_failure_and_ends_with_a_failed_line():
     assert reply["summary"] is None and reply["live_state"] == "failed"
 
 
+GROK_LOCK_FAILED = (
+    "Grok Build couldn't lock itself to this job's copy of the repo on this Mac, so Tvashtr didn't "
+    "start it. Nothing on your Mac was opened, and nothing was used from your Grok plan. Update "
+    "Grok Build, or switch this step to Claude."
+)
+
+
+def test_a_grok_step_that_couldnt_lock_itself_in_reads_its_reason_exactly():
+    """M-desk-7 S4: the Desktop runner fails a Grok job closed with this exact reason; the run view
+    says it word for word (a leading product name keeps its capital)."""
+    from tvashtr.control_plane.run_failure import humanise
+
+    pm, eng, rev = _node("pm", x=0), _node("engineer", x=200), _node("reviewer", x=400)
+    invs = [
+        _inv(1, pm, end=30),
+        _inv(2, eng, start=40, end=200),
+        _inv(3, rev, status="failed", start=210, end=214, detail=GROK_LOCK_FAILED),
+    ]
+    ev = _Events()
+    ev.add(3, 213, "error", {"error": GROK_LOCK_FAILED})
+    message = humanise(None, GROK_LOCK_FAILED, role="Reviewer", desktop_target=True)["message"]
+    run = _run("failed", failed_node_id=rev.id, failure_message=message, desktop_target=True)
+    reply = _build(run, [pm, eng, rev], invs, ev.rows)
+    assert ("error", f"Failed: {GROK_LOCK_FAILED}") in _texts(reply)
+    assert reply["pinned"]["title"] == "Reviewer failed"
+    assert reply["pinned"]["body"] == f"Reviewer: {GROK_LOCK_FAILED} Nothing was shipped."
+    reviewer = next(a for a in reply["agents"] if a["label"] == "Reviewer")
+    assert reviewer["live_state"] == "failed"
+    assert reviewer["activity"] == f"Failed: {GROK_LOCK_FAILED}"
+
+
 def test_a_stopped_run_says_nothing_shipped():
     pm, eng, invs = _engineer_world(status="running")
     reply = _build(_run("cancelled"), [pm, eng], invs)
