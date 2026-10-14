@@ -1,60 +1,172 @@
-# The demo film's scenes (V1, V2)
+# The demo film's scenes (V1, V2, V2b)
 
 Every scene of the storyboard (`prompts/video-v1.md`) as a take script that re-records by name:
-`make -C video take SCENE=<id>` (`DRY=1` to rehearse; `"<id>*"` for a scene's parts). V2's takes land
-in `video/takes/v2/<take>/` (V1's stay in `video/takes/v1/`; a V2 rehearsal in `<take>-dry/`) —
-`take.mp4` 2880×1800 · 30 fps, `take.json`, `poster.png`, `shots/`. Review files:
-`video/out/v2/contact-sheet.png` (the newest take of every scene), `video/out/v2/ch3-preview.mp4`,
-`video/out/v2/ch4-preview.mp4` (V1's `video/out/v1/…` stay). How the camera works: `video/README.md`.
+`make -C video take SCENE=<id>` (`DRY=1` to rehearse; `"<id>*"` for a scene's parts). V2b's takes land
+in `video/takes/v2b/<take>/` (V1's and V2's stay in `video/takes/v1/`, `video/takes/v2/`; a rehearsal in
+`<take>-dry/`) — `take.mp4` 2880×1800 · 30 fps, `take.json`, `poster.png`, `shots/`. Review files:
+`video/out/v2b/contact-sheet.png` (the newest take of every scene, V2b over V2 over V1) and
+`video/out/v2b/ch2-preview.mp4` … `ch7-preview.mp4` (V1's and V2's `video/out/…` stay). How the camera
+works: `video/README.md`.
 
 ## Status
 
 Generated from the takes on disk (`node video/camera/sheet.mjs scenes-table`): one row per take,
-its V1 and its V2 status. "clip" = a filmed take (mode, raw length); "rehearsed" = a `--dry` take
+its V1, V2 and V2b status. "clip" = a filmed take (mode, raw length); "rehearsed" = a `--dry` take
 that stopped before the named spend (or ran through when it spends nothing); "—" = not taken in that
 version. Budgets are the scene's own and the plan's chapter budget — raw takes run longer on purpose
-(record more, V4 trims). V2 was **wrapped up on the operator's request** after chapter 5: 6.1, 6.2,
-6.3 and the 2.7 re-take are still owed (below).
+(record more, V4 trims). **V2b stopped at a Grok usage cap** during 6.1/6.2 (below): 6.3, 3.5,
+0.1 and the chapter 2 and 7 re-takes are still owed, and 6.1/6.2's test results need a re-take.
 
 <!-- scenes-table -->
-| take | script | V1 | V2 | scene budget · chapter budget |
-|---|---|---|---|---|
-| 0.1 | `scenes/0.1.mjs` (web) | blocked: trade_mcp is private — run node video/camera/github-login.mjs once (operator) | clip (web) 12.7 s | 20 s · ch 0: 20 s |
-| 0.2 | `scenes/0.2.mjs` (motion) | MOTION | MOTION | — s · ch 0: 20 s |
-| 1.1 | `scenes/1.1.mjs` (mac) | MAC | MAC | — s · ch 1: 55 s |
-| 1.2 | `scenes/1.2.mjs` (live) | clip (live) 15.3 s | — | 20 s · ch 1: 55 s |
-| 1.3 | `scenes/1.3.mjs` (live) | clip (live) 43.1 s | — | 20 s · ch 1: 55 s |
-| 1.4 | `scenes/1.4.mjs` (sample) | clip (sample) 20.2 s | — | 12 s · ch 1: 55 s |
-| 1.5 | `scenes/1.5.mjs` (sample) | clip (sample) 36.9 s | — | 15 s · ch 1: 55 s |
-| 2.1 | `scenes/2.1.mjs` (live) | clip (live) 14.3 s | — | 12 s · ch 2: 70 s |
-| 2.2 | `scenes/2.2.mjs` (live) | clip (live) 18.8 s | — | 12 s · ch 2: 70 s |
-| 2.3 | `scenes/2.3.mjs` (live) | clip (live) 12.6 s | — | 12 s · ch 2: 70 s |
-| 2.4 | `scenes/2.4.mjs` (live) | clip (live) 80.7 s | — | 30 s · ch 2: 70 s |
-| 2.5 | `scenes/2.5.mjs` (live) | clip (live) 40.8 s | — | 25 s · ch 2: 70 s |
-| 2.6 | `scenes/2.6.mjs` (live) | clip (live) 29.2 s | — | 25 s · ch 2: 70 s |
-| 2.7 | `scenes/2.7.mjs` (live) | clip (live) 154.6 s | — | 30 s · ch 2: 70 s |
-| 3.1 | `scenes/3.1.mjs` (record) | rehearsed · stopped before “Launch” | clip (record) 2281.1 s | 15 s · ch 3: 90 s |
-| 3.2 | `scenes/3.2.mjs` (replay) | rehearsed (replay, no spend) | clip (replay) 15.8 s | 25 s · ch 3: 90 s |
-| 3.2-proof | `scenes/3.2.mjs` (record) | clip (record) 1869.2 s | — | 25 s · ch 3: 90 s |
-| 3.2-replay | `scenes/3.2.mjs` (replay) | clip (replay) 1867 s | — | 25 s · ch 3: 90 s |
-| 3.3 | `scenes/3.3.mjs` (replay) | rehearsed (replay, no spend) | clip (replay) 22 s | 25 s · ch 3: 90 s |
-| 3.4 | `scenes/3.4.mjs` (replay) | rehearsed (replay, no spend) | clip (replay) 29.8 s | 30 s · ch 3: 90 s |
-| 3.5 | `scenes/3.5.mjs` (sample) | clip (sample) 21 s | — | 15 s · ch 3: 90 s |
-| 3.6 | `scenes/3.6.mjs` (replay) | rehearsed (replay, no spend) | clip (replay) 25.6 s | 20 s · ch 3: 90 s |
-| 3.7 | `scenes/3.7.mjs` (live) | rehearsed · stopped before “Send” | clip (live) 52.6 s | 30 s · ch 3: 90 s |
-| 4.1 | `scenes/4.1.mjs` (live) | rehearsed · stopped before “Launch” | clip (live) 282.4 s | 30 s · ch 4: 45 s |
-| 4.2 | `scenes/4.2.mjs` (live) | rehearsed · stopped before “Resume (needs 4.1's failed run)” | clip (live) 24.7 s | 25 s · ch 4: 45 s |
-| 5.1 | `scenes/5.1.mjs` (live) | rehearsed · stopped before “Start run” | clip (live) 26.5 s | 25 s · ch 5: 30 s |
-| 5.1-recent | `scenes/5.1.mjs` (live) | rehearsed (live, no spend) | clip (live) 7 s | 25 s · ch 5: 30 s |
-| 6.1 | `scenes/6.1.mjs` (live) | rehearsed · stopped before “Run all” | — | 30 s · ch 6: 75 s |
-| 6.2 | `scenes/6.2.mjs` (run) | clip (sample) 23.9 s | — | 40 s · ch 6: 75 s |
-| 6.3 | `scenes/6.3.mjs` (run) | rehearsed · stopped before “Start compare” | — | 40 s · ch 6: 75 s |
-| 7.1 | `scenes/7.1.mjs` (live) | clip (live) 27.6 s | — | 20 s · ch 7: 30 s |
-| 7.2 | `scenes/7.2.mjs` (live) | clip (live) 33.3 s | — | 30 s · ch 7: 30 s |
-| 8.1 | `scenes/8.1.mjs` (sample) | clip (sample) 23.6 s | — | 25 s · ch 8: 25 s |
-| 8.1-web | `scenes/8.1.mjs` (web) | clip (web) 23.5 s | — | 25 s · ch 8: 25 s |
-| 8.2 | `scenes/8.2.mjs` (motion) | MOTION | MOTION | — s · ch 8: 25 s |
+| take | script | V1 | V2 | V2b | scene budget · chapter budget |
+|---|---|---|---|---|---|
+| 0.1 | `scenes/0.1.mjs` (web) | blocked: trade_mcp is private — run node video/camera/github-login.mjs once (operator) | clip (web) 12.7 s | blocked: trade_mcp is private — run node video/camera/github-login.mjs once (operator) | 20 s · ch 0: 20 s |
+| 0.2 | `scenes/0.2.mjs` (motion) | MOTION | MOTION | MOTION | — s · ch 0: 20 s |
+| 1.1 | `scenes/1.1.mjs` (mac) | MAC | MAC | MAC | — s · ch 1: 55 s |
+| 1.2 | `scenes/1.2.mjs` (live) | clip (live) 15.3 s | — | rehearsed (live, no spend) | 20 s · ch 1: 55 s |
+| 1.3 | `scenes/1.3.mjs` (live) | clip (live) 43.1 s | — | — | 20 s · ch 1: 55 s |
+| 1.4 | `scenes/1.4.mjs` (sample) | clip (sample) 20.2 s | — | — | 12 s · ch 1: 55 s |
+| 1.5 | `scenes/1.5.mjs` (sample) | clip (sample) 36.9 s | — | — | 15 s · ch 1: 55 s |
+| 2.1 | `scenes/2.1.mjs` (live) | clip (live) 14.3 s | — | — | 12 s · ch 2: 70 s |
+| 2.2 | `scenes/2.2.mjs` (live) | clip (live) 18.8 s | — | — | 12 s · ch 2: 70 s |
+| 2.3 | `scenes/2.3.mjs` (live) | clip (live) 12.6 s | — | — | 12 s · ch 2: 70 s |
+| 2.4 | `scenes/2.4.mjs` (live) | clip (live) 80.7 s | — | — | 30 s · ch 2: 70 s |
+| 2.5 | `scenes/2.5.mjs` (live) | clip (live) 40.8 s | — | — | 25 s · ch 2: 70 s |
+| 2.6 | `scenes/2.6.mjs` (live) | clip (live) 29.2 s | — | — | 25 s · ch 2: 70 s |
+| 2.7 | `scenes/2.7.mjs` (live) | clip (live) 154.6 s | — | — | 30 s · ch 2: 70 s |
+| 3.1 | `scenes/3.1.mjs` (record) | rehearsed · stopped before “Launch” | clip (record) 2281.1 s | clip (record) 657.2 s | 15 s · ch 3: 90 s |
+| 3.2 | `scenes/3.2.mjs` (replay) | rehearsed (replay, no spend) | clip (replay) 15.8 s | clip (replay) 15.8 s | 25 s · ch 3: 90 s |
+| 3.2-proof | `scenes/3.2.mjs` (record) | clip (record) 1869.2 s | — | — | 25 s · ch 3: 90 s |
+| 3.2-replay | `scenes/3.2.mjs` (replay) | clip (replay) 1867 s | — | — | 25 s · ch 3: 90 s |
+| 3.3 | `scenes/3.3.mjs` (replay) | rehearsed (replay, no spend) | clip (replay) 22 s | clip (replay) 22.4 s | 25 s · ch 3: 90 s |
+| 3.4 | `scenes/3.4.mjs` (replay) | rehearsed (replay, no spend) | clip (replay) 29.8 s | clip (replay) 22 s | 30 s · ch 3: 90 s |
+| 3.4-verdict | `scenes/3.4.mjs` (replay) | — | — | clip (replay) 30.1 s | 30 s · ch 3: 90 s |
+| 3.5 | `scenes/3.5.mjs` (sample) | clip (sample) 21 s | — | — | 15 s · ch 3: 90 s |
+| 3.6 | `scenes/3.6.mjs` (replay) | rehearsed (replay, no spend) | clip (replay) 25.6 s | clip (replay) 24.1 s | 20 s · ch 3: 90 s |
+| 3.7 | `scenes/3.7.mjs` (live) | rehearsed · stopped before “Send” | clip (live) 52.6 s | clip (live) 77.4 s | 30 s · ch 3: 90 s |
+| 4.1 | `scenes/4.1.mjs` (live) | rehearsed · stopped before “Launch” | clip (live) 282.4 s | clip (live) 319.2 s | 30 s · ch 4: 45 s |
+| 4.2 | `scenes/4.2.mjs` (live) | rehearsed · stopped before “Resume (needs 4.1's failed run)” | clip (live) 24.7 s | clip (live) 19.9 s | 25 s · ch 4: 45 s |
+| 5.1 | `scenes/5.1.mjs` (live) | rehearsed · stopped before “Start run” | clip (live) 26.5 s | clip (live) 22.6 s | 25 s · ch 5: 30 s |
+| 5.1-recent | `scenes/5.1.mjs` (live) | rehearsed (live, no spend) | clip (live) 7 s | clip (live) 6.9 s | 25 s · ch 5: 30 s |
+| 6.1 | `scenes/6.1.mjs` (live) | rehearsed · stopped before “Run all” | — | clip (live) 29 s | 30 s · ch 6: 75 s |
+| 6.2 | `scenes/6.2.mjs` (run) | clip (sample) 23.9 s | — | clip (run) 60.6 s | 40 s · ch 6: 75 s |
+| 6.3 | `scenes/6.3.mjs` (run) | rehearsed · stopped before “Start compare” | — | — | 40 s · ch 6: 75 s |
+| 6.3-set | `scenes/6.3.mjs` (run) | — | — | — | 40 s · ch 6: 75 s |
+| 7.1 | `scenes/7.1.mjs` (live) | clip (live) 27.6 s | — | — | 20 s · ch 7: 30 s |
+| 7.2 | `scenes/7.2.mjs` (live) | clip (live) 33.3 s | — | — | 30 s · ch 7: 30 s |
+| 8.1 | `scenes/8.1.mjs` (sample) | clip (sample) 23.6 s | — | — | 25 s · ch 8: 25 s |
+| 8.1-web | `scenes/8.1.mjs` (web) | clip (web) 23.5 s | — | — | 25 s · ch 8: 25 s |
+| 8.2 | `scenes/8.2.mjs` (motion) | MOTION | MOTION | MOTION | — s · ch 8: 25 s |
 <!-- /scenes-table -->
+
+## V2b (2026-10-14): the re-film with the Tests check — stopped at a Grok usage cap
+
+Brief `prompts/m-desk-7-v2b.md` Part B, on `video/v2b-refilm` (from `feat/m-desk-7` 71ca1078: S4 locks
+every Grok job to its copy, F1 names the check "Tests pass", F2 keeps the running toolbar on one row).
+`video/stack/reset` first (a clean `tvashtr_film`: run #1 is the hero), Claude and Grok **Connected**
+(`takes/v2b/1.2-dry/shots/engines-connected.png`), `apiKeySource: none` on every Claude job that spoke,
+`READING_KEY = none`. **K1:** the film team runs Engineer → **Tests pass** → Reviewer; a failed check
+goes back to the Engineer (limit 3); the Fixer feeds Tests pass; the group "Review loop" holds all
+three (`story.json` "tests": `pip install -q -e '.[dev]' 'mcp<2' -e servers/kline_cache && python -m
+pytest -q tests`).
+
+Sittings 1 (chapter 3) and 2 (chapter 4) and most of 3 (5.1, 5.1-recent, 6.1, 6.2) are filmed. During
+6.1 the operator's Grok plan hit its limit: **every Grok test replay since 09:52 UTC answered "You've
+reached your free Grok Build usage limit for now … try again later"** (no reset time shown). V2b stops
+there (NEEDS_HUMAN), before 6.3 and the chapter 2/7 re-takes.
+
+### The real runs (ledger `video/out/v2b/budget.json`: runs 4 of 14 · test replays 8 of 12 · Asks 1 of 2)
+
+| run | # | scene | task | what happened | length | PR |
+|---|---|---|---|---|---|---|
+| `b98f6fcc` | 1 | 3.1 hero (recorded) | Add a Hull moving average indicator — trade_mcp, `main`, scope `core/`, budget $5.00 | PM → spec gate (one line added, approved on camera) → Engineer → **Tests failed — back to Engineer with the last 12 lines** → Engineer round 2 → **Tests passed · 665 passed, 16 deselected, 3 warnings in 1.68s** → Grok Reviewer **approved round 1**, citing "Tvashtr pytest reported 665 passed…" → Secret scan → No edits to servers/ → Ship; no Escalation | "Done in 10m 21s" (unchanged after "Saved 6 new memories") | [#57](https://github.com/lazyxgenius/trade_mcp/pull/57) |
+| `51d784d3` | 2 | 4.1 | Add a TRIX indicator | stack QUIET=20 STALLED=60 FAIL=180; spec gate approved → the Engineer's Claude CLI paused at its start (SIGSTOP, the Desktop's own process tree, only Claude's `stream-json`) → Quiet → Stalled → Failed | "Failed after 4m 52s · on your Claude subscription" | — |
+| `3da31f1c` | 3 | 4.2 | resume of run #2 from Engineer, round 1 — opened from **Home's Needs you** | stack back to normal timers; spec v2 + approval kept ("Skips 1 min of finished work") → Engineer → Tests failed → Engineer → Tests passed · 664 → Reviewer approved → Ship | "Done in 7m 4s" | [#58](https://github.com/lazyxgenius/trade_mcp/pull/58) |
+| `f7d6c632` | 4 | 5.1 | Add a DEMA indicator, from run #1 ("brought spec v2, 1 decision and 1 memory"), from the hero's PR branch | PM → PRD gate approved on camera → Engineer → Tests failed → Engineer → Tests passed · 669 → Reviewer approved → Ship; PR #59's base is `tvashtr/b98f6fcc-…` | "Done in 7m 9s" | [#59](https://github.com/lazyxgenius/trade_mcp/pull/59) |
+
+Test replays: 6.1 "Run all 4" on v1 (the round-1 test + 3 CSV tests) and 6.2 "Save and run tests" on v2
+(4) — all 8 ran under their own Grok profiles and **all 8 failed on the usage limit** ("It didn't
+finish: … free Grok Build usage limit"), so both versions read 0 of 4. The one Ask (3.7, Grok):
+"Tvashtr's tests failed on the first build. What did you check once they passed?" → "Once the run
+reported **665 passed** the reviewer did not…" (K4: the question follows what really happened).
+
+### The live smoke (V2b) — every line with its screenshot (opened)
+
+| check | result | screenshot |
+|---|---|---|
+| Hero Tests check (T1): "Running the tests…" then "Tests failed — back to Engineer with the last 12 lines" / "Tests passed · …" | **PASS** — failed (12 lines shown on camera) → passed · 665 passed | `takes/v2b/3.1/shots/tests-1-running.png`, `tests-2-failed.png`, `tests-4-passed.png` |
+| Hero T2: the failed lines reach the Engineer's next round; the Reviewer cites Tvashtr's result; no verdict asks for command or test output | **PASS** — 1 failed check, its lines in the Engineer's round 2 (`revision`); the Reviewer was given `check_result` and wrote "Tvashtr pytest reported 665 passed, 16 deselected, 3 warnings"; no ask for output | `takes/v2b/3.1/shots/reviewer-verdict.png` |
+| Hero S2: the Done line keeps its time after the post-ship memory save | **PASS** — "Done in 10m 21s · on your Claude and Grok subscriptions" before and after "Saved 6 new memories" | `takes/v2b/3.1/shots/done-after-memories.png` |
+| Hero S1 + F2 at 1440×900 | **PASS** — running toolbar 56 px with the Engineer and with the Reviewer working, run card inside the bar and clear; the Done summary keeps "total time" | `takes/v2b/3.1/shots/running.png`, `running-reviewer.png`, `done.png` |
+| F1: the check never reads "Approve before continuing?" | **PASS** — canvas card "Tests pass" (`takes/v2b/3.1-dry/shots/canvas.png`), run view card (`3.1/shots/done.png`), Activity label "Tests pass" | as listed |
+| S4: every Grok job's lock line + its own `--sandbox tvashtr-j<hex>`; every Claude job's lock line + `--restricted`; no file opened outside the copy | **PASS** — runs #1–#4: 3 Grok + 10 Claude jobs (`node video/camera/smoke.mjs s4`); Grok folders under `…/T/tvg-0484c6/j…`; the Ask (`tvashtr-j47f6e1`) and all 8 test replays ran under their own profiles | `takes/v2b/s4-rawlog/shots/reviewer-lock-line.png`, `engineer-lock-line.png`, `3.7/shots/ask.png`, `6.1/shots/results.png`, `6.2/shots/tested.png` |
+| L1/H1: the subscriptions wording from launch to Done | **PASS** — 0 of 1525 recorded responses with "$0.00 +"/"$0.0000" or a Desktop read saying not all on subscriptions; Done line "· on your Claude and Grok subscriptions" | `takes/v2b/3.1/shots/done.png` |
+| L2: no verdict names Tvashtr's own files | **PASS** | `takes/v2b/3.1/shots/reviewer-verdict.png` |
+| L3: Changes after Done = the PR's "Files changed" | **PASS** — `core/indicators.py` +22, `tests/test_indicators.py` +35 −3, `web/lib/engine-facts.ts` +1 −1 = PR #57 | `takes/v2b/3.7/shots/changes.png` |
+| 4.1 H1/H2 | **PASS** — "Failed after 4m 52s · on your Claude subscription"; "Next: resume from Engineer, round 1. Tvashtr skips the work that is done…" | `takes/v2b/4.1/shots/failed.png` |
+| 4.2 opens from Needs you; H2 confirm; no dollar per step | **PASS** — "Run failed · Add a TRIX indicator · Resume"; "This starts run #3. It picks up where run #2 stopped." "Skips 1 min of finished work. Only the steps that run again use your Claude subscription." | `takes/v2b/4.2/shots/needs-you.png`, `confirm.png`, `picker.png` |
+| 6.1 L1/D8: a running test's line names its subscription from its first second | **PASS** — "Running 1 of 4 · 0s — On v1 · on your Grok subscription", 0.9 s after the click (take.json: click 26.6 s, shot 27.5 s; the in-take line printed FAIL because it timed from the cursor's glide — fixed 36f32863) | `takes/v2b/6.1/shots/running.png` |
+| 6.2 L1/D8 | **PASS** — at the click the app's Tests read already said `ran_on {"subscriptions":["grok"],"all":true}` | `takes/v2b/6.2/shots/testing.png` |
+| 6.3 H4, H5, H1 | **NOT RUN** — 6.3 not filmed (usage cap) | — |
+| 2.7 L1/D8 | **NOT RUN** — chapter 2 not re-taken (filmed last; usage cap) | — |
+
+### Bends from the storyboard (V2b)
+
+- **A Grok usage cap stopped the session** (above). 6.1's and 6.2's footage shows the real outcome
+  (G1): "0 of 4 passed" with the usage-limit error on every row; 6.2's History pills read 0/4 for v1
+  and v2. Their non-test beats (Make this a test, the CSV, Save as v2, History, What changed in v2)
+  are filmed as intended.
+- **The Tests check is round 1's story now:** every run's first build failed the check (the
+  indicator count pinned in the tests), went back to the Engineer with the last 12 lines, passed, and
+  the Grok Reviewer approved round 1 — no Escalation in V2b (V2's runs all escalated).
+- **4.2 opens from Home's Needs you** (K3, lost in V2), on the normal-timer stack: the stack was put
+  back to normal *before* 4.2 so a quiet Grok Reviewer can't fail the resumed run at FAIL=180.
+- **3.5 moved to the last sitting:** re-capturing its sample base (`fixtures/capture-live.mjs`)
+  rebuilds the film team by name, which would retire the hero team chapters 3–6 work on.
+- **0.1 is blocked:** `video/out/github-session.json` was deleted after V2's 0.1 (G8); the operator
+  signs in again with `node video/camera/github-login.mjs` before a re-take.
+- **The operator's installed Tvashtr.app was open** (idle, not signed in to this stack — no runner
+  polled the film account): `take.mjs` gained `VIDEO_OTHER_DESKTOP_OK=<pid>`; it was never touched.
+- **S4 screenshots come from an evidence take** (`takes/v2b/s4-rawlog`, no spend): the record take's
+  Raw log sat below the short drawer's fold; the evidence take wraps the feed rows (a style injected
+  into that take only) so the lock lines read whole.
+- **V2's hero recording** moved to `video/recordings/hero-v2` (3.1 records to `hero`).
+
+### Product notes seen on camera (for the architect; no product code in Part B)
+
+- The Activity verdict line drops a `reasons` **string** (the Reviewer wrote one): "Approved" shows
+  without its reasons, though `REVIEW_VERDICT.json` cites Tvashtr's pytest.
+- The guardrail cards read their raw kinds (`secret_leak_scan`, `diff_touches_forbidden_paths`):
+  `gateLabel` names only PRD approval, Escalation and Tests pass.
+- Both loop arcs (Tests pass → Engineer, Reviewer → Engineer) read "changes requested".
+- The resume confirm lists "Tests pass, when you approve" (the check needs no approval) and "use your
+  Claude subscription" though the Grok Reviewer runs again.
+- The Reviewer drawer's round row reads "$0.0000" (3.7's "cost per round"); the Ask's answer shows raw
+  `**markdown**`; "1 library tool(s) — tools aren't used by Desktop subscription agents yet" shows on
+  every run.
+
+### Still owed (V2b → after the Grok limit resets)
+
+| scene | real work | note |
+|---|---|---|
+| 6.1 / 6.2 test results | "Run again" on v1 and v2: 4 + 4 test replays | the budget has **4** left (8 of 12 spent on the capped replays) — the architect decides |
+| 6.3 + 6.3-set | 2 + 4 runs (budget left 10) | hidden checks proven in the sandbox image (127 passed on `main`, exit 0; the indicator greps exit 1 until an agent adds them) |
+| 3.5 | none (sample) | after 6.3: `take.mjs video/fixtures/capture-live.mjs`, `node video/fixtures/export-live.mjs`, then `take.mjs 3.5` |
+| 2.4, 2.5, 2.6, 2.7, 7.1, 7.2 | 2.7: 1 test replay | last (they rebuild teams by name) |
+| 0.1 | none | needs the operator's GitHub session; delete it after (G8) |
+| review files | none | contact sheet + ch2–ch7 previews again at the end |
+
+### What V3 needs (per filmed scene)
+
+- **3.1** (record, 657.2 s): keep; V4 uses its first minute. **3.2** 15.8 s, **3.3** 22.4 s, **3.4**
+  22 s (Tests failed → its lines opened), **3.4-verdict** 30.1 s, **3.6** 24.1 s: keep; re-takes are
+  free from `recordings/hero`.
+- **3.7** (77.4 s, 1 Ask): keep; caption "cost per round $0.0000" (product) or crop it.
+- **4.1** (319.2 s) and **4.2** (19.9 s on camera): keep — 4.2 now opens on Needs you.
+- **5.1** (22.6 s) and **5.1-recent** (6.9 s): keep.
+- **6.1** (29 s) and **6.2** (60.6 s): re-take their results after the limit resets (or V4 cuts at
+  "Running 1 of 4").
+- **6.3**, **3.5**, **0.1**, chapters **2** and **7**: owed (above).
 
 ## V2 (2026-10-11): the real runs — wrapped up after chapter 5
 

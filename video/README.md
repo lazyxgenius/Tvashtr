@@ -1,13 +1,42 @@
-# video/ — the demo-film toolchain (V0 toolchain, V1 camera, V2 real runs)
+# video/ — the demo-film toolchain (V0 toolchain, V1 camera, V2 real runs, V2b re-film)
 
 Everything the Tvashtr demo film is made with, and nothing of the product: the Desktop **camera**
 (Playwright driving the real dev Desktop), the **reel** builder (Product Demo Director), and two
 report-only **probes**. Briefs: `prompts/video-v0.md`, `prompts/video-v1.md`, `prompts/m-desk-5-v2.md`
-(Part B). Media and run data
+(Part B), `prompts/m-desk-7-v2b.md` (Part B). Media and run data
 never enter git: `video/out/`, `video/takes/`, `video/recordings/`, `video/vendor/` and
 `video/node_modules/` are ignored. V1 (below) made every scene a take script that re-records by
 name; V2 (below) filmed the run scenes on real runs; `video/SCENES.md` has each scene's status, the
 V2 numbers and bends, and the operator's MAC scripts.
+
+## V2b — the re-film with the Tests check (2026-10-14, stopped at a Grok usage cap)
+
+Branch `video/v2b-refilm` (from `feat/m-desk-7`: S4 locks every Grok job to its copy, F1, F2). The same
+stack, camera and take runner as V2, with:
+
+- **K1, the film team runs the Tests check:** `story.json` "tests" (title "Tests pass" and the command
+  that passes on trade_mcp `main` in the sandbox); `buildFilmTeam` wires Engineer → Tests pass →
+  Reviewer, a failed check back to the Engineer (limit 3), the Fixer → Tests pass, and the group
+  "Review loop" over all three. 2.4 gets the three gates bare and sets them on camera.
+- **V2b output (K5):** takes in `video/takes/v2b/<take>/`, review files and the Desktop lock in
+  `video/out/v2b/`; the ledger `video/out/v2b/budget.json` with caps 14 runs, 12 test replays, 2 Asks
+  (`node video/camera/take.mjs budget` prints it). The contact sheet ranks V2b over V2 over V1; the
+  scenes table has a V2b column; previews `video/out/v2b/ch2-preview.mp4` … `ch7-preview.mp4`.
+- **The live smoke:** `flows.mjs` prints one `SMOKE: <check> PASS|FAIL <shot> — <why>` line per check
+  (kept in take.json's notes): the toolbar/run-card/total-time layout, each Tests check moment (a
+  failed check's lines opened), the Raw log lock lines, a Grok process watcher for Asks and test
+  replays (their `--sandbox`), the hero's S2. `node video/camera/smoke.mjs hero|s4` adds what a take
+  can't see: T1/T2 from the recording and the trajectory, F1, L1 over every recorded response, L2, L3
+  against `gh api …/pulls/<n>/files`, the `HERO:` line, and S4 over every run's Desktop jobs.
+- **3.4** starts at the Tests result (part `3.4-verdict` at the verdict); **3.7** asks from what really
+  happened; **4.1** pauses only Claude's CLI; **4.2** opens from Home's Needs you; **6.1–6.3** clear
+  leftovers, wait off camera, and **6.3**'s set is its own part (`6.3-set`).
+- **`VIDEO_OTHER_DESKTOP_OK=<pid>`**: lets one named, idle Desktop of the operator's stay open; each
+  take first waits until no runner polls the film account.
+- **V2's hero recording** is kept at `video/recordings/hero-v2`; 3.1 records `video/recordings/hero`.
+
+What was filmed, the runs (#1–#4, PRs #57–#59), every SMOKE line, the bends and what's still owed:
+`video/SCENES.md` › V2b.
 
 ## V2 — real runs (2026-10-11, wrapped up after chapter 5)
 
@@ -229,7 +258,8 @@ node video/camera/sheet.mjs pairs 3.2-replay   # video/out/v1/pairs-3.2-replay.p
 | `camera/film.mjs` | off-camera setup through the app's API (the film team by stage, Toolkit, domain) |
 | `camera/flows.mjs` | on-camera flows (composer, gates, run views, canvas) and recording markers |
 | `camera/scenes/<id>.mjs` | one script per scene (31) |
-| `camera/sheet.mjs` | contact sheet, chapter-2 preview, pairs sheet, SCENES.md table |
+| `camera/sheet.mjs` | contact sheet, chapter previews, pairs sheet, SCENES.md table |
+| `camera/smoke.mjs` | V2b's API-side live smoke: `hero` (T1/T2, F1, L1–L3, the HERO line), `s4` (every run's Desktop jobs) |
 | `camera/github-login.mjs` | operator, once: a GitHub session for 0.1 (trade_mcp is private) |
 | `fixtures/` | sample data: `base.mjs`, `live-base.json` (+ `capture-live.mjs`, `export-live.mjs`), one module per SAMPLE scene, `files/` |
 | `package.json` | pinned tools: `ffmpeg-static` 5.3.0 (ffmpeg 6.0), `@ffprobe-installer/ffprobe` 2.1.2 (ffprobe n4.4.1), `@playwright/test` 1.61.1, `testreel` 0.2.0 |

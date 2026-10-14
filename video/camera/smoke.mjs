@@ -142,7 +142,9 @@ function s4(events) {
     if (!said.includes(LOCK[who])) bad.push(`${String(inv).slice(0, 8)}: no ${who} lock line`);
     if (who === "claude") {
       if (!ran.includes(" --restricted ")) bad.push(`${String(inv).slice(0, 8)}: no --restricted`);
-      if (!said.some((t) => t.includes("apiKeySource: none"))) bad.push(`${String(inv).slice(0, 8)}: apiKeySource not none`);
+      // A CLI paused before its first line (4.1) never says; one that says must say "none".
+      const keys = said.filter((t) => /apiKeySource:/.test(t));
+      if (keys.some((t) => !t.includes("apiKeySource: none"))) bad.push(`${String(inv).slice(0, 8)}: apiKeySource not none`);
       continue;
     }
     if (!/ --sandbox tvashtr-j[0-9a-f]{6}$/.test(ran)) bad.push(`${String(inv).slice(0, 8)}: no job profile`);
