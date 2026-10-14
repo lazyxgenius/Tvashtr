@@ -67,8 +67,8 @@ export default {
     await cam.roi("tests", d);
     await cam.pause(1200);
     const grok = ctx.app ? watchGrok(ctx) : () => [];
-    const t0 = Date.now();
     await ctx.spend("test", "Run all 1", () => cam.click(run, "Run all 1"));
+    const t0 = Date.now(); // from the click itself (not the cursor's glide to the button)
     // The live smoke (L1, D8): the running line names its subscription from its first second.
     const head = d.locator(".tt-head");
     await head.locator(".tt-head__title", { hasText: /^(Running|Waiting to start)/ }).waitFor({ timeout: 60000 });

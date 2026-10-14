@@ -110,13 +110,13 @@ export default {
     );
     await cam.pause(1500);
     const grok = ctx.app ? watchGrok(ctx) : () => [];
-    const t0 = Date.now();
     await ctx.spend(
       "save_with_tests",
       "Save and run tests",
       () => cam.click(dialog.getByRole("button", { name: "Save and run tests" }), "Save and run tests"),
       tests,
     );
+    const t0 = Date.now(); // from the click itself (not the cursor's glide to the button)
     // The live smoke (L1, D8): from its first second the running tests name their subscription (the
     // app's own Tests read, as the Reviewer's Tests tab shows it).
     const first = await ctx.inPage("GET", `/api/teams/${ctx.state.team}/nodes/${ctx.state.reviewer}/tests?desktop_target=1`);
