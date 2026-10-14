@@ -1,6 +1,6 @@
 // 2.6 "Remember what it learns" on the Engineer; "If it fails or times out" → a Fixer on DeepSeek.
 // (The $5 budget lives in the composer's Run options — filmed in 3.1: video/SCENES.md.)
-import { buildFilmTeam, byRole, graph, must } from "../film.mjs";
+import { buildFilmTeam, byRole, byTitle, graph, must } from "../film.mjs";
 import { canvasReady, card, closeDrawer, edgePoint, openAgent, pickModel, saveDrawer } from "../flows.mjs";
 
 export default {
@@ -8,19 +8,19 @@ export default {
   title: "Remember what it learns; if it fails or times out → a Fixer",
   mode: "live",
   budget: 25,
-  setup: async ({ api }) => {
-    // A new agent already wired in (Engineer → it → Reviewer), unconfigured: on camera it becomes the
-    // Fixer and its path the failure path (an edge drag is unreliable to film).
+  setup: async ({ api, story }) => {
+    // A new agent already wired in (Engineer → it → Tests pass, V2b K1), unconfigured: on camera it
+    // becomes the Fixer and its path the failure path (an edge drag is unreliable to film).
     const { id } = await buildFilmTeam(api, { upTo: "models" });
     const g = await graph(api, id);
     const eng = byRole(g, "engineer");
-    const rev = byRole(g, "reviewer");
+    const chk = byTitle(g, story.tests.title);
     const n = must(
       await api("POST", `/api/teams/${id}/nodes`, { node_kind: "worker", position: { x: eng.position.x + 130, y: eng.position.y + 360 } }),
       "new agent",
     );
     const path = must(await api("POST", `/api/teams/${id}/edges`, { source_node_id: eng.id, target_node_id: n.id, role: "forward" }), "engineer → new");
-    must(await api("POST", `/api/teams/${id}/edges`, { source_node_id: n.id, target_node_id: rev.id, role: "forward" }), "new → reviewer");
+    must(await api("POST", `/api/teams/${id}/edges`, { source_node_id: n.id, target_node_id: chk.id, role: "forward" }), "new → tests pass");
     return { team: id, fixer: n.id, path: path.id ?? path.edge_id };
   },
   before: async (ctx) => {

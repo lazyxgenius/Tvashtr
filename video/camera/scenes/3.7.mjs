@@ -36,7 +36,7 @@ export default {
     await cam.click(d.getByRole("button", { name: "Changes", exact: true }), "Changes");
     const rows = d.locator(".tv-diff__row");
     await rows.first().waitFor({ timeout: 30000 }).catch(() => {});
-    if (await rows.count()) await rows.first().scrollIntoViewIfNeeded(); // V2: the list sat below the fold
+    if (await rows.count()) await rows.last().scrollIntoViewIfNeeded(); // V2: the list sat below the fold
     await cam.pause(2500);
     await ctx.shot("changes"); // the live smoke (L3): after Done, Tvashtr's copy of the repo is gone
     if (await rows.count()) await cam.click(rows.first(), "the changed file");

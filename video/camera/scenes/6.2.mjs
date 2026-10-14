@@ -3,7 +3,7 @@
 // nothing else saves a version, so this edit is the next real version (the V1 sample of v7/v8 is
 // retired). The tests are the 4 6.1 made on the Reviewer; running them spends one replay each.
 import { byRole, filmTeam, graph, must } from "../film.mjs";
-import { canvasReady, card, closeDrawer, openAgent, saveDrawer } from "../flows.mjs";
+import { canvasReady, card, closeDrawer, openAgent, saveDrawer, smoke, watchGrok } from "../flows.mjs";
 
 /** 6.2's edit: one line added to the Reviewer's instructions, and a backup model. */
 export const LINE =
@@ -55,10 +55,15 @@ export default {
     const versions = must(await api("GET", `/api/teams/${team}/versions`), "versions");
     if (versions.current !== story.versions.before)
       ctx.note(`the team is at v${versions.current}, not v${story.versions.before} (story.json)`);
+    // A rehearsal's saved edit would be saved as a version at the next launch; a task set would make
+    // "Save and run tests" start a set compare too (4 runs the ledger doesn't count).
+    if (versions.changes)
+      throw new Error(`6.2: ${versions.changes} unsaved change(s) since v${versions.current} (a rehearsal's edit?) — put the Reviewer back first`);
+    if (versions.check_sets?.length) throw new Error("6.2: a task set exists — Save as v2 would also start a set compare");
     const rev = byRole(await graph(api, team), "reviewer");
     const tests = must(await api("GET", `/api/teams/${team}/nodes/${rev.id}/tests`), "tests").tests.length;
     if (!tests) throw new Error("6.2 needs the Reviewer's tests: film 6.1 first");
-    return { team, before: versions.current, after: versions.current + 1, tests };
+    return { team, reviewer: rev.id, before: versions.current, after: versions.current + 1, tests };
   },
   before: async (ctx) => {
     await ctx.go(`#/teams/${ctx.state.team}`);
@@ -104,21 +109,41 @@ export default {
       "Save and run the Reviewer's tests",
     );
     await cam.pause(1500);
+    const grok = ctx.app ? watchGrok(ctx) : () => [];
+    const t0 = Date.now();
     await ctx.spend(
       "save_with_tests",
       "Save and run tests",
       () => cam.click(dialog.getByRole("button", { name: "Save and run tests" }), "Save and run tests"),
       tests,
     );
+    // The live smoke (L1, D8): from its first second the running tests name their subscription (the
+    // app's own Tests read, as the Reviewer's Tests tab shows it).
+    const first = await ctx.inPage("GET", `/api/teams/${ctx.state.team}/nodes/${ctx.state.reviewer}/tests?desktop_target=1`);
+    const secs = (Date.now() - t0) / 1000;
+    const runOn = JSON.stringify(first.json?.run?.ran_on ?? null);
+    const said = [first.json?.last, ...(first.json?.run?.results ?? []).map((r) => r.waiting)].filter(Boolean).join(" · ");
+    ctx.note(`first second: v${first.json?.run?.version ?? "?"} ran_on=${runOn}; ${said}`);
     await chip.filter({ hasText: `v${after}` }).waitFor({ timeout: 30000 });
     // The Reviewer's card counts the tests as they run on the Grok subscription.
     const rev = card(page, "Reviewer");
     await rev.locator(".rf-node__tests--live").waitFor({ timeout: 60000 }).catch(() => {});
     await cam.roi("testing", rev);
-    await ctx.shot("testing");
+    const testingShot = await ctx.shot("testing");
+    smoke(
+      ctx,
+      "6.2 L1/D8 (the running tests name their subscription)",
+      secs <= 1.5 && (/subscription/.test(said) || /"subscriptions":\["(claude|grok)/.test(runOn)) && !/\$0\.00/.test(said),
+      testingShot,
+      `${secs.toFixed(1)} s: ran_on ${runOn}; ${said}`,
+    );
     await cam.hover(rev, "the Reviewer testing");
     await cam.pause(2500);
-    await rev.locator(".rf-node__tests", { hasText: /^\d+ of \d+ tests?$/ }).waitFor({ timeout: 30 * 60000 });
+    await ctx.offCamera("the Reviewer's tests on Grok", () =>
+      rev.locator(".rf-node__tests", { hasText: /^\d+ of \d+ tests?$/ }).waitFor({ timeout: 45 * 60000 }),
+    );
+    const flags = grok();
+    smoke(ctx, "S4 (6.2's test replays on Grok)", flags.length > 0 && flags.every((f) => /^tvashtr-j[0-9a-f]{6}$/.test(f)), await ctx.shot("tested"), flags.join(", ") || "no Grok CLI seen");
     await cam.pause(1500);
     await history(ctx, { before, after, tests: 60000 });
   },

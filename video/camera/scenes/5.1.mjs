@@ -34,7 +34,7 @@ export default {
       await cam.click(from, "Start from");
       await from.selectOption("pr");
       cam.mark("the PR branch");
-    }
+    } else ctx.note("5.1: no PR to start from — it starts from the run's base branch");
     await cam.pause(1500);
     await ctx.spend("run", "Start run", () => cam.click(d.getByRole("button", { name: "Start run" }), "Start run"));
     await page.getByRole("link", { name: /^From run #\d+$/ }).waitFor({ timeout: 60000 });

@@ -53,9 +53,32 @@ async function hero(api) {
     (g) => !rows.some((r) => r.node_id === eng && r.started_at >= (g.ended_at ?? g.started_at) && parts(r).includes("revision")),
   );
   const given = rows.some((r) => r.node_id === rev && parts(r).includes("check_result"));
+  // The verdict: its Activity line, the trajectory's detail, and the Reviewer's own words — its job's
+  // messages and the REVIEW_VERDICT.json it wrote (the Activity line drops a `reasons` string).
+  const revInv = new Set(rows.filter((r) => r.node_id === rev).map((r) => r.invocation_id));
+  const events = (await get(`/api/spike/run-events/${run}`)).events ?? [];
+  const own = events
+    .filter((e) => revInv.has(e.invocation_id))
+    .map((e) => (e.kind === "message" ? String(e.payload?.text ?? "") : /REVIEW_VERDICT\.json/.test(String(e.payload?.action ?? "")) ? String(e.payload.action) : ""))
+    .filter(Boolean);
+  // The reasons of each REVIEW_VERDICT.json the Reviewer wrote (its verdict proper).
+  const verdictFiles = events
+    .filter((e) => revInv.has(e.invocation_id) && e.kind === "action")
+    .map((e) => {
+      try {
+        const a = JSON.parse(String(e.payload?.action ?? "{}"));
+        if (!/REVIEW_VERDICT\.json$/.test(a.file_path ?? a.path ?? "")) return null;
+        const v = JSON.parse(a.content ?? "{}");
+        return [v.verdict, ...[v.reasons].flat()].filter(Boolean).join(" ");
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean);
   const said = [
     ...lines.filter((l) => l.kind === "verdict").map((v) => [v.text, ...(v.refs?.reasons ?? [])].join(" ")),
     ...rows.filter((r) => r.node_id === rev).map((r) => r.outcome_detail ?? ""),
+    ...own,
   ];
   const asks = said.filter((t) => ASKS.test(t));
   smoke(
@@ -66,8 +89,14 @@ async function hero(api) {
     `failed checks ${failed.length}, lines reached the Engineer ${failed.length - lost.length}; Reviewer given the result ${given}; cites it ${said.some((t) => CITES.test(t))}; asks for output: ${asks[0]?.slice(0, 120) ?? "none"}`,
   );
   smoke(null, "F1 (Activity)", checks.length > 0 && checks.every((c) => c.label === "Tests pass"), `${SHOTS}/3.1/shots/running-reviewer.png`, [...new Set(checks.map((c) => c.label))].join(", "));
-  const own = said.filter((t) => OWN.test(t));
-  smoke(null, "Hero L2 (no verdict names Tvashtr's files)", !own.length, `${SHOTS}/3.1/shots/reviewer-verdict.png`, own.map((t) => t.slice(0, 80)).join(" | "));
+  // L2 on what the verdict says (its line, its detail, its reasons) — not on the sidecar files it writes.
+  const verdicts = [
+    ...lines.filter((l) => l.kind === "verdict").map((v) => [v.text, ...(v.refs?.reasons ?? [])].join(" ")),
+    ...rows.filter((r) => r.node_id === rev).map((r) => r.outcome_detail ?? ""),
+    ...verdictFiles,
+  ];
+  const named = verdicts.filter((t) => OWN.test(t));
+  smoke(null, "Hero L2 (no verdict names Tvashtr's files)", !named.length, `${SHOTS}/3.1/shots/reviewer-verdict.png`, named.map((t) => t.slice(0, 80)).join(" | "));
   // L1/H1 from launch to Done: no "$0.00 +"/"$0.0000" in the run's reads; no Desktop read saying it wasn't
   // all on subscriptions; the Done line names both.
   const money = rec.filter((e) => e.path.startsWith(`/api/runs/${run}`) && MONEY.test(body(e)));

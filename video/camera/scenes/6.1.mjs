@@ -4,8 +4,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { byRole, graph } from "../film.mjs";
-import { heroRun, openRunAgent } from "../flows.mjs";
+import { byRole, graph, must } from "../film.mjs";
+import { heroRun, openRunAgent, smoke, watchGrok } from "../flows.mjs";
 
 const CSV = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "fixtures", "files", "reviewer-tests.csv");
 
@@ -58,6 +58,9 @@ export default {
     const run = await heroRun(api);
     if (!run) throw new Error("6.1 needs a finished run with a Reviewer round (V2: the hero run)");
     const reviewer = byRole(await graph(api, run.team), "reviewer").id;
+    // A rehearsal (or a failed take) leaves its tests behind; Run all would replay them too.
+    const base = `/api/teams/${run.team}/nodes/${reviewer}/tests`;
+    for (const t of must(await api("GET", base), "tests").tests ?? []) must(await api("DELETE", `${base}/${t.id}`), "delete test");
     return { team: run.team, run: run.run_id, reviewer };
   },
   before: async (ctx) => {
@@ -101,24 +104,29 @@ export default {
     const run = tests.getByRole("button", { name: /^Run all \d+$/ });
     await run.waitFor({ timeout: 30000 });
     const n = Number((await run.innerText()).match(/\d+/)[0]);
+    const grok = watchGrok(ctx);
     const t0 = Date.now();
     await ctx.spend("test", "Run all", () => cam.click(run, "Run all"), n);
     // The live smoke (L1, D8): the running line names its subscription from its first second.
     const head = tests.locator(".tt-head");
-    await head.locator(".tt-head__title", { hasText: /^Running/ }).waitFor({ timeout: 60000 });
+    await head.locator(".tt-head__title", { hasText: /^(Running|Waiting to start)/ }).waitFor({ timeout: 60000 });
+    const secs = (Date.now() - t0) / 1000;
     const line = (await head.locator(".tt-head__sub").innerText().catch(() => "")).trim();
-    ctx.note(`running line at ${((Date.now() - t0) / 1000).toFixed(1)} s: ${line}`);
-    await ctx.shot("running");
-    await tests.getByText(/\d+ of \d+ passed/).first().waitFor({ timeout: 15 * 60000 });
-    const failed = tests.getByRole("list", { name: "Tests" }).getByRole("listitem").filter({ hasText: "Failed" }).first();
-    if (await failed.count()) {
-      await cam.click(failed, "a failed test");
-      const wrong = tests.getByRole("button", { name: "The AI check is wrong" });
+    smoke(ctx, "6.1 L1/D8 (the running line names its subscription)", /subscription/.test(line) && !/\$0\.00/.test(line) && secs <= 1.5, await ctx.shot("running"), `${secs.toFixed(1)} s: ${line}`);
+    await ctx.offCamera("the Reviewer's tests on Grok", () => tests.getByText(/\d+ of \d+ passed/).first().waitFor({ timeout: 45 * 60000 }));
+    const flags = grok();
+    smoke(ctx, "S4 (6.1's test replays on Grok)", flags.length > 0 && flags.every((f) => /^tvashtr-j[0-9a-f]{6}$/.test(f)), await ctx.shot("results"), flags.join(", ") || "no Grok CLI seen");
+    // Only the round test has an AI check; a failed row is open by default, so never toggle it shut.
+    const row = tests.getByRole("list", { name: "Tests" }).getByRole("listitem").filter({ hasText: "Names the indicator file" });
+    if (await row.filter({ hasText: "Failed" }).count()) {
+      const toggle = row.locator(".tt-row__toggle");
+      if ((await toggle.getAttribute("aria-expanded")) === "false") await cam.click(toggle, "the round test");
+      const wrong = row.getByRole("button", { name: "The AI check is wrong" });
       if (await wrong.count()) {
         await cam.click(wrong, "The AI check is wrong");
         await page.getByRole("dialog", { name: "Check the AI check" }).waitFor();
         await cam.pause(3000);
       }
-    }
+    } else ctx.note("6.1: the round test shows no failed AI check");
   },
 };
