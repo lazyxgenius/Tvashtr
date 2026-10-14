@@ -12,8 +12,13 @@
  * output as run events → post back ONLY the final text + a git patch. At most one job per provider
  * at a time. `stop()` kills in-flight CLIs and posts no result; `stop({release: true})` (quit, update
  * restart) also hands each job back to the queue so the next launch runs that step again.
+ *
+ * M-desk-7 S4: a Grok job's folder lives in `grokRoot` (outside the home folder) and its CLI runs
+ * under the job's own kernel sandbox profile, proven before it starts (grokLock.cjs); a Grok job
+ * that can't be locked fails closed before any model call.
  */
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 const readline = require("readline");
 const childProcess = require("child_process");
@@ -22,6 +27,7 @@ const { buildChildEnv } = require("../harness/spawnEnv.cjs");
 const { buildCliInvocation, RUNNABLE_PROVIDERS, DISPLAY } = require("./cliCommand.cjs");
 const { createClaudeStreamParser, createGrokStreamParser, cap } = require("./streamEvents.cjs");
 const { createWorkspaceOps } = require("./workspace.cjs");
+const grokLock = require("./grokLock.cjs");
 
 const MAX_PATCH_BYTES = 40 * 1024 * 1024;
 
@@ -94,6 +100,10 @@ function safeId(id) {
  *   onPollOk?: () => void,
  *   resultRetryMs?: number,
  *   snapshotRetryMs?: number,
+ *   grokRoot?: string,
+ *   home?: string,
+ *   platform?: string,
+ *   lockCheckMs?: number,
  * }} deps
  */
 function createRunner({
@@ -112,6 +122,10 @@ function createRunner({
   onPollOk = () => {},
   resultRetryMs = 2000,
   snapshotRetryMs = 5000,
+  grokRoot = path.join(os.tmpdir(), "tvashtr-grok"),
+  home = os.homedir(),
+  platform = process.platform,
+  lockCheckMs = 30000,
 }) {
   let stopped = false;
   let looping = false;
@@ -131,8 +145,11 @@ function createRunner({
   }
 
   async function runJob(job, entry) {
-    const dir = path.join(workRoot, safeId(job.id));
-    const ws = path.join(dir, "ws");
+    const isGrok = job.provider === "grok";
+    const jobName = isGrok ? grokLock.newJobName() : null;
+    let dir = isGrok ? path.join(grokRoot, jobName) : path.join(workRoot, safeId(job.id));
+    let ws = path.join(dir, "ws");
+    let restoreGrok = null;
     let seq = 0;
     const pending = [];
     const emit = (kind, payload) => pending.push({ seq: seq++, kind, payload });
@@ -170,6 +187,12 @@ function createRunner({
     }, flushMs);
     const heartbeatTimer = setInterval(() => void flush(), heartbeatMs);
     try {
+      if (isGrok) {
+        // The job's sandbox profile names real paths (no symlinks: /var → /private/var).
+        fs.mkdirSync(grokRoot, { recursive: true });
+        dir = path.join(fs.realpathSync(grokRoot), jobName);
+        ws = path.join(dir, "ws");
+      }
       fs.mkdirSync(ws, { recursive: true });
       const env = await childEnv();
       const name = DISPLAY[job.provider] || job.provider;
@@ -190,6 +213,26 @@ function createRunner({
       if (!binaryPath) throw new Error(`${name} CLI was not found on this computer`);
       const promptFile = path.join(dir, "prompt.txt");
       fs.writeFileSync(promptFile, String(job.instruction || ""), { mode: 0o600 });
+      let runEnv = env;
+      let sandbox;
+      if (isGrok) {
+        const lock = await grokLock.lockGrokJob({
+          dir,
+          ws,
+          jobName,
+          grokRoot: path.dirname(dir),
+          home,
+          binaryPath,
+          env,
+          spawn,
+          platform,
+          timeoutMs: lockCheckMs,
+        });
+        restoreGrok = lock.restore;
+        runEnv = lock.env;
+        sandbox = lock.profile;
+        if (entry.cancelled || stopped) return;
+      }
       const inv = buildCliInvocation({
         provider: job.provider,
         model: job.model,
@@ -197,11 +240,15 @@ function createRunner({
         workspace: ws,
         promptFile,
         prompt: String(job.instruction || ""),
+        ...(sandbox ? { sandbox } : {}),
       });
       emit("message", {
         source: "tvashtr-desktop",
         text: `Running on this computer with your own ${name}: ${inv.display}`,
       });
+      if (grokLock.LOCKED_LINE[job.provider]) {
+        emit("message", { source: "tvashtr-desktop", text: grokLock.LOCKED_LINE[job.provider] });
+      }
       await flush();
       if (entry.cancelled || stopped) return; // quit while preparing: never start the CLI
 
@@ -210,7 +257,7 @@ function createRunner({
       const exit = await new Promise((resolve) => {
         const child = spawn(inv.cmd, inv.args, {
           cwd: ws,
-          env,
+          env: runEnv,
           stdio: ["pipe", "pipe", "pipe"],
         });
         entry.child = child;
@@ -253,6 +300,7 @@ function createRunner({
         }
       });
       entry.child = null;
+      if (restoreGrok) restoreGrok(); // the repo's own .grok back as it was, before the patch
       if (entry.cancelled || stopped) return; // quit / cancelled: post nothing
 
       if (typeof parser.finish === "function") {
@@ -271,9 +319,11 @@ function createRunner({
       }
       const error = ok
         ? null
-        : st.errorText ||
-          `${name} exited with code ${exit.code}${exit.signal ? ` (${exit.signal})` : ""}` +
-            (stderrTail.length ? `: ${stderrTail.slice(-3).join(" | ")}` : "");
+        : isGrok && grokLock.REFUSED_PROFILE.test(stderrTail.join("\n"))
+          ? grokLock.GROK_LOCK_FAILED
+          : st.errorText ||
+            `${name} exited with code ${exit.code}${exit.signal ? ` (${exit.signal})` : ""}` +
+              (stderrTail.length ? `: ${stderrTail.slice(-3).join(" | ")}` : "");
       emit("message", {
         source: "tvashtr-desktop",
         text: ok
@@ -291,7 +341,8 @@ function createRunner({
     } catch (e) {
       if (!entry.cancelled && !stopped) {
         const msg = e && e.message ? e.message : String(e);
-        log(`[runner] job ${job.id} failed: ${msg}`);
+        const why = e && e.cause ? ` (${e.cause.message || e.cause})` : "";
+        log(`[runner] job ${job.id} failed: ${msg}${why}`);
         emit("error", { error: cap(msg, 2000) });
         await flush();
         try {

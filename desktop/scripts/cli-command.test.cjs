@@ -49,6 +49,29 @@ test("grok: prompt file, streaming-json, file tools only, allow rules, workspace
   assert.ok(!inv.args.includes("--no-auto-update"), "A2: not passed");
 });
 
+test("grok under the job's own profile (M-desk-7 S4): only --sandbox changes; claude ignores it", () => {
+  const base = {
+    model: "xai/grok-4.7",
+    binaryPath: "/Users/me/.grok/bin/grok",
+    workspace: "/tmp/tvashtr-grok-1a2b3c4d/j0123abcd/ws",
+    promptFile: "/tmp/tvashtr-grok-1a2b3c4d/j0123abcd/prompt.txt",
+    prompt: "ignored",
+  };
+  const inv = buildCliInvocation({ ...base, provider: "grok", sandbox: "tvashtr-j0123abcd" });
+  assert.deepEqual(inv.args, [
+    "--prompt-file", base.promptFile, "--output-format", "streaming-json", "-m", "grok-4.7",
+    "--cwd", base.workspace, "--tools", "read_file,search_replace,write,list_dir,grep,todo_write",
+    "--allow", "Edit", "--allow", "Read", "--allow", "Grep", "--sandbox", "tvashtr-j0123abcd",
+  ]);
+  assert.match(inv.display, / --sandbox tvashtr-j0123abcd$/);
+  const claude = buildCliInvocation({ ...base, provider: "claude", model: "anthropic/claude-sonnet-5", sandbox: "tvashtr-j0123abcd" });
+  assert.deepEqual(claude.args, [
+    "-p", "--output-format", "stream-json", "--verbose", "--model", "claude-sonnet-5",
+    "--permission-mode", "acceptEdits", "--permission-prompts", "none",
+    "--restricted", "--safe-mode", "--no-session-persistence",
+  ]);
+});
+
 test("modelForCli strips only the provider prefix", () => {
   assert.equal(modelForCli("claude", "anthropic/claude-opus-5-5"), "claude-opus-5-5");
   assert.equal(modelForCli("grok", "grok/grok-4.7"), "grok-4.7");

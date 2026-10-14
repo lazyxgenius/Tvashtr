@@ -19,7 +19,9 @@ const {
   safeStorage,
   session,
 } = require("electron");
+const crypto = require("crypto");
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 const { createRegistry } = require("./harness/registry.cjs");
 const { createStatusStore } = require("./harness/statusStore.cjs");
@@ -167,9 +169,15 @@ function registerEngineIpc() {
   const binaryCache = new Map();
   const workRoot = path.join(userData, "runner-jobs");
   fs.rmSync(workRoot, { recursive: true, force: true }); // leftovers of a crashed session
+  // M-desk-7 S4: Grok jobs' folders live outside the home folder, so a job's sandbox profile can
+  // deny all of it (grokLock.cjs); one root per app profile, so two Desktops never share one.
+  const profileTag = crypto.createHash("sha256").update(userData).digest("hex").slice(0, 8);
+  const grokRoot = path.join(fs.realpathSync(os.tmpdir()), `tvashtr-grok-${profileTag}`);
+  fs.rmSync(grokRoot, { recursive: true, force: true });
   runner = createRunner({
     api,
     workRoot,
+    grokRoot,
     baseEnv: process.env,
     pathDirs: () => listCandidateDirs({ npmGlobalBin: null }),
     connectedProviders: () => engines.connectedProviders(),

@@ -83,9 +83,13 @@ function job(id, provider, model) {
 
 function runnerFor(api, extra = {}) {
   const workRoot = fs.mkdtempSync(path.join(os.tmpdir(), "tv-runner-"));
+  const grokRoot = fs.mkdtempSync(path.join(os.tmpdir(), "tv-grok-"));
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "tv-home-"));
   const runner = createRunner({
     api,
     workRoot,
+    grokRoot,
+    home,
     baseEnv: LEAKY_BASE_ENV,
     pathDirs: async () => [],
     connectedProviders: () => ["claude", "grok"],
@@ -94,7 +98,7 @@ function runnerFor(api, extra = {}) {
     heartbeatMs: 50,
     ...extra,
   });
-  return { runner, workRoot };
+  return { runner, workRoot, grokRoot, home };
 }
 
 test("a claimed Claude job runs `claude -p` headless and posts final text + a git patch", async () => {
@@ -321,4 +325,119 @@ test("a stop that lands before the CLI starts leaves no CLI running", async () =
   // stop() sat out its whole 5 s cap waiting for the orphan.
   assert.ok(Date.now() - t0 < 3000, `stop took ${Date.now() - t0} ms`);
   assert.equal(api.results.length, 0);
+});
+
+// M-desk-7 S4: a Grok job is locked to its own copy by Grok's kernel sandbox (grokLock.cjs); the fake
+// grok applies the job's profile as Grok documents it (fixtures/grokSandbox.cjs).
+const { GROK_LOCK_FAILED, LOCKED_LINE } = require("../electron/runner/grokLock.cjs");
+
+const texts = (api) => api.events.map((e) => String(e.payload.text ?? e.payload.error ?? ""));
+
+test("S4: a Grok job runs in its own folder outside home, under its own profile, and says it's locked", async () => {
+  const api = fakeApi([job("job-g1", "grok", "xai/grok-4.7")]);
+  const home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "tv-home-")));
+  const { runner, grokRoot } = runnerFor(api, {
+    home,
+    baseEnv: {
+      ...LEAKY_BASE_ENV,
+      FAKE_GROK_PROBES: JSON.stringify([
+        "README.md",
+        `${home}/tvashtr-s4-canary/secret.txt`,
+        `${home}/Library/Application Support/Tvashtr/runner-jobs/claude-job/ws/a.py`,
+        `${fs.realpathSync(os.tmpdir())}/other-app/cache`,
+        "/Volumes/Backup/x",
+        "/private/tmp/x",
+      ]),
+    },
+  });
+  await runner.tickOnce();
+  const r = api.results[0];
+  assert.equal(r.status, "completed", r.error);
+  const lines = texts(api);
+  const run = lines.findIndex((t) => t.startsWith("Running on this computer with your own Grok Build: "));
+  assert.ok(run >= 0, JSON.stringify(lines));
+  assert.match(lines[run], / --sandbox tvashtr-j[0-9a-f]{8}$/, "the job's own profile, not `workspace`");
+  const cwd = lines[run].match(/ --cwd (\S+) /)[1];
+  assert.ok(cwd.startsWith(`${fs.realpathSync(grokRoot)}/j`), cwd);
+  assert.ok(!cwd.startsWith(fs.realpathSync(home)), "outside the home folder");
+  assert.equal(lines[run + 1], LOCKED_LINE.grok);
+  assert.equal(LOCKED_LINE.grok, "Grok Build is locked to this job's copy of the repo — it can't open your other files.");
+  const said = lines.join("\n").split("\n");
+  assert.deepEqual(
+    said.filter((t) => t.startsWith("probe ")).map((t) => t.replace(/^probe .*: /, "")),
+    ["OPENED", "REFUSED", "REFUSED", "REFUSED", "REFUSED", "REFUSED"],
+  );
+  const env = JSON.parse(said.find((t) => t.startsWith("env ")).slice(4));
+  assert.deepEqual(
+    [env.GROK_CLAUDE_MCPS_ENABLED, env.GROK_CURSOR_MCPS_ENABLED, env.GROK_CLAUDE_HOOKS_ENABLED, env.GROK_CURSOR_HOOKS_ENABLED],
+    ["0", "0", "0", "0"],
+  );
+  assert.ok(env.TMPDIR.startsWith(`${path.dirname(cwd)}/tmp`), "its temp files stay in its own folder");
+  assert.match(r.patch, /notes\.md/);
+  assert.doesNotMatch(r.patch, /\.grok|prompt\.txt|lockcheck/, "never Tvashtr's own files");
+  assert.deepEqual(fs.readdirSync(grokRoot), [], "the job's folder is cleaned up");
+});
+
+test("S4: the repo's own .grok/ never applies to the job and comes back unchanged (no .grok in the patch)", async () => {
+  const api = fakeApi([job("job-g2", "grok", "xai/grok-4.7")]);
+  api.snapshot = async () => {
+    const src = fs.mkdtempSync(path.join(os.tmpdir(), "tv-src-"));
+    fs.writeFileSync(path.join(src, "README.md"), "# demo\n");
+    fs.mkdirSync(path.join(src, ".grok", "hooks"), { recursive: true });
+    fs.writeFileSync(path.join(src, ".grok", "config.toml"), '[mcp_servers.x]\ncommand = "touch"\n');
+    fs.writeFileSync(path.join(src, ".grok", "sandbox.toml"), '[profiles.x]\nextends = "off"\n');
+    fs.writeFileSync(path.join(src, ".grok", "hooks", "a.json"), "{}");
+    return childProcess.execFileSync("tar", ["-czf", "-", "-C", src, "."]);
+  };
+  const { runner } = runnerFor(api);
+  await runner.tickOnce();
+  const r = api.results[0];
+  assert.equal(r.status, "completed", r.error);
+  assert.ok(!texts(api).some((t) => /repo's \.grok\/config\.toml is here/.test(t)), "the repo's config was set aside");
+  assert.ok(texts(api).some((t) => /^env /m.test(t)), "the fake grok really ran");
+  assert.match(r.patch, /notes\.md/);
+  assert.doesNotMatch(r.patch, /\.grok/, "the repo's .grok/ is back byte for byte");
+});
+
+test("S4: a Grok that can't be locked fails closed with the exact reason, before any model call", async () => {
+  const api = fakeApi([job("job-g3", "grok", "xai/grok-4.7")]);
+  const { runner, grokRoot } = runnerFor(api, {
+    baseEnv: { ...LEAKY_BASE_ENV, FAKE_GROK_IGNORES_PROFILES: "1" },
+  });
+  await runner.tickOnce();
+  const r = api.results[0];
+  assert.equal(r.status, "failed");
+  assert.equal(r.error, GROK_LOCK_FAILED);
+  assert.equal(
+    GROK_LOCK_FAILED,
+    "Grok Build couldn't lock itself to this job's copy of the repo on this Mac, so Tvashtr didn't start it. " +
+      "Nothing on your Mac was opened, and nothing was used from your Grok plan. Update Grok Build, or switch this step to Claude.",
+  );
+  assert.equal(r.patch, "");
+  assert.ok(!texts(api).some((t) => t.startsWith("Running on this computer")), "the CLI never ran");
+  assert.ok(texts(api).includes(GROK_LOCK_FAILED), "the run log says why");
+  assert.deepEqual(fs.readdirSync(grokRoot), []);
+});
+
+test("S4: off a Mac there is no kernel profile to write, so a Grok job fails closed too", async () => {
+  const api = fakeApi([job("job-g4", "grok", "xai/grok-4.7")]);
+  const { runner } = runnerFor(api, { platform: "linux" });
+  await runner.tickOnce();
+  assert.equal(api.results[0].error, GROK_LOCK_FAILED);
+});
+
+test("S4: a Claude job keeps its arguments and its folder, and says it's locked to its copy", async () => {
+  const api = fakeApi([job("job-c1", "claude", "anthropic/claude-sonnet-5")]);
+  const { runner, workRoot } = runnerFor(api);
+  await runner.tickOnce();
+  assert.equal(api.results[0].status, "completed", api.results[0].error);
+  const lines = texts(api);
+  const run = lines.findIndex((t) => t.startsWith("Running on this computer with your own Claude Code: "));
+  assert.match(
+    lines[run],
+    / -p --output-format stream-json --verbose --model claude-sonnet-5 --permission-mode acceptEdits --permission-prompts none --restricted --safe-mode --no-session-persistence \(prompt on stdin\)$/,
+  );
+  assert.equal(lines[run + 1], LOCKED_LINE.claude);
+  assert.equal(LOCKED_LINE.claude, "Claude Code is locked to this job's copy of the repo — it can't open your other files.");
+  assert.deepEqual(fs.readdirSync(workRoot), []);
 });

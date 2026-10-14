@@ -21,8 +21,41 @@ if (LEAKS.length) {
 const argv = process.argv.slice(2);
 const promptFile = argv[argv.indexOf("--prompt-file") + 1];
 const cwd = argv.includes("--cwd") ? argv[argv.indexOf("--cwd") + 1] : process.cwd();
+
+// M-desk-7: a `--sandbox <name>` that isn't built in is a custom profile, applied as Grok documents
+// it (./grokSandbox.cjs) — or refused before anything runs. FAKE_GROK_IGNORES_PROFILES=1 plays a
+// Grok that runs without it; FAKE_GROK_PROBES (JSON paths) reports what the job could open.
+const { denies, readProfile } = require("./grokSandbox.cjs");
+const sandbox = argv.includes("--sandbox") ? argv[argv.indexOf("--sandbox") + 1] : "off";
+let deny = [];
+if (!["off", "workspace", "devbox", "read-only", "strict"].includes(sandbox) && process.env.FAKE_GROK_IGNORES_PROFILES !== "1") {
+  deny = readProfile(cwd, sandbox);
+  if (deny === null) {
+    process.stderr.write(
+      `warning: sandbox could not be applied: Custom sandbox profile '${sandbox}' not found.\n` +
+        `error: could not apply the '${sandbox}' sandbox profile; see the warning above for the cause. Refusing to start.\n`,
+    );
+    process.exit(1);
+  }
+}
+const opens = (p) => !denies(deny, path.resolve(cwd, p));
+if (!opens(promptFile)) {
+  process.stderr.write(`Error: Failed to read '${promptFile}': Operation not permitted (os error 1)\n`);
+  process.exit(1);
+}
 const prompt = fs.readFileSync(promptFile, "utf8");
+const model = argv[argv.indexOf("-m") + 1];
+if (model === "tvashtr-lock-check") {
+  process.stderr.write(`Error: Couldn't set model '${model}': Invalid params: "unknown model id".\n`);
+  process.exit(1);
+}
 out({ type: "available_commands", tools: ["read_file", "write"] });
+for (const p of JSON.parse(process.env.FAKE_GROK_PROBES || "[]")) {
+  out({ type: "text", data: `probe ${p}: ${opens(p) ? "OPENED" : "REFUSED"}\n` });
+}
+if (fs.existsSync(path.join(cwd, ".grok", "config.toml"))) out({ type: "text", data: "the repo's .grok/config.toml is here\n" });
+const seen = Object.fromEntries(Object.entries(process.env).filter(([k]) => k === "TMPDIR" || k.startsWith("GROK_")));
+out({ type: "text", data: `env ${JSON.stringify(seen)}\n` });
 for (const w of ["The", " user", " wants", " notes"]) out({ type: "thought", data: w });
 for (const w of ["Reading", " the", " task. "]) out({ type: "text", data: w });
 const target = path.join(cwd, "notes.md");

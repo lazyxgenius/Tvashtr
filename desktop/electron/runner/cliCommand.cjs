@@ -25,7 +25,9 @@
  *   --allow Edit --allow Read --allow Grep  headless approvals follow allow rules; anything not
  *                               allowed (terminal, MCP servers, tool discovery) is blocked. (Verified:
  *                               `--permission-mode acceptEdits` alone cancels `write` headless.)
- *   --sandbox workspace         the CLI's own sandbox: writes confined to the job dir
+ *   --sandbox <profile>         the CLI's own kernel sandbox. The runner passes the job's own
+ *                               profile (M-desk-7 S4, grokLock.cjs): reads and writes confined to
+ *                               the job's copy of the repo; `workspace` (writes only) without one
  */
 const path = require("path");
 
@@ -52,10 +54,18 @@ function modelForCli(provider, slug) {
 
 /**
  * @param {{ provider: string, model: string, binaryPath: string, workspace: string,
- *   promptFile: string, prompt: string }} opts
+ *   promptFile: string, prompt: string, sandbox?: string }} opts
  * @returns {{ cmd: string, args: string[], stdin: string|null, display: string }}
  */
-function buildCliInvocation({ provider, model, binaryPath, workspace, promptFile, prompt }) {
+function buildCliInvocation({
+  provider,
+  model,
+  binaryPath,
+  workspace,
+  promptFile,
+  prompt,
+  sandbox = "workspace",
+}) {
   const m = modelForCli(provider, model);
   if (provider === "claude") {
     const args = [
@@ -99,7 +109,7 @@ function buildCliInvocation({ provider, model, binaryPath, workspace, promptFile
       "--allow",
       "Grep",
       "--sandbox",
-      "workspace",
+      sandbox,
     ];
     return {
       cmd: binaryPath,
