@@ -18,8 +18,8 @@ export default {
   film: async (ctx) => {
     const { page, cam } = ctx;
     await cam.hover(page.locator(".rf-gate--approved").last(), "the guardrail passed").catch(() => {});
-    // V2: the run waits at the Escalation gate just before Ship (3 Grok rounds); the replay holds
-    // there until it is approved on camera, as the live take did.
+    // V2b: with the Tests check the Reviewer may approve without an Escalation; if the run waited at
+    // one, the replay holds there until it is approved on camera, as the live take did.
     await watch(
       ctx,
       async () => {

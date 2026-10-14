@@ -2,7 +2,7 @@
 /**
  * The take runner (V1, F8): re-records any scene by name, in any order.
  *
- *   node video/camera/take.mjs 2.4            # setup off camera → pre-roll → film → video/takes/v2/2.4/
+ *   node video/camera/take.mjs 2.4            # setup off camera → pre-roll → film → video/takes/v2b/2.4/
  *   node video/camera/take.mjs 2.4 --dry      # stop before anything that spends a subscription
  *   node video/camera/take.mjs 8.1-web        # one part of a scene
  *   node video/camera/take.mjs list           # the registry
@@ -14,7 +14,7 @@
  * renderer, F5) · web (the local frontend in Chromium, not Desktop mode) · run (scripted; films for
  * real only within the run budget) · mac / motion (not filmed by the camera: video/SCENES.md).
  *
- * Output per take (V2: video/takes/v2/<take>/): take.mp4 (2880×1800, 30 fps), take.json (scene, mode, recording or fixtures,
+ * Output per take (V2b: video/takes/v2b/<take>/): take.mp4 (2880×1800, 30 fps), take.json (scene, mode, recording or fixtures,
  * steps with time/kind/label/position, regions of interest), poster.png, shots/.
  */
 import { execFileSync, spawn } from "node:child_process";
@@ -42,17 +42,19 @@ import { clockScript, loadRecording, recordApi, replayApi, serveFixtures } from 
 
 const VIDEO = path.join(repoRoot, "video");
 const SCENES = path.join(VIDEO, "camera", "scenes");
-// V2 (the real runs): takes in takes/v2, the spend ledger in out/v2 (V1's stay where they are).
-export const TAKES = path.join(VIDEO, "takes", "v2");
+// V2b (the re-film, brief m-desk-7-v2b K5): takes in takes/v2b, the spend ledger and the Desktop
+// lock in out/v2b (V1's and V2's stay where they are).
+export const TAKES = path.join(VIDEO, "takes", "v2b");
 const RECORDINGS = path.join(VIDEO, "recordings");
-const OUT = path.join(VIDEO, "out", "v2");
+const OUT = path.join(VIDEO, "out", "v2b");
 const LEDGER = path.join(OUT, "budget.json");
 export const story = JSON.parse(fs.readFileSync(path.join(VIDEO, "story.json"), "utf8"));
 
-/** V2's real-work budget (brief m-desk-5-v2, Part B): 12 real Desktop runs, 12 test replays, 2
- *  Asks. A compare is 2 runs, a task-set compare 2 per task, save-with-tests one replay per test:
- *  `ctx.spend(kind, label, fn, units)` counts `units` against the kind's cap. */
-const CAPS = { run: 12, test: 12, ask: 2 };
+/** V2b's real-work budget (brief m-desk-7-v2b, Part B; nothing carries over from V2): 14 real
+ *  Desktop runs, 12 test replays, 2 Asks. A compare is 2 runs, a task-set compare 2 per task,
+ *  save-with-tests one replay per test: `ctx.spend(kind, label, fn, units)` counts `units` against
+ *  the kind's cap. */
+const CAPS = { run: 14, test: 12, ask: 2 };
 const BUCKET = { run: "run", compare: "run", task_set: "run", test: "test", save_with_tests: "test", ask: "ask" };
 
 /** --preview's stand-in for the Desktop's preload bridge (the real one exists in Electron). */
@@ -148,9 +150,13 @@ function guards() {
       process.exit(3);
     }
   }
-  const others = execFileSync("ps", ["-axo", "command"], { encoding: "utf8" })
+  // VIDEO_OTHER_DESKTOP_OK=<pid,…>: the operator's own Desktop left open, idle and not signed in to
+  // this stack (checked before each take: no runner polls the film account) — never touched.
+  const ok = (process.env.VIDEO_OTHER_DESKTOP_OK ?? "").split(",").filter(Boolean);
+  const others = execFileSync("ps", ["-axo", "pid=,command="], { encoding: "utf8" })
     .split("\n")
-    .filter((l) => /Tvashtr\.app\/Contents\/MacOS\//.test(l) && !l.includes(repoRoot));
+    .map((l) => l.trim())
+    .filter((l) => /Tvashtr\.app\/Contents\/MacOS\//.test(l) && !l.includes(repoRoot) && !ok.includes(l.split(/\s+/)[0]));
   if (others.length) {
     console.log(`STACK_WAITING another Tvashtr Desktop runs: ${others.join(" | ")}`);
     process.exit(3);
@@ -234,6 +240,13 @@ async function runTake(spec, { dry, keepFrames, preview = false, browser: debugB
   const api = apiSession();
   const login = await api("POST", "/api/auth/login", { email: EMAIL, password: PASSWORD });
   if (login.status !== 200) throw new Error(`sign-in for setup failed: HTTP ${login.status}`);
+  if (process.env.VIDEO_OTHER_DESKTOP_OK && !preview) {
+    // The other Desktop let through guards() must not be this stack's runner: nothing polls yet.
+    // (A previous take's Desktop reads fresh for a little while after it closes: wait that out.)
+    const polled = async () => ((await api("GET", "/api/engines/subscriptions")).json?.subscriptions ?? []).some((x) => x.runner_fresh);
+    for (let i = 0; i < 60 && (await polled()); i += 1) await new Promise((r) => setTimeout(r, 3000));
+    if (await polled()) throw new Error("a runner still polls the film account before this take's Desktop started");
+  }
   const me = login.json;
   const ctx = {
     take: spec.take,
@@ -445,7 +458,7 @@ async function runTake(spec, { dry, keepFrames, preview = false, browser: debugB
       const bucket = BUCKET[kind];
       if (!bucket) throw new Error(`unknown spend kind ${kind}`);
       if (spent(bucket) + units > CAPS[bucket])
-        throw new Error(`budget: ${units} ${bucket}(s) would pass the V2 cap (${spent(bucket)} of ${CAPS[bucket]} used)`);
+        throw new Error(`budget: ${units} ${bucket}(s) would pass the V2b cap (${spent(bucket)} of ${CAPS[bucket]} used)`);
       addSpend({ kind, take: id, label, units });
       ctx.spends.push({ kind, label, units, t: cam.t });
       return fn();
@@ -635,6 +648,10 @@ async function main() {
   const ids = argv.filter((a) => !a.startsWith("--"));
   const scenes = await registry();
   const all = scenes.flatMap(takesOf);
+  if (ids[0] === "budget") {
+    console.log(`LEDGER ${path.relative(repoRoot, LEDGER)}: ${Object.keys(CAPS).map((b) => `${b}=${spent(b)}/${CAPS[b]}`).join(" ")}`);
+    return 0;
+  }
   if (!ids.length || ids[0] === "list") {
     for (const t of all) console.log(`${t.take.padEnd(10)} ${t.mode.padEnd(7)} ${t.title}`);
     return 0;

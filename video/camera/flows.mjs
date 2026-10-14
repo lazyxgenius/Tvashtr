@@ -5,7 +5,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { repoRoot, sleep } from "./desktop.mjs";
+import { processTree, repoRoot, sleep } from "./desktop.mjs";
 
 export const nowBar = (page) => page.getByRole("region", { name: "Now" });
 export const activity = (page) => page.getByRole("region", { name: "Activity" });
@@ -170,6 +170,142 @@ export async function approveWaiting(ctx) {
 const engineerWorking = (page) =>
   nowBar(page).getByRole("button", { name: /^Engineer/ }).filter({ hasText: /Working|Running/ });
 
+export const reviewerWorking = (page) =>
+  nowBar(page).getByRole("button", { name: /^Reviewer/ }).filter({ hasText: /Working|Running/ });
+
+/** V2b's live smoke (brief Part B): one `SMOKE: <check> PASS|FAIL <shot> — <why>` line, echoed and
+ *  kept in take.json's notes. */
+export function smoke(ctx, check, ok, shot = null, why = "") {
+  const where = shot ? path.relative(repoRoot, path.resolve(repoRoot, shot)) : "-";
+  const line = `SMOKE: ${check} ${ok ? "PASS" : "FAIL"} ${where}${why ? ` — ${why}` : ""}`;
+  console.log(line);
+  ctx?.note?.(line);
+  return ok;
+}
+
+export const MONEY = /\$0\.00 \+|\$0\.0000/;
+/** S1 + F2 + L1 on the page as it stands: the toolbar's height (one row is 56 px), the run card
+ *  (RunBanner's .tv-card) inside the bar and clear of every other item, the Done summary's "total
+ *  time" inside the summary on one line, and any "$0.00 +" / "$0.0000". */
+export const layout = (page) =>
+  page.evaluate((money) => {
+    const box = (e) => e.getBoundingClientRect();
+    const bar = document.querySelector('[role="toolbar"][aria-label="Team"]');
+    const card = bar?.querySelector(".tv-card");
+    const others = card
+      ? [...bar.querySelectorAll(".cv-bar__group > *, .cv-right > *")].filter(
+          (e) => !e.contains(card) && !card.contains(e) && e.getClientRects().length,
+        )
+      : [];
+    const hit = (a, z) => a.left < z.right - 1 && z.left < a.right - 1 && a.top < z.bottom - 1 && z.top < a.bottom - 1;
+    const done = document.querySelector("section.lv-done");
+    const stat = [...(done?.querySelectorAll(".lv-done__stat") ?? [])].find((e) => e.textContent.includes("total time"));
+    const words = `${bar?.innerText ?? ""}\n${done?.innerText ?? ""}`;
+    return {
+      toolbar_px: bar ? Math.round(box(bar).height * 10) / 10 : null,
+      card_clear: card
+        ? box(card).top >= box(bar).top - 1 &&
+          box(card).bottom <= box(bar).bottom + 1 &&
+          card.scrollWidth <= card.clientWidth + 1 &&
+          !others.some((e) => hit(box(e), box(card)))
+        : null,
+      total_time_whole: stat
+        ? box(stat).right <= Math.min(box(done).right, innerWidth) + 1 &&
+          box(stat).height < 2 * box(stat.firstElementChild).height
+        : null,
+      money: words.match(new RegExp(money))?.[0] ?? null,
+    };
+  }, MONEY.source);
+
+const CHECK = {
+  "Running the tests…": "running",
+  "Tests passed": "passed",
+  "Tests failed": "failed",
+  "Couldn’t run the tests": "couldnt",
+  "Stopped while running the tests": "stopped",
+};
+/** V2b (G5): each Tests check moment — "Running the tests…", then its result — gets a shot; a
+ *  failed check's lines are opened under its row ("Show output" is the page's own state, no
+ *  request, so a replay opens it itself). */
+export async function testsMoments(ctx, seen) {
+  const { page, cam } = ctx;
+  const rows = activity(page).locator("li.lv-line").filter({ hasText: new RegExp(Object.keys(CHECK).join("|")) });
+  for (const row of await rows.all()) {
+    const what = (await row.locator(".lv-line__what").innerText().catch(() => "")).trim();
+    const lead = Object.keys(CHECK).find((k) => what.startsWith(k));
+    if (!lead) continue;
+    const key = `${await row.locator(".lv-line__time").innerText().catch(() => "")}|${lead}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const show = row.getByRole("button", { name: "Show output", exact: true });
+    if (CHECK[lead] === "failed" && (await show.count())) await cam.click(show, "Show output");
+    else await cam.hover(row.locator(".lv-line__what"), lead);
+    await cam.pause(2500);
+    await ctx.shot(`tests-${seen.size}-${CHECK[lead]}`);
+    ctx.note(`tests: ${what}`);
+  }
+}
+
+/** S4: a run drawer's Activity → Raw log: its job's own lines, the lock line among them. */
+export async function rawLog(ctx, drawer, shot) {
+  const { cam } = ctx;
+  await cam.click(drawer.getByRole("group", { name: "Steps" }).getByRole("button", { name: "Raw log", exact: true }), "Raw log");
+  await drawer.getByText(/is locked to this job's copy of the repo/).first().waitFor({ timeout: 60000 }).catch(() => {});
+  await cam.pause(2000);
+  return ctx.shot(shot);
+}
+
+/** S4 for jobs the server keeps no log of (an Ask, a test replay): the Grok CLIs this Desktop
+ *  starts, read from its own process tree, with their --sandbox. */
+export function watchGrok(ctx) {
+  const seen = new Map();
+  const timer = setInterval(() => {
+    for (const p of processTree(ctx.app.process().pid))
+      if (/--output-format streaming-json/.test(p.command) && !/tvashtr-lock-check/.test(p.command))
+        seen.set(p.pid, p.command.match(/--sandbox (\S+)/)?.[1] ?? "none");
+  }, 1000);
+  return () => {
+    clearInterval(timer);
+    return [...seen.values()];
+  };
+}
+
+/** V2b's in-take smoke on the hero after Done (the record take): S1/F2, F1, L1 on screen, S2. */
+async function heroSmoke(ctx, runId, { running, runShot, doneShot }) {
+  const { page } = ctx;
+  const done = await layout(page);
+  smoke(
+    ctx,
+    "Hero S1+F2 (running toolbar one row, run card clear)",
+    running.length > 0 && running.every((m) => m.toolbar_px !== null && m.toolbar_px <= 57 && m.card_clear),
+    runShot,
+    running.map((m) => `${m.toolbar_px}px card_clear=${m.card_clear}`).join(" · "),
+  );
+  smoke(ctx, "Hero S1 (Done summary keeps “total time”)", done.total_time_whole === true, doneShot);
+  smoke(ctx, "F1 (run view card)", (await gateCard(page, "Tests pass").count()) === 1, doneShot);
+  const money = [...running, done].map((m) => m.money).filter(Boolean);
+  smoke(ctx, "Hero L1/H1 (toolbar chip, banner, Done summary)", !money.length, doneShot, money.join(", "));
+  // S2: the Done line before and after the post-ship memory save, through the node-side session
+  // (a page fetch would land in the recording).
+  const read = async () => (await ctx.api("GET", `/api/runs/${runId}/activity?desktop_target=1`)).json ?? {};
+  const doneOf = (a) => a.lines?.find((l) => l.kind === "done")?.text ?? null;
+  const first = await read();
+  let later = first;
+  for (let i = 0; i < 60 && !later.lines?.some((l) => l.review_memories); i += 1) {
+    await sleep(3000);
+    later = await read();
+  }
+  const memo = later.lines?.find((l) => l.review_memories)?.text ?? "no memory line within 3 min";
+  const shot = await ctx.shot("done-after-memories");
+  smoke(
+    ctx,
+    "Hero S2 (the Done line keeps its time)",
+    Boolean(doneOf(first)) && doneOf(first) === doneOf(later) && first.summary?.elapsed_s === later.summary?.elapsed_s,
+    shot,
+    `${doneOf(first)} → ${doneOf(later)}; ${memo}`,
+  );
+}
+
 /** The run ended: the summary shows (shipped) or a failed callout does. */
 export const runEnded = async (page) =>
   (await summary(page).count()) > 0 ||
@@ -247,6 +383,9 @@ export const MARK = {
   launch: (r) => firstTime(r, /^\/api\/runs$/, null, "POST"),
   gate: (r) => firstTime(r, /\/api\/runs\/[^/]+\/tasks$/, /"prd_approval"/),
   approved: (r) => firstTime(r, /\/activity$/, /Approved with your edits/),
+  // V2b: only a Tests check's Activity line carries refs.result (activity.py _check_line).
+  testsRunning: (r) => firstTime(r, /\/activity$/, /"result":\s*"running"/),
+  tests: (r) => firstTime(r, /\/activity$/, /"result":\s*"(passed|failed|skipped)"/),
   verdict: (r) => firstTime(r, /\/activity$/, /"kind":\s*"verdict"/),
   shipped: (r) => firstTime(r, /\/activity$/, /"kind":\s*"(pr|done)"/),
 };
@@ -260,39 +399,56 @@ export const runPath = (ctx) => `#/teams/${ids(ctx).team}/runs/${ids(ctx).run}`;
  */
 export async function recordedRun(ctx, { folder = null, branch = null, edit = "Keep the change small and tested." } = {}) {
   const { page, cam } = ctx;
+  // V2b's extra views and smoke reads: the record take only (3.2-replay replays V1's proof).
+  const rec = ctx.mode === "record";
   const task = ctx.recorded?.task ?? ctx.state.task;
   const runId = await composeAndLaunch(ctx, { task, repo: ctx.story.repo.full_name, folder, branch });
-  if (ctx.mode === "record") ctx.recordMeta = { team: ctx.state.team, run: runId, task };
+  if (rec) ctx.recordMeta = { team: ctx.state.team, run: runId, task };
   await answerNotifyAsk(ctx, "Not now", { wait: 8000 });
   await cam.roi("now", nowBar(page));
   await cam.roi("activity", activity(page));
-  if (ctx.mode === "record") await ctx.pair("run view");
+  if (rec) await ctx.pair("run view");
   await watch(ctx, async () => (await gateWaiting(page).count()) > 0, { label: "waiting for the spec gate" });
-  if (ctx.mode === "record") await ctx.pair("spec gate waiting");
+  if (rec) await ctx.pair("spec gate waiting");
   await editAndApproveSpec(ctx, edit);
-  if (ctx.mode === "record") await ctx.pair("approved with edits");
+  if (rec) await ctx.pair("approved with edits");
   // G5: the Engineer's drawer while it works — 3.4's replay shows it.
   await watch(ctx, async () => (await engineerWorking(page).count()) > 0, {
     label: "the Engineer working",
     timeout: 20 * 60000,
   });
-  await openRunAgent(ctx, "Engineer");
+  const running = rec ? [await layout(page)] : []; // S1/F2: the running toolbar, no drawer open
+  const eng = await openRunAgent(ctx, "Engineer");
   await cam.pause(6000);
-  if (ctx.mode === "record") await ctx.pair("the Engineer's drawer");
-  await ctx.shot("running"); // the live smoke: the toolbar chip and banner while it runs
+  if (rec) await ctx.pair("the Engineer's drawer");
+  const runShot = await ctx.shot("running"); // the live smoke: the toolbar chip and banner while it runs
+  if (rec) await rawLog(ctx, eng, "engineer-raw-log"); // S4 (Claude); records the run events for 3.4
   await closeDrawer(ctx);
-  // To the end; a gate it waits on (Escalation) is approved on camera (G1).
+  // To the end: each Tests check moment (a failed one's lines opened), the Reviewer's drawer once it
+  // works (S4, Grok; F2 with both subscriptions in the chip), a gate it waits on approved on camera (G1).
+  const seen = new Set();
+  let reviewer = !rec;
   await watch(
     ctx,
     async () => {
+      if (rec) await testsMoments(ctx, seen);
+      if (!reviewer && (await reviewerWorking(page).count())) {
+        reviewer = true;
+        running.push(await layout(page));
+        await ctx.shot("running-reviewer");
+        await rawLog(ctx, await openRunAgent(ctx, "Reviewer"), "reviewer-raw-log");
+        await closeDrawer(ctx);
+      }
       await approveWaiting(ctx);
       return runEnded(page);
     },
     { label: "the run", timeout: 120 * 60000 },
   );
-  if (ctx.mode === "record") await ctx.pair("the end");
+  if (rec) await testsMoments(ctx, seen);
+  if (rec) await ctx.pair("the end");
   await cam.pause(3000);
-  await ctx.shot("done"); // the live smoke: Done line, Done summary, banner, toolbar
+  const doneShot = await ctx.shot("done"); // the live smoke: Done line, Done summary, banner, toolbar
+  if (rec && runId) await heroSmoke(ctx, runId, { running, runShot, doneShot });
   const drawer = await openRunAgent(ctx, "Reviewer");
   await cam.pause(1500);
   await ctx.shot("reviewer-verdict");

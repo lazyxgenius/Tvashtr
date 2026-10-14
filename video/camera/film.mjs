@@ -48,7 +48,7 @@ export async function graph(api, id) {
 
 export const byRole = (g, role) => g.nodes.find((n) => n.role_name === role);
 export const byTitle = (g, title) => g.nodes.find((n) => n.config?.title === title);
-const edge = (g, from, to) => g.edges.find((e) => e.source_node_id === from.id && e.target_node_id === to.id);
+export const edge = (g, from, to) => g.edges.find((e) => e.source_node_id === from.id && e.target_node_id === to.id);
 
 // ---- Toolkit (scene 1.3's results) -----------------------------------------------------------
 
@@ -119,6 +119,14 @@ export const PM_LINE =
 const FIXER_PROMPT =
   "You are the Fixer. The Engineer failed or ran out of time. Read the spec and the Engineer's last notes, make the smallest change that makes the tests in tests/test_indicators.py pass, and say what you changed.";
 
+/** The Tests pass check (story.tests, brief K1) as a gate config, and each gate's description. */
+const TESTS = { gate_kind: "tests_pass", ...story.tests };
+const GATE_DESCRIPTION = {
+  tests_pass: "Runs the repo's tests in Tvashtr's own sandbox before the Reviewer reads the build; a failure goes back to the Engineer.",
+  secret_leak_scan: "Scans the run's workspace for secrets before anything ships.",
+  diff_touches_forbidden_paths: "Stops the run if the change touches servers/.",
+};
+
 /**
  * The film team named `name`, rebuilt from the template up to `upTo` (each stage is the state a
  * scene of chapter 2 starts from; "final" is 2.7's end state). Any team of that name is replaced.
@@ -160,8 +168,10 @@ export async function buildFilmTeam(
     );
   }
   if (at("guardrail")) {
-    // bareGuardrail (2.4): two plain approval gates already wired in; the scene sets their checks
-    // and the Engineer's tools and skills on camera.
+    // V2b (K1): Engineer → Tests pass → (approved) Reviewer, (rejected) back to the Engineer (a
+    // rework loop, limit story.loop.max_rounds); Reviewer → Secret scan → No edits to servers/ → Ship.
+    // bareGuardrail (2.4): the three gates are plain approval gates with their real titles, already
+    // wired in; the scene sets their checks and the Engineer's tools and skills on camera.
     if (!bareGuardrail) {
       const kit = await ensureToolkit(api);
       await patch(eng, {
@@ -170,6 +180,7 @@ export async function buildFilmTeam(
       });
     }
     g = await graph(api, id);
+    const e = byRole(g, "engineer");
     const r = byRole(g, "reviewer");
     const s = byRole(g, "ship");
     const gate = async (cfg, pos) => {
@@ -177,10 +188,7 @@ export async function buildFilmTeam(
         await api("POST", `/api/teams/${id}/nodes`, { node_kind: "gate", title: cfg.title, position: pos }),
         "add gate",
       );
-      const description =
-        cfg.gate_kind === "secret_leak_scan"
-          ? "Scans the run's workspace for secrets before anything ships."
-          : "Stops the run if the change touches servers/.";
+      const description = GATE_DESCRIPTION[cfg.gate_kind];
       if (bareGuardrail) {
         // A plain approval gate with its real title and description: 2.4 sets its check on camera.
         must(await api("PATCH", `/api/teams/${id}/nodes/${n.id}`, { title: cfg.title, description }), "name gate");
@@ -192,23 +200,37 @@ export async function buildFilmTeam(
           title: cfg.title,
           description,
           ...(cfg.paths ? { forbidden_paths: cfg.paths } : {}),
+          ...(cfg.command ? { command: cfg.command } : {}),
         }),
         "set gate",
       );
       return n;
     };
-    const g1 = await gate(story.guardrail.secret_scan, { x: s.position.x, y: 0 });
-    const g2 = await gate(story.guardrail.forbidden, { x: s.position.x + 260, y: 0 });
-    must(await api("POST", `/api/teams/${id}/positions`, { positions: { [s.id]: { x: s.position.x + 520, y: 0 } } }), "move ship");
-    const old = edge(g, r, s);
-    if (old) must(await api("DELETE", `/api/teams/${id}/edges/${old.id}`), "delete reviewer→ship");
-    const add = (from, to, role, label) =>
+    // The check takes the Reviewer's place; the Reviewer, the guardrail and Ship move one step right.
+    const chk = await gate(TESTS, { x: r.position.x, y: r.position.y });
+    const g1 = await gate(story.guardrail.secret_scan, { x: s.position.x + 260, y: 0 });
+    const g2 = await gate(story.guardrail.forbidden, { x: s.position.x + 520, y: 0 });
+    must(
+      await api("POST", `/api/teams/${id}/positions`, {
+        positions: { [r.id]: { x: r.position.x + 260, y: r.position.y }, [s.id]: { x: s.position.x + 780, y: 0 } },
+      }),
+      "make room",
+    );
+    for (const [from, to] of [[e, r], [r, s]]) {
+      const old = edge(g, from, to);
+      if (old) must(await api("DELETE", `/api/teams/${id}/edges/${old.id}`), `delete ${from.role_name}→${to.role_name}`);
+    }
+    const add = (from, to, role, label, extra = {}) =>
       api("POST", `/api/teams/${id}/edges`, {
         source_node_id: from.id,
         target_node_id: to.id,
         role,
         ...(label ? { label } : {}),
+        ...extra,
       }).then((x) => must(x, `edge ${label ?? role}`));
+    await add(e, chk, "forward");
+    await add(chk, r, "branch", "approved");
+    await add(chk, e, "loop_back", null, { loop_limit: story.loop.max_rounds });
     await add(r, g1, "branch", "approved");
     await add(g1, g2, "branch", "approved");
     await add(g1, stopNode, "branch", "rejected");
@@ -243,17 +265,17 @@ export async function buildFilmTeam(
     must(
       await api("POST", `/api/teams/${id}/edges`, {
         source_node_id: fixer.id,
-        target_node_id: byRole(g, "reviewer").id,
+        target_node_id: byTitle(g, story.tests.title).id,
         role: "forward",
       }),
-      "fixer → reviewer",
+      "fixer → tests pass",
     );
   }
   if (at("final")) {
     g = await graph(api, id);
     // A clean left-to-right layout (what Tidy does on camera in 2.7).
     const t = (title) => byTitle(g, title);
-    const main = [byRole(g, "pm"), byRole(g, "domain_query"), byRole(g, "prd_gate"), byRole(g, "engineer"),
+    const main = [byRole(g, "pm"), byRole(g, "domain_query"), byRole(g, "prd_gate"), byRole(g, "engineer"), t(story.tests.title),
       byRole(g, "reviewer"), t(story.guardrail.secret_scan.title), t(story.guardrail.forbidden.title), byRole(g, "ship")].filter(Boolean);
     const positions = {};
     main.forEach((n, i) => (positions[n.id] = { x: i * 250, y: 0 }));
@@ -262,7 +284,7 @@ export async function buildFilmTeam(
     positions[byRole(g, "stop").id] = { x: x(byRole(g, "prd_gate")), y: 230 };
     positions[byRole(g, "escalation_gate").id] = { x: x(eng), y: 230 };
     const fixer = byTitle(g, story.agents.fixer.title);
-    if (fixer) positions[fixer.id] = { x: x(byRole(g, "reviewer")), y: 430 };
+    if (fixer) positions[fixer.id] = { x: x(t(story.tests.title)), y: 430 };
     must(await api("POST", `/api/teams/${id}/positions`, { positions }), "positions");
     must(
       await api("PUT", `/api/teams/${id}/layout`, {
@@ -270,7 +292,7 @@ export async function buildFilmTeam(
           {
             id: "g-loop",
             label: story.loop.group,
-            node_ids: [byRole(g, "engineer").id, byRole(g, "reviewer").id],
+            node_ids: [byRole(g, "engineer").id, t(story.tests.title).id, byRole(g, "reviewer").id],
             folded: false,
           },
         ],

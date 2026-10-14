@@ -2,7 +2,7 @@
 // Start the stack with QUIET=20 STALLED=60 FAIL=180. The Mac notification is a MAC shot.
 import { execFileSync } from "node:child_process";
 import { filmTeam } from "../film.mjs";
-import { activity, answerNotifyAsk, composeAndLaunch, editAndApproveSpec, gateWaiting, nowBar, watch } from "../flows.mjs";
+import { activity, answerNotifyAsk, composeAndLaunch, editAndApproveSpec, gateWaiting, nowBar, smoke, watch } from "../flows.mjs";
 import { processTree } from "../desktop.mjs";
 
 const state = (page, word) => nowBar(page).getByRole("button", { name: /^Engineer/ }).filter({ hasText: word });
@@ -24,10 +24,11 @@ export default {
     await watch(ctx, async () => (await state(page, "Working").count()) > 0, { label: "the Engineer working" });
     // Pause the Engineer's CLI — found only through this Desktop's own process tree (rule 8).
     // The runner claims the job a few seconds after "Working"; both CLIs run with --output-format
-    // (Claude takes its prompt on stdin, so its command line has no runner-jobs/ path).
+    // (Claude takes its prompt on stdin, so its command line has no runner-jobs/ path). V2b: only
+    // Claude's `stream-json` — never a Grok job or its lock check (`streaming-json`).
     let cli = null;
     for (let i = 0; i < 90 && !cli; i++) {
-      cli = processTree(app.process().pid).find((p) => /\s--output-format\s/.test(p.command));
+      cli = processTree(app.process().pid).find((p) => /\s--output-format stream-json\s/.test(p.command));
       if (!cli) await page.waitForTimeout(1000);
     }
     if (!cli) throw new Error("no Desktop job CLI in the Electron process tree after 90 s");
@@ -41,12 +42,14 @@ export default {
       }
       await cam.hover(activity(page).locator(".lv-pin__box").first(), "the failed callout");
       await cam.pause(3000);
-      // The live smoke (H1, H2): the failure line and the callout's "Next:" in the take's notes.
-      await ctx.shot("failed");
+      // The live smoke (H1, H2): the failure line and the callout's "Next:".
+      const failedShot = await ctx.shot("failed");
       const said = async (loc) => (await loc.innerText()).replace(/\s+/g, " ").trim();
-      ctx.note(`callout: ${await said(activity(page).locator(".lv-pin__box").first())}`);
-      for (const l of await activity(page).locator(".lv-line__what").all())
-        if (/subscription/.test(await l.innerText())) ctx.note(`line: ${await said(l)}`);
+      const callout = await said(activity(page).locator(".lv-pin__box").first());
+      const ends = (await activity(page).locator(".lv-line__what").filter({ hasText: /^Failed after/ }).allInnerTexts()).map((t) => t.trim());
+      const end = ends.pop() ?? "";
+      smoke(ctx, "4.1 H1 (the failure line)", / · on your Claude subscription$/.test(end) && !/\$\d/.test(end), failedShot, end || "no “Failed after” line");
+      smoke(ctx, "4.1 H2 (Next: resume …)", /Next: resume from Engineer, round 1\. Tvashtr skips the work that is done/.test(callout), failedShot, callout);
     } finally {
       try {
         execFileSync("kill", ["-TERM", String(cli.pid)]);

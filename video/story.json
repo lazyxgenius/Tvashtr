@@ -35,6 +35,10 @@
     "secret_scan": { "title": "Secret scan", "gate_kind": "secret_leak_scan" },
     "forbidden": { "title": "No edits to servers/", "gate_kind": "diff_touches_forbidden_paths", "paths": ["servers/**"] }
   },
+  "tests": {
+    "title": "Tests pass",
+    "command": "pip install -q -e '.[dev]' 'mcp<2' -e servers/kline_cache && python -m pytest -q tests"
+  },
   "loop": { "max_rounds": 3, "group": "Review loop" },
   "budget_usd": 5,
   "domain": {

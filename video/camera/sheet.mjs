@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
- * The review files, from the takes on disk (V2: the newest take of each scene, v2 over v1):
- *   node video/camera/sheet.mjs contact-sheet  → video/out/v2/contact-sheet.png (one labelled frame per take)
- *   node video/camera/sheet.mjs preview <ch>   → video/out/v2/ch<ch>-preview.mp4 (the chapter's takes joined, 1920×1080)
+ * The review files, from the takes on disk (V2b: the newest take of each scene, v2b over v2 over v1):
+ *   node video/camera/sheet.mjs contact-sheet  → video/out/v2b/contact-sheet.png (one labelled frame per take)
+ *   node video/camera/sheet.mjs preview <ch>   → video/out/v2b/ch<ch>-preview.mp4 (the chapter's takes joined, 1920×1080)
  *   node video/camera/sheet.mjs ch2-preview    → video/out/v1/ch2-preview.mp4 (V1's)
- *   node video/camera/sheet.mjs pairs <replay take> → video/out/v2/pairs-<take>.png (live | replay, side by side)
- *   node video/camera/sheet.mjs scenes-table   → SCENES.md's status table (V1 and V2 columns)
+ *   node video/camera/sheet.mjs pairs <replay take> → video/out/v2b/pairs-<take>.png (live | replay, side by side)
+ *   node video/camera/sheet.mjs scenes-table   → SCENES.md's status table (V1, V2 and V2b columns)
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -14,12 +14,15 @@ import { ffmpeg, probe } from "./capture.mjs";
 import { repoRoot } from "./desktop.mjs";
 
 const TAKES_DIR = (v) => path.join(repoRoot, "video", "takes", v);
-const OUT = path.join(repoRoot, "video", "out", "v2");
+/** Oldest first: a newer version wins among equals; the last is the one being filmed. */
+const VERSIONS = ["v1", "v2", "v2b"];
+const CUR = VERSIONS.at(-1);
+const OUT = path.join(repoRoot, "video", "out", CUR);
 fs.mkdirSync(OUT, { recursive: true });
 
 const order = (id) => id.split(/[.-]/).map((x) => (/^\d+$/.test(x) ? Number(x).toString().padStart(3, "0") : x)).join(".");
-/** The takes of one version (v1 | v2) on disk, in scene order; each knows its folder. */
-function takes(v = "v2") {
+/** The takes of one version (v1 | v2 | v2b) on disk, in scene order; each knows its folder. */
+function takes(v = CUR) {
   const dir = TAKES_DIR(v);
   if (!fs.existsSync(dir)) return [];
   return fs
@@ -30,11 +33,12 @@ function takes(v = "v2") {
     .sort((a, b) => order(a.take).localeCompare(order(b.take)));
 }
 /** The newest take of each take id (a rehearsal in `<take>-dry` counts as its take's): a filmed clip over
- *  a rehearsal over a failed take, V2 over V1 among equals — a V2 rehearsal never replaces a V1 clip. */
-const rank = (t) => (/-dry$/.test(t.take) ? 1 : t.status === "ok" ? 2 : 0) + (t.v === "v2" ? 0.5 : 0);
+ *  a rehearsal over a failed take, a newer version over an older among equals — a newer rehearsal
+ *  never replaces an older clip. */
+const rank = (t) => (/-dry$/.test(t.take) ? 1 : t.status === "ok" ? 2 : 0) + VERSIONS.indexOf(t.v) * 0.25;
 function newest() {
   const by = new Map();
-  for (const t of [...takes("v1"), ...takes("v2")]) {
+  for (const t of VERSIONS.flatMap((v) => takes(v))) {
     const id = t.take.replace(/-dry$/, "");
     if (!by.has(id) || rank(t) > rank(by.get(id))) by.set(id, t);
   }
@@ -65,10 +69,10 @@ async function contactSheet() {
     h1{font:600 22px Georgia,serif;margin:0 0 16px} .g{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
     figure{margin:0;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px #0002}
     img{width:100%;display:block;aspect-ratio:16/10;object-fit:cover} figcaption{padding:8px 10px} span{color:#555}
-  </style><h1>Tvashtr demo film — the newest take of every scene, V2 (${list.length})</h1><div class="g">${cells}</div>`;
+  </style><h1>Tvashtr demo film — the newest take of every scene, V2b over V2 over V1 (${list.length})</h1><div class="g">${cells}</div>`;
   const file = path.join(OUT, "contact-sheet.png");
   await htmlShot(html, file);
-  console.log(`CONTACT_SHEET: ${path.relative(repoRoot, file)} (${list.length} takes: ${list.filter((t) => t.v === "v2").length} V2, ${list.filter((t) => t.v === "v1").length} V1)`);
+  console.log(`CONTACT_SHEET: ${path.relative(repoRoot, file)} (${list.length} takes: ${[...VERSIONS].reverse().map((v) => `${list.filter((t) => t.v === v).length} ${v.replace("v", "V")}`).join(", ")})`);
 }
 
 /** A record take's own scene is its first minute (the run it records is shown by its replays). */
@@ -87,7 +91,7 @@ function chapterPreview(ch, out = path.join(OUT, `ch${ch}-preview.mp4`), pick = 
   const cat = `${list.map((_, i) => `[v${i}]`).join("")}concat=n=${list.length}:v=1:a=0[out]`;
   ffmpeg([...inputs, "-filter_complex", `${fit};${cat}`, "-map", "[out]", "-c:v", "libx264", "-crf", "18", "-preset", "medium", "-pix_fmt", "yuv420p", "-movflags", "+faststart", out]);
   const dur = Number(probe(out).format.duration).toFixed(1);
-  console.log(`PREVIEW: ${path.relative(repoRoot, out)} ${dur}s (${list.map((t) => `${t.take}${t.v === "v1" ? " [v1]" : ""}`).join(", ")})`);
+  console.log(`PREVIEW: ${path.relative(repoRoot, out)} ${dur}s (${list.map((t) => `${t.take}${t.v === CUR ? "" : ` [${t.v}]`}`).join(", ")})`);
 }
 
 async function pairs(replayTake) {
@@ -118,11 +122,11 @@ async function pairs(replayTake) {
   console.log(`  differ: ${cls.map((c, i) => (c === "differs" ? i + 1 : null)).filter(Boolean).join(", ")}`);
 }
 
-/** SCENES.md's status table: one row per registry take, its V1 and V2 status side by side. */
+/** SCENES.md's status table: one row per registry take, its status in each version side by side. */
 async function scenesTable() {
   const { registry, takesOf } = await import("./take.mjs");
   const CH = { 0: 20, 1: 55, 2: 70, 3: 90, 4: 45, 5: 30, 6: 75, 7: 30, 8: 25 };
-  const disk = { v1: Object.fromEntries(takes("v1").map((t) => [t.take, t])), v2: Object.fromEntries(takes("v2").map((t) => [t.take, t])) };
+  const disk = Object.fromEntries(VERSIONS.map((v) => [v, Object.fromEntries(takes(v).map((t) => [t.take, t]))]));
   const status = (t, v) => {
     const real = disk[v][t.take];
     const dry = disk[v][`${t.take}-dry`];
@@ -133,11 +137,14 @@ async function scenesTable() {
     if (real) return real.status === "ok" ? `clip (${real.mode})${real.duration_s ? ` ${real.duration_s} s` : ""}` : `${real.status}: ${err.slice(0, 80)}`;
     return dry.status === "dry" ? `rehearsed · stopped before “${dry.stopped_before}”` : dry.status === "ok" ? `rehearsed (${dry.mode.replace(" (dry)", "")}, no spend)` : `rehearsal ${dry.status}: ${err.slice(0, 80)}`;
   };
-  const rows = ["| take | script | V1 | V2 | scene budget · chapter budget |", "|---|---|---|---|---|"];
+  const rows = [
+    `| take | script | ${VERSIONS.map((v) => v.replace("v", "V")).join(" | ")} | scene budget · chapter budget |`,
+    `|${"---|".repeat(VERSIONS.length + 3)}`,
+  ];
   for (const sc of await registry())
     for (const t of takesOf(sc)) {
       const ch = Number(t.id.split(".")[0]);
-      rows.push(`| ${t.take} | \`scenes/${t.id}.mjs\` (${t.mode}) | ${status(t, "v1")} | ${status(t, "v2")} | ${t.budget ?? "—"} s · ch ${ch}: ${CH[ch]} s |`);
+      rows.push(`| ${t.take} | \`scenes/${t.id}.mjs\` (${t.mode}) | ${VERSIONS.map((v) => status(t, v)).join(" | ")} | ${t.budget ?? "—"} s · ch ${ch}: ${CH[ch]} s |`);
     }
   console.log(rows.join("\n"));
 }
