@@ -94,9 +94,11 @@
   background: var(--red-500, #c0453a);
 }
 /* M-desk-7 F2: the toolbar keeps one row at 1440×900 with long names. The left group's items share
-   the bar's own line, and the team name and the right group give way (an ellipsis, the full text
-   on hover) before anything wraps; S1's wrap stays the fallback for narrower windows. A toolbar
-   that already fits keeps every item where it was. The run view's toolbar is a little tighter. */
+   the bar's own line, and the team name (and, in the run view, the spend in the right group) give
+   way (an ellipsis, the full text on hover) before anything wraps; S1's wrap stays the fallback
+   for narrower windows. A toolbar that already fits keeps every item where it was. The run view's
+   toolbar is a little tighter; the authoring toolbar's right group (Compare, Team file) never
+   shrinks under its buttons — it wraps instead. */
 .cv-bar[role="toolbar"] {
   column-gap: 12px;
   justify-content: flex-start;
@@ -108,12 +110,6 @@
   flex: 1 1 40px;
   max-width: max-content;
   min-width: 0;
-}
-.cv-bar[role="toolbar"] > .cv-right {
-  flex: 1 1 130px;
-  max-width: max-content;
-  min-width: 0;
-  justify-content: flex-end;
 }
 .cv-spend {
   min-width: 0;
@@ -130,6 +126,10 @@
   column-gap: 8px;
 }
 .cv-bar--run[role="toolbar"] > .cv-right {
+  flex: 1 1 130px;
+  max-width: max-content;
+  min-width: 0;
+  justify-content: flex-end;
   gap: 10px;
 }
 .cv-error {
