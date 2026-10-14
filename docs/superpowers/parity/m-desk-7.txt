@@ -1,0 +1,11 @@
+M-desk-7 design parity — boards against the built app (feat/m-desk-7), scripts/design-parity/scenarios/desk7.mjs.
+Runs https://claude.ai/artifact/A5nA1F7fAMcLCqLQ1sxQn2 v20 (1791962550-2142): Live-RunningLongDesktop, Live-RunningLong, Prob-GrokLockDesktop (new).
+Team Setup https://claude.ai/artifact/Uzz8uBWdY9jv5teJcLwvBX v25 (1791961039-1872): Chk-TestsPass (the Tests pass check's Title reads "Tests pass", F1).
+F2: the running toolbar at 1440x900 with the film's strings is one 56px row (desk7.mjs logs TOOLBAR …; 120.8px on 69d5a5b9).
+
+Live-RunningLongDesktop vs Live-RunningLongDesktop-desktop: matched 77/86 design items · 0 with size/type drift · 23 only moved · 9 not found in app
+Live-RunningLong vs Live-RunningLong-web: matched 76/85 design items · 0 with size/type drift · 23 only moved · 9 not found in app
+Prob-GrokLockDesktop vs Prob-GrokLockDesktop-desktop: matched 69/82 design items · 0 with size/type drift · 48 only moved · 13 not found in app
+Chk-TestsPass vs Chk-TestsPass-desktop: matched 46/56 design items · 0 with size/type drift · 14 only moved · 10 not found in app
+
+"Not found in app": the base boards' canvas cards and Activity rows are the designs' own drawings of run #12 (M-desk-6 kept them so); every toolbar, Now bar and callout item matches.

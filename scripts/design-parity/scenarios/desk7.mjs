@@ -7,6 +7,7 @@
 // Each render logs `TOOLBAR <name> <height>px` — one row is 56px.
 import desk4 from "./desk4.mjs";
 import desk6 from "./desk6.mjs";
+import { TEAM_ID } from "./panel-fixtures.mjs";
 import { DOCS } from "./panel-runs-docs.mjs";
 import { clockAt, RUN_ID } from "./runs-fixtures.mjs";
 
@@ -133,4 +134,14 @@ const s4 = measured({
   }),
 });
 
-export default [...running, s4];
+// ---- F1: the Tests pass check titled by its type (Team Setup › Chk-TestsPass) ----
+const chk = from(desk6, "Chk-TestsPass-desktop");
+const f1 = {
+  ...chk,
+  routes: edit(chk.routes, `GET /api/teams/${TEAM_ID}/graph`, (g) => {
+    for (const n of g.nodes) if (n.id === "n-chk") n.config = { ...n.config, title: "Tests pass" };
+    return g;
+  }),
+};
+
+export default [...running, s4, f1];
