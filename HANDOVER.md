@@ -1,87 +1,203 @@
-# HANDOVER — for Tvashtr-82
+# HANDOVER — Tvashtr
 
-> Read this **and** `PROJECTPLAN.md` (§1 vision, §15 register, §17 log — start with the **Tvashtr-81** entry at the end of §17) before doing anything. You are the ARCHITECT/PLANNER; ALL implementation goes through a Claude Code `/goal`. The disk audit is your control point.
+> Written by **Tvashtr Sidechat-22**, closing out on 2026-10-13 (~11:40 IST).
+> Read this, then `PROJECTPLAN.md`: the header line (line 6), the §15 block "Sidechat-22 register"
+> (just above §16) and the §17 entry "Tvashtr Sidechat-22" (the last entry, just above §18). Skip the
+> giant archived banner (line 9). Older context: the Sidechat-21/-20 registers in §15 and their §17 entries.
+> Briefs this chat wrote: `prompts/video-v1.md` (updated), `prompts/m-desk-5-v2.md`, `prompts/m-desk-6.md`
+> (each with a `.launch.md`). The film's own docs: `video/README.md`, `video/SCENES.md` (on `main`).
 
 ---
 
-## §1 — Where we are
+## 1. Where we are (checked on disk at ~11:35 IST, 10-13)
 
-- **`main` @ `e2e4a59`** (verified off `.git/refs/heads/main`). **NO code shipped in Tvashtr-81** — it was a docs + diagnosis session.
-- **alembic head `0031`**. Floors **1114 backend / 409 vitest**. LIVE at `tvashtr.fly.dev`.
-- **Hosted GitHub repo listing now WORKS** for the operator (both localhost and `.fly.dev`) — but only because they re-authenticated. See §3.
-- **The hosted loop got further than ever on a real user run:** repo picked → PM wrote a PRD → operator approved the gate → **Engineer FAILED**. That failure is your first job.
+- **Local `main` = `dac9afc4`**; `origin/main` = `e30b8bd9` (Fly v44, Desktop 0.25.0). Alembic head
+  **0053**, freeze hook 0001–0053. `team_run.py` blob on `main` `94eda1bb9fbb`; DBOS app version locally
+  `3011d7ac…`, production's fly-mode set `c7320dd5…`.
+- **Push guard ON:** `remote.origin.pushurl = DISABLED-no-push-during-video-work`. The operator unsets it
+  when he ships: `git config --local --unset remote.origin.pushurl`.
+- **Merged this chat (each verified on disk, all fast-forwards):** M-desk-4 `268ed099` → video V1
+  `1bf725be` → M-desk-5 `6b63af86` → video V2 `dac9afc4`.
+- **Handed to the operator at closeout — merge M-desk-6** (disk-checked: scope, invariants, the
+  `team_run.py` diff; the report's tests not re-run; its live screenshots sit in the session's scratchpad,
+  outside the connected folder):
+  ```
+  cd /Users/adimac/Desktop/Tvashtr
+  git checkout main
+  git merge --ff-only feat/m-desk-6
+  git log --oneline -1
+  ```
+  Expect `Updating dac9afc4..77f4b4f7`, `Fast-forward`, `36 files changed, 1992 insertions(+), 60
+  deletions(-)`, then `77f4b4f7 fix(backend): a failed Tests check names where the walk sends it, through a
+  Rework loop too (M-desk-6 T1)`. **First thing to check:** did he run it? (`git rev-parse main` =
+  `77f4b4f7…`; `.git/logs/HEAD` last line "merge feat/m-desk-6: Fast-forward".)
+- **The main checkout is free** (on `main`, nothing running; the M-desk-6 session ended in the safe state).
+  The only container is `tvashtr-postgres`.
 
-## §2 — Pending housekeeping (state once, don't nag)
+| Branch | Tip | State |
+|---|---|---|
+| `feat/m-desk-6` | `77f4b4f7` | Ready → merge (handed over) |
+| `video/v1-pairs-wip` | `9d1b6414` | Parked V1 experiment — never merge; delete at cleanup |
+| merged, keep until cleanup | — | `video/v0-toolchain`, `fix/desktop-subs-gate-current-ui`, `feat/m-desk-routes`, `feat/m-desk-2`, `feat/m-desk-3`, `feat/m-desk-4`, `fix/dbos-scheduled-latest-version`, `video/v1-camera`, `feat/m-desk-5`, `video/v2-runs` |
+| Code-tab helpers | — | `claude/m-desk-routes-043046`, `claude/tvashtr-implementation-c32e22` (+ any `claude/*` from M-desk-4's worktree) — delete at cleanup |
 
-The **doc work is UNCOMMITTED**: `PROJECTPLAN.md` (the completed Tvashtr-80 entry, the new Tvashtr-81 entry, §15 additions, the new header date field) + this `HANDOVER.md`.
-```
-cd /Users/adimac/Desktop/Tvashtr
-git add PROJECTPLAN.md HANDOVER.md
-git commit -m "docs(tvashtr-80/81): complete as-built + Tvashtr-81 findings, §15 register, header date field"
-```
-(Explicit paths only — never `-A`.) Blocks nothing.
+- **Worktrees (Mac paths; the VM calls them "prunable" — never prune from the VM):**
+  `.claude/worktrees/m-desk-routes-043046` (`feat/m-desk-2`), `…/tvashtr-implementation-c32e22`
+  (`feat/m-desk-3`), `…/tvashtr-implementation-268513` (`feat/m-desk-4`, holds `artifacts/m-desk-4/`).
+  Remove after the ship, with the operator.
+- **Uncommitted on `main`'s working tree (architect-owned):** `HANDOVER.md`, `PROJECTPLAN.md`,
+  `prompts/CLI-RULES.md` (an old operator edit from 2026-09-26: the revamp-e2e Ship Protocol exception —
+  harmless history; commit as is), and ~45 untracked `prompts/*.md` from this and earlier chats. Commit
+  them in one docs closeout on `main` once M-desk-6 is merged and no session holds the checkout (give the
+  operator `git add HANDOVER.md PROJECTPLAN.md prompts/` + a `docs:` commit; check `git status` output he
+  pastes shows only those paths). `STATE.md` stays ignored.
+- **Throwaway databases left:** `tvashtr_gate_desk5`, `tvashtr_gate_desk6` (+ older `tvashtr_gate_desk*`,
+  `tvashtr_desk*`). The film DB `tvashtr_film` holds V2's runs. Drop the gate/desk ones at cleanup.
+- **trade_mcp PRs opened by sessions (none merged; close at cleanup):** #50 (V0), #51 (V1 proof), #52
+  (M-desk-5 proof), #53 (hero, Hull MA), #54 (TRIX resume), #55 (DEMA), #56 (M-desk-6 proof, TEMA).
 
-**Also open, stated once:** the commented `x-api-key=` line in `.env` still holds a real-looking `xai-…` key in plaintext. Inert for `make`, readable by any agent that opens the file. Rotate whenever convenient.
+## 2. Your job (Sidechat-23), in order
 
-## §3 — Your job (Tvashtr-82), in order
+### 2a. Confirm the M-desk-6 merge, then the docs closeout commit
+Check on disk (§1). If not run, hand it again (one step, with what the verify line prints). Then the docs
+commit (one step).
 
-### FIRST — diagnose the Engineer failure (run `6fd2c911`)
+### 2b. Rule on S4 — the Grok CLI reads outside its job copy (one design question)
+Evidence (M-desk-6 report): V2 saw Grok read Tvashtr's source, `~/Desktop/trade_mcp` and `~/.grok/sessions`.
+Grok Build's `--sandbox workspace` confines writes only; `--sandbox strict` (reads: the CWD + system paths)
+refuses to start on a Mac with Docker Desktop ("could not resolve runtime-socket deny path
+/var/run/docker.sock: endpoint is a symlink … Refusing to start"); `--allow 'Read(<job>/**)'` does not gate
+reads; custom profiles need a `sandbox.toml`. Claude's `--restricted` confines its file tools (confirmed).
+The session's proposal: the Desktop runner writes a job-local `.grok/sandbox.toml` profile and passes
+`--sandbox <it>` (prompt file inside the job dir) — a `cliCommand.cjs` (+ maybe `runner.cjs`) change, desktop
+tests, a Desktop release; also report the symlink refusal to xAI. Decide from the vision (users' private
+files on their own Mac are at stake; `~/.grok/sessions` can hold their other conversations), pair it with the
+UX (what a Desktop user sees: nothing, or a Grok card note if confinement can't be guaranteed), then brief it
+(it can join the film follow-up session as its Part A, the pattern the operator liked).
 
-The operator's first real hosted run on localhost: `deepseek/deepseek-chat`, **Edits on**, OpenHands engine, cost **$0.0036**, branch `tvashtr/6fd2c911-ebb8-4047-9a7d-921d1c91972b`, node status **Failed**.
+### 2c. The film follow-up (V2b) — and one ruling first
+Owed from V2: **6.1** (tests from a round + CSV + the AI check — no checks key locally → sample, G7), **6.2**
+(live, Save as v2), **6.3** (compare v1/v2 + the "Indicators" set + Restore — with the **H4 queued-lane, H5
+turns and D8 smoke**), the **2.7 re-take** (its test line's first second), ch5/ch6 previews. Budget left from
+V2 didn't carry over — set a new one. **Ruling to make first:** re-film **2.4** (add the Tests check on
+camera) and **chapter 3** (hero + replays + 3.7 + 0.1) with the Tests check? Recommendation: yes — the
+story gets better and cheaper (live proof: Tests failed → rework → 661 passed → Reviewer approved round 1,
+"Done in 6m 50s", vs ~35 min + Escalation), and the storyboard's "round 1 back, round 2 approved" becomes
+real. Chapters 4–5 can stay (honest as filmed) or re-take later. Also decide whether 6.3's lanes should use
+the Tests check (they'd stop escalating, so 6.3 can run unattended).
 
-What is already ruled out by observation:
-- **Not credentials** — the run started, so the DeepSeek key resolved.
-- **Not sandbox boot** — the Activity feed shows real `file_editor` actions and observations (all stamped 13:48:39).
-- **Not context overflow** — Round 1 totalled **1,029 / 110,000** tokens (node_prompt 97, idea 10, spec 441, grounding 139, worker_protocol 342).
-- The last logged action reads **"All edits are com…"** — so the agent believed it had finished, and the node failed at or after that point. Suspect the post-agent path (outcome/verdict parsing, the ship step, or diff persistence), not the agent loop.
+### 2d. Ship (operator-approved; after V2b's 6.3 smoke, or earlier if the operator chooses)
+One ship for M-desk-routes + M-desk-2 + M-desk-3 + M-desk-4 + the DBOS cron fix + M-desk-5 + M-desk-6 (+ S4
+if done): unset the push guard → push → Neon snapshot (check the branch count; the plan's limit is 10,
+trimmed to 3 on 10-03) → **drain live production runs** (M-desk-6's gate-arm change; replay-safe but drain
+anyway) → `fly deploy` (runs 0053) → a `desktop-v*` tag (frontend changed) → smoke. Production steps only on
+the operator's pasted approval; a deploying session runs in **Auto** mode, never bypass. The DBOS app
+versions are unchanged (`c7320dd5` in production), so queued sweeps survive.
 
-**Ask the operator for the backend terminal output around 13:48:39** — they had `run backend` open; the real exception is there and is not visible in the UI. Diagnose it yourself from the code before writing any `/goal`, and trace the called helpers, not just the top-level file.
+### 2e. Docs closeout at the end of your chat
+§17 as-built, §15 open items, header bump; HANDOVER rewrite; the next chat's first message.
 
-⚠️ **Note the environment**: local `.env` has `TVASHTR_HOSTED_MODE=true`, so a localhost run takes the **hosted** path — server-side clone + a **Fly per-run microVM**, not a local sandbox. Factor that in.
+## 3. Audits done this chat (details in §15 "Sidechat-22 register")
 
-### THEN — the error-legibility `/goal`
+- **M-desk-4 merge** verified (ff). **V1 — PASS** (only `video/**`; story/fixtures; no secrets; contact
+  sheet + ch2 preview + replay pairs opened; 53/74 exact pairs accepted on the operator's wrap-up). V1's
+  claim that PR #51 shipped scratch files was false (the architect fetched the branch: only README.md).
+- **M-desk-5 — PASS** (L1 `ran_on` excludes Desktop-job usage rows; L2 `shipping.hidden_own_files`; L3
+  Changes from GitHub via the owner's installation, once per tab open; L4 own clone per (url, pin);
+  `team_run.py`/`runner.cjs` unchanged; no migration). **V2 — PASS-partial** (only `video/**`; smoke shots
+  opened: hero Done/banner/chip/summary "on your Claude and Grok subscriptions", Changes = PR #53's files,
+  4.1 "Failed after 4m 17s · on your Claude subscription", 4.2 confirm H2 words; contact sheet v2 opened).
+- **M-desk-6 — disk-checked** (scope, invariants, `team_run.py` +12/−1 in `run_graph`'s gate arm — a plain
+  helper, `run_team` unchanged → app versions unchanged). Read the code of `guardrails.tests_pass`,
+  `context_compiler`'s check note and `GateBody` in the next audit pass if anything looks off live.
 
-Tvashtr-81 found **four defects with one root cause** (full detail in §17 Tvashtr-81 and §15). The backend returns correct codes and structured, actionable `detail` payloads; the frontend throws them away and substitutes a wrong guess. Scope for the `/goal`:
-1. `LaunchPanel.tsx:413` — read the already-returned `installation_count` and split the message: `0` ⇒ "sign in with GitHub again"; `>0` ⇒ "Add repositories on GitHub".
-2. Render the backend's real `detail.message` on a failed launch instead of "Couldn't start the run — is the backend running?" (a 422/429 means the backend answered).
-3. Add `deepseek` to `Dashboard.tsx` `PROVIDER_SUGGESTIONS` — it is the product's own default agent model and is missing.
-4. **A backfill for GitHub installations** — discovery runs ONLY in `github_callback`, so every already-signed-in account is stranded with no row and no way to know why. Deploying does not help; only a fresh sign-in does.
+## 4. Open items — context, not an agenda (say each once)
 
-This is ONE coherent, well-bounded milestone and it is the highest-value pre-launch work. It needs FE tests plus a live sign-off (Playwright, screenshot per check).
+1. 🟠 S4 (above). 2. 🟡 M-desk-6 open notes: resuming after a check doesn't re-seed its note; a gate switched
+to Tests pass keeps the title "Approve before continuing?"; a running Desktop run's toolbar wraps to 3 rows;
+the Reviewer template still says "Run the repository's tests"; Grok jobs list the user's own MCP tools.
+3. 🟡 A team whose Query domain step has no reading key/files fails mid-run — launch should warn first.
+4. 🟡 No working embeddings key on this Mac (V2 used `READING_KEY = none`: no domain step in the hero team;
+1.5 SAMPLE; 2.3 flagged for V4). 5. 🟡 AI checks need a server checks model (Fly secrets
+`TVASHTR_CHECKS_MODEL`/`_API_KEY` before the film goes public; locally none). 6. 🟡 L3/L4 residuals: renames
+show as "modified"; compare caps at 300 files; per-pin skill clones never pruned (~18 MB each); private skill
+repos cloned without credentials; underscored/capitalised skill names dropped silently; branch/tag pins
+without a SHA fall back silently; LOCAL dev mode still shows Tvashtr's files to the Reviewer. 7. 🟡 The
+Engines "N to fix" badge counts Claude/Grok teams as website-not-ready (by design, noisy on the Desktop).
+8. 🟡 trade_mcp `main` fails test collection with unpinned `mcp` 2.x (the live command pinned `'mcp<2'`).
+9. 🟡 From earlier: `protect-no-push.sh` not registered in `.claude/settings.json`; the Desktop runner leaks
+`ANTHROPIC_BASE_URL`/`CLAUDE_*` into the CLI env (`harness/spawnEnv.cjs`); R17a backup switch ~18.5 min;
+prod providers (OpenAI out of credit, Gemini 400); `make lint` 38 pre-existing errors in 12 untouched files.
+10. 🟢 Operator items for the film: MAC-1/-2/-3 shots (scripts in `video/SCENES.md`), a throwaway API key for
+1.2, ElevenLabs commercial plan before V3.
 
-### THEN — finish the launch-planning pass
+## 5. The things you most need to know
 
-**Question 1 is DECIDED and recorded** (§17 Tvashtr-81): legibility before subsidy — make failures legible first because it costs nothing; hold the operator-funded token allowance as a later bet, only if a legible version still fails to convert. **Question 2 is still open:** the cost/ops posture for real users — are the M-h3 ceilings (per-owner 3 / fleet 25 / rolling-24h 20) right for a public front door, and what does the operator watch to know something is wrong?
+1. **Sessions run from the Claude desktop app's Code tab.** A launch package = (0) the operator's Terminal
+   checks, (1) Code-tab setup (folder, branch, worktree on/off, mode, model), (2) the full init prompt, (3)
+   the full `/goal` (< 4,000 chars, requiring the CLI-RULES §4.7 eight-section FINAL REPORT) — always inline.
+2. **One stack, one Desktop on this Mac.** Sessions that need a live stack (filming, live proofs) own
+   :8000/:5173 and the Desktop; run them one at a time.
+3. **`/goal` loops keep going until the evaluator is satisfied.** To stop one: `/goal clear` (don't press Esc
+   while a real run's take is recording). A wrap-up prompt after `/goal clear` works well.
+4. **Record-and-replay freezes the server's words.** Fix server-side text before recording a run you'll
+   replay; frontend text re-renders from current code.
+5. **Live proof is mandatory for anything whose truth depends on real data** — M-desk-4's fixture-only proof
+   missed the $0 usage rows; M-desk-5/-6 each ended with one real Desktop run.
+6. **Desktop agents have file tools only** (by design). Tests run through the Tests pass check in
+   Tvashtr's sandbox (Fly in production, docker locally).
+7. **DBOS hashes only the decorated workflow's source** (`run_team`), not `run_graph` or steps; still drain
+   live runs before deploying a walk change.
+8. **The Claude CLI sign-in can expire silently.** Truth is `claude auth status` from a plain Terminal.
 
-## §4 — Standing directives (carry these forward verbatim)
+## 6. Gotchas that cost turns
 
-- **Role boundary (permanent):** you are ARCHITECT/PLANNER ONLY. ALL implementation — product code, diagnostic scripts, Makefile/build/config — goes through a Claude Code `/goal`. Your only direct edits: `PROJECTPLAN.md`, `HANDOVER.md`, `prompts/*.md`, trivial typo/comment fixes. Diagnose bugs yourself (read code/logs/git), but the FIX goes through a `/goal`.
-- **The `/goal` loop:** ONE lean `/goal` per bounded milestone (outcome + hard invariants-as-evidence + acceptance/evidence checklist Claude Code runs itself + stop conditions). `/goal` hard cap **4000 chars** — measure with `wc -c`. Claude Code runs EVERY gate itself (make test / lint / build / live smoke) and debugs to green — never hand the operator verification commands.
-- **Every Claude Code handoff = THREE fully-copyable inline blocks, every time** (even if unchanged): (1) shell launch (`cd … && claude --dangerously-skip-permissions`), (2) the FULL init prompt verbatim, (3) the FULL `/goal` verbatim. Never say "same as before" or point at a `prompts/` file for the init/`/goal` text. The init prompt must: after a ≤5-line summary STOP + WAIT for the `/goal`; and when running the `/goal`, USE ultracode / dynamic-workflows / superpowers.
-- **Every Grok Build prompt must DEMAND a detailed, thorough final report** (Tvashtr-80), never a terse table: per-file what and why; decisive evidence quoted verbatim; every command + result; deviations with justification; anything touched outside scope (especially credentials/config); what was deliberately NOT done; residual risks.
-- **Fence `.env` explicitly in every Grok/bypass brief** (Tvashtr-80). Under `--dangerously-skip-permissions` only PreToolUse hooks survive and none covers `.env`. An agent blocked by a config file WILL edit it.
-- **Merge handoff = ALL commands every time** (FF the first branch, `--no-ff --no-commit` the second, `alembic upgrade head` if a migration landed + FULL suite green on the MERGED tree BEFORE committing, then commit, then cleanup).
-- **Do NOT nag (Tvashtr-78):** never repeatedly prompt about the first real user / the Mv gate. Same for acknowledged housekeeping — state once, then drop.
-- **Design decisions:** decide from the §1 vision + the Tvashtr-25 pivot, never path-of-least-resistance; one question at a time; pair every decision with its user-facing UX consequence; no option menus for vision calls.
-- **Two chat sequences (permanent):** "Tvashtr-N" (main build) + "Tvashtr Sidechat-N". State the sequence + number on opening.
-- **Communication:** the operator is terse — "proceed"/"go"/"merged"/"done" = ratify + advance; "By the way" = wants a short answer; pasted terminal output = a confirmation signal. Procedures **one step at a time**. Prefer analogies + plain language.
+- **Reaching the Mac:** `device_request_folder_access` for `/Users/adimac/Desktop/Tvashtr`, then `device_bash`
+  (folder at `$HOME/mnt/Tvashtr`). Read-only git only (`rev-parse`, `log`, `diff`, `show`, `for-each-ref`,
+  `merge-base`, `.git/logs/*`, `git --no-optional-locks diff`); never `status`, `fetch`, config writes or commits.
+- **Staging files to look at them:** `device_stage_files` only takes paths inside the connected folder — copy
+  scratch images into an ignored path first (e.g. `video/out/v1/architect-audit/`), then stage and Read.
+- **Writing docs:** python read-modify-write on a unique anchor with a backup in `$HOME`, or write in the
+  container under `/mnt/user-data/outputs/` and `device_commit_files` into place.
+- **trade_mcp is private:** `add_repo` (read) then a shallow clone + `fetch --depth=3 origin <branch>` to
+  check what a PR really changed.
+- `PROJECTPLAN.md` is huge (~830 KB): index with `grep -nE '^#{1,3} '`; line 6 is the header.
+- `.env` is fenced: never open, copy or print it.
+- Never run tests next to a live stack from the same checkout; never `make test` against `tvashtr_film`.
 
-## §5 — Key gotchas & patterns
+## 7. Standing operator directives (carry these forward)
 
-- **DRIVE THE PRODUCT — it is the cheapest bug-finder you have.** Tvashtr-81 found four real defects in one hour by watching the operator do a normal first run. None was caught by 1114 backend + 409 vitest tests plus every live gate, because they are all *legibility* defects: the system was correct and the human was misinformed. Green gates do not mean a usable product.
-- **A correct fix can still be invisible.** The Tvashtr-80 GitHub fix was properly implemented and still looked broken for a full session, because it only fires at OAuth-callback time and there is no backfill. Always ask "what makes this take effect for accounts that already exist?"
-- **Keys are PER-ACCOUNT, not from `.env`** (since M-accounts). `.env` holding `DEEPSEEK_API_KEY` does nothing for a run — the run resolves credentials from the signed-in account. Signing in as a different identity means no keys.
-- **`.dockerignore` asymmetry:** a green `make build-frontend` does NOT prove the Docker build is green (`frontend/e2e`, `backend/tests`, `scripts`, `prompts`, `docs`, `design`, `.claude` are excluded). Only an image build catches it.
-- **A skipped gate reads as "not a failure"** — the 3 e2e specs hardcode deepseek while their shell wrappers still guard on `NVIDIA_BUILD_API_KEY`. `sandbox_reuse_check.py::_seed_provider` has the right pattern.
-- **Any residue sweeper MUST filter by AGE** — live gate runs are also `@tvashtr.local` accounts. Domain-only cleanup kills running gates.
-- **`TVASHTR_HOSTED_MAX_CONCURRENT_RUNS_GLOBAL=200` in local `.env` is LOCAL-DEV-ONLY** (real default 25). Never deploy it.
-- **PROJECTPLAN.md editing:** ~670KB; **line 6 is an ~81K single-line banner — never read it**, and note an `edit_file` on ADJACENT lines still echoes it as diff context. A **"Last updated"** line now sits just above it — bump THAT. Index with `grep -nE '^#{1,3} '` on a container copy; unique anchor + `dryRun:true` first; keep payloads small and split edits.
-- **`copy_file_user_to_claude` caches by basename** — re-copying a changed file returns stale bytes. Use `read_text_file` for fresh reads.
-- **Git audit without a git CLI:** `.git/refs/heads/<branch>` → tip; `.git/logs/refs/heads/<branch>` → the full merge chain. Worktrees are outside MCP scope but their commits are in the SHARED object store — walk `.git/objects` and compare subtree/blob SHAs for byte-identity proofs.
-- **When grepping a long function for its failure paths, read the WHOLE function.** Tvashtr-81 truncated a grep window on `create_run`, enumerated two 422 candidates, and the real one was a third path below the cut.
-- **Docker/DB:** `tvashtr-postgres` is fixed-name (host port 5433, user/pass/db `tvashtr`). Restart with `docker compose start postgres` from the project root (not `up`).
-- **Structural safety backstop:** `.git/config` has NO remote. Verify before any bypass run.
+- Decide from the **product vision**, never from effort or the path of least resistance.
+- **One design question at a time** — decide it; no option menus except for genuine strategic calls. When a
+  choice is offered, the explanation goes above the picker and option labels stay short.
+- **Pair every decision with its user-facing UX consequence.**
+- **Cost efficiency for both the user and the operator** is a first-class design input.
+- **Don't shy from large scope** — decompose it; he runs sessions **in parallel** when they don't collide, and
+  likes combining a product fix with the filming that depends on it in **one session, two branches**.
+- **Claude Design first:** any unbuilt screen is designed in Claude Design before code.
+- **Additive only:** never remove anything from any screen (wording corrections are not removals).
+- **Two chat sequences:** "Tvashtr-N" and "Tvashtr Sidechat-N". State the name on opening.
+- Terse operator: "Proceed" / "Go" / "yes" / "done" / "merged" = ratification. "By the way" wants a short answer.
+  "handover" = wrap up now.
+- **Procedures one step at a time** — one step, wait for the result, then the next.
+- **Always hand over complete copyable artifacts inline** (setup, init prompt, `/goal`, merge commands,
+  wrap-up prompts).
+- **Merge commands always include `git checkout main`** before the merge line; FF-able branches `--ff-only`,
+  otherwise `--no-ff`. Say what the verify line should print and what to do if it fails.
+- **Plain, everyday language; analogies help.**
+- **Evidence or nothing** — keep verified results apart from assumptions; open screenshots yourself.
+- He runs sessions this chat didn't brief; audit their reports on disk like any other.
+- Security: the agent never pushes; never `--force` or `reset --hard`; no Fly secrets changes by sessions;
+  never print or screenshot secrets; never open the claude/grok CLI credential files; don't delete files in
+  his folder without asking.
+- He likes to close a chat once nothing urgent is pending — say plainly what (if anything) is.
 
-## §6 — Living docs
+## 8. First message for the next chat
 
-`PROJECTPLAN.md` + `HANDOVER.md` at the project root (you maintain both). `prompts/CLI-RULES.md` = the Claude Code operating contract. `STATE.md` = the CLI agent's scratch log (gitignored). **Mv** (a non-founder shipping real value on their own repo) remains the real product-value gate — no milestone completion resolves it.
+> You are Tvashtr Sidechat-23. Read `HANDOVER.md` and `PROJECTPLAN.md` at the project root first — in
+> `PROJECTPLAN.md` the header line, the §15 block "Sidechat-22 register" and the §17 entry "Tvashtr
+> Sidechat-22"; skip the giant banner. Then: (1) check whether I merged M-desk-6 and give it again if not,
+> then the docs closeout commit; (2) rule on S4 (the Grok CLI reads outside its job copy); (3) rule on
+> re-filming 2.4 and chapter 3 with the Tests check, then brief the film follow-up (6.1–6.3 with the H4/H5/D8
+> smoke, the 2.7 re-take — with S4 as its Part A if you rule to fix it); (4) then plan the ship. Don't start
+> work until you've read them.

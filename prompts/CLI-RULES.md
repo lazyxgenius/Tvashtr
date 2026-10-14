@@ -98,6 +98,10 @@ make proxy-budget-demo  # mid-loop LiteLLM spend cut
    suite (the harness stubs the Engineer; only the live acceptance targets use a real LLM).
 8. **Branch-per-step.** Every distinct step lives on its own branch. Never push to `main`.
    Operator merges fast-forward.
+   **Operator exception (2026-09-26):** a session whose brief is `prompts/revamp-e2e.md` MAY
+   fast-forward merge into `main`, push `main` and its own branches, push `desktop-v*` tags and run
+   `fly deploy` — ONLY through that brief's Ship Protocol (all gates green first; never force-push).
+   Every other session keeps the rule above.
 9. **Commits are atomic.** One logical unit per commit, conventional commits format.
 10. **Do not touch** the `EngineAdapter` interface signature, `build_two_node_team`,
     migrations `0001`–`0014`, or files unrelated to the current step.
@@ -359,7 +363,7 @@ git commit -m "feat(scope): concise description"
 # READY_TO_MERGE: branch=feat/<slug>, sha=<sha>, tests=<N> passing
 ```
 
-Never push to `main`. Never `git merge`. Operator fast-forward merges after review.
+Never push to `main`. Never `git merge`. Operator fast-forward merges after review. (Exception: a `prompts/revamp-e2e.md` session — see §3 item 8.)
 
 ---
 
