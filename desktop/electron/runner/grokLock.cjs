@@ -15,19 +15,24 @@
  * profile `extends = "workspace"` and denies everything in the home folder but `~/.grok` (Grok's own
  * install and sign-in), the user's other Grok conversations (every `~/.grok/sessions` folder but
  * this job's — Grok creates this job's there), other users' folders, `/Volumes`, `/tmp`, every
- * other temp entry and every other job's folder, and the copy's own `.grok/`. Seatbelt compiles
+ * other temp entry and every other job's folder, the copy's own `.grok/` and the job's git folder
+ * (Tvashtr's git reads its config outside the sandbox — workspace.cjs). Seatbelt compiles
  * the globs into one matcher that gives up ("too many levels of backtracking", measured on
  * 1.0.46 with about 120 of these) — so names are short, other users' folders are plain paths, and
  * a profile over GLOB_BUDGET is never written. The repo's own
  * `.grok/` (its config, MCP servers, hooks, profiles) is set aside for the run and put back as it
  * was before the patch is taken. Before the CLI runs, Tvashtr proves the lock: under the profile,
  * Grok must refuse to read a file beside the job's folder (a model id Grok doesn't know stops it
- * before any model call either way). Anything short of that fails the job closed. The user's own
- * `~/.grok` files are never opened, written or changed here.
+ * before any model call either way). And `~/.grok` stays writable to Grok (its docs), so a job could
+ * swap Grok's own binary for the next one: each job first checks the binary is xAI's as signed.
+ * Anything short of that fails the job closed. The user's own `~/.grok` files are never opened,
+ * written or changed here.
  */
+const childProcess = require("child_process");
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
+const { promisify } = require("util");
 
 const GROK_LOCK_FAILED =
   "Grok Build couldn't lock itself to this job's copy of the repo on this Mac, so Tvashtr didn't " +
@@ -111,7 +116,7 @@ function grokDenyList({ home, grokRoot, jobName, userDirs = [] }) {
   if (!inside(tmp, "/private/tmp")) deny.push("/private/tmp");
   deny.push(...everythingBut(tmp, path.basename(grokRoot)));
   deny.push(...everythingBut(grokRoot, jobName));
-  deny.push(`${dir}/ws/.grok`, `${dir}/repo-grok`);
+  deny.push(`${dir}/ws/.grok`, `${dir}/repo-grok`, `${dir}/git`);
   const globs = deny.filter(isGlob).length;
   if (globs > GLOB_BUDGET) throw new Error(`the profile needs ${globs} globs (budget ${GLOB_BUDGET})`);
   return deny;
@@ -168,6 +173,15 @@ function lockWorkspace({ dir, ws, name, deny }) {
     fs.rmSync(own, { recursive: true, force: true });
     if (hadOwn) fs.renameSync(aside, own);
   };
+}
+
+/** xAI's Developer ID (Grok Build 1.0.46: "Developer ID Application: X.AI Corporation"). */
+const GROK_SIGNER = 'anchor apple generic and certificate leaf[subject.OU] = "5Y6N3AJ54S"';
+
+/** Rejects unless the binary (its real file, through any link) carries `requirement`'s signature, intact. */
+async function verifyGrokBinary(binaryPath, { requirement = GROK_SIGNER } = {}) {
+  const real = fs.realpathSync(binaryPath);
+  await promisify(childProcess.execFile)("/usr/bin/codesign", ["--verify", "--strict", `-R=${requirement}`, real]);
 }
 
 /**
@@ -227,10 +241,23 @@ function checkLock({ spawn, binaryPath, ws, name, sentinel, env, timeoutMs }) {
  * it with, and `restore()` (call it before the patch is taken). Throws an Error whose message is
  * GROK_LOCK_FAILED (its `cause` says why) when the lock can't be applied and proven.
  */
-async function lockGrokJob({ dir, ws, jobName, grokRoot, home, binaryPath, env, spawn, platform, timeoutMs }) {
+async function lockGrokJob({
+  dir,
+  ws,
+  jobName,
+  grokRoot,
+  home,
+  binaryPath,
+  env,
+  spawn,
+  platform,
+  timeoutMs,
+  verifyBinary = verifyGrokBinary,
+}) {
   let restore = null;
   try {
     if (platform !== "darwin") throw new Error(`no kernel sandbox profile for ${platform}`);
+    await verifyBinary(binaryPath);
     const name = profileName(jobName);
     const realHome = fs.realpathSync(home);
     const deny = grokDenyList({ home: realHome, grokRoot, jobName, userDirs: otherUserDirs(realHome) });
@@ -261,6 +288,8 @@ module.exports = {
   GROK_JOB_ENV,
   REFUSED_PROFILE,
   GLOB_BUDGET,
+  GROK_SIGNER,
+  verifyGrokBinary,
   everythingBut,
   everythingNotEndingIn,
   grokDenyList,

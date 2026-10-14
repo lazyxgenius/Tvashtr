@@ -94,6 +94,7 @@ function runnerFor(api, extra = {}) {
     pathDirs: async () => [],
     connectedProviders: () => ["claude", "grok"],
     binaryFor: async (provider) => (provider === "claude" ? FAKE_CLAUDE : FAKE_GROK),
+    verifyGrokBinary: async () => {}, // the fake grok isn't xAI's signed binary
     pollMs: 10,
     heartbeatMs: 50,
     ...extra,
@@ -440,4 +441,70 @@ test("S4: a Claude job keeps its arguments and its folder, and says it's locked 
   assert.equal(lines[run + 1], LOCKED_LINE.claude);
   assert.equal(LOCKED_LINE.claude, "Claude Code is locked to this job's copy of the repo — it can't open your other files.");
   assert.deepEqual(fs.readdirSync(workRoot), []);
+});
+
+test("S4: nothing the job writes into its copy runs when Tvashtr takes the patch (git config, a nested repo)", async () => {
+  const marks = fs.mkdtempSync(path.join(os.tmpdir(), "tv-marks-"));
+  const api = fakeApi([job("job-c2", "claude", "anthropic/claude-sonnet-5")]);
+  api.snapshot = async () => {
+    // A hostile repo that ships a nested repo whose config runs a command when git looks inside.
+    const src = fs.mkdtempSync(path.join(os.tmpdir(), "tv-src-"));
+    fs.writeFileSync(path.join(src, "README.md"), "# demo\n");
+    fs.mkdirSync(path.join(src, "vendored", ".git", "refs", "heads"), { recursive: true });
+    fs.writeFileSync(path.join(src, "vendored", "f.txt"), "f\n");
+    fs.writeFileSync(path.join(src, "vendored", ".git", "HEAD"), "ref: refs/heads/main\n");
+    fs.writeFileSync(path.join(src, "vendored", ".git", "refs", "heads", "main"), `${"1".repeat(40)}\n`);
+    fs.writeFileSync(path.join(src, "vendored", ".git", "config"), `[core]\n\tfsmonitor = "touch ${marks}/nested"\n`);
+    return childProcess.execFileSync("tar", ["-czf", "-", "-C", src, "."]);
+  };
+  const { runner } = runnerFor(api, { baseEnv: { ...LEAKY_BASE_ENV, FAKE_CLI_PLANT_GIT: marks } });
+  await runner.tickOnce();
+  const r = api.results[0];
+  assert.deepEqual(fs.readdirSync(marks), [], "no planted git command ran");
+  assert.equal(r.status, "completed", r.error);
+  assert.match(r.patch, /hello\.txt/);
+  assert.match(r.patch, /\+edited/, "an edit inside the nested repo comes home as a plain change");
+  assert.doesNotMatch(r.patch, /\.git\/|Subproject commit/, "no git internals in the patch");
+});
+
+test("S4: a Grok binary that isn't xAI's as signed never runs, not even for the lock check", { skip: process.platform !== "darwin" }, async () => {
+  const api = fakeApi([job("job-g5", "grok", "xai/grok-4.7")]);
+  const spawned = [];
+  const { runner } = runnerFor(api, {
+    verifyGrokBinary: undefined, // the real check: the fake grok is an unsigned script
+    spawn: (cmd, ...rest) => {
+      spawned.push(cmd);
+      return childProcess.spawn(cmd, ...rest);
+    },
+  });
+  await runner.tickOnce();
+  assert.equal(api.results[0].error, GROK_LOCK_FAILED);
+  assert.deepEqual(spawned, []);
+});
+
+test("S4: a stop that lands while a Grok job is getting ready never starts Grok, not even the lock check", async () => {
+  const api = fakeApi([job("job-g6", "grok", "xai/grok-4.7")]);
+  const spawned = [];
+  let release;
+  const gate = new Promise((r) => {
+    release = r;
+  });
+  const { runner } = runnerFor(api, {
+    binaryFor: async () => {
+      await gate;
+      return FAKE_GROK;
+    },
+    spawn: (cmd, ...rest) => {
+      spawned.push(cmd);
+      return childProcess.spawn(cmd, ...rest);
+    },
+  });
+  const tick = runner.tickOnce();
+  await new Promise((r) => setTimeout(r, 300));
+  const stopping = runner.stop();
+  setTimeout(() => release(), 50);
+  await stopping;
+  await tick;
+  assert.deepEqual(spawned, []);
+  assert.equal(api.results.length, 0);
 });

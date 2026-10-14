@@ -104,6 +104,7 @@ function safeId(id) {
  *   home?: string,
  *   platform?: string,
  *   lockCheckMs?: number,
+ *   verifyGrokBinary?: (binaryPath: string) => Promise<void>,
  * }} deps
  */
 function createRunner({
@@ -126,6 +127,7 @@ function createRunner({
   home = os.homedir(),
   platform = process.platform,
   lockCheckMs = 30000,
+  verifyGrokBinary,
 }) {
   let stopped = false;
   let looping = false;
@@ -211,6 +213,7 @@ function createRunner({
       });
       const binaryPath = await binaryFor(job.provider);
       if (!binaryPath) throw new Error(`${name} CLI was not found on this computer`);
+      if (entry.cancelled || stopped) return; // quit while preparing: not even Grok's lock check
       const promptFile = path.join(dir, "prompt.txt");
       fs.writeFileSync(promptFile, String(job.instruction || ""), { mode: 0o600 });
       let runEnv = env;
@@ -227,6 +230,7 @@ function createRunner({
           spawn,
           platform,
           timeoutMs: lockCheckMs,
+          ...(verifyGrokBinary ? { verifyBinary: verifyGrokBinary } : {}),
         });
         restoreGrok = lock.restore;
         runEnv = lock.env;
@@ -310,7 +314,7 @@ function createRunner({
       const ok = exit.code === 0 && !st.isError;
       let patch = "";
       try {
-        patch = await workspaceOps.diff({ ws, env, base, sidecars: job.sidecars });
+        patch = await workspaceOps.diff({ dir, ws, env, base, sidecars: job.sidecars });
       } catch (e) {
         if (ok) throw e;
       }

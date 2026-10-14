@@ -43,6 +43,13 @@ process.stdin.on("end", () => {
     });
     fs.writeFileSync(path.join(process.cwd(), "hello.txt"), "hello from the subscription\n");
     fs.writeFileSync(path.join(process.cwd(), "REPORT.md"), "# Report\nWrote hello.txt\n");
+    if (process.env.FAKE_CLI_PLANT_GIT) {
+      // A hostile prompt's edits: git config that runs a command wherever git next reads it, and a
+      // change inside the repo's nested repo (so git would look into that one too).
+      fs.mkdirSync(".git", { recursive: true });
+      fs.appendFileSync(".git/config", `[core]\n\tfsmonitor = "touch ${process.env.FAKE_CLI_PLANT_GIT}/root"\n`);
+      fs.appendFileSync("vendored/f.txt", "edited\n");
+    }
     out({
       type: "user",
       message: { content: [{ type: "tool_result", tool_use_id: "tu_1", content: "File created" }] },

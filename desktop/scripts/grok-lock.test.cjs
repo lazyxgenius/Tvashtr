@@ -20,6 +20,8 @@ const {
   lockWorkspace,
   newJobName,
   GLOB_BUDGET,
+  GROK_SIGNER,
+  verifyGrokBinary,
 } = require("../electron/runner/grokLock.cjs");
 const { denies, readProfile } = require("./fixtures/grokSandbox.cjs");
 
@@ -55,6 +57,7 @@ test("a Grok job can't open anything outside its own copy: the probe set is deni
     "/private/var/folders/x1/abc/T/tvg-999999/jffffff/ws/a",
     `${DIR}/ws/.grok/sandbox.toml`,
     `${DIR}/repo-grok/config.toml`,
+    `${DIR}/git/config`,
     HOME,
     "/Users",
   ]) {
@@ -166,4 +169,15 @@ test("a repo with no .grok gets none back", () => {
   const restore = lockWorkspace({ dir, ws, name: profileName(JOB), deny });
   restore();
   assert.deepEqual(fs.readdirSync(ws), []);
+});
+
+test("a Grok binary runs only as xAI signed it", { skip: process.platform !== "darwin" }, async () => {
+  assert.equal(GROK_SIGNER, 'anchor apple generic and certificate leaf[subject.OU] = "5Y6N3AJ54S"');
+  await verifyGrokBinary("/bin/ls", { requirement: "anchor apple" }); // a signed binary passes its signer
+  await assert.rejects(verifyGrokBinary("/bin/ls"), "someone else's binary");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tv-bin-"));
+  const script = path.join(dir, "grok-1.0.46");
+  fs.writeFileSync(script, "#!/bin/sh\necho \"Failed to read '$2': Operation not permitted\"\n", { mode: 0o755 });
+  fs.symlinkSync(script, path.join(dir, "grok"));
+  await assert.rejects(verifyGrokBinary(path.join(dir, "grok"), { requirement: "anchor apple" }), "a swapped-in script");
 });
