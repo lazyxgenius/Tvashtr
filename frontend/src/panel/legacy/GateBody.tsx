@@ -3,6 +3,9 @@ import { useState } from "react";
 import { type GateConfig, type TeamGraphNode, updateGateNode } from "../../lib/api";
 import { GUARDRAIL_GATE_KINDS } from "./legacyCopy";
 
+/** The title a new gate gets (backend `routers.py`, add gate). */
+const DEFAULT_GATE_TITLE = "Approve before continuing?";
+
 /**
  * A gate's settings (M-rails C8/C9), moved verbatim from the old TeamNodePanel into the new drawer
  * shell: the gate type (human approval or an automatic guardrail), its parameters, title and
@@ -124,6 +127,11 @@ export function GateBody({
     },
     { kind: "tests_pass", label: "Tests pass", pressed: gateKind === "tests_pass" },
   ];
+  // M-desk-7 F1: while the title is still a default (a new gate's, or a check's own name), it
+  // follows the type; a title the user typed never changes.
+  const typeTitle = (kind: string, label: string) =>
+    GUARDRAIL_GATE_KINDS.has(kind) ? label : DEFAULT_GATE_TITLE;
+  const titleIsDefault = gateTypeOptions.some((o) => typeTitle(o.kind, o.label) === gateTitle);
   const gateTypeHint =
     gateKind === "secret_leak_scan"
       ? "Secret leak scan — scans the run’s workspace and emits approved / rejected with no human pause."
@@ -147,6 +155,7 @@ export function GateBody({
               disabled={saving}
               className={`tv-seg__btn${opt.pressed ? " tv-seg__btn--active" : ""}`}
               onClick={() => {
+                if (titleIsDefault) setGateTitle(typeTitle(opt.kind, opt.label));
                 setGateKind(opt.kind);
                 setSaved(false);
                 setCommandMissing(false);

@@ -160,6 +160,62 @@ describe("GateBody", () => {
     expect(screen.queryByText("Add the command Tvashtr runs.")).toBeNull();
   });
 
+  it("F1: a gate still titled by default takes its type's name as the type changes (M-desk-7)", async () => {
+    const user = userEvent.setup();
+    render(
+      <GateBody
+        teamId="team-1"
+        node={gateNode({
+          gate_kind: "gate_approval",
+          title: "Approve before continuing?",
+          description: "",
+        })}
+        onSaved={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+    const title = screen.getByLabelText<HTMLInputElement>("Gate title");
+    for (const type of ["Secret leak scan", "Forbidden paths", "Output schema", "Tests pass"]) {
+      await user.click(screen.getByRole("button", { name: type }));
+      expect(title.value).toBe(type);
+    }
+    await user.click(screen.getByRole("button", { name: "Human approval" }));
+    expect(title.value).toBe("Approve before continuing?");
+
+    await user.click(screen.getByRole("button", { name: "Tests pass" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Command" }), {
+      target: { value: "pytest -q" },
+    });
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(patchCall()).toBeDefined());
+    expect(JSON.parse(patchCall()![1].body as string)).toEqual({
+      gate_kind: "tests_pass",
+      title: "Tests pass",
+      description: "",
+      command: "pytest -q",
+    });
+  });
+
+  it("F1: a title the user typed never changes with the type (M-desk-7)", async () => {
+    const user = userEvent.setup();
+    render(
+      <GateBody
+        teamId="team-1"
+        node={gateNode({
+          gate_kind: "gate_approval",
+          title: "Approve before continuing?",
+          description: "",
+        })}
+        onSaved={vi.fn()}
+      />,
+    );
+    const title = screen.getByLabelText<HTMLInputElement>("Gate title");
+    fireEvent.change(title, { target: { value: "Run the whole suite" } });
+    await user.click(screen.getByRole("button", { name: "Tests pass" }));
+    expect(title.value).toBe("Run the whole suite");
+    await user.click(screen.getByRole("button", { name: "Human approval" }));
+    expect(title.value).toBe("Run the whole suite");
+  });
+
   it("Tests pass: an existing tests_pass gate shows its saved command", () => {
     render(
       <GateBody
