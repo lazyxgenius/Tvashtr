@@ -19,14 +19,16 @@ const {
   profileToml,
   lockWorkspace,
   newJobName,
+  GLOB_BUDGET,
 } = require("../electron/runner/grokLock.cjs");
 const { denies, readProfile } = require("./fixtures/grokSandbox.cjs");
 
 const HOME = "/Users/alice";
-const ROOT = "/private/var/folders/x1/abc/T/tvashtr-grok-1a2b3c4d";
-const JOB = "j0123abcd";
+const ROOT = "/private/var/folders/x1/abc/T/tvg-1a2b3c";
+const JOB = "j0123ab";
 const DIR = `${ROOT}/${JOB}`;
-const deny = grokDenyList({ home: HOME, grokRoot: ROOT, jobName: JOB });
+const USERS = ["/Users/Shared", "/Users/bob", "/Users/.localized"];
+const deny = grokDenyList({ home: HOME, grokRoot: ROOT, jobName: JOB, userDirs: USERS });
 
 test("a Grok job can't open anything outside its own copy: the probe set is denied", () => {
   for (const p of [
@@ -50,7 +52,7 @@ test("a Grok job can't open anything outside its own copy: the probe set is deni
     `${HOME}/.config/gh/hosts.yml`,
     "/private/tmp/claude-501/x",
     "/private/var/folders/x1/abc/T/other-app/cache",
-    "/private/var/folders/x1/abc/T/tvashtr-grok-99999999/jffffffff/ws/a",
+    "/private/var/folders/x1/abc/T/tvg-999999/jffffff/ws/a",
     `${DIR}/ws/.grok/sandbox.toml`,
     `${DIR}/repo-grok/config.toml`,
     HOME,
@@ -69,7 +71,7 @@ test("…and what it needs stays open: its copy, its prompt, its temp, Grok's ow
     `${HOME}/.grok/auth.json`,
     `${HOME}/.grok/bin/grok-1.0.46`,
     `${HOME}/.grok/sessions`,
-    `${HOME}/.grok/sessions/%2Fprivate%2Fvar%2Ffolders%2Fx1%2Fabc%2FT%2Ftvashtr-grok-1a2b3c4d%2F${JOB}%2Fws/01abc/x`,
+    `${HOME}/.grok/sessions/%2Fprivate%2Fvar%2Ffolders%2Fx1%2Fabc%2FT%2Ftvg-1a2b3c%2F${JOB}%2Fws/01abc/x`,
     "/usr/bin/git",
     "/System/Library/Frameworks/Security.framework/Security",
     "/private/etc/hosts",
@@ -82,19 +84,30 @@ test("…and what it needs stays open: its copy, its prompt, its temp, Grok's ow
 
 test("the profile is named for the job and reads back as written", () => {
   const name = profileName(JOB);
-  assert.equal(name, "tvashtr-j0123abcd");
+  assert.equal(name, "tvashtr-j0123ab");
   const ws = fs.mkdtempSync(path.join(os.tmpdir(), "tv-ws-"));
   fs.mkdirSync(path.join(ws, ".grok"));
   fs.writeFileSync(path.join(ws, ".grok", "sandbox.toml"), profileToml(name, deny));
   assert.deepEqual(readProfile(ws, name), deny);
   assert.match(fs.readFileSync(path.join(ws, ".grok", "sandbox.toml"), "utf8"), /^extends = "workspace"$/m);
-  assert.match(newJobName(), /^j[0-9a-f]{8}$/);
+  assert.match(newJobName(), /^j[0-9a-f]{6}$/);
 });
 
 test("a path the profile can't express safely fails closed instead of guessing", () => {
   assert.throws(() => grokDenyList({ home: "/Users/a b", grokRoot: ROOT, jobName: JOB }));
   assert.throws(() => grokDenyList({ home: "/Users/a[1]", grokRoot: ROOT, jobName: JOB }));
   assert.throws(() => grokDenyList({ home: HOME, grokRoot: `${HOME}/tmp/tvashtr-grok`, jobName: JOB }));
+});
+
+test("a profile stays inside the glob budget Seatbelt can compile, and one over it is never written", () => {
+  // grok 1.0.46 refused a 120-glob profile ("too many levels of backtracking"): names stay short.
+  const globs = deny.filter((d) => /[*?[]/.test(d)).length;
+  assert.ok(globs <= GLOB_BUDGET, `${globs} globs`);
+  assert.equal(globs, 76);
+  assert.throws(
+    () => grokDenyList({ home: HOME, grokRoot: "/private/var/folders/x1/abc/T/tvashtr-grok-a-much-longer-name", jobName: "j0123abcdef" }),
+    /budget/,
+  );
 });
 
 function treeHash(dir) {

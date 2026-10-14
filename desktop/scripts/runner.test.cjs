@@ -356,7 +356,7 @@ test("S4: a Grok job runs in its own folder outside home, under its own profile,
   const lines = texts(api);
   const run = lines.findIndex((t) => t.startsWith("Running on this computer with your own Grok Build: "));
   assert.ok(run >= 0, JSON.stringify(lines));
-  assert.match(lines[run], / --sandbox tvashtr-j[0-9a-f]{8}$/, "the job's own profile, not `workspace`");
+  assert.match(lines[run], / --sandbox tvashtr-j[0-9a-f]{6}$/, "the job's own profile, not `workspace`");
   const cwd = lines[run].match(/ --cwd (\S+) /)[1];
   assert.ok(cwd.startsWith(`${fs.realpathSync(grokRoot)}/j`), cwd);
   assert.ok(!cwd.startsWith(fs.realpathSync(home)), "outside the home folder");

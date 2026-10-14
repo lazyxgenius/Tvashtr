@@ -11,11 +11,14 @@
  *     (`[!x]` negates) that macOS checks at runtime, so it covers files created later too. A glob
  *     that matches a folder denies the folder itself; its contents need the `/**` twin.
  *
- * So, per job: its folder lives outside the home folder (`<tmp>/tvashtr-grok-…/<job>/`), and the
+ * So, per job: its folder lives outside the home folder (`<tmp>/tvg-<profile tag>/<job>/`), and the
  * profile `extends = "workspace"` and denies everything in the home folder but `~/.grok` (Grok's own
  * install and sign-in), the user's other Grok conversations (every `~/.grok/sessions` folder but
  * this job's — Grok creates this job's there), other users' folders, `/Volumes`, `/tmp`, every
- * other temp entry and every other job's folder, and the copy's own `.grok/`. The repo's own
+ * other temp entry and every other job's folder, and the copy's own `.grok/`. Seatbelt compiles
+ * the globs into one matcher that gives up ("too many levels of backtracking", measured on
+ * 1.0.46 with about 120 of these) — so names are short, other users' folders are plain paths, and
+ * a profile over GLOB_BUDGET is never written. The repo's own
  * `.grok/` (its config, MCP servers, hooks, profiles) is set aside for the run and put back as it
  * was before the patch is taken. Before the CLI runs, Tvashtr proves the lock: under the profile,
  * Grok must refuse to read a file beside the job's folder (a model id Grok doesn't know stops it
@@ -85,13 +88,15 @@ function listingOf(p) {
 }
 
 const inside = (child, parent) => child === parent || child.startsWith(`${parent}/`);
+/** Globs one profile may hold (Seatbelt refused 120 of them on grok 1.0.46; a job needs 76). */
+const GLOB_BUDGET = 90;
 
 /**
  * The deny list for one job. `home` and `grokRoot` are real paths (no symlinks); `grokRoot` sits
  * directly in the temp folder, the job's folder is `<grokRoot>/<jobName>` and its copy of the repo
- * `<grokRoot>/<jobName>/ws`.
+ * `<grokRoot>/<jobName>/ws`; `userDirs` are the other entries of `/Users`.
  */
-function grokDenyList({ home, grokRoot, jobName }) {
+function grokDenyList({ home, grokRoot, jobName, userDirs = [] }) {
   const tmp = path.dirname(grokRoot);
   if (inside(grokRoot, home)) throw new Error("the job folder is inside the home folder");
   const dir = `${grokRoot}/${jobName}`;
@@ -100,19 +105,29 @@ function grokDenyList({ home, grokRoot, jobName }) {
     ...everythingBut(home, ".grok"),
     ...everythingNotEndingIn(`${home}/.grok/sessions`, `${jobName}%2Fws`),
   ];
-  if (path.dirname(home) === "/Users") {
-    deny.push(listingOf("/Users"), ...everythingBut("/Users", path.basename(home)));
-  }
+  if (path.dirname(home) === "/Users") deny.push(listingOf("/Users"));
+  deny.push(...userDirs.filter((d) => !inside(home, d)));
   deny.push("/Volumes");
   if (!inside(tmp, "/private/tmp")) deny.push("/private/tmp");
   deny.push(...everythingBut(tmp, path.basename(grokRoot)));
   deny.push(...everythingBut(grokRoot, jobName));
   deny.push(`${dir}/ws/.grok`, `${dir}/repo-grok`);
+  const globs = deny.filter(isGlob).length;
+  if (globs > GLOB_BUDGET) throw new Error(`the profile needs ${globs} globs (budget ${GLOB_BUDGET})`);
   return deny;
 }
 
+/** The other users' folders: every entry of `/Users` but the home folder. */
+function otherUserDirs(home) {
+  if (path.dirname(home) !== "/Users") return [];
+  return fs
+    .readdirSync("/Users")
+    .filter((n) => n !== path.basename(home))
+    .map((n) => `/Users/${n}`);
+}
+
 const profileName = (jobName) => `tvashtr-${jobName}`;
-const newJobName = () => `j${crypto.randomBytes(4).toString("hex")}`;
+const newJobName = () => `j${crypto.randomBytes(3).toString("hex")}`;
 
 function profileToml(name, deny) {
   return [
@@ -170,7 +185,7 @@ function checkLock({ spawn, binaryPath, ws, name, sentinel, env, timeoutMs }) {
       done = true;
       clearTimeout(timer);
       fs.rmSync(sentinel, { force: true });
-      resolve(ok);
+      resolve({ ok, out: out.trim().slice(0, 600) });
     };
     let child;
     try {
@@ -217,14 +232,16 @@ async function lockGrokJob({ dir, ws, jobName, grokRoot, home, binaryPath, env, 
   try {
     if (platform !== "darwin") throw new Error(`no kernel sandbox profile for ${platform}`);
     const name = profileName(jobName);
-    const deny = grokDenyList({ home: fs.realpathSync(home), grokRoot, jobName });
+    const realHome = fs.realpathSync(home);
+    const deny = grokDenyList({ home: realHome, grokRoot, jobName, userDirs: otherUserDirs(realHome) });
     const tmp = path.join(dir, "tmp");
     fs.mkdirSync(tmp, { recursive: true });
     const jobEnv = { ...env, ...GROK_JOB_ENV, TMPDIR: `${tmp}/` };
     restore = lockWorkspace({ dir, ws, name, deny });
     const sentinel = `${dir}.lockcheck`;
-    if (!(await checkLock({ spawn, binaryPath, ws, name, sentinel, env: jobEnv, timeoutMs }))) {
-      throw new Error("Grok read a file its profile denies, or didn't start under the profile");
+    const check = await checkLock({ spawn, binaryPath, ws, name, sentinel, env: jobEnv, timeoutMs });
+    if (!check.ok) {
+      throw new Error(`Grok didn't refuse a file its profile denies: ${check.out || "no output"}`);
     }
     return { profile: name, env: jobEnv, restore };
   } catch (cause) {
@@ -243,6 +260,7 @@ module.exports = {
   LOCKED_LINE,
   GROK_JOB_ENV,
   REFUSED_PROFILE,
+  GLOB_BUDGET,
   everythingBut,
   everythingNotEndingIn,
   grokDenyList,

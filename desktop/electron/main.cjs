@@ -171,8 +171,9 @@ function registerEngineIpc() {
   fs.rmSync(workRoot, { recursive: true, force: true }); // leftovers of a crashed session
   // M-desk-7 S4: Grok jobs' folders live outside the home folder, so a job's sandbox profile can
   // deny all of it (grokLock.cjs); one root per app profile, so two Desktops never share one.
-  const profileTag = crypto.createHash("sha256").update(userData).digest("hex").slice(0, 8);
-  const grokRoot = path.join(fs.realpathSync(os.tmpdir()), `tvashtr-grok-${profileTag}`);
+  // (A short name: each of its letters costs the job's profile two globs — grokLock.cjs.)
+  const profileTag = crypto.createHash("sha256").update(userData).digest("hex").slice(0, 6);
+  const grokRoot = path.join(fs.realpathSync(os.tmpdir()), `tvg-${profileTag}`);
   fs.rmSync(grokRoot, { recursive: true, force: true });
   runner = createRunner({
     api,
