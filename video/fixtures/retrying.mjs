@@ -245,7 +245,7 @@ export default (ctx) => {
   // deepseek/deepseek-chat (0.28 / 0.42 $ per M) and text-embedding-3-small (0.02 $ per M).
   const DOMAIN_MODEL = BACKUP; // the account's one key (story.api_key: DeepSeek) answers the domain
   const DOMAIN_USAGE = { prompt_tokens: 1534, completion_tokens: 260, total_tokens: 1794, cost_usd: 0.000535 };
-  const ranOn = () => clone(RAN_ON.BOTH_AND_KEY);
+  const ranOn = () => clone(RAN_ON.CLAUDE_AND_KEY); // K8: every agent on the film team runs on Claude
   const costRows = () => [
     {
       id: 1,

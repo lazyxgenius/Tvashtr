@@ -25,7 +25,11 @@ export function live(key) {
 }
 
 /** The film team as captured: its id, graph and each node's id by title ("Engineer", "Fixer"…). */
-const graphKey = Object.keys(LIVE).find((k) => /^GET \/api\/teams\/[^/]+\/graph$/.test(k));
+// The capture can pass other teams' canvases (Home's recent teams): take the film team's, by name.
+const filmId = (LIVE["GET /api/teams"]?.teams ?? []).find((t) => t.name === story.team.name)?.team_graph_id;
+const graphKey =
+  (filmId && `GET /api/teams/${filmId}/graph` in LIVE && `GET /api/teams/${filmId}/graph`) ||
+  Object.keys(LIVE).find((k) => /^GET \/api\/teams\/[^/]+\/graph$/.test(k));
 export const TEAM_ID = graphKey.split("/")[3];
 export const GRAPH = () => live(graphKey);
 export const NODE = Object.fromEntries(
@@ -39,6 +43,7 @@ for (const role of ["pm", "engineer", "reviewer", "prd_gate", "ship", "stop", "e
 /** Where a run's work ran (M-desk-4): the Desktop names the subscription instead of "$0.00". */
 export const RAN_ON = {
   CLAUDE: { subscriptions: ["claude"], all: true },
+  CLAUDE_AND_KEY: { subscriptions: ["claude"], all: false },
   GROK: { subscriptions: ["grok"], all: true },
   BOTH: { subscriptions: ["claude", "grok"], all: true },
   BOTH_AND_KEY: { subscriptions: ["claude", "grok"], all: false },
