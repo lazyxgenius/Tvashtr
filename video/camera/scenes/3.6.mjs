@@ -1,5 +1,5 @@
 // 3.6 The guardrail passes; Ship; the PR; the Done row. Re-taken from the hero recording.
-import { answerNotifyAsk, approveWaiting, MARK, nowBar, runEnded, runPath, summary, watch } from "../flows.mjs";
+import { answerNotifyAsk, approveWaiting, MARK, nowBar, p1Smoke, runEnded, runPath, summary, watch } from "../flows.mjs";
 
 export default {
   id: "3.6",
@@ -32,6 +32,7 @@ export default {
     const pr = summary(page).getByRole("link", { name: /^Open pull request/ });
     if (await pr.count()) await cam.hover(pr, "the pull request");
     await cam.pause(3000);
+    await p1Smoke(ctx, "3.6 on 0.27.0"); // V3: the replay through today's frontend
     void nowBar;
   },
 };

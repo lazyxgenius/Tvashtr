@@ -4,11 +4,7 @@
 // camera as plain gates with their real titles (an edge drag is unreliable to film); their checks are
 // set here.
 import { buildFilmTeam, byRole, byTitle, edge, ensureToolkit, SKILL } from "../film.mjs";
-import { canvasReady, card, closeDrawer, edgePoint, gateCard, openAgent, saveDrawer, smoke } from "../flows.mjs";
-
-/** M-desk-8 P1: the gate cards read their titles (or a type name), never a raw kind id. */
-const RAW_KIND = /^(approval|gate_approval|secret_leak_scan|diff_touches_forbidden_paths|output_schema_check)$/;
-const gateLabels = async (page) => (await page.locator(".rf-gate__label").allInnerTexts()).map((t) => t.trim());
+import { arcLabels, canvasReady, card, closeDrawer, edgePoint, gateCard, gateLabels, openAgent, RAW_KIND, saveDrawer, smoke } from "../flows.mjs";
 
 /** Open a gate by its node id, set its type (and its one field), save. */
 async function setGate(ctx, id, label, type, field) {
@@ -112,7 +108,7 @@ export default {
     const want = [story.tests.title, story.guardrail.secret_scan.title, story.guardrail.forbidden.title];
     smoke(ctx, "P1 (2.4's gate cards read their titles once set, never a raw kind)",
       want.every((w) => set.includes(w)) && !set.some((l) => RAW_KIND.test(l)), await ctx.shot("p1-gates-set"), set.join(" · "));
-    const arcs = (await page.locator(".rf-edge-rework__label").allInnerTexts()).map((t) => t.trim());
+    const arcs = await arcLabels(page);
     ctx.note(`P2 arcs on 2.4's canvas: ${arcs.join(" · ")}`);
   },
 };

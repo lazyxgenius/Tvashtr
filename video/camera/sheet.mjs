@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
- * The review files, from the takes on disk (V2b: the newest take of each scene, v2b over v2 over v1):
- *   node video/camera/sheet.mjs contact-sheet  → video/out/v2b/contact-sheet.png (one labelled frame per take)
- *   node video/camera/sheet.mjs preview <ch>   → video/out/v2b/ch<ch>-preview.mp4 (the chapter's takes joined, 1920×1080)
+ * The review files, from the takes on disk (V3: the newest take of each scene, v3 over v2b over v2 over v1):
+ *   node video/camera/sheet.mjs contact-sheet  → video/out/v3/contact-sheet.png (one labelled frame per take)
+ *   node video/camera/sheet.mjs preview <ch>   → video/out/v3/ch<ch>-preview.mp4 (the chapter's takes joined, 1920×1080)
  *   node video/camera/sheet.mjs ch2-preview    → video/out/v1/ch2-preview.mp4 (V1's)
- *   node video/camera/sheet.mjs pairs <replay take> → video/out/v2b/pairs-<take>.png (live | replay, side by side)
- *   node video/camera/sheet.mjs scenes-table   → SCENES.md's status table (V1, V2 and V2b columns)
+ *   node video/camera/sheet.mjs pairs <replay take> → video/out/v3/pairs-<take>.png (live | replay, side by side)
+ *   node video/camera/sheet.mjs scenes-table   → SCENES.md's status table (V1, V2, V2b and V3 columns)
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -15,13 +15,13 @@ import { repoRoot } from "./desktop.mjs";
 
 const TAKES_DIR = (v) => path.join(repoRoot, "video", "takes", v);
 /** Oldest first: a newer version wins among equals; the last is the one being filmed. */
-const VERSIONS = ["v1", "v2", "v2b"];
+const VERSIONS = ["v1", "v2", "v2b", "v3"];
 const CUR = VERSIONS.at(-1);
 const OUT = path.join(repoRoot, "video", "out", CUR);
 fs.mkdirSync(OUT, { recursive: true });
 
 const order = (id) => id.split(/[.-]/).map((x) => (/^\d+$/.test(x) ? Number(x).toString().padStart(3, "0") : x)).join(".");
-/** The takes of one version (v1 | v2 | v2b) on disk, in scene order; each knows its folder. */
+/** The takes of one version (v1 | v2 | v2b | v3) on disk, in scene order; each knows its folder. */
 function takes(v = CUR) {
   const dir = TAKES_DIR(v);
   if (!fs.existsSync(dir)) return [];

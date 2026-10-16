@@ -2,7 +2,7 @@
 /**
  * The take runner (V1, F8): re-records any scene by name, in any order.
  *
- *   node video/camera/take.mjs 2.4            # setup off camera → pre-roll → film → video/takes/v2b/2.4/
+ *   node video/camera/take.mjs 2.4            # setup off camera → pre-roll → film → video/takes/v3/2.4/
  *   node video/camera/take.mjs 2.4 --dry      # stop before anything that spends a subscription
  *   node video/camera/take.mjs 8.1-web        # one part of a scene
  *   node video/camera/take.mjs list           # the registry
@@ -14,7 +14,7 @@
  * renderer, F5) · web (the local frontend in Chromium, not Desktop mode) · run (scripted; films for
  * real only within the run budget) · mac / motion (not filmed by the camera: video/SCENES.md).
  *
- * Output per take (V2b: video/takes/v2b/<take>/): take.mp4 (2880×1800, 30 fps), take.json (scene, mode, recording or fixtures,
+ * Output per take (V3: video/takes/v3/<take>/): take.mp4 (2880×1800, 30 fps), take.json (scene, mode, recording or fixtures,
  * steps with time/kind/label/position, regions of interest), poster.png, shots/.
  */
 import { execFileSync, spawn } from "node:child_process";
@@ -42,20 +42,19 @@ import { clockScript, loadRecording, recordApi, replayApi, serveFixtures } from 
 
 const VIDEO = path.join(repoRoot, "video");
 const SCENES = path.join(VIDEO, "camera", "scenes");
-// V2b (the re-film, brief m-desk-7-v2b K5): takes in takes/v2b, the spend ledger and the Desktop
-// lock in out/v2b (V1's and V2's stay where they are).
-export const TAKES = path.join(VIDEO, "takes", "v2b");
+// V3 (brief video-v3: the re-shoots on 0.27.0): takes in takes/v3, the spend ledger and the Desktop
+// lock in out/v3 (V1's, V2's and V2b's stay where they are).
+export const TAKES = path.join(VIDEO, "takes", "v3");
 const RECORDINGS = path.join(VIDEO, "recordings");
-const OUT = path.join(VIDEO, "out", "v2b");
-// V2b, second sitting (brief m-desk-8-v2b2): its own ledger; the first sitting's stays in budget.json.
-const LEDGER = path.join(OUT, "budget-2.json");
+const OUT = path.join(VIDEO, "out", "v3");
+const LEDGER = path.join(OUT, "budget.json");
 export const story = JSON.parse(fs.readFileSync(path.join(VIDEO, "story.json"), "utf8"));
 
-/** V2b's real-work budget (brief m-desk-7-v2b, Part B; nothing carries over from V2): 14 real
- *  Desktop runs, 12 test replays, 2 Asks. A compare is 2 runs, a task-set compare 2 per task,
+/** V3's real-work budget (brief video-v3; nothing carries over from V2b): 2 Claude runs (4.1, 4.2)
+ *  + 1 spare, no test replays, 1 Ask (3.7, Grok). A compare is 2 runs, a task-set compare 2 per task,
  *  save-with-tests one replay per test: `ctx.spend(kind, label, fn, units)` counts `units` against
  *  the kind's cap. */
-const CAPS = { run: 10, test: 12, ask: 1 }; // the second sitting's (brief m-desk-8-v2b2 Part B)
+const CAPS = { run: 3, test: 0, ask: 1 };
 const BUCKET = { run: "run", compare: "run", task_set: "run", test: "test", save_with_tests: "test", ask: "ask" };
 
 /** --preview's stand-in for the Desktop's preload bridge (the real one exists in Electron). */
@@ -459,7 +458,7 @@ async function runTake(spec, { dry, keepFrames, preview = false, browser: debugB
       const bucket = BUCKET[kind];
       if (!bucket) throw new Error(`unknown spend kind ${kind}`);
       if (spent(bucket) + units > CAPS[bucket])
-        throw new Error(`budget: ${units} ${bucket}(s) would pass the V2b cap (${spent(bucket)} of ${CAPS[bucket]} used)`);
+        throw new Error(`budget: ${units} ${bucket}(s) would pass the V3 cap (${spent(bucket)} of ${CAPS[bucket]} used)`);
       addSpend({ kind, take: id, label, units });
       ctx.spends.push({ kind, label, units, t: cam.t });
       return fn();

@@ -137,7 +137,9 @@ export async function editAndApproveSpec(ctx, line) {
   await editor.waitFor();
   const last = editor.locator("p, li").last();
   await cam.click(last, "the spec's last line", { park: false });
-  await page.keyboard.press("End");
+  // V3: the end of the document, not of the visual line — "End" inside a wrapped last paragraph
+  // split it mid-sentence (V2b) or mid-word (3.3 on 0.27.0's widths).
+  await page.keyboard.press("Meta+ArrowDown");
   await page.keyboard.press("Enter");
   await cam.type(editor, line, "one line", { click: false });
   await drawer.getByText(/^\d+ edits?$/).waitFor({ timeout: 15000 });
@@ -181,6 +183,26 @@ export function smoke(ctx, check, ok, shot = null, why = "") {
   console.log(line);
   ctx?.note?.(line);
   return ok;
+}
+
+/** M-desk-8 P1: the gate cards read their titles (or a type name), never a raw kind id. */
+export const RAW_KIND = /^(approval|gate_approval|secret_leak_scan|diff_touches_forbidden_paths|output_schema_check)$/;
+export const gateLabels = async (page) => (await page.locator(".rf-gate__label").allInnerTexts()).map((t) => t.trim());
+export const arcLabels = async (page) => (await page.locator(".rf-edge-rework__label").allInnerTexts()).map((t) => t.trim());
+
+/** V3: P1 on a run view's canvas — the guardrail's cards by title, no raw kind. */
+export async function p1Smoke(ctx, where) {
+  const set = await gateLabels(ctx.page);
+  const want = [ctx.story.guardrail.secret_scan.title, ctx.story.guardrail.forbidden.title];
+  return smoke(ctx, `P1 (${where}: the gate cards read their titles, never a raw kind)`,
+    want.every((w) => set.includes(w)) && !set.some((l) => RAW_KIND.test(l)), await ctx.shot("p1-gates"), set.join(" · "));
+}
+
+/** V3: P2 on a run view's canvas — the Tests check's loop arc reads "tests failed". */
+export async function p2Smoke(ctx, where) {
+  const arcs = await arcLabels(ctx.page);
+  return smoke(ctx, `P2 (${where}: the Tests check's arc reads “tests failed”)`,
+    arcs.includes("tests failed"), await ctx.shot("p2-arcs"), arcs.join(" · "));
 }
 
 export const MONEY = /\$0\.00 \+|\$0\.0000/;

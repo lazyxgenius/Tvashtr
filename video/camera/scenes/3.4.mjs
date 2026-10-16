@@ -2,7 +2,7 @@
 // sandbox — failed: back to the Engineer with the last lines (opened on camera), or passed; the Reviewer
 // on Grok gives its verdict (part "verdict"). Re-taken from the hero recording (V4 speeds them up).
 // No `rehearse`: V1's proof recording has no Tests check (MARK.tests would throw).
-import { activity, answerNotifyAsk, closeDrawer, MARK, nowBar, openRunAgent, runPath, watch } from "../flows.mjs";
+import { activity, answerNotifyAsk, closeDrawer, MARK, nowBar, openRunAgent, p2Smoke, runPath, watch } from "../flows.mjs";
 
 const ready = async (ctx) => {
   await ctx.go(runPath(ctx));
@@ -37,6 +37,7 @@ export default {
     if (await show.count()) await cam.click(show, "Show output"); // the page's own state: no request
     else await cam.hover(result.locator(".lv-line__what"), "the Tests result");
     await cam.pause(5000);
+    await p2Smoke(ctx, "3.4 on 0.27.0"); // V3: the replay through today's frontend
   },
   parts: [
     {
