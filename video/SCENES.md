@@ -14,13 +14,14 @@ Generated from the takes on disk (`node video/camera/sheet.mjs scenes-table`): o
 its V1, V2 and V2b status. "clip" = a filmed take (mode, raw length); "rehearsed" = a `--dry` take
 that stopped before the named spend (or ran through when it spends nothing); "—" = not taken in that
 version. Budgets are the scene's own and the plan's chapter budget — raw takes run longer on purpose
-(record more, V4 trims). **V2b stopped at a Grok usage cap** during 6.1/6.2 (below): 6.3, 3.5,
-0.1 and the chapter 2 and 7 re-takes are still owed, and 6.1/6.2's test results need a re-take.
+(record more, V4 trims). V2b's first sitting stopped at a Grok usage cap; **its second sitting
+(2026-10-16) filmed everything it owed** — 6.1–6.3 on a fresh team with the Reviewer on Claude Opus,
+3.5, chapters 2 and 7, and 0.1 (below).
 
 <!-- scenes-table -->
 | take | script | V1 | V2 | V2b | scene budget · chapter budget |
 |---|---|---|---|---|---|
-| 0.1 | `scenes/0.1.mjs` (web) | blocked: trade_mcp is private — run node video/camera/github-login.mjs once (operator) | clip (web) 12.7 s | blocked: trade_mcp is private — run node video/camera/github-login.mjs once (operator) | 20 s · ch 0: 20 s |
+| 0.1 | `scenes/0.1.mjs` (web) | blocked: trade_mcp is private — run node video/camera/github-login.mjs once (operator) | clip (web) 12.7 s | clip (web) 12.7 s | 20 s · ch 0: 20 s |
 | 0.2 | `scenes/0.2.mjs` (motion) | MOTION | MOTION | MOTION | — s · ch 0: 20 s |
 | 1.1 | `scenes/1.1.mjs` (mac) | MAC | MAC | MAC | — s · ch 1: 55 s |
 | 1.2 | `scenes/1.2.mjs` (live) | clip (live) 15.3 s | — | rehearsed (live, no spend) | 20 s · ch 1: 55 s |
@@ -30,10 +31,10 @@ version. Budgets are the scene's own and the plan's chapter budget — raw takes
 | 2.1 | `scenes/2.1.mjs` (live) | clip (live) 14.3 s | — | — | 12 s · ch 2: 70 s |
 | 2.2 | `scenes/2.2.mjs` (live) | clip (live) 18.8 s | — | — | 12 s · ch 2: 70 s |
 | 2.3 | `scenes/2.3.mjs` (live) | clip (live) 12.6 s | — | — | 12 s · ch 2: 70 s |
-| 2.4 | `scenes/2.4.mjs` (live) | clip (live) 80.7 s | — | — | 30 s · ch 2: 70 s |
-| 2.5 | `scenes/2.5.mjs` (live) | clip (live) 40.8 s | — | — | 25 s · ch 2: 70 s |
-| 2.6 | `scenes/2.6.mjs` (live) | clip (live) 29.2 s | — | — | 25 s · ch 2: 70 s |
-| 2.7 | `scenes/2.7.mjs` (live) | clip (live) 154.6 s | — | — | 30 s · ch 2: 70 s |
+| 2.4 | `scenes/2.4.mjs` (live) | clip (live) 80.7 s | — | clip (live) 66.9 s | 30 s · ch 2: 70 s |
+| 2.5 | `scenes/2.5.mjs` (live) | clip (live) 40.8 s | — | clip (live) 49.8 s | 25 s · ch 2: 70 s |
+| 2.6 | `scenes/2.6.mjs` (live) | clip (live) 29.2 s | — | clip (live) 31.7 s | 25 s · ch 2: 70 s |
+| 2.7 | `scenes/2.7.mjs` (live) | clip (live) 154.6 s | — | clip (live) 56.1 s | 30 s · ch 2: 70 s |
 | 3.1 | `scenes/3.1.mjs` (record) | rehearsed · stopped before “Launch” | clip (record) 2281.1 s | clip (record) 657.2 s | 15 s · ch 3: 90 s |
 | 3.2 | `scenes/3.2.mjs` (replay) | rehearsed (replay, no spend) | clip (replay) 15.8 s | clip (replay) 15.8 s | 25 s · ch 3: 90 s |
 | 3.2-proof | `scenes/3.2.mjs` (record) | clip (record) 1869.2 s | — | — | 25 s · ch 3: 90 s |
@@ -41,23 +42,133 @@ version. Budgets are the scene's own and the plan's chapter budget — raw takes
 | 3.3 | `scenes/3.3.mjs` (replay) | rehearsed (replay, no spend) | clip (replay) 22 s | clip (replay) 22.4 s | 25 s · ch 3: 90 s |
 | 3.4 | `scenes/3.4.mjs` (replay) | rehearsed (replay, no spend) | clip (replay) 29.8 s | clip (replay) 22 s | 30 s · ch 3: 90 s |
 | 3.4-verdict | `scenes/3.4.mjs` (replay) | — | — | clip (replay) 30.1 s | 30 s · ch 3: 90 s |
-| 3.5 | `scenes/3.5.mjs` (sample) | clip (sample) 21 s | — | — | 15 s · ch 3: 90 s |
+| 3.5 | `scenes/3.5.mjs` (sample) | clip (sample) 21 s | — | clip (sample) 20.5 s | 15 s · ch 3: 90 s |
 | 3.6 | `scenes/3.6.mjs` (replay) | rehearsed (replay, no spend) | clip (replay) 25.6 s | clip (replay) 24.1 s | 20 s · ch 3: 90 s |
 | 3.7 | `scenes/3.7.mjs` (live) | rehearsed · stopped before “Send” | clip (live) 52.6 s | clip (live) 77.4 s | 30 s · ch 3: 90 s |
 | 4.1 | `scenes/4.1.mjs` (live) | rehearsed · stopped before “Launch” | clip (live) 282.4 s | clip (live) 319.2 s | 30 s · ch 4: 45 s |
 | 4.2 | `scenes/4.2.mjs` (live) | rehearsed · stopped before “Resume (needs 4.1's failed run)” | clip (live) 24.7 s | clip (live) 19.9 s | 25 s · ch 4: 45 s |
+| 4.2-p6 | `scenes/4.2.mjs` (live) | — | — | clip (live) 40.1 s | 25 s · ch 4: 45 s |
 | 5.1 | `scenes/5.1.mjs` (live) | rehearsed · stopped before “Start run” | clip (live) 26.5 s | clip (live) 22.6 s | 25 s · ch 5: 30 s |
 | 5.1-recent | `scenes/5.1.mjs` (live) | rehearsed (live, no spend) | clip (live) 7 s | clip (live) 6.9 s | 25 s · ch 5: 30 s |
-| 6.1 | `scenes/6.1.mjs` (live) | rehearsed · stopped before “Run all” | — | clip (live) 29 s | 30 s · ch 6: 75 s |
-| 6.2 | `scenes/6.2.mjs` (run) | clip (sample) 23.9 s | — | clip (run) 60.6 s | 40 s · ch 6: 75 s |
-| 6.3 | `scenes/6.3.mjs` (run) | rehearsed · stopped before “Start compare” | — | — | 40 s · ch 6: 75 s |
-| 6.3-set | `scenes/6.3.mjs` (run) | — | — | — | 40 s · ch 6: 75 s |
-| 7.1 | `scenes/7.1.mjs` (live) | clip (live) 27.6 s | — | — | 20 s · ch 7: 30 s |
-| 7.2 | `scenes/7.2.mjs` (live) | clip (live) 33.3 s | — | — | 30 s · ch 7: 30 s |
+| 6.1 | `scenes/6.1.mjs` (live) | rehearsed · stopped before “Run all” | — | clip (live) 28.5 s | 30 s · ch 6: 75 s |
+| 6.1-evidence | `scenes/6.1.mjs` (live) | — | — | clip (live) 37.9 s | 30 s · ch 6: 75 s |
+| 6.1-p5 | `scenes/6.1.mjs` (live) | — | — | clip (live) 18.5 s | 30 s · ch 6: 75 s |
+| 6.1-s4 | `scenes/6.1.mjs` (live) | — | — | clip (live) 9.4 s | 30 s · ch 6: 75 s |
+| 6.1-seed | `scenes/6.1.mjs` (live) | — | — | clip (live) 34.4 s | 30 s · ch 6: 75 s |
+| 6.2 | `scenes/6.2.mjs` (run) | clip (sample) 23.9 s | — | clip (run) 60.9 s | 40 s · ch 6: 75 s |
+| 6.3 | `scenes/6.3.mjs` (run) | rehearsed · stopped before “Start compare” | — | clip (run) 35.4 s | 40 s · ch 6: 75 s |
+| 6.3-set | `scenes/6.3.mjs` (run) | — | — | clip (run) 72.1 s | 40 s · ch 6: 75 s |
+| 7.1 | `scenes/7.1.mjs` (live) | clip (live) 27.6 s | — | clip (live) 27.7 s | 20 s · ch 7: 30 s |
+| 7.2 | `scenes/7.2.mjs` (live) | clip (live) 33.3 s | — | clip (live) 33.6 s | 30 s · ch 7: 30 s |
 | 8.1 | `scenes/8.1.mjs` (sample) | clip (sample) 23.6 s | — | — | 25 s · ch 8: 25 s |
 | 8.1-web | `scenes/8.1.mjs` (web) | clip (web) 23.5 s | — | — | 25 s · ch 8: 25 s |
 | 8.2 | `scenes/8.2.mjs` (motion) | MOTION | MOTION | MOTION | — s · ch 8: 25 s |
 <!-- /scenes-table -->
+
+## V2b, second sitting (2026-10-16): the Reviewer on Claude Opus, chapter 6 on a fresh team, every owed scene
+
+Brief `prompts/m-desk-8-v2b2.md` Part B, on `video/v2b-refilm`: `feat/m-desk-8` merged in (`db0135b2`,
+`--no-ff`; P1–P6, the on-camera fixes the first sitting's product notes asked for). No Grok job ran in
+this sitting. Ledger `video/out/v2b/budget-2.json` (caps 10 runs · 12 test replays · 1 Ask): **runs 8 ·
+test replays 9 · Asks 1**; Claude CLI probes 1 of 2.
+
+- **K8: the Reviewer runs on `anthropic/claude-opus-5-5`** for the rest of the film (`story.json`
+  `agents.reviewer`, `runs_on: "claude"`). The picker's Claude presets are Sonnet 5 and Sonnet 4, so
+  Opus goes in as a custom model ID (`flows.pickCustomModel`); one `claude -p --model claude-opus-5-5`
+  with the runner's own flags proved the operator's subscription takes it (`apiKeySource=none`, reply
+  "ok"). **The continuity break is accepted:** chapters 3–5 show the Grok Reviewer (V2b's first
+  sitting); chapters 2, 6 and 7 show the Opus one.
+- **K9: chapter 6 on a fresh "Indicator sprint team"** (final, no Query domain step, the Tests check,
+  the Opus Reviewer; the hero team became "Indicator sprint team (earlier)"), with one **seed run off
+  camera** (part `6.1-seed`, `video/out/v2b/seed.json`; `flows.seedRun` finds it).
+- **K10: 6.1 and 6.2 re-taken whole** on that team; 6.3 and its set followed. Chapter 2 rebuilt the
+  film team after chapter 6 (its own team renamed "… (earlier)", its runs kept).
+
+### The real runs (second sitting)
+
+| run | # | scene | task | what happened | wall clock | PR |
+|---|---|---|---|---|---|---|
+| `70e2e4bf` | 1 | 6.1-seed (off camera) | Add a zero-lag EMA indicator, fresh team v1 | spec gate approved → Engineer → **Tests failed** (12 lines back) → Engineer round 2 → **Tests passed · 665** → Opus Reviewer **approved round 1** ("Approved — zlema is a pure function in core/indicators.py:31 …") → Secret scan → No edits to servers/ → Ship | "Done in 6m 7s · on your Claude subscription" | [#63](https://github.com/lazyxgenius/trade_mcp/pull/63) |
+| `a2cb79c8` | 5 | 4.2-p6 (evidence) | Add an Ultimate oscillator indicator, on the "(earlier)" team | spec gate approved → Engineer started → stopped through the app → the resume confirm opened for P6, then cancelled | stopped | — |
+| `b30aac78` / `afe9c70e` | 3 | 6.3 compare | Add a TEMA indicator, v1 / v2 | each: Tests failed → Engineer round 2 → Tests passed → Reviewer approved; **"v2 did better"** (Reviewer's tests 3 of 4 → 4 of 4; work 2m 30s vs 3m 26s) | 6m 2s / 6m 54s (lanes take turns on Claude) | none in a compare |
+| `04ba00a7` / `b686e82c` | 5 | 6.3-set | Add a Vortex indicator, v1 / v2 | as above; hidden checks pass | 8m 22s / 9m 27s | none in a compare |
+| `0ceade84` / `e7029130` | 7 | 6.3-set | Add a Chande momentum oscillator, v1 / v2 | as above; set: hidden checks **2 of 2 → 2 of 2**, rounds 2.0 → 2.0, no Restore | 8m 56s / 9m 47s | none in a compare |
+
+Test replays: 6.1 "Run all 4" on v1 (**3 of 4 passed** — the round test failed for real: the replayed
+Reviewer had no test result, below), 6.2 "Save and run tests" on v2 (4), 2.7 "Run all 1" on a chapter-2
+team (**1 of 1 passed**). The one Ask (6.1-evidence, the seed run's Opus Reviewer): "In a short
+bulleted list, what did you check before you approved? Put each file name in backticks." (its answer
+is kept at `video/out/v2b/ask-answer.md`).
+
+### The live smoke (second sitting) — every line with its screenshot (opened)
+
+| check | result | screenshot (`takes/v2b/…`) |
+|---|---|---|
+| 6.1 L1/D8 | **PASS** — 0.0 s: "On v1 · on your Claude subscription"; results "3 of 4 passed" (real counts, no usage error) | `6.1/shots/running.png`, `results.png` |
+| S4 (6.1's replays on Claude) | **PASS** — 4× `--restricted --safe-mode` | `6.1/shots/results.png` |
+| 6.2 L1/D8 | **PASS** — 0.0 s: `ran_on {"subscriptions":["claude"],"all":true}`; the card "Testing 1 of 4" | `6.2/shots/testing.png` |
+| S4 (6.2's replays on Claude) | **PASS** — 4× `--restricted --safe-mode` | `6.2/shots/tested.png` |
+| 6.3 H5 (compare) | **PASS** — "about 12 min" = the turns added up (12) | `6.3/shots/6.3-lanes.png` |
+| 6.3 H1 lanes / results | **PASS** — header and lanes "on your Claude subscription"; v2's lane "PM · Waiting for your Claude subscription — one job at a time."; Cost rows name the subscription | `6.3/shots/6.3-lanes.png`, `6.3-compare-results.png` |
+| 6.3 H5 (set) | **PASS** — "about 26 min" = 26 | `6.3-set/shots/6.3-set-queued.png` |
+| 6.3 H4 | **PASS** — a queued cell "PM · Waiting for your Claude subscription — one job at a time." | `6.3-set/shots/6.3-set-queued.png` |
+| 6.3 H1 set running / results | **PASS** — cost cards and cells "on your Claude subscription" | `6.3-set/shots/6.3-set-results.png` |
+| 6.3 every lane runs the Tests check | **PASS** — 6 of 6 lane runs: "Tests failed — back to Engineer with the last 12 lines" → "Tests passed" | `6.3-set/shots/6.3-set-results.png` |
+| P1 (2.4's gate cards) | **PASS** — bare and set: "PRD approval · Escalation · Tests pass · Secret scan · No edits to servers/", never a raw kind | `2.4/shots/p1-gates-bare.png`, `p1-gates-set.png` |
+| P2 (a run view's loop arcs) | **PASS** — "tests failed" on the check's arc, "changes requested" on the Reviewer's | `6.1-evidence/shots/p2-arcs.png` |
+| P3 (a verdict line) | **PASS** — "Approved — zlema is a pure function in core/indicators.py:31 …" | `6.1-evidence/shots/p3-verdict.png` |
+| P4 (a drawer's round row) | **PASS** — "113,198 in / 2,940 out · on your Claude subscription", no $0.0000 | `6.1-evidence/shots/p4-round-row.png` |
+| P5 (the Ask's answer renders markdown) | **PASS** — strong 9 · li 9 · code 30, no `**` outside code (the in-take line of 6.1-evidence said FAIL: its heuristic counted a glob's `**` inside a code span; fixed, and 6.1-p5 replays that exact answer with no spend) | `6.1-p5/shots/p5-answer-whole.png`, `p5-ask-replay.png` |
+| S4 (the Ask on Claude) | **PASS** — `--restricted --safe-mode` | `6.1-evidence/shots/p5-ask.png` |
+| P6 (the resume confirm) | **PASS** — runs again: "Engineer · round 1 / Tests pass — Tvashtr runs the tests / Reviewer · round 1, and round 2 if it asks for more / Secret scan — Tvashtr checks it / No edits to servers/ — Tvashtr checks it / Ship, if the checks pass" | `4.2-p6/shots/p6-confirm.png` |
+| 2.5 (same-model advisory) | **PASS** — "Reviewer and Engineer both run anthropic/claude-sonnet-5 …" → `anthropic/claude-opus-5-5`: cleared | `2.5/shots/same-model-hint.png`, `chosen-model.png` |
+| 2.7 L1/D8 | **PASS** — 0.0 s: "On v1 · on your Claude subscription"; "1 of 1 passed" | `2.7/shots/running.png`, `tested.png` |
+| S4 (2.7's replay on Claude) | **PASS** — `--restricted --safe-mode` | `2.7/shots/tested.png` |
+| S4 (every Claude job's lock line) | **PASS** — `smoke.mjs s4` on all 12 runs; this sitting's 8: 0 Grok · 29 Claude jobs, each with its lock line and `--restricted`; the seed run's Reviewer: "--model claude-opus-5-5 --restricted --safe-mode; lock line present" | `6.1-s4/shots/reviewer-raw-log-drawer.png` |
+
+### Bends from the storyboard (second sitting)
+
+- **K8's continuity break** (above): the Reviewer's model changes between chapter 5 and chapter 6.
+- **2.5 ends on a warning, not a clean pick:** the advisory clears on Opus, and in its place the
+  custom ID shows "No provider matches anthropic/claude-opus-5-5. On this Mac it runs on your Claude
+  subscription; it will fail at run time if the name is wrong." (true — Opus isn't a preset; the probe
+  and the seed run prove the name).
+- **6.1's round test fails for real** ("3 of 4 passed"): replayed on round 1's inputs, the Opus
+  Reviewer asked for test output — a test replay doesn't carry the Tests check's result. Kept (G1);
+  6.2's v2 adds the line and reads 4 of 4.
+- **The P-items are shown in evidence takes** where the film's own take doesn't reach them:
+  `6.1-evidence` (P2–P5, the one Ask), `6.1-p5` (P5 whole, no spend), `4.2-p6` (P6 on a stopped run),
+  `6.1-s4` (S4's lock line). Their titles say "not for the film"; previews leave them out.
+- **3.5's sample follows the film team:** `fixtures/base.mjs` picks the film team's graph by name (the
+  capture now passes chapter 6's canvas too) and the sample's `ran_on` is Claude plus the DeepSeek key
+  (it read "Claude and Grok").
+- **0.1 is filmed on PR #57** (the hero's) with the operator's GitHub session, deleted after (never
+  opened).
+
+### Product notes seen on camera (for the architect; no product code in Part B)
+
+- A test replay doesn't carry the Tests check's result, so a Reviewer test can fail on "no test result
+  was supplied" (6.1's round test).
+- The Now bar's chips still name checks by kind ("Secret leak scan", "Diff touches forbidden paths")
+  — P1 fixed the canvas cards only (3.5, 6.1).
+- The run drawer's lower area is short under the Activity panel: an Ask's answer and the Raw log sit
+  below its fold, and Raw log rows are cut to a few characters (the full line is the row's title).
+- "1 library tool(s) — tools aren't used by Desktop subscription agents yet" shows on every run.
+- "$0.00 in all" on compare and set results is the key-spend total (by design), beside cards that
+  name the subscription.
+- Import's "things to fix" card lists "Add a key for anthropic" twice (one per Claude model) on an
+  account without the Desktop (7.2).
+
+### What V3 needs (second sitting)
+
+- **6.1** (28.5 s), **6.2** (60.9 s), **6.3** (35.4 s), **6.3-set** (72.1 s): keep; chapter 6 now
+  reads v1 → v2 → "v2 did better" on the Opus Reviewer.
+- **2.4** (66.9 s), **2.5** (49.8 s; caption or trim the custom-ID warning), **2.6** (31.7 s), **2.7**
+  (56.1 s): keep; 2.1–2.3 stay V1's.
+- **3.5** (20.5 s, sample): keep. **7.1** (27.7 s) and **7.2** (33.6 s): keep. **0.1** (12.7 s): keep.
+- Still V1-only: 1.3–1.5, 2.1–2.3, 8.1; MAC and MOTION scenes are the operator's.
+- Review files: `video/out/v2b/contact-sheet.png` (40 takes: 28 V2b, 12 V1) and
+  `ch2-preview.mp4` 250.0 s · `ch3` 272.3 s · `ch4` 339.0 s · `ch5` 29.5 s · `ch6` 197.0 s · `ch7` 61.2 s.
 
 ## V2b (2026-10-14): the re-film with the Tests check — stopped at a Grok usage cap
 
@@ -146,6 +257,8 @@ reported **665 passed** the reviewer did not…" (K4: the question follows what 
   every run.
 
 ### Still owed (V2b → after the Grok limit resets)
+
+All filmed in the second sitting (above): the Reviewer moved to Claude (K8), so no Grok job was needed.
 
 | scene | real work | note |
 |---|---|---|
@@ -341,7 +454,8 @@ instructions). "Up to 3 rounds" is visible only on the group frame (2.7); the lo
 "changes requested".
 **2.5 A model per agent** — LIVE. Engineer and PM → claude-sonnet-5; the Engineer's backup model
 DeepSeek (the Desktop notes Claude runs use the subscription and don't switch to it); Reviewer →
-claude-sonnet-5 → the same-model hint ("Reviewer and Engineer both run …") → grok-4.7.
+claude-sonnet-5 → the same-model hint ("Reviewer and Engineer both run …") → grok-4.7 (V1–V2b first
+sitting); since K8 → a custom model ID, `anthropic/claude-opus-5-5` (the hint clears).
 **2.6 Remember; budget; failure path → Fixer** — LIVE. The label is **"Remember what it learns"**
 (not "I learn"). There is **no budget control on the canvas**: the $5.00 is the composer's "Budget
 for this run" (3.1's Run options; the server default). Pre-wired: an unconfigured new agent between
@@ -352,7 +466,7 @@ Desktop job — the stall sweep fails such a run instead of taking the failure p
 **2.7 Tidy; group the loop; v1; Test this agent** — LIVE. Tidy, select Engineer + Reviewer, Group
 "Review loop" (frame: "Engineer ⇄ Reviewer · up to 3 rounds"), the header "v1 · saved just now"
 (layout changes aren't versions), then More actions → Test this agent → Tests → Run all 1 — a real
-replay of the Reviewer on its Grok subscription (V1's one test). Before any run the Reviewer has no
+replay of the Reviewer on its Grok subscription (V1's one test; since K8 on its Claude subscription). Before any run the Reviewer has no
 rounds, so its test comes from a CSV (setup). Order changed so a `--dry` rehearsal covers all but
 the spend.
 **3.1 Home composer** — RUN, record "hero" (V2). The task, trade_mcp, Run options: branch main,

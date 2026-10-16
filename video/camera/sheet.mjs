@@ -81,7 +81,8 @@ const RECORD_HEAD_S = 60;
 /** Chapter `ch`'s newest filmed takes joined at 1920×1080 (no narration). */
 function chapterPreview(ch, out = path.join(OUT, `ch${ch}-preview.mp4`), pick = newest) {
   const list = pick().filter(
-    (t) => t.take.split(".")[0] === String(ch) && t.status === "ok" && !/dry/.test(t.mode) && fs.existsSync(path.join(t.path, "take.mp4")) && !/-(proof|replay)$/.test(t.take),
+    (t) => t.take.split(".")[0] === String(ch) && t.status === "ok" && !/dry/.test(t.mode) && fs.existsSync(path.join(t.path, "take.mp4")) && !/-(proof|replay)$/.test(t.take) &&
+      !/not for the film/.test(t.title ?? ""), // evidence and off-camera parts (V2b second sitting)
   );
   if (!list.length) throw new Error(`no chapter ${ch} takes`);
   const inputs = list.flatMap((t) => [...(t.mode === "record" ? ["-t", String(RECORD_HEAD_S)] : []), "-i", path.join(t.path, "take.mp4")]);

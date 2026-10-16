@@ -3,11 +3,75 @@
 Everything the Tvashtr demo film is made with, and nothing of the product: the Desktop **camera**
 (Playwright driving the real dev Desktop), the **reel** builder (Product Demo Director), and two
 report-only **probes**. Briefs: `prompts/video-v0.md`, `prompts/video-v1.md`, `prompts/m-desk-5-v2.md`
-(Part B), `prompts/m-desk-7-v2b.md` (Part B). Media and run data
+(Part B), `prompts/m-desk-7-v2b.md` (Part B), `prompts/m-desk-8-v2b2.md` (Part B). Media and run data
 never enter git: `video/out/`, `video/takes/`, `video/recordings/`, `video/vendor/` and
 `video/node_modules/` are ignored. V1 (below) made every scene a take script that re-records by
 name; V2 (below) filmed the run scenes on real runs; `video/SCENES.md` has each scene's status, the
 V2 numbers and bends, and the operator's MAC scripts.
+
+## V2b, second sitting — the Reviewer on Claude Opus (2026-10-16)
+
+Brief `prompts/m-desk-8-v2b2.md` Part B, on `video/v2b-refilm` with `feat/m-desk-8` (P1–P6) merged in.
+No Grok job runs; the same stack, camera and take runner, with:
+
+- **K8, the Reviewer on `anthropic/claude-opus-5-5`** (`story.json`; the old model kept as
+  `model_grok`). `flows.pickCustomModel(ctx, drawer, id)` enters it through "Use a custom model ID"
+  (the picker's Claude presets are Sonnet 5 and 4); 2.5 picks it after the same-model hint.
+- **`flows.watchClaude(ctx)`** replaces the Grok watcher for Asks and test replays: the Claude CLIs
+  this Desktop starts (`--output-format stream-json`), each read as `--restricted --safe-mode` or
+  `unlocked` (the S4 smoke for jobs the server keeps no log of).
+- **K9, chapter 6 on a fresh film team:** part `6.1-seed` builds it (`buildFilmTeam`, no Query domain
+  step) and runs the seed task off camera; `video/out/v2b/seed.json` records it and `flows.seedRun`
+  finds it for 6.1–6.3 and the evidence parts.
+- **A second ledger** `video/out/v2b/budget-2.json` with this sitting's caps (10 runs · 12 test
+  replays · 1 Ask); `node video/camera/take.mjs budget` prints it.
+- **Evidence parts (not for the film):** `6.1-evidence` (P2–P5 and the one Ask on the seed run),
+  `6.1-p5` (the live answer replayed into the Ask box with `page.route`, no spend), `6.1-s4` (the
+  seed run's Reviewer → Raw log), `4.2-p6` (the resume confirm on a stopped run). Their titles end in
+  "not for the film"; `sheet.mjs preview` leaves them out.
+- **2.4** smokes P1 on the bare and the set gate cards; **3.5**'s sample (`fixtures/base.mjs`) takes
+  the film team's graph by name and runs on Claude plus the DeepSeek key.
+
+```bash
+VIDEO_ALLOW_SPEND=1 node video/camera/take.mjs 6.1-seed # off camera
+VIDEO_ALLOW_SPEND=1 caffeinate -dimsu node video/camera/take.mjs 6.1 6.2 6.3 6.3-set
+node video/camera/take.mjs video/fixtures/capture-live.mjs && node video/fixtures/export-live.mjs && node video/camera/take.mjs 3.5
+node video/camera/take.mjs 2.4 2.5 2.6 && VIDEO_ALLOW_SPEND=1 node video/camera/take.mjs 2.7 && node video/camera/take.mjs 7.1
+video/stack/down && HOSTED=0 video/stack/up && node video/camera/take.mjs 7.2 && video/stack/down && video/stack/up
+node video/camera/take.mjs 0.1 && rm video/out/github-session.json
+node video/camera/smoke.mjs s4 && node video/camera/sheet.mjs contact-sheet
+```
+
+### Results (second sitting)
+
+- Runs (ledger: **8 of 10 runs, 9 of 12 test replays, 1 of 1 Ask**; Claude probes 1 of 2): the seed
+  `70e2e4bf` (→ PR https://github.com/lazyxgenius/trade_mcp/pull/63, "Done in 6m 7s · on your Claude
+  subscription"); the P6 run `a2cb79c8` (stopped); the 6.3 compare (TEMA, v1/v2) and set (Vortex,
+  Chande × v1/v2) — 6 lane runs, every one Tests failed → passed → approved, no PRs (a compare opens
+  none).
+- Takes (this sitting): 6.1 28.5 s · 6.2 60.9 s · 6.3 35.4 s · 6.3-set 72.1 s · 3.5 20.5 s · 2.4
+  66.9 s · 2.5 49.8 s · 2.6 31.7 s · 2.7 56.1 s · 7.1 27.7 s · 7.2 33.6 s · 0.1 12.7 s; evidence
+  6.1-seed, 6.1-evidence, 6.1-p5, 6.1-s4, 4.2-p6.
+- Every SMOKE line PASS (6.1/6.2/2.7 L1/D8, 6.3 H1/H4/H5, P1–P6, 2.5, S4) — `video/SCENES.md` ›
+  "V2b, second sitting".
+- Review files: `video/out/v2b/contact-sheet.png` (40 takes: 28 V2b, 12 V1), previews ch2–ch7.
+- `video/out/github-session.json` deleted after 0.1.
+
+### What didn't work (second sitting)
+
+- **A `--dry` rehearsal left a saved edit.** 6.2's rehearsal saved the Reviewer's new line and backup
+  model, so the real take's setup refused ("2 unsaved changes since v1"); put back through the node
+  PATCH. Rehearse 6.2 only on a team you rebuild after.
+- **P5's markdown check counted a glob.** The in-take heuristic read the `**` of `**/test*.py` inside a
+  code span as unrendered markdown (a false FAIL); it now skips code spans, and `6.1-p5` re-shows the
+  same answer with no spend.
+- **3.5's sample took the wrong team's graph.** Once chapter 6 had its own team, the capture passed
+  two canvases and `base.mjs` took the first (no Query domain step → a TypeError); it now picks the
+  film team's by name.
+- **Raw log rows are cut at the drawer's width.** `6.1-s4` reads each row's `title` (the full line)
+  for the smoke; the shot alone shows "Claude C…".
+- **Evidence parts in the previews.** `sheet.mjs preview` joined the "not for the film" parts into
+  ch4/ch6; it now leaves them out.
 
 ## V2b — the re-film with the Tests check (2026-10-14, stopped at a Grok usage cap)
 

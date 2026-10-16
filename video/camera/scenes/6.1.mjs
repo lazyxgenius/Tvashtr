@@ -5,7 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildFilmTeam, byRole, graph, must } from "../film.mjs";
-import { answerNotifyAsk, composeAndLaunch, openRunAgent, seedRun, smoke, toTheEnd, watchClaude } from "../flows.mjs";
+import { answerNotifyAsk, composeAndLaunch, openRunAgent, rawLog, seedRun, smoke, toTheEnd, watchClaude } from "../flows.mjs";
 
 const CSV = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "fixtures", "files", "reviewer-tests.csv");
 const SEED = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "out", "v2b", "seed.json");
@@ -226,6 +226,37 @@ export default {
         await answer.screenshot({ path: whole });
         const counts = ["strong", "li", "code", "pre"].map((t) => `${t}=${(html.match(new RegExp(`<${t}\\b`, "g")) ?? []).length}`).join(" ");
         smoke(ctx, "P5 (the Ask answer renders its markdown)", /<(strong|li|code)\b/.test(html) && !/\*\*/.test(text), whole, `${counts}; ** outside code: ${(text.match(/\*\*/g) ?? []).length}`);
+      },
+    },
+    {
+      // The S4 evidence shot, no spend: the seed run's Reviewer (Claude Opus, K8) → Raw log, its lock line.
+      key: "s4",
+      title: "Evidence: S4 the seed run's Reviewer on Claude, Raw log with its lock line (no spend; not for the film)",
+      mode: "live",
+      setup: async ({ api }) => {
+        const run = await seedRun(api);
+        return { team: run.team, run: run.run_id };
+      },
+      before: async (ctx) => {
+        await ctx.go(`#/teams/${ctx.state.team}/runs/${ctx.state.run}`);
+        await ctx.page.locator(".react-flow__node").first().waitFor({ timeout: 60000 });
+      },
+      film: async (ctx) => {
+        const d = await openRunAgent(ctx, "Reviewer");
+        await rawLog(ctx, d, "reviewer-raw-log");
+        // The drawer's log sits below its fold under the Activity panel: bring the lock line up, shoot the drawer.
+        const lock = d.getByText(/Claude Code is locked to this job.s copy of the repo/).first();
+        const ran = d.getByText(/Running on this computer with your own Claude Code/).first();
+        const has = { lock: await lock.count(), ran: await ran.count() };
+        ctx.note(`raw log: ${JSON.stringify(has)}`);
+        if (has.ran) await ran.evaluate((el) => el.scrollIntoView({ block: "start" }));
+        await ctx.cam.pause(1200);
+        const shot = await ctx.shot("reviewer-raw-log");
+        const whole = path.join(path.dirname(shot), "reviewer-raw-log-drawer.png");
+        await d.screenshot({ path: whole });
+        // A raw log row shows a capped line; its title holds the whole one (EventFeed).
+        const said = has.ran ? ((await ran.getAttribute("title")) ?? (await ran.textContent())).replace(/\s+/g, " ").trim() : "";
+        smoke(ctx, "S4 (the seed run's Claude Reviewer logs its lock line)", has.lock > 0 && / --restricted /.test(said), whole, `${said.match(/--model \S+|--restricted|--safe-mode/g)?.join(" ") ?? said.slice(0, 120)}; lock line ${has.lock ? "present" : "missing"}`);
       },
     },
     {
