@@ -1,8 +1,8 @@
 // 4.2 Needs you → Resume from here; the confirm (kept / runs again / skipped); Carried over; it
 // ships. V2b (K3): opens on Home's Needs you, on 4.1's failed run (run #2), and resumes it as run #3;
 // --dry stops before "Resume run".
-import { filmTeam } from "../film.mjs";
-import { nowBar, smoke, summary, toTheEnd } from "../flows.mjs";
+import { filmTeam, must, story, teams } from "../film.mjs";
+import { answerNotifyAsk, approveWaiting, composeAndLaunch, nowBar, smoke, summary, toTheEnd } from "../flows.mjs";
 
 export default {
   id: "4.2",
@@ -70,4 +70,52 @@ export default {
     await cam.roi("summary", summary(page));
     await cam.pause(3000);
   },
+  parts: [
+    {
+      // V2b second sitting: the P6 smoke (an evidence take, not for the film). The resume confirm of a
+      // run on the earlier hero team (Engineer on Claude, Tests pass, Reviewer on Grok), stopped while
+      // its Engineer works — no Grok job runs (brief: none in Part B); the confirm is cancelled.
+      key: "p6",
+      title: "Evidence: P6 the resume confirm — a check, every plan that runs again (not for the film)",
+      mode: "live",
+      setup: async ({ api }) => {
+        const t = (await teams(api)).find((x) => x.name === `${story.team.name} (earlier)`);
+        if (!t) throw new Error(`no team "${story.team.name} (earlier)" (the hero team)`);
+        return { team: t.team_graph_id, task: "Add an Ultimate oscillator indicator" };
+      },
+      before: (ctx) => ctx.go(`#/teams/${ctx.state.team}`, ctx.page.getByRole("button", { name: "Run this team", exact: true })),
+      film: async (ctx) => {
+        const { page, cam, api } = ctx;
+        const run = await composeAndLaunch(ctx, { task: ctx.state.task, repo: story.repo.full_name, folder: story.repo.folder, branch: story.repo.branch });
+        await answerNotifyAsk(ctx, "Not now", { wait: 8000 });
+        // Off camera: approve the spec, then stop the run (the app's own Stop) once the Engineer works.
+        await ctx.offCamera("the PM, the spec, the Engineer starting", async () => {
+          for (let i = 0; i < 600; i += 1) {
+            await approveWaiting(ctx);
+            const lines = (await api("GET", `/api/runs/${run}/activity?desktop_target=1`)).json?.lines ?? [];
+            if (lines.some((l) => l.label === "Engineer" && ["edited", "read", "searched", "started"].includes(l.kind))) break;
+            await new Promise((r) => setTimeout(r, 3000));
+          }
+          must(await api("POST", `/api/runs/${run}/cancel`), "stop the run");
+        });
+        await ctx.go(`#/teams/${ctx.state.team}/runs/${run}`);
+        const resume = page.getByRole("button", { name: /^Resume from / }).first();
+        await resume.waitFor({ timeout: 60000 });
+        await cam.click(resume, "Resume from …");
+        const pick = page.getByRole("complementary", { name: /^Resume run #\d+$/ });
+        await pick.waitFor({ timeout: 30000 });
+        const step = pick.getByRole("listitem").filter({ hasText: "Engineer" }).filter({ has: page.getByRole("button", { name: /Resume from here/ }) }).first();
+        await cam.click(step.getByRole("button", { name: /Resume from here/ }), "Resume from here (Engineer)");
+        const confirm = page.getByRole("dialog", { name: /^Resume from / });
+        await confirm.waitFor({ timeout: 30000 });
+        await cam.roi("confirm", confirm);
+        await cam.pause(2500);
+        const said = (await confirm.innerText()).replace(/\s+/g, " ").trim();
+        smoke(ctx, "P6 (the resume confirm: a check reads “Tests pass — Tvashtr runs the tests”, every plan that runs again)",
+          said.includes("Tests pass — Tvashtr runs the tests") && !/when you approve/.test(said) && said.includes("Only the steps that run again use your Claude and Grok subscriptions."),
+          await ctx.shot("p6-confirm"), said.slice(0, 600));
+        await cam.click(confirm.getByRole("button", { name: "Cancel", exact: true }), "Cancel");
+      },
+    },
+  ],
 };
