@@ -1,10 +1,8 @@
 import { useState } from "react";
 
 import { type GateConfig, type TeamGraphNode, updateGateNode } from "../../lib/api";
+import { DEFAULT_GATE_TITLE } from "../../lib/nodeNames";
 import { GUARDRAIL_GATE_KINDS } from "./legacyCopy";
-
-/** The title a new gate gets (backend `routers.py`, add gate). */
-const DEFAULT_GATE_TITLE = "Approve before continuing?";
 
 /**
  * A gate's settings (M-rails C8/C9), moved verbatim from the old TeamNodePanel into the new drawer

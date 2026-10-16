@@ -26,12 +26,34 @@ const BLANK_ROLES = new Set(["thinker", "worker"]);
 
 export const NEW_AGENT_TITLE = "New agent";
 
+/** The title a new gate gets (backend `routers.py`, add gate) — a question for a person. */
+export const DEFAULT_GATE_TITLE = "Approve before continuing?";
+
+const GATE_LABEL: Record<string, string> = {
+  prd_approval: "PRD approval",
+  review_escalation: "Escalation",
+  tests_pass: "Tests pass",
+  secret_leak_scan: "Secret leak scan",
+  diff_touches_forbidden_paths: "Forbidden paths",
+  output_schema_check: "Output schema",
+  approval: "Approval",
+  gate_approval: "Approval",
+  ship_approval: "Ship approval",
+};
+
+/** M-desk-8 P1: gates whose card reads the gate's own title (a guardrail check, a plain approval);
+ *  the named human gates keep their short name over a sentence title. */
+const TITLED_GATES = new Set([
+  "secret_leak_scan",
+  "diff_touches_forbidden_paths",
+  "output_schema_check",
+  "approval",
+  "gate_approval",
+]);
+
 /** A short, canvas-legible gate label from its `gate_kind` (a gate's `config.title` is a sentence). */
 export function gateLabel(gateKind: string): string {
-  if (gateKind === "prd_approval") return "PRD approval";
-  if (gateKind === "review_escalation") return "Escalation";
-  if (gateKind === "tests_pass") return "Tests pass";
-  return gateKind;
+  return GATE_LABEL[gateKind] ?? gateKind;
 }
 
 interface NamedNode {
@@ -48,8 +70,10 @@ function configText(config: NodeConfig | null, key: "title" | "description"): st
 /** The node's display name: `config.title`, else the built-in name for its kind and role. */
 export function nodeTitle(node: NamedNode): string {
   if (node.kind === "gate") {
-    const cfg = (node.config ?? {}) as GateConfig;
-    return gateLabel(cfg.gate_kind ?? node.role_name);
+    const kind = ((node.config ?? {}) as GateConfig).gate_kind ?? node.role_name;
+    const title = configText(node.config, "title");
+    if (TITLED_GATES.has(kind) && title && title !== DEFAULT_GATE_TITLE) return title;
+    return gateLabel(kind);
   }
   const title = configText(node.config, "title");
   if (title) return title;
