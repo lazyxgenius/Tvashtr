@@ -24,8 +24,10 @@
     "reviewer": {
       "title": "Reviewer",
       "model_before": "anthropic/claude-sonnet-5",
-      "model": "xai/grok-4.7",
-      "runs_on": "grok"
+      "model": "anthropic/claude-opus-5-5",
+      "runs_on": "claude",
+      "_k8": "V2b second sitting (brief m-desk-8-v2b2 K8): the Reviewer on Claude Opus 5.5 (a custom model ID, probed); chapters 3–5 were filmed with it on xai/grok-4.7",
+      "model_grok": "xai/grok-4.7"
     },
     "fixer": { "title": "Fixer", "model": "deepseek/deepseek-chat", "runs_on": "deepseek" }
   },
@@ -58,6 +60,7 @@
     "stall": "Add a TRIX indicator",
     "next": "Add a DEMA indicator",
     "compare": "Add a TEMA indicator",
+    "seed": "Add a zero-lag EMA indicator",
     "proof": "Add one line to README.md: Indicators live in core/indicators.py. Change nothing else."
   },
   "task_set": {

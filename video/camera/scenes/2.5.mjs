@@ -1,11 +1,12 @@
 // 2.5 A model per agent: the Engineer and the PM on Claude, the Reviewer on Claude → the same-model
-// hint → switched to Grok; the Engineer's backup model (DeepSeek, the one API key).
+// hint → switched to another Claude model (K8: the strongest the picker offers, a custom model ID);
+// the Engineer's backup model (DeepSeek, the one API key).
 import { buildFilmTeam } from "../film.mjs";
-import { canvasReady, closeDrawer, openAgent, pickModel, saveDrawer } from "../flows.mjs";
+import { canvasReady, closeDrawer, openAgent, pickCustomModel, pickModel, saveDrawer } from "../flows.mjs";
 
 export default {
   id: "2.5",
-  title: "A model per agent; the Reviewer's same-model hint; switched to Grok",
+  title: "A model per agent; the Reviewer's same-model hint; switched to another Claude model",
   mode: "live",
   budget: 25,
   setup: async ({ api }) => ({ team: (await buildFilmTeam(api, { upTo: "guardrail" })).id }),
@@ -39,7 +40,7 @@ export default {
     await cam.roi("same-model-hint", hint);
     await cam.hover(hint, "the same-model hint");
     await cam.pause(2200);
-    await pickModel(ctx, d, /^xai\b/, "grok-4.7");
+    await pickCustomModel(ctx, d, story.agents.reviewer.model);
     await hint.waitFor({ state: "hidden", timeout: 15000 }).catch(() => {});
     await cam.pause(900);
     await saveDrawer(ctx, d);

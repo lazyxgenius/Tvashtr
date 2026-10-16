@@ -4,10 +4,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { byRole, graph, must } from "../film.mjs";
-import { heroRun, openRunAgent, smoke, watchGrok } from "../flows.mjs";
+import { buildFilmTeam, byRole, graph, must } from "../film.mjs";
+import { answerNotifyAsk, composeAndLaunch, openRunAgent, seedRun, smoke, toTheEnd, watchClaude } from "../flows.mjs";
 
 const CSV = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "fixtures", "files", "reviewer-tests.csv");
+const SEED = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "out", "v2b", "seed.json");
 
 /**
  * Brief G7: AI checks run on the server's checks model, and this stack has none (the app's own
@@ -16,7 +17,7 @@ const CSV = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", 
  * each is listed under `sample` in take.json; everything else in the take is live.
  */
 const SAMPLE_REASON =
-  "The answer doesn't say which file the Hull moving average belongs in (core/indicators.py).";
+  "The answer doesn't say which file the zero-lag EMA belongs in (core/indicators.py).";
 async function sampleAiChecks(ctx) {
   const { page } = ctx;
   const AI = { available: true, left: 199, limit: 200 };
@@ -55,8 +56,8 @@ export default {
   mode: "live",
   budget: 30,
   setup: async ({ api }) => {
-    const run = await heroRun(api);
-    if (!run) throw new Error("6.1 needs a finished run with a Reviewer round (V2: the hero run)");
+    const run = await seedRun(api); // K9: the fresh film team's seed run
+    if (run.status !== "completed") throw new Error(`6.1 needs the seed run finished (it is ${run.status})`);
     const reviewer = byRole(await graph(api, run.team), "reviewer").id;
     // A rehearsal (or a failed take) leaves its tests behind; Run all would replay them too.
     const base = `/api/teams/${run.team}/nodes/${reviewer}/tests`;
@@ -104,7 +105,7 @@ export default {
     const run = tests.getByRole("button", { name: /^Run all \d+$/ });
     await run.waitFor({ timeout: 30000 });
     const n = Number((await run.innerText()).match(/\d+/)[0]);
-    const grok = watchGrok(ctx);
+    const claude = watchClaude(ctx);
     await ctx.spend("test", "Run all", () => cam.click(run, "Run all"), n);
     const t0 = Date.now(); // from the click itself (not the cursor's glide to the button)
     // The live smoke (L1, D8): the running line names its subscription from its first second.
@@ -112,10 +113,10 @@ export default {
     await head.locator(".tt-head__title", { hasText: /^(Running|Waiting to start)/ }).waitFor({ timeout: 60000 });
     const secs = (Date.now() - t0) / 1000;
     const line = (await head.locator(".tt-head__sub").innerText().catch(() => "")).trim();
-    smoke(ctx, "6.1 L1/D8 (the running line names its subscription)", /subscription/.test(line) && !/\$0\.00/.test(line) && secs <= 1.5, await ctx.shot("running"), `${secs.toFixed(1)} s: ${line}`);
-    await ctx.offCamera("the Reviewer's tests on Grok", () => tests.getByText(/\d+ of \d+ passed/).first().waitFor({ timeout: 45 * 60000 }));
-    const flags = grok();
-    smoke(ctx, "S4 (6.1's test replays on Grok)", flags.length > 0 && flags.every((f) => /^tvashtr-j[0-9a-f]{6}$/.test(f)), await ctx.shot("results"), flags.join(", ") || "no Grok CLI seen");
+    smoke(ctx, "6.1 L1/D8 (the running line names its subscription)", /your Claude subscription/.test(line) && !/\$0\.00/.test(line) && secs <= 1.5, await ctx.shot("running"), `${secs.toFixed(1)} s: ${line}`);
+    await ctx.offCamera("the Reviewer's tests on Claude", () => tests.getByText(/\d+ of \d+ passed/).first().waitFor({ timeout: 45 * 60000 }));
+    const flags = claude();
+    smoke(ctx, "S4 (6.1's test replays on Claude)", flags.length > 0 && flags.every((f) => f === "--restricted --safe-mode"), await ctx.shot("results"), flags.join(", ") || "no Claude CLI seen");
     // Only the round test has an AI check; a failed row is open by default, so never toggle it shut.
     const row = tests.getByRole("list", { name: "Tests" }).getByRole("listitem").filter({ hasText: "Names the indicator file" });
     if (await row.filter({ hasText: "Failed" }).count()) {
@@ -129,4 +130,29 @@ export default {
       }
     } else ctx.note("6.1: the round test shows no failed AI check");
   },
+  parts: [
+    {
+      // K9 (brief m-desk-8-v2b2): chapter 6 works on a fresh "Indicator sprint team" (final, no Query
+      // domain step, the Tests check, the Claude Reviewer); the hero team is renamed "… (earlier)" by
+      // the builder. Its one seed run gives 6.1 a Reviewer round — off camera, not for the film.
+      key: "seed",
+      title: "Off camera: the fresh film team's seed run (K9 — not for the film)",
+      mode: "live",
+      setup: async (ctx) => {
+        const built = await buildFilmTeam(ctx.api, { upTo: "final", skipDomain: true });
+        ctx.note(`FILM_TEAM: ${built.g.nodes.map((n) => n.config?.title || n.role_name).join(" → ")} reviewer=${byRole(built.g, "reviewer").model} validate ${built.validate.ok === false || built.validate.errors?.length ? JSON.stringify(built.validate) : "ok"}`);
+        return { team: built.id, task: ctx.story.runs.seed };
+      },
+      before: (ctx) => ctx.go(`#/teams/${ctx.state.team}`, ctx.page.getByRole("button", { name: "Run this team", exact: true })),
+      film: async (ctx) => {
+        const { story } = ctx;
+        const run = await composeAndLaunch(ctx, { task: ctx.state.task, repo: story.repo.full_name, folder: story.repo.folder, branch: story.repo.branch });
+        fs.mkdirSync(path.dirname(SEED), { recursive: true });
+        fs.writeFileSync(SEED, JSON.stringify({ team: ctx.state.team, run, task: ctx.state.task }, null, 2));
+        await answerNotifyAsk(ctx, "Not now", { wait: 8000 });
+        await toTheEnd(ctx, "the seed run");
+        await ctx.shot("seed-done");
+      },
+    },
+  ],
 };

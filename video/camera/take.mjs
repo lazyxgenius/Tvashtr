@@ -47,14 +47,15 @@ const SCENES = path.join(VIDEO, "camera", "scenes");
 export const TAKES = path.join(VIDEO, "takes", "v2b");
 const RECORDINGS = path.join(VIDEO, "recordings");
 const OUT = path.join(VIDEO, "out", "v2b");
-const LEDGER = path.join(OUT, "budget.json");
+// V2b, second sitting (brief m-desk-8-v2b2): its own ledger; the first sitting's stays in budget.json.
+const LEDGER = path.join(OUT, "budget-2.json");
 export const story = JSON.parse(fs.readFileSync(path.join(VIDEO, "story.json"), "utf8"));
 
 /** V2b's real-work budget (brief m-desk-7-v2b, Part B; nothing carries over from V2): 14 real
  *  Desktop runs, 12 test replays, 2 Asks. A compare is 2 runs, a task-set compare 2 per task,
  *  save-with-tests one replay per test: `ctx.spend(kind, label, fn, units)` counts `units` against
  *  the kind's cap. */
-const CAPS = { run: 14, test: 12, ask: 2 };
+const CAPS = { run: 10, test: 12, ask: 1 }; // the second sitting's (brief m-desk-8-v2b2 Part B)
 const BUCKET = { run: "run", compare: "run", task_set: "run", test: "test", save_with_tests: "test", ask: "ask" };
 
 /** --preview's stand-in for the Desktop's preload bridge (the real one exists in Electron). */

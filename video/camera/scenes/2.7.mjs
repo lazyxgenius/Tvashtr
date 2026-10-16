@@ -1,8 +1,8 @@
 // 2.7 Tidy; group the loop (the Engineer, Tests pass and the Reviewer — V2b K1); the header shows v1;
-// Test this agent on the Reviewer (a real replay on its Grok subscription — V1's one test, last so a
+// Test this agent on the Reviewer (a real replay on its Claude subscription (K8) — last so a
 // --dry rehearsal covers the rest); its line names the subscription from its first second.
 import { buildFilmTeam, byRole, graph, must } from "../film.mjs";
-import { canvasReady, card, gateCard, openAgent, smoke, watchGrok } from "../flows.mjs";
+import { canvasReady, card, gateCard, openAgent, smoke, watchClaude } from "../flows.mjs";
 
 const CSV = [
   "what the reviewer gets,must say",
@@ -58,7 +58,7 @@ export default {
     await cam.clickAt(560, 840, "the empty canvas");
     await cam.hover(chip, "the header: v1");
     await cam.pause(1500);
-    // Test this agent: a real replay of the Reviewer on its Grok subscription (V1's one test).
+    // Test this agent: a real replay of the Reviewer on its Claude subscription (K8).
     const d = await openAgent(ctx, "Reviewer");
     await cam.click(d.getByRole("button", { name: "More actions" }), "More actions");
     await cam.click(page.getByRole("menuitem", { name: /^Test this agent/ }), "Test this agent");
@@ -66,7 +66,7 @@ export default {
     await run.waitFor({ timeout: 30000 });
     await cam.roi("tests", d);
     await cam.pause(1200);
-    const grok = ctx.app ? watchGrok(ctx) : () => [];
+    const claude = ctx.app ? watchClaude(ctx) : () => [];
     await ctx.spend("test", "Run all 1", () => cam.click(run, "Run all 1"));
     const t0 = Date.now(); // from the click itself (not the cursor's glide to the button)
     // The live smoke (L1, D8): the running line names its subscription from its first second.
@@ -74,10 +74,10 @@ export default {
     await head.locator(".tt-head__title", { hasText: /^(Running|Waiting to start)/ }).waitFor({ timeout: 60000 });
     const secs = (Date.now() - t0) / 1000;
     const line = (await head.locator(".tt-head__sub").innerText().catch(() => "")).trim();
-    smoke(ctx, "2.7 L1/D8 (the test line names its subscription)", /subscription/.test(line) && !/\$0\.00/.test(line) && secs <= 1.5, await ctx.shot("running"), `${secs.toFixed(1)} s: ${line}`);
+    smoke(ctx, "2.7 L1/D8 (the test line names its subscription)", /your Claude subscription/.test(line) && !/\$0\.00/.test(line) && secs <= 1.5, await ctx.shot("running"), `${secs.toFixed(1)} s: ${line}`);
     await d.getByText(/\d+ of \d+ passed/).first().waitFor({ timeout: 12 * 60000 });
-    const flags = grok();
-    smoke(ctx, "S4 (2.7's test replay on Grok)", flags.length > 0 && flags.every((f) => /^tvashtr-j[0-9a-f]{6}$/.test(f)), await ctx.shot("tested"), flags.join(", ") || "no Grok CLI seen");
+    const flags = claude();
+    smoke(ctx, "S4 (2.7's test replay on Claude)", flags.length > 0 && flags.every((f) => f === "--restricted --safe-mode"), await ctx.shot("tested"), flags.join(", ") || "no Claude CLI seen");
     await cam.pause(3000);
   },
 };

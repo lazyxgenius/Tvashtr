@@ -3,7 +3,7 @@
 // nothing else saves a version, so this edit is the next real version (the V1 sample of v7/v8 is
 // retired). The tests are the 4 6.1 made on the Reviewer; running them spends one replay each.
 import { byRole, filmTeam, graph, must } from "../film.mjs";
-import { canvasReady, card, closeDrawer, openAgent, saveDrawer, smoke, watchGrok } from "../flows.mjs";
+import { canvasReady, card, closeDrawer, openAgent, saveDrawer, smoke, watchClaude } from "../flows.mjs";
 
 /** 6.2's edit: one line added to the Reviewer's instructions, and a backup model. */
 export const LINE =
@@ -109,7 +109,7 @@ export default {
       "Save and run the Reviewer's tests",
     );
     await cam.pause(1500);
-    const grok = ctx.app ? watchGrok(ctx) : () => [];
+    const claude = ctx.app ? watchClaude(ctx) : () => [];
     await ctx.spend(
       "save_with_tests",
       "Save and run tests",
@@ -125,7 +125,7 @@ export default {
     const said = [first.json?.last, ...(first.json?.run?.results ?? []).map((r) => r.waiting)].filter(Boolean).join(" · ");
     ctx.note(`first second: v${first.json?.run?.version ?? "?"} ran_on=${runOn}; ${said}`);
     await chip.filter({ hasText: `v${after}` }).waitFor({ timeout: 30000 });
-    // The Reviewer's card counts the tests as they run on the Grok subscription.
+    // The Reviewer's card counts the tests as they run on the Claude subscription.
     const rev = card(page, "Reviewer");
     await rev.locator(".rf-node__tests--live").waitFor({ timeout: 60000 }).catch(() => {});
     await cam.roi("testing", rev);
@@ -133,17 +133,17 @@ export default {
     smoke(
       ctx,
       "6.2 L1/D8 (the running tests name their subscription)",
-      secs <= 1.5 && (/subscription/.test(said) || /"subscriptions":\["(claude|grok)/.test(runOn)) && !/\$0\.00/.test(said),
+      secs <= 1.5 && (/subscription/.test(said) || /"subscriptions":\["claude"\]/.test(runOn)) && !/\$0\.00/.test(said),
       testingShot,
       `${secs.toFixed(1)} s: ran_on ${runOn}; ${said}`,
     );
     await cam.hover(rev, "the Reviewer testing");
     await cam.pause(2500);
-    await ctx.offCamera("the Reviewer's tests on Grok", () =>
+    await ctx.offCamera("the Reviewer's tests on Claude", () =>
       rev.locator(".rf-node__tests", { hasText: /^\d+ of \d+ tests?$/ }).waitFor({ timeout: 45 * 60000 }),
     );
-    const flags = grok();
-    smoke(ctx, "S4 (6.2's test replays on Grok)", flags.length > 0 && flags.every((f) => /^tvashtr-j[0-9a-f]{6}$/.test(f)), await ctx.shot("tested"), flags.join(", ") || "no Grok CLI seen");
+    const flags = claude();
+    smoke(ctx, "S4 (6.2's test replays on Claude)", flags.length > 0 && flags.every((f) => f === "--restricted --safe-mode"), await ctx.shot("tested"), flags.join(", ") || "no Claude CLI seen");
     await cam.pause(1500);
     await history(ctx, { before, after, tests: 60000 });
   },

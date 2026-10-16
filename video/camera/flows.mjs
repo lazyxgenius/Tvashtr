@@ -270,6 +270,21 @@ export function watchGrok(ctx) {
   };
 }
 
+/** S4 for Claude jobs the server keeps no log of (a test replay, an Ask): the Claude CLIs this
+ *  Desktop starts, read from its own process tree — each must carry its lock flags. */
+export function watchClaude(ctx) {
+  const seen = new Map();
+  const timer = setInterval(() => {
+    for (const p of processTree(ctx.app.process().pid))
+      if (/--output-format stream-json/.test(p.command) && /(^|\/)claude\s/.test(p.command))
+        seen.set(p.pid, /--restricted/.test(p.command) && /--safe-mode/.test(p.command) ? "--restricted --safe-mode" : "unlocked");
+  }, 1000);
+  return () => {
+    clearInterval(timer);
+    return [...seen.values()];
+  };
+}
+
 /** V2b's in-take smoke on the hero after Done (the record take): S1/F2, F1, L1 on screen, S2. */
 async function heroSmoke(ctx, runId, { running, runShot, doneShot }) {
   const { page } = ctx;
@@ -354,6 +369,22 @@ export async function pickModel(ctx, drawer, group, option) {
   const opt = picker.getByRole("group", { name: group }).getByRole("option", { name: option, exact: true });
   await opt.scrollIntoViewIfNeeded();
   await cam.click(opt, option);
+  await picker.waitFor({ state: "hidden", timeout: 10000 }).catch(() => {});
+  return page;
+}
+
+/** K8: a model the picker's lists don't carry, typed as a custom model ID (provider/model). */
+export async function pickCustomModel(ctx, drawer, id) {
+  const { page, cam } = ctx;
+  await cam.click(drawer.getByRole("region", { name: "Model" }).locator('button[aria-haspopup="dialog"]'), "Model");
+  const picker = drawer.getByRole("dialog", { name: "Choose a model" });
+  await picker.waitFor();
+  const use = picker.getByRole("button", { name: /custom model ID/i });
+  await use.scrollIntoViewIfNeeded();
+  await cam.click(use, "Use a custom model ID");
+  await cam.type(picker.getByLabel("Custom model ID"), id, "the model ID", { clear: true });
+  await cam.pause(1500);
+  await cam.click(picker.getByRole("button", { name: "Use this model" }), "Use this model");
   await picker.waitFor({ state: "hidden", timeout: 10000 }).catch(() => {});
   return page;
 }
@@ -498,6 +529,19 @@ export async function heroRun(api) {
   const { team, run } = JSON.parse(fs.readFileSync(meta, "utf8"));
   const r = await api("GET", `/api/runs/${run}`);
   if (r.status !== 200) throw new Error(`hero run ${run}: HTTP ${r.status}`);
+  return { team, run_id: run, status: r.json.run?.status ?? null, pr_url: r.json.run?.pr_url ?? null };
+}
+
+/**
+ * K9 (brief m-desk-8-v2b2): chapter 6's run — the seed run on the fresh film team, recorded in
+ * video/out/v2b/seed.json when it ran (off camera). 6.1 makes its test from this run's Reviewer.
+ */
+export async function seedRun(api) {
+  const file = path.join(repoRoot, "video", "out", "v2b", "seed.json");
+  if (!fs.existsSync(file)) throw new Error("no seed run yet: run video/camera/seed.mjs first");
+  const { team, run } = JSON.parse(fs.readFileSync(file, "utf8"));
+  const r = await api("GET", `/api/runs/${run}`);
+  if (r.status !== 200) throw new Error(`seed run ${run}: HTTP ${r.status}`);
   return { team, run_id: run, status: r.json.run?.status ?? null, pr_url: r.json.run?.pr_url ?? null };
 }
 
