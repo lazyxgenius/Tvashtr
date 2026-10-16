@@ -689,6 +689,33 @@ def test_an_approval_shows_the_reasons_its_verdict_file_gave():
     assert by_id["inv:6:end"]["refs"] == {"verdict": "approved", "reasons": []}
 
 
+def test_an_approvals_written_reasons_survive_any_character_and_only_the_newest_file_counts():
+    """M-desk-8 review: a list's reasons are taken as written (an emoji never turns into lone
+    surrogates that break the reply), and only the newest REVIEW_VERDICT.json write counts — an
+    earlier draft that asked for fixes is never shown as an approval's reasons."""
+    pm, gate, eng, rev, ship, edges = _review_world()
+    invs = [
+        _inv(1, pm, end=30),
+        _inv(2, eng, start=40, end=100, outcome="built"),
+        _inv(3, rev, start=101, end=200, outcome="approved"),
+        _inv(4, eng, iteration=2, start=201, end=300, outcome="built"),
+        _inv(5, rev, iteration=2, start=301, end=400, outcome="approved"),
+    ]
+    ev = _Events()
+    rocket = json.dumps({"verdict": "approved", "reasons": ["Ship it \U0001f680"]})
+    ev.add(3, 150, "action", _editor("create", "REVIEW_VERDICT.json", file_text=rocket))
+    draft = json.dumps({"verdict": "changes_requested", "reasons": ["Add a test"]})
+    ev.add(5, 320, "action", _editor("create", "REVIEW_VERDICT.json", file_text=draft))
+    ev.add(5, 350, "action", _editor("create", "REVIEW_VERDICT.json",
+                                     file_text=json.dumps({"verdict": "approved"})))  # fmt: skip
+    reply = _build(_run(), [pm, gate, eng, rev, ship], invs, ev.rows, edges=edges)
+    by_id = {ln["id"]: ln for ln in reply["lines"]}
+    assert by_id["inv:3:end"]["text"] == "Approved — Ship it \U0001f680"
+    json.dumps(reply).encode("utf-8")  # the reply can be sent
+    assert by_id["inv:5:end"]["text"] == "Approved"
+    assert by_id["inv:5:end"]["refs"]["reasons"] == []
+
+
 # ---------------------------------------------------------------------------- cost per poll
 
 

@@ -130,7 +130,10 @@ def _summary(kind: str, lines: list[dict], inv: AgentInvocation) -> dict:
     if verdict is not None:
         out["verdict"] = verdict["refs"]["verdict"]
         out["fixes"] = max(len(verdict["refs"].get("reasons") or []), 1)
-        out["text"] = verdict["text"].split(":", 1)[0]
+        # the headline only (M-desk-8: an approval's line now carries its reasons, "Approved — …")
+        out["text"] = (
+            "Approved" if out["verdict"] == "approved" else verdict["text"].split(":", 1)[0]
+        )
         return out
     if files:
         text = f"Edited {len(files)} file" + ("" if len(files) == 1 else "s")

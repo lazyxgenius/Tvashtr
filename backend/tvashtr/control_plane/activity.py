@@ -235,24 +235,32 @@ def _reasons(detail: str | None) -> list[str]:
 
 
 def _written_reasons(events: list) -> list[str]:
-    """M-desk-8 P3: the reasons in the last REVIEW_VERDICT.json this step wrote. team_run keeps only
+    """M-desk-8 P3: the reasons in the REVIEW_VERDICT.json this step wrote last. team_run keeps only
     a request's reasons, so an approval's are read from the write itself (the Desktop's Write /
-    write tool, OpenHands' file_editor); [] when no file-tool write carried the file's text."""
+    write tool, OpenHands' file_editor). Only the newest write counts and it must say "approved";
+    an edit in place (no full text) gives nothing — [] whenever the file's final text is unknown."""
     for ev in reversed(events):
         if ev.kind != "action":
             continue
         args = _args(str((ev.payload or {}).get("action") or ""))
         path = str(args.get("file_path") or args.get("path") or "")
-        content = args.get("content", args.get("file_text"))
-        if path.rsplit("/", 1)[-1] != "REVIEW_VERDICT.json" or not isinstance(content, str):
+        if path.rsplit("/", 1)[-1] != "REVIEW_VERDICT.json":
             continue
+        content = args.get("content", args.get("file_text"))
+        if not isinstance(content, str):
+            if any(k in args for k in ("old_str", "new_str", "old_string", "new_string")):
+                return []  # edited in place: its final text isn't in the event
+            continue  # a read
         try:
             raw = json.loads(content)
         except ValueError:
-            continue
-        if isinstance(raw, dict) and raw.get("reasons"):
-            reasons = raw["reasons"]
-            return _reasons(json.dumps(reasons) if isinstance(reasons, list) else str(reasons))
+            return []
+        if not isinstance(raw, dict) or str(raw.get("verdict") or "").strip().lower() != "approved":
+            return []
+        reasons = raw.get("reasons")
+        if isinstance(reasons, list):
+            return [str(r).strip() for r in reasons if str(r).strip()]
+        return _reasons(str(reasons or ""))
     return []
 
 
