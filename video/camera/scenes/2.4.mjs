@@ -4,7 +4,11 @@
 // camera as plain gates with their real titles (an edge drag is unreliable to film); their checks are
 // set here.
 import { buildFilmTeam, byRole, byTitle, edge, ensureToolkit, SKILL } from "../film.mjs";
-import { canvasReady, card, closeDrawer, edgePoint, gateCard, openAgent, saveDrawer } from "../flows.mjs";
+import { canvasReady, card, closeDrawer, edgePoint, gateCard, openAgent, saveDrawer, smoke } from "../flows.mjs";
+
+/** M-desk-8 P1: the gate cards read their titles (or a type name), never a raw kind id. */
+const RAW_KIND = /^(approval|gate_approval|secret_leak_scan|diff_touches_forbidden_paths|output_schema_check)$/;
+const gateLabels = async (page) => (await page.locator(".rf-gate__label").allInnerTexts()).map((t) => t.trim());
 
 /** Open a gate by its node id, set its type (and its one field), save. */
 async function setGate(ctx, id, label, type, field) {
@@ -50,6 +54,11 @@ export default {
   },
   film: async (ctx) => {
     const { page, cam, story } = ctx;
+    // P1 on the bare gates (plain approval gates wired in with their real titles): titles, not "approval".
+    const bare = await gateLabels(page);
+    smoke(ctx, "P1 (2.4's bare gates read their titles, never a raw kind)",
+      [story.tests.title, story.guardrail.secret_scan.title, story.guardrail.forbidden.title].every((w) => bare.includes(w)) && !bare.some((l) => RAW_KIND.test(l)),
+      await ctx.shot("p1-gates-bare"), bare.join(" · "));
     // A loop arc's own label is drawn apart from its path: glide along the path itself.
     const arc = async (edgeId, label) => {
       if (!edgeId) return;
@@ -98,5 +107,12 @@ export default {
     await cam.hover(page.locator(".rf-terminal--ship").first(), "Ship");
     await cam.hover(page.locator(".rf-terminal--stop").first(), "Stop");
     await cam.pause(1500);
+    // P1 after the checks are set; P2's arc labels on the same canvas.
+    const set = await gateLabels(page);
+    const want = [story.tests.title, story.guardrail.secret_scan.title, story.guardrail.forbidden.title];
+    smoke(ctx, "P1 (2.4's gate cards read their titles once set, never a raw kind)",
+      want.every((w) => set.includes(w)) && !set.some((l) => RAW_KIND.test(l)), await ctx.shot("p1-gates-set"), set.join(" · "));
+    const arcs = (await page.locator(".rf-edge-rework__label").allInnerTexts()).map((t) => t.trim());
+    ctx.note(`P2 arcs on 2.4's canvas: ${arcs.join(" · ")}`);
   },
 };

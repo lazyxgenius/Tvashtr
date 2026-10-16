@@ -2,7 +2,7 @@
 // hint → switched to another Claude model (K8: the strongest the picker offers, a custom model ID);
 // the Engineer's backup model (DeepSeek, the one API key).
 import { buildFilmTeam } from "../film.mjs";
-import { canvasReady, closeDrawer, openAgent, pickCustomModel, pickModel, saveDrawer } from "../flows.mjs";
+import { canvasReady, closeDrawer, openAgent, pickCustomModel, pickModel, saveDrawer, smoke } from "../flows.mjs";
 
 export default {
   id: "2.5",
@@ -40,9 +40,14 @@ export default {
     await cam.roi("same-model-hint", hint);
     await cam.hover(hint, "the same-model hint");
     await cam.pause(2200);
+    const said = (await hint.innerText()).replace(/\s+/g, " ").trim();
+    const hintShot = await ctx.shot("same-model-hint");
     await pickCustomModel(ctx, d, story.agents.reviewer.model);
-    await hint.waitFor({ state: "hidden", timeout: 15000 }).catch(() => {});
+    const cleared = await hint.waitFor({ state: "hidden", timeout: 15000 }).then(() => true, () => false);
     await cam.pause(900);
+    await ctx.shot("chosen-model");
+    smoke(ctx, "2.5 (the same-model advisory with both on claude-sonnet-5; it clears on the chosen Claude model)",
+      /both run/.test(said) && cleared, hintShot, `“${said}” → ${story.agents.reviewer.model}: ${cleared ? "cleared" : "still shown"}`);
     await saveDrawer(ctx, d);
   },
 };

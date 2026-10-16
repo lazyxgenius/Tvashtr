@@ -31,7 +31,7 @@ async function subscriptionsSmoke(ctx, label, shot) {
   smoke(ctx, `6.3 H1 (${label})`, !money.length && named.length > 0, shot, `${named.length} name a subscription; $0.00 in: ${money.join(" | ") || "none"}; by design: ${[...new Set(byDesign)].join(", ") || "none"}`);
 }
 
-/** H5: the estimate's minutes add up the turns — both versions share the Claude and Grok plans, so
+/** H5: the estimate's minutes add up the turns — both versions share the Claude plan (K8), so
  *  every task's work takes turns on them: tasks × (v1's + v2's average finished run), not the longer
  *  one (compare.py _turns; a version with no finished run counts as the other's). */
 async function estimateSmoke(ctx, label, shot, tasks) {
