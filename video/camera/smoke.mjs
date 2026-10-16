@@ -168,7 +168,7 @@ async function s4All(api) {
       null,
       `S4 run #${r.number ?? "?"} ${r.run_id.slice(0, 8)}`,
       !bad.length && n.grok + n.claude > 0,
-      `${SHOTS}/3.1/shots/reviewer-raw-log.png`,
+      "video/takes/v3/4.2-s4/shots/engineer-raw-log-drawer.png", // V3: the resumed run's Engineer, its lock line
       `${(r.idea ?? "").slice(0, 40)}: ${n.grok} Grok · ${n.claude} Claude jobs${bad.length ? ` · ${bad.join("; ")}` : ""}`,
     );
   }

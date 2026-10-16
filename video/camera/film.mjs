@@ -316,4 +316,25 @@ export async function filmTeam(api) {
   return (await buildFilmTeam(api, { upTo: "final", skipDomain: true })).id;
 }
 
+/**
+ * V3 (brief video-v3 D4): 4.1/4.2 run on chapter 6's team (the seed run's: Reviewer on Opus, no Query
+ * domain step), shown under the plain name. Off camera, through the app's API: any other team holding
+ * the plain name (chapter 2's, built last in V2b) becomes "<name> (earlier)" (retireTeams' convention:
+ * Home's Needs you shows team names on camera); the chapter-6 team takes the name. Teams are only
+ * renamed, never deleted (deleting a team deletes its runs).
+ */
+export async function chapter6Team(api, seedFile) {
+  const fs = await import("node:fs");
+  const { team } = JSON.parse(fs.readFileSync(seedFile, "utf8"));
+  const name = story.team.name;
+  const all = await teams(api);
+  if (!all.some((t) => t.team_graph_id === team)) throw new Error(`chapter 6's team ${team} is gone`);
+  for (const t of all)
+    if (t.name === name && t.team_graph_id !== team)
+      must(await api("PATCH", `/api/teams/${t.team_graph_id}`, { name: `${name} (earlier)` }), "rename chapter 2's team");
+  if (all.find((t) => t.team_graph_id === team).name !== name)
+    must(await api("PATCH", `/api/teams/${team}`, { name }), "name chapter 6's team");
+  return team;
+}
+
 export { must, story };

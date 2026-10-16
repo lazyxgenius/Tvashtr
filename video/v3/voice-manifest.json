@@ -4857,6 +4857,616 @@
    "file": "video/out/v3/lines/8.2.wav",
    "sha256": "b844238a9ce1143a9910eb8aa0b23b1d7263aeef3442392c065655d18cb230ae",
    "render": 1
+  },
+  "4.2": {
+   "text": "The failed run waits for you in Needs you. Resume from the step that broke. The spec and your approval are kept, and only the steps that run again use your subscription. Seven minutes later, it shipped.",
+   "renders": [
+    {
+     "n": 1,
+     "seed": 42,
+     "file": "video/out/v3/lines/renders/4.2-r1.wav",
+     "sha256": "ca57cd2870a4bae72453928fb288c3f7cde7420aa1e5b4d417b26b34683a9e97",
+     "raw_s": 13.6,
+     "duration_s": 13.264,
+     "transcript": "The failed run waits for you and needs you. Resume from the step that broke. The spec and your approval are kept, and only the steps that run again use your subscription. Seven minutes later, it shipped.",
+     "words": [
+      {
+       "word": "The",
+       "start": 0.0,
+       "end": 0.2
+      },
+      {
+       "word": "failed",
+       "start": 0.2,
+       "end": 0.58
+      },
+      {
+       "word": "run",
+       "start": 0.58,
+       "end": 0.88
+      },
+      {
+       "word": "waits",
+       "start": 0.88,
+       "end": 1.24
+      },
+      {
+       "word": "for",
+       "start": 1.24,
+       "end": 1.44
+      },
+      {
+       "word": "you",
+       "start": 1.44,
+       "end": 1.62
+      },
+      {
+       "word": "and",
+       "start": 1.62,
+       "end": 1.76
+      },
+      {
+       "word": "needs",
+       "start": 1.76,
+       "end": 2.06
+      },
+      {
+       "word": "you.",
+       "start": 2.06,
+       "end": 2.28
+      },
+      {
+       "word": "Resume",
+       "start": 2.64,
+       "end": 3.24
+      },
+      {
+       "word": "from",
+       "start": 3.24,
+       "end": 3.46
+      },
+      {
+       "word": "the",
+       "start": 3.46,
+       "end": 3.62
+      },
+      {
+       "word": "step",
+       "start": 3.62,
+       "end": 3.92
+      },
+      {
+       "word": "that",
+       "start": 3.92,
+       "end": 4.14
+      },
+      {
+       "word": "broke.",
+       "start": 4.14,
+       "end": 4.46
+      },
+      {
+       "word": "The",
+       "start": 4.76,
+       "end": 5.18
+      },
+      {
+       "word": "spec",
+       "start": 5.18,
+       "end": 5.48
+      },
+      {
+       "word": "and",
+       "start": 5.48,
+       "end": 5.8
+      },
+      {
+       "word": "your",
+       "start": 5.8,
+       "end": 5.98
+      },
+      {
+       "word": "approval",
+       "start": 5.98,
+       "end": 6.42
+      },
+      {
+       "word": "are",
+       "start": 6.42,
+       "end": 6.68
+      },
+      {
+       "word": "kept,",
+       "start": 6.68,
+       "end": 7.06
+      },
+      {
+       "word": "and",
+       "start": 7.26,
+       "end": 7.66
+      },
+      {
+       "word": "only",
+       "start": 7.66,
+       "end": 8.0
+      },
+      {
+       "word": "the",
+       "start": 8.0,
+       "end": 8.2
+      },
+      {
+       "word": "steps",
+       "start": 8.2,
+       "end": 8.52
+      },
+      {
+       "word": "that",
+       "start": 8.52,
+       "end": 8.74
+      },
+      {
+       "word": "run",
+       "start": 8.74,
+       "end": 9.0
+      },
+      {
+       "word": "again",
+       "start": 9.0,
+       "end": 9.34
+      },
+      {
+       "word": "use",
+       "start": 9.34,
+       "end": 9.78
+      },
+      {
+       "word": "your",
+       "start": 9.78,
+       "end": 9.96
+      },
+      {
+       "word": "subscription.",
+       "start": 9.96,
+       "end": 10.52
+      },
+      {
+       "word": "Seven",
+       "start": 11.06,
+       "end": 11.64
+      },
+      {
+       "word": "minutes",
+       "start": 11.64,
+       "end": 11.96
+      },
+      {
+       "word": "later,",
+       "start": 11.96,
+       "end": 12.3
+      },
+      {
+       "word": "it",
+       "start": 12.56,
+       "end": 12.66
+      },
+      {
+       "word": "shipped.",
+       "start": 12.66,
+       "end": 12.98
+      }
+     ],
+     "pass": false,
+     "name_heard": []
+    },
+    {
+     "n": 2,
+     "seed": 43,
+     "file": "video/out/v3/lines/renders/4.2-r2.wav",
+     "sha256": "acbfb68361589a5b72d8d57efdf6c7e6074fab2cbd72d16b571f6595e7757793",
+     "raw_s": 12.96,
+     "duration_s": 13.072,
+     "transcript": "The failed run waits for you and needs you. Resume it from the step that broke. The spec and your approval are kept, and only the steps that run again use your subscription. Seven minutes later, it's shipped.",
+     "words": [
+      {
+       "word": "The",
+       "start": 0.0,
+       "end": 0.22
+      },
+      {
+       "word": "failed",
+       "start": 0.22,
+       "end": 0.58
+      },
+      {
+       "word": "run",
+       "start": 0.58,
+       "end": 0.86
+      },
+      {
+       "word": "waits",
+       "start": 0.86,
+       "end": 1.18
+      },
+      {
+       "word": "for",
+       "start": 1.18,
+       "end": 1.4
+      },
+      {
+       "word": "you",
+       "start": 1.4,
+       "end": 1.6
+      },
+      {
+       "word": "and",
+       "start": 1.6,
+       "end": 1.82
+      },
+      {
+       "word": "needs",
+       "start": 1.82,
+       "end": 2.16
+      },
+      {
+       "word": "you.",
+       "start": 2.16,
+       "end": 2.42
+      },
+      {
+       "word": "Resume",
+       "start": 2.68,
+       "end": 3.24
+      },
+      {
+       "word": "it",
+       "start": 3.24,
+       "end": 3.34
+      },
+      {
+       "word": "from",
+       "start": 3.34,
+       "end": 3.48
+      },
+      {
+       "word": "the",
+       "start": 3.48,
+       "end": 3.62
+      },
+      {
+       "word": "step",
+       "start": 3.62,
+       "end": 3.92
+      },
+      {
+       "word": "that",
+       "start": 3.92,
+       "end": 4.12
+      },
+      {
+       "word": "broke.",
+       "start": 4.12,
+       "end": 4.44
+      },
+      {
+       "word": "The",
+       "start": 4.72,
+       "end": 5.18
+      },
+      {
+       "word": "spec",
+       "start": 5.18,
+       "end": 5.5
+      },
+      {
+       "word": "and",
+       "start": 5.5,
+       "end": 5.8
+      },
+      {
+       "word": "your",
+       "start": 5.8,
+       "end": 5.96
+      },
+      {
+       "word": "approval",
+       "start": 5.96,
+       "end": 6.36
+      },
+      {
+       "word": "are",
+       "start": 6.36,
+       "end": 6.6
+      },
+      {
+       "word": "kept,",
+       "start": 6.6,
+       "end": 7.0
+      },
+      {
+       "word": "and",
+       "start": 7.02,
+       "end": 7.58
+      },
+      {
+       "word": "only",
+       "start": 7.58,
+       "end": 7.94
+      },
+      {
+       "word": "the",
+       "start": 7.94,
+       "end": 8.12
+      },
+      {
+       "word": "steps",
+       "start": 8.12,
+       "end": 8.44
+      },
+      {
+       "word": "that",
+       "start": 8.44,
+       "end": 8.64
+      },
+      {
+       "word": "run",
+       "start": 8.64,
+       "end": 8.9
+      },
+      {
+       "word": "again",
+       "start": 8.9,
+       "end": 9.2
+      },
+      {
+       "word": "use",
+       "start": 9.2,
+       "end": 9.68
+      },
+      {
+       "word": "your",
+       "start": 9.68,
+       "end": 9.86
+      },
+      {
+       "word": "subscription.",
+       "start": 9.86,
+       "end": 10.42
+      },
+      {
+       "word": "Seven",
+       "start": 10.86,
+       "end": 11.4
+      },
+      {
+       "word": "minutes",
+       "start": 11.4,
+       "end": 11.74
+      },
+      {
+       "word": "later,",
+       "start": 11.74,
+       "end": 12.06
+      },
+      {
+       "word": "it's",
+       "start": 12.24,
+       "end": 12.56
+      },
+      {
+       "word": "shipped.",
+       "start": 12.56,
+       "end": 12.78
+      }
+     ],
+     "pass": false,
+     "name_heard": []
+    },
+    {
+     "n": 3,
+     "seed": 44,
+     "file": "video/out/v3/lines/renders/4.2-r3.wav",
+     "sha256": "cf0e35486e4e00a6e1bc467592f9cac120ecc64f81a16ddca2f540384702de15",
+     "raw_s": 12.8,
+     "duration_s": 12.683,
+     "transcript": "The failed run waits for you and needs you. Resume from the step that broke. The spec and your approval are kept, and only the steps that run again use your subscription. Seven minutes later, it's shipped.",
+     "words": [
+      {
+       "word": "The",
+       "start": 0.0,
+       "end": 0.22
+      },
+      {
+       "word": "failed",
+       "start": 0.22,
+       "end": 0.58
+      },
+      {
+       "word": "run",
+       "start": 0.58,
+       "end": 0.88
+      },
+      {
+       "word": "waits",
+       "start": 0.88,
+       "end": 1.22
+      },
+      {
+       "word": "for",
+       "start": 1.22,
+       "end": 1.46
+      },
+      {
+       "word": "you",
+       "start": 1.46,
+       "end": 1.64
+      },
+      {
+       "word": "and",
+       "start": 1.64,
+       "end": 1.8
+      },
+      {
+       "word": "needs",
+       "start": 1.8,
+       "end": 2.14
+      },
+      {
+       "word": "you.",
+       "start": 2.14,
+       "end": 2.42
+      },
+      {
+       "word": "Resume",
+       "start": 2.68,
+       "end": 3.26
+      },
+      {
+       "word": "from",
+       "start": 3.26,
+       "end": 3.42
+      },
+      {
+       "word": "the",
+       "start": 3.42,
+       "end": 3.58
+      },
+      {
+       "word": "step",
+       "start": 3.58,
+       "end": 3.86
+      },
+      {
+       "word": "that",
+       "start": 3.86,
+       "end": 4.1
+      },
+      {
+       "word": "broke.",
+       "start": 4.1,
+       "end": 4.42
+      },
+      {
+       "word": "The",
+       "start": 4.66,
+       "end": 5.04
+      },
+      {
+       "word": "spec",
+       "start": 5.04,
+       "end": 5.38
+      },
+      {
+       "word": "and",
+       "start": 5.38,
+       "end": 5.66
+      },
+      {
+       "word": "your",
+       "start": 5.66,
+       "end": 5.86
+      },
+      {
+       "word": "approval",
+       "start": 5.86,
+       "end": 6.24
+      },
+      {
+       "word": "are",
+       "start": 6.24,
+       "end": 6.46
+      },
+      {
+       "word": "kept,",
+       "start": 6.46,
+       "end": 6.82
+      },
+      {
+       "word": "and",
+       "start": 6.86,
+       "end": 7.36
+      },
+      {
+       "word": "only",
+       "start": 7.36,
+       "end": 7.74
+      },
+      {
+       "word": "the",
+       "start": 7.74,
+       "end": 7.92
+      },
+      {
+       "word": "steps",
+       "start": 7.92,
+       "end": 8.22
+      },
+      {
+       "word": "that",
+       "start": 8.22,
+       "end": 8.44
+      },
+      {
+       "word": "run",
+       "start": 8.44,
+       "end": 8.66
+      },
+      {
+       "word": "again",
+       "start": 8.66,
+       "end": 8.96
+      },
+      {
+       "word": "use",
+       "start": 8.96,
+       "end": 9.36
+      },
+      {
+       "word": "your",
+       "start": 9.36,
+       "end": 9.52
+      },
+      {
+       "word": "subscription.",
+       "start": 9.52,
+       "end": 10.04
+      },
+      {
+       "word": "Seven",
+       "start": 10.5,
+       "end": 11.08
+      },
+      {
+       "word": "minutes",
+       "start": 11.08,
+       "end": 11.38
+      },
+      {
+       "word": "later,",
+       "start": 11.38,
+       "end": 11.72
+      },
+      {
+       "word": "it's",
+       "start": 11.86,
+       "end": 12.18
+      },
+      {
+       "word": "shipped.",
+       "start": 12.18,
+       "end": 12.4
+      }
+     ],
+     "pass": false,
+     "name_heard": []
+    }
+   ],
+   "chapter": 4,
+   "file": "video/out/v3/lines/4.2.wav",
+   "sha256": "ca57cd2870a4bae72453928fb288c3f7cde7420aa1e5b4d417b26b34683a9e97",
+   "render": 1,
+   "flagged": true,
+   "note": "the transcript gate heard 'waits for you and needs you' for 'in Needs you' in all 3 renders (r2 also added 'it' and 'it's shipped', r3 'it's shipped'); a context hint did not change it — r1 (only in/and differs) used for timing; the operator judges it by ear"
   }
  }
 }
