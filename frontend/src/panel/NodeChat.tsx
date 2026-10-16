@@ -1,7 +1,7 @@
 import { type FormEvent, useState } from "react";
 
 import { askNode, type AskMessage } from "../lib/api";
-import { renderMarkdown } from "./docs/docMarkdown";
+import { renderChatMarkdown } from "./docs/docMarkdown";
 import "./docs/viewer.css";
 
 // Client-side turn cap matching the server's: the client holds + re-sends the whole history each
@@ -56,12 +56,12 @@ export function NodeChat({ runId, nodeId }: { runId: string | null; nodeId: stri
         ) : (
           messages.map((message, i) =>
             message.role === "assistant" ? (
-              // M-desk-8 P5: the answer's markdown, rendered the way run documents are (markdown-it
-              // with html:false — raw HTML in an answer shows as text, unsafe links stay text).
+              // M-desk-8 P5: the answer's markdown (markdown-it, html:false: raw HTML shows as text,
+              // unsafe links stay text; no images, so an answer never makes the app fetch a URL).
               <div
                 key={i}
                 className="tv-chat__msg tv-chat__msg--assistant dv-md"
-                dangerouslySetInnerHTML={{ __html: renderMarkdown(message.content) }}
+                dangerouslySetInnerHTML={{ __html: renderChatMarkdown(message.content) }}
               />
             ) : (
               <div key={i} className="tv-chat__msg tv-chat__msg--user">
