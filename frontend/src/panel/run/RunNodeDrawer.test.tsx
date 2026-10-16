@@ -296,6 +296,43 @@ describe("RunNodeDrawer — Runs: this run's rounds", () => {
     expect(within(round).queryByText("1.6k tokens")).toBeNull();
   });
 
+  it("P4: a subscription round's cost row names its subscription on the Desktop; a keyed round keeps its dollars", () => {
+    document.documentElement.dataset.tvashtrDesktop = "true";
+    try {
+      const cost = (usd: number) => ({
+        prompt_tokens: 1240,
+        completion_tokens: 320,
+        total_tokens: 1560,
+        cost_usd: usd,
+      });
+      render(
+        <Drawer
+          node={gnode({
+            id: "n-rev",
+            role_name: "reviewer",
+            kind: "agent",
+            invocations: [
+              inv({ iteration: 1, outcome: "changes_requested", cost: cost(0.0041) }),
+              inv({ iteration: 2, outcome: "changes_requested", cost: cost(0), plan: "grok" }),
+              inv({ iteration: 3, outcome: "approved", cost: cost(0), plan: "claude" }),
+            ],
+          })}
+        />,
+      );
+      const last = within(screen.getByRole("region", { name: "Last run" }));
+      expect(last.getByText("on your Claude subscription")).toBeInTheDocument();
+      expect(last.queryByText("$0.0000")).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: /Round 2/ }));
+      const r2 = screen.getByRole("button", { name: /Round 2/ }).closest("li") as HTMLElement;
+      expect(within(r2).getByText("on your Grok subscription")).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: /Round 1/ }));
+      const r1 = screen.getByRole("button", { name: /Round 1/ }).closest("li") as HTMLElement;
+      expect(within(r1).getByText("$0.0041")).toBeInTheDocument();
+    } finally {
+      delete document.documentElement.dataset.tvashtrDesktop;
+    }
+  });
+
   it("shows what a round called through connectors and what it ran without", () => {
     const connectors = {
       used: [{ connection_id: "c1", name: "Supabase", slug: "supabase", reads: 2, writes: 0 }],

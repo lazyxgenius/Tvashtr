@@ -106,6 +106,9 @@ export interface NodeInvocation {
   cost: InvocationCost | null;
   /** Connectors (additive): what the round called and what it ran without; null when neither. */
   connectors?: RoundConnectors | null;
+  /** M-desk-8 P4 (additive): the subscription a Desktop job ran this round on ("claude" | "grok");
+   *  null for a keyed round. */
+  plan?: string | null;
 }
 
 export interface GraphNode {

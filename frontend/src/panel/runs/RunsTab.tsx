@@ -3,6 +3,7 @@ import { ChevronDown, ChevronRight, History } from "lucide-react";
 
 import { Badge, Button, Menu, type MenuEntry } from "../../design-system/components";
 import type { NodeRound, NodeRuns } from "../../lib/api/nodes";
+import { spendText } from "../../lib/desktopRepos";
 import { formatRelativeTime } from "../../lib/time";
 import type { OpenConnector } from "../connectors/connectorFormat";
 import { ConnectorsSkipped, ConnectorsUsed } from "../connectors/ConnectorsUsed";
@@ -302,7 +303,16 @@ function RoundItem({
           )}
           <div className="nd-round__meta">
             {round.cost && <span>{compactTokens(round.cost.total_tokens)} tokens</span>}
-            {round.cost && <span>${round.cost.cost_usd.toFixed(2)}</span>}
+            {round.cost && (
+              <span>
+                {spendText(
+                  `$${round.cost.cost_usd.toFixed(2)}`,
+                  round.runs_on?.via === "subscription"
+                    ? { subscriptions: [round.runs_on.provider], all: true }
+                    : null,
+                )}
+              </span>
+            )}
             {when && <span>{when}</span>}
           </div>
           <ConnectorsSkipped connectors={round.connectors} onOpen={onOpenConnector} />

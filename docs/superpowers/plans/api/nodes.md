@@ -173,6 +173,9 @@ completion nodes:
   the graph is not a clone).
 - `nodes[].invocations[].invocation_id` — the invocation's id (matches `rounds[].invocation_id`
   below).
+- `nodes[].invocations[].plan` — M-desk-8 P4: the subscription a Desktop job ran that round on
+  (`"claude"` | `"grok"`), `null` for a keyed round; the Desktop drawer's cost row reads "on your
+  Claude subscription" from it instead of the round's $0 usage record.
 
 ---
 

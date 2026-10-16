@@ -141,6 +141,30 @@ describe("Runs tab", () => {
     expect(props.onFocusChange).toHaveBeenCalledWith(true);
   });
 
+  it("P4: on the Desktop an earlier round done on a subscription names it, never $0.00", async () => {
+    const subRound = {
+      ...round(2, 44, "Not registered."),
+      runs_on: { via: "subscription", provider: "grok" },
+    };
+    const history = { ...HISTORY, run: { ...HISTORY.run, rounds: [round(3, 31, LONG), subRound] } };
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (url.startsWith("/api/teams/t1/nodes/n-rev/runs")) return json(history);
+      return json(reviewer());
+    });
+    document.documentElement.dataset.tvashtrDesktop = "true";
+    try {
+      renderRuns(reviewer({ last_run: ran }));
+      const toggle = await screen.findByRole("button", { name: /^Round 2/ });
+      fireEvent.click(toggle);
+      const item = within(toggle.closest("li") as HTMLElement);
+      expect(item.getByText("on your Grok subscription")).toBeInTheDocument();
+      expect(item.queryByText("$0.00")).toBeNull();
+    } finally {
+      delete document.documentElement.dataset.tvashtrDesktop;
+    }
+  });
+
   it("the last round says what it ran without inside the card, then what it called (CnF-Expired-2)", async () => {
     renderRuns(reviewer({ last_run: ran }));
     const card = await screen.findByRole("region", { name: "Last run" });

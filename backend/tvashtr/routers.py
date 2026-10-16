@@ -2000,6 +2000,9 @@ def get_run_graph(run_id: str, current_user: Annotated[UserOut, Depends(get_curr
         cost_by_inv = _cost_by_invocation(session, run_id)
         # Connectors (additive): what each round called or ran without (null when neither).
         connectors_by_inv = connector_use(session, run.id, [inv.id for inv in invocations])
+        # M-desk-8 P4 (additive): the plan each round a Desktop job ran on ("claude" | "grok"),
+        # so the drawer's cost row names the subscription instead of its $0 usage record.
+        plan_by_inv = desktop_jobs.step_plans(session, run.workflow_id)
         # The node's live state = its latest invocation (max iteration for that node).
         latest_by_node: dict[str, AgentInvocation] = {}
         # The node's full per-round history, ascending by iteration — the verdict-view
@@ -2108,6 +2111,7 @@ def get_run_graph(run_id: str, current_user: Annotated[UserOut, Depends(get_curr
                             "context_manifest": inv.context_manifest,
                             "cost": cost_by_inv.get(inv.id),
                             "connectors": connectors_by_inv.get(inv.id),
+                            "plan": plan_by_inv.get(inv.id),  # M-desk-8 P4; None = a keyed round
                             "started_at": inv.started_at.isoformat(),
                             "ended_at": inv.ended_at.isoformat() if inv.ended_at else None,
                         }

@@ -204,6 +204,8 @@ def test_graph_endpoint_node_invocations_are_ordered_per_round_history(client):
         "invocation_id",
         # Connectors (additive): what the round called or ran without; null when neither.
         "connectors",
+        # M-desk-8 P4 (additive): the plan a Desktop round ran on; null for a keyed round.
+        "plan",
     }
     assert rounds[0]["context_manifest"] is None and rounds[0]["cost"] is None
     assert rounds[0]["connectors"] is None and rounds[1]["connectors"] is None
@@ -213,3 +215,31 @@ def test_graph_endpoint_node_invocations_are_ordered_per_round_history(client):
 
     # A node the executor never reached (the engineer here) -> empty history.
     assert nodes["engineer"]["invocations"] == []
+
+
+def test_graph_endpoint_round_names_the_desktop_plan_it_ran_on(client):
+    """M-desk-8 P4: a round that ran as a Desktop job carries its plan ("claude" | "grok"), so the
+    drawer's cost row can name the subscription instead of its $0 usage record; a keyed round
+    carries none."""
+    from tvashtr.control_plane import desktop_jobs
+
+    run_id = _seed(build_review_loop_team())
+    ids = {n["role_name"]: n["id"] for n in client.get(f"/api/runs/{run_id}/graph").json()["nodes"]}
+    with session_scope() as session:
+        eng = AgentInvocation(
+            run_id=run_id, node_id=uuid.UUID(ids["engineer"]), iteration=1, status="done"
+        )
+        rev = AgentInvocation(
+            run_id=run_id, node_id=uuid.UUID(ids["reviewer"]), iteration=1, status="done"
+        )
+        session.add_all([eng, rev])
+        session.flush()
+        eng_id = eng.id
+    desktop_jobs.enqueue_job(
+        owner_id=auth_user_id(), run_id=run_id, node_id=ids["engineer"], iteration=1,
+        invocation_id=eng_id, provider="grok", model="xai/grok-4.7", instruction="build it",
+        workspace_dir="/nonexistent", sidecars=[],
+    )  # fmt: skip
+    nodes = {n["role_name"]: n for n in client.get(f"/api/runs/{run_id}/graph").json()["nodes"]}
+    assert nodes["engineer"]["invocations"][0]["plan"] == "grok"
+    assert nodes["reviewer"]["invocations"][0]["plan"] is None

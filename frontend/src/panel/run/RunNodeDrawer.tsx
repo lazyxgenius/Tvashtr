@@ -12,6 +12,7 @@ import {
   type RunRow,
 } from "../../lib/api";
 import { listRunDocs } from "../../lib/api/docs";
+import { spendText } from "../../lib/desktopRepos";
 import { getNodeRuns, type NodeRound } from "../../lib/api/nodes";
 import type { NodeTab } from "../../lib/nav";
 import { nodeDescription, nodeTitle } from "../../lib/nodeNames";
@@ -478,7 +479,12 @@ function RoundLedger({ inv }: { inv: NodeInvocation | undefined }) {
           <span>
             {cost.prompt_tokens.toLocaleString()} in / {cost.completion_tokens.toLocaleString()} out
           </span>
-          <span>${cost.cost_usd.toFixed(4)}</span>
+          <span>
+            {spendText(
+              `$${cost.cost_usd.toFixed(4)}`,
+              inv?.plan ? { subscriptions: [inv.plan], all: true } : null,
+            )}
+          </span>
         </div>
       )}
       {manifest && hasManifest && <ContextManifest manifest={manifest} />}
