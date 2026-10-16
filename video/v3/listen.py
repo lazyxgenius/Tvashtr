@@ -94,7 +94,8 @@ def segment(src, a, b, length, sped, out):
     fit = f"scale=1728:{H},pad={W}:{H}:(ow-iw)/2:0:color=0xF7F4EE,fps={FPS}"  # 2880×1800 (16:10) in 16:9
     if sped and span > length:
         vf = f"setpts=PTS/{span / length:.6f},{fit},drawtext=fontfile={BADGE_FONT}:text='sped up':fontsize=30:" \
-             "fontcolor=0x2B2622:box=1:boxcolor=0xF7F4EE@0.92:boxborderw=12:x=w-tw-56:y=44"
+             "fontcolor=0x2B2622:box=1:boxcolor=0xF7F4EE@0.92:boxborderw=12:x=w-tw-56:y=44," \
+             f"tpad=stop_mode=clone:stop_duration=1"  # a take can end a frame short of its duration_s
         start = a
     else:
         start = max(a, b - length)  # end-aligned: the window's payoff with the line's last words

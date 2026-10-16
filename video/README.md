@@ -1,13 +1,77 @@
-# video/ — the demo-film toolchain (V0 toolchain, V1 camera, V2 real runs, V2b re-film)
+# video/ — the demo-film toolchain (V0 toolchain, V1 camera, V2 real runs, V2b re-film, V3 voice + cards)
 
 Everything the Tvashtr demo film is made with, and nothing of the product: the Desktop **camera**
 (Playwright driving the real dev Desktop), the **reel** builder (Product Demo Director), and two
 report-only **probes**. Briefs: `prompts/video-v0.md`, `prompts/video-v1.md`, `prompts/m-desk-5-v2.md`
-(Part B), `prompts/m-desk-7-v2b.md` (Part B), `prompts/m-desk-8-v2b2.md` (Part B). Media and run data
-never enter git: `video/out/`, `video/takes/`, `video/recordings/`, `video/vendor/` and
-`video/node_modules/` are ignored. V1 (below) made every scene a take script that re-records by
+(Part B), `prompts/m-desk-7-v2b.md` (Part B), `prompts/m-desk-8-v2b2.md` (Part B), `prompts/video-v3.md`.
+Media, model weights and run data never enter git: `video/out/`, `video/takes/`, `video/recordings/`,
+`video/vendor/`, `video/node_modules/` and `video/voice-venv/` are ignored. V1 (below) made every scene a take script that re-records by
 name; V2 (below) filmed the run scenes on real runs; `video/SCENES.md` has each scene's status, the
 V2 numbers and bends, and the operator's MAC scripts.
+
+## V3 — the narrator, the re-shoots on 0.27.0, the cards (2026-10-16)
+
+Brief `prompts/video-v3.md`, branch `video/v3`. Everything runs on this Mac; nothing calls a paid API.
+Results, every SMOKE line, the per-line voice table and what V4 needs: `video/SCENES.md` › V3.
+
+| Path | What |
+|---|---|
+| `v3/script.json` | the approved narration (35 lines, 795 words), byte-identical to `prompts/video-v3-script.md` (`v3/test_script.py`) |
+| `v3/voice.py` | VoxCPM2 renderer + transcript gate + manifest; `sample`, `timing`, `choose` |
+| `v3/voice-manifest.json` | settings, every render (seed, transcript, words, verdict, how the name was heard) |
+| `v3/narration-timing.json` | per-line speech times, words, the PDD `narrationMap` |
+| `v3/test_voice.py` | the gate's cases (run with the voice venv) |
+| `v3/cards/cards.html` | the 0.2 / 8.2 cards on PDD's motion kit (`?card=0.2|8.2`) |
+| `v3/listen.py` | the chapter-3 listen-through (`out/v3/ch3-narrated.mp4`) |
+
+```bash
+# The voice (once): an ignored venv on Python 3.12; weights land in the Hugging Face cache.
+uv venv video/voice-venv --python 3.12 && uv pip install --python video/voice-venv/bin/python voxcpm==2.0.3 mlx-whisper==0.4.3
+PY=video/voice-venv/bin/python; export HF_HUB_OFFLINE=1   # after the first download
+$PY video/v3/voice.py all                       # render + gate, ≤ 3 renders a line (seeds 42/43/44)
+$PY video/v3/voice.py all --resume-minutes Seven --only 4.2   # 4.2 once the resume run's "Done in" is known
+$PY video/v3/voice.py choose 3.1 2 --note "…"   # a flagged line's render for timing (stays flagged)
+$PY video/v3/voice.py sample && $PY video/v3/voice.py timing
+$PY -m unittest discover -s video/v3            # script identity + gate cases
+
+# The re-shoots (normal stack; 4.1 on QUIET=20 STALLED=60 FAIL=180, then normal for 4.2)
+node video/camera/take.mjs 3.2 3.3 3.4 3.4-verdict 3.6
+VIDEO_ALLOW_SPEND=1 node video/camera/take.mjs 3.7-ask           # the one Ask (Grok)
+VIDEO_ALLOW_SPEND=1 node video/camera/take.mjs 4.1               # after MAC-3's GO
+VIDEO_ALLOW_SPEND=1 node video/camera/take.mjs 4.2 && node video/camera/take.mjs 4.2-s4
+node video/camera/smoke.mjs s4 && node video/camera/take.mjs budget
+
+# The cards and the listen-through
+. video/env.sh && export PLAYWRIGHT_MODULE=$PWD/video/node_modules/playwright/index.mjs
+node video/vendor/product-demo-director/tools/motion_render.mjs --film video/v3/cards/cards.html --query card=0.2 --out video/out/v3/0.2.mp4 --fps 30 --sub 4
+video/voice-venv/bin/python video/v3/listen.py
+```
+
+What changed in the camera: `take.mjs` writes `takes/v3/` with its own ledger `out/v3/budget.json`
+(caps 3 runs · 0 test replays · 1 Ask); `flows.p1Smoke`/`p2Smoke` on a run view; 3.7's `ask` part
+(Changes + the Ask, P4/P5/S4); 4.1 turns notifications on through the bell (MAC-3) and records its run
+in `out/v3/stall.json`, which 4.2 resumes (it records `out/v3/resume.json`); `film.chapter6Team`
+gives chapter 6's team the plain name (renames only); 4.2's `s4` evidence part; `sheet.mjs` has a V3
+column.
+
+### What didn't work (V3)
+
+- **The spec edit split a word.** `End` in the spec's wrapped last paragraph goes to the end of the
+  visual line; on 0.27.0's widths Enter split "the" (V2b's 3.3 split a sentence). Fixed: ⌘↓ (the
+  document's end); 3.3 re-taken.
+- **Whisper's prior beats a rare word.** "Hull moving average" is heard "whole" in all three renders
+  (and "in Needs you" as "and needs you"): the gate lists them; a hinted transcription is only a
+  diagnostic. Whisper also snaps a line's first word to 0.0 s, so the timing records the −40 dB
+  onset/offset too.
+- **loudnorm stops short.** Two-pass loudnorm (linear, then dynamic) left the narration at −16.5 LUFS
+  under its −1.5 dBTP ceiling; a final +0.5 dB gain reaches −16.0 (peak −0.9 dB).
+- **take.json times are seconds.** The listen-through's first build read them as ms (3.1's window
+  collapsed to 1 s); fixed before the film was kept. A take can also end a frame short of its
+  `duration_s`: the sped-up pieces hold their last frame too, so every piece is frame-exact.
+- **A production label on camera.** Chapter 2's team was first renamed "(chapter 2)", which Home's
+  Needs you would show in 4.2; it became "(earlier)" (the camera's convention) before 4.1.
+- **The kit's `S()` owns opacity.** The end card's byline set `opacity` in CSS and came out full ink;
+  it now uses a translucent ink colour.
 
 ## V2b, second sitting — the Reviewer on Claude Opus (2026-10-16)
 
@@ -324,6 +388,7 @@ node video/camera/sheet.mjs pairs 3.2-replay   # video/out/v1/pairs-3.2-replay.p
 | `camera/scenes/<id>.mjs` | one script per scene (31) |
 | `camera/sheet.mjs` | contact sheet, chapter previews, pairs sheet, SCENES.md table |
 | `camera/smoke.mjs` | V2b's API-side live smoke: `hero` (T1/T2, F1, L1–L3, the HERO line), `s4` (every run's Desktop jobs) |
+| `v3/` | V3: the narration script, the voice renderer + gate + manifest + timing, the cards, the listen-through (above) |
 | `camera/github-login.mjs` | operator, once: a GitHub session for 0.1 (trade_mcp is private) |
 | `fixtures/` | sample data: `base.mjs`, `live-base.json` (+ `capture-live.mjs`, `export-live.mjs`), one module per SAMPLE scene, `files/` |
 | `package.json` | pinned tools: `ffmpeg-static` 5.3.0 (ffmpeg 6.0), `@ffprobe-installer/ffprobe` 2.1.2 (ffprobe n4.4.1), `@playwright/test` 1.61.1, `testreel` 0.2.0 |
@@ -342,7 +407,10 @@ node video/camera/sheet.mjs pairs 3.2-replay   # video/out/v1/pairs-3.2-replay.p
 - Product Demo Director (PDD): `https://github.com/egorov-maxim/product-demo-director` at
   **`7725d6af14f752d48043f8496a177c2e06982e7d`** (2026-09-24), Remotion 4.0.496 inside it.
 - Electron 35.7.5 (`desktop/node_modules`), node 24.14.1, python 3.14.4 (PDD's venv), Claude Code
-  2.1.284, Grok CLI 1.0.44, Docker 29.6.1.
+  2.1.284, Grok CLI 1.0.44 (1.0.46 in V3), Docker 29.6.1.
+- V3's voice (`video/voice-venv`, Python 3.12.13): `voxcpm` 2.0.3 with `openbmb/VoxCPM2` @
+  `32279effe8c19989596f05d353d1447f51d9e915` (Apache-2.0), torch 2.14.1 (MPS), `mlx-whisper` 0.4.3 with
+  `mlx-community/whisper-large-v3-turbo` (MIT). Apple M5, 17 GB: a 35-line round takes ~45 min.
 
 ## Set up once
 

@@ -1,69 +1,278 @@
-# The demo film's scenes (V1, V2, V2b)
+# The demo film's scenes (V1, V2, V2b, V3)
 
 Every scene of the storyboard (`prompts/video-v1.md`) as a take script that re-records by name:
-`make -C video take SCENE=<id>` (`DRY=1` to rehearse; `"<id>*"` for a scene's parts). V2b's takes land
-in `video/takes/v2b/<take>/` (V1's and V2's stay in `video/takes/v1/`, `video/takes/v2/`; a rehearsal in
+`make -C video take SCENE=<id>` (`DRY=1` to rehearse; `"<id>*"` for a scene's parts). V3's takes land
+in `video/takes/v3/<take>/` (V1's, V2's and V2b's stay in `video/takes/v1/`, `v2/`, `v2b/`; a rehearsal in
 `<take>-dry/`) — `take.mp4` 2880×1800 · 30 fps, `take.json`, `poster.png`, `shots/`. Review files:
-`video/out/v2b/contact-sheet.png` (the newest take of every scene, V2b over V2 over V1) and
-`video/out/v2b/ch2-preview.mp4` … `ch7-preview.mp4` (V1's and V2's `video/out/…` stay). How the camera
-works: `video/README.md`.
+`video/out/v3/contact-sheet.png` (the newest take of every scene, V3 over V2b over V2 over V1),
+V2b's `video/out/v2b/ch2-preview.mp4` … `ch7-preview.mp4`, and V3's narration, cards and chapter-3
+listen-through in `video/out/v3/` (below). How the camera and the voice work: `video/README.md`.
 
 ## Status
 
 Generated from the takes on disk (`node video/camera/sheet.mjs scenes-table`): one row per take,
-its V1, V2 and V2b status. "clip" = a filmed take (mode, raw length); "rehearsed" = a `--dry` take
+its V1, V2, V2b and V3 status. "clip" = a filmed take (mode, raw length); "rehearsed" = a `--dry` take
 that stopped before the named spend (or ran through when it spends nothing); "—" = not taken in that
 version. Budgets are the scene's own and the plan's chapter budget — raw takes run longer on purpose
 (record more, V4 trims). V2b's first sitting stopped at a Grok usage cap; **its second sitting
 (2026-10-16) filmed everything it owed** — 6.1–6.3 on a fresh team with the Reviewer on Claude Opus,
-3.5, chapters 2 and 7, and 0.1 (below).
+3.5, chapters 2 and 7, and 0.1 (below). **V3 (2026-10-16)** gave the film its narrator, re-shot
+chapter 3's replays, 3.7's Ask and 4.1/4.2 on the shipped 0.27.0, and built the title and end cards.
 
 <!-- scenes-table -->
-| take | script | V1 | V2 | V2b | scene budget · chapter budget |
-|---|---|---|---|---|---|
-| 0.1 | `scenes/0.1.mjs` (web) | blocked: trade_mcp is private — run node video/camera/github-login.mjs once (operator) | clip (web) 12.7 s | clip (web) 12.7 s | 20 s · ch 0: 20 s |
-| 0.2 | `scenes/0.2.mjs` (motion) | MOTION | MOTION | MOTION | — s · ch 0: 20 s |
-| 1.1 | `scenes/1.1.mjs` (mac) | MAC | MAC | MAC | — s · ch 1: 55 s |
-| 1.2 | `scenes/1.2.mjs` (live) | clip (live) 15.3 s | — | rehearsed (live, no spend) | 20 s · ch 1: 55 s |
-| 1.3 | `scenes/1.3.mjs` (live) | clip (live) 43.1 s | — | — | 20 s · ch 1: 55 s |
-| 1.4 | `scenes/1.4.mjs` (sample) | clip (sample) 20.2 s | — | — | 12 s · ch 1: 55 s |
-| 1.5 | `scenes/1.5.mjs` (sample) | clip (sample) 36.9 s | — | — | 15 s · ch 1: 55 s |
-| 2.1 | `scenes/2.1.mjs` (live) | clip (live) 14.3 s | — | — | 12 s · ch 2: 70 s |
-| 2.2 | `scenes/2.2.mjs` (live) | clip (live) 18.8 s | — | — | 12 s · ch 2: 70 s |
-| 2.3 | `scenes/2.3.mjs` (live) | clip (live) 12.6 s | — | — | 12 s · ch 2: 70 s |
-| 2.4 | `scenes/2.4.mjs` (live) | clip (live) 80.7 s | — | clip (live) 66.9 s | 30 s · ch 2: 70 s |
-| 2.5 | `scenes/2.5.mjs` (live) | clip (live) 40.8 s | — | clip (live) 49.8 s | 25 s · ch 2: 70 s |
-| 2.6 | `scenes/2.6.mjs` (live) | clip (live) 29.2 s | — | clip (live) 31.7 s | 25 s · ch 2: 70 s |
-| 2.7 | `scenes/2.7.mjs` (live) | clip (live) 154.6 s | — | clip (live) 56.1 s | 30 s · ch 2: 70 s |
-| 3.1 | `scenes/3.1.mjs` (record) | rehearsed · stopped before “Launch” | clip (record) 2281.1 s | clip (record) 657.2 s | 15 s · ch 3: 90 s |
-| 3.2 | `scenes/3.2.mjs` (replay) | rehearsed (replay, no spend) | clip (replay) 15.8 s | clip (replay) 15.8 s | 25 s · ch 3: 90 s |
-| 3.2-proof | `scenes/3.2.mjs` (record) | clip (record) 1869.2 s | — | — | 25 s · ch 3: 90 s |
-| 3.2-replay | `scenes/3.2.mjs` (replay) | clip (replay) 1867 s | — | — | 25 s · ch 3: 90 s |
-| 3.3 | `scenes/3.3.mjs` (replay) | rehearsed (replay, no spend) | clip (replay) 22 s | clip (replay) 22.4 s | 25 s · ch 3: 90 s |
-| 3.4 | `scenes/3.4.mjs` (replay) | rehearsed (replay, no spend) | clip (replay) 29.8 s | clip (replay) 22 s | 30 s · ch 3: 90 s |
-| 3.4-verdict | `scenes/3.4.mjs` (replay) | — | — | clip (replay) 30.1 s | 30 s · ch 3: 90 s |
-| 3.5 | `scenes/3.5.mjs` (sample) | clip (sample) 21 s | — | clip (sample) 20.5 s | 15 s · ch 3: 90 s |
-| 3.6 | `scenes/3.6.mjs` (replay) | rehearsed (replay, no spend) | clip (replay) 25.6 s | clip (replay) 24.1 s | 20 s · ch 3: 90 s |
-| 3.7 | `scenes/3.7.mjs` (live) | rehearsed · stopped before “Send” | clip (live) 52.6 s | clip (live) 77.4 s | 30 s · ch 3: 90 s |
-| 4.1 | `scenes/4.1.mjs` (live) | rehearsed · stopped before “Launch” | clip (live) 282.4 s | clip (live) 319.2 s | 30 s · ch 4: 45 s |
-| 4.2 | `scenes/4.2.mjs` (live) | rehearsed · stopped before “Resume (needs 4.1's failed run)” | clip (live) 24.7 s | clip (live) 19.9 s | 25 s · ch 4: 45 s |
-| 4.2-p6 | `scenes/4.2.mjs` (live) | — | — | clip (live) 40.1 s | 25 s · ch 4: 45 s |
-| 5.1 | `scenes/5.1.mjs` (live) | rehearsed · stopped before “Start run” | clip (live) 26.5 s | clip (live) 22.6 s | 25 s · ch 5: 30 s |
-| 5.1-recent | `scenes/5.1.mjs` (live) | rehearsed (live, no spend) | clip (live) 7 s | clip (live) 6.9 s | 25 s · ch 5: 30 s |
-| 6.1 | `scenes/6.1.mjs` (live) | rehearsed · stopped before “Run all” | — | clip (live) 28.5 s | 30 s · ch 6: 75 s |
-| 6.1-evidence | `scenes/6.1.mjs` (live) | — | — | clip (live) 37.9 s | 30 s · ch 6: 75 s |
-| 6.1-p5 | `scenes/6.1.mjs` (live) | — | — | clip (live) 18.5 s | 30 s · ch 6: 75 s |
-| 6.1-s4 | `scenes/6.1.mjs` (live) | — | — | clip (live) 9.4 s | 30 s · ch 6: 75 s |
-| 6.1-seed | `scenes/6.1.mjs` (live) | — | — | clip (live) 34.4 s | 30 s · ch 6: 75 s |
-| 6.2 | `scenes/6.2.mjs` (run) | clip (sample) 23.9 s | — | clip (run) 60.9 s | 40 s · ch 6: 75 s |
-| 6.3 | `scenes/6.3.mjs` (run) | rehearsed · stopped before “Start compare” | — | clip (run) 35.4 s | 40 s · ch 6: 75 s |
-| 6.3-set | `scenes/6.3.mjs` (run) | — | — | clip (run) 72.1 s | 40 s · ch 6: 75 s |
-| 7.1 | `scenes/7.1.mjs` (live) | clip (live) 27.6 s | — | clip (live) 27.7 s | 20 s · ch 7: 30 s |
-| 7.2 | `scenes/7.2.mjs` (live) | clip (live) 33.3 s | — | clip (live) 33.6 s | 30 s · ch 7: 30 s |
-| 8.1 | `scenes/8.1.mjs` (sample) | clip (sample) 23.6 s | — | — | 25 s · ch 8: 25 s |
-| 8.1-web | `scenes/8.1.mjs` (web) | clip (web) 23.5 s | — | — | 25 s · ch 8: 25 s |
-| 8.2 | `scenes/8.2.mjs` (motion) | MOTION | MOTION | MOTION | — s · ch 8: 25 s |
+| take | script | V1 | V2 | V2b | V3 | scene budget · chapter budget |
+|---|---|---|---|---|---|---|
+| 0.1 | `scenes/0.1.mjs` (web) | blocked: trade_mcp is private — run node video/camera/github-login.mjs once (operator) | clip (web) 12.7 s | clip (web) 12.7 s | — | 20 s · ch 0: 20 s |
+| 0.2 | `scenes/0.2.mjs` (motion) | MOTION | MOTION | MOTION | MOTION | — s · ch 0: 20 s |
+| 1.1 | `scenes/1.1.mjs` (mac) | MAC | MAC | MAC | MAC | — s · ch 1: 55 s |
+| 1.2 | `scenes/1.2.mjs` (live) | clip (live) 15.3 s | — | rehearsed (live, no spend) | — | 20 s · ch 1: 55 s |
+| 1.3 | `scenes/1.3.mjs` (live) | clip (live) 43.1 s | — | — | — | 20 s · ch 1: 55 s |
+| 1.4 | `scenes/1.4.mjs` (sample) | clip (sample) 20.2 s | — | — | — | 12 s · ch 1: 55 s |
+| 1.5 | `scenes/1.5.mjs` (sample) | clip (sample) 36.9 s | — | — | — | 15 s · ch 1: 55 s |
+| 2.1 | `scenes/2.1.mjs` (live) | clip (live) 14.3 s | — | — | — | 12 s · ch 2: 70 s |
+| 2.2 | `scenes/2.2.mjs` (live) | clip (live) 18.8 s | — | — | — | 12 s · ch 2: 70 s |
+| 2.3 | `scenes/2.3.mjs` (live) | clip (live) 12.6 s | — | — | — | 12 s · ch 2: 70 s |
+| 2.4 | `scenes/2.4.mjs` (live) | clip (live) 80.7 s | — | clip (live) 66.9 s | — | 30 s · ch 2: 70 s |
+| 2.5 | `scenes/2.5.mjs` (live) | clip (live) 40.8 s | — | clip (live) 49.8 s | — | 25 s · ch 2: 70 s |
+| 2.6 | `scenes/2.6.mjs` (live) | clip (live) 29.2 s | — | clip (live) 31.7 s | — | 25 s · ch 2: 70 s |
+| 2.7 | `scenes/2.7.mjs` (live) | clip (live) 154.6 s | — | clip (live) 56.1 s | — | 30 s · ch 2: 70 s |
+| 3.1 | `scenes/3.1.mjs` (record) | rehearsed · stopped before “Launch” | clip (record) 2281.1 s | clip (record) 657.2 s | — | 15 s · ch 3: 90 s |
+| 3.2 | `scenes/3.2.mjs` (replay) | rehearsed (replay, no spend) | clip (replay) 15.8 s | clip (replay) 15.8 s | clip (replay) 15.8 s | 25 s · ch 3: 90 s |
+| 3.2-proof | `scenes/3.2.mjs` (record) | clip (record) 1869.2 s | — | — | — | 25 s · ch 3: 90 s |
+| 3.2-replay | `scenes/3.2.mjs` (replay) | clip (replay) 1867 s | — | — | — | 25 s · ch 3: 90 s |
+| 3.3 | `scenes/3.3.mjs` (replay) | rehearsed (replay, no spend) | clip (replay) 22 s | clip (replay) 22.4 s | clip (replay) 22.9 s | 25 s · ch 3: 90 s |
+| 3.4 | `scenes/3.4.mjs` (replay) | rehearsed (replay, no spend) | clip (replay) 29.8 s | clip (replay) 22 s | clip (replay) 22.2 s | 30 s · ch 3: 90 s |
+| 3.4-verdict | `scenes/3.4.mjs` (replay) | — | — | clip (replay) 30.1 s | clip (replay) 29.9 s | 30 s · ch 3: 90 s |
+| 3.5 | `scenes/3.5.mjs` (sample) | clip (sample) 21 s | — | clip (sample) 20.5 s | — | 15 s · ch 3: 90 s |
+| 3.6 | `scenes/3.6.mjs` (replay) | rehearsed (replay, no spend) | clip (replay) 25.6 s | clip (replay) 24.1 s | clip (replay) 24.2 s | 20 s · ch 3: 90 s |
+| 3.7 | `scenes/3.7.mjs` (live) | rehearsed · stopped before “Send” | clip (live) 52.6 s | clip (live) 77.4 s | — | 30 s · ch 3: 90 s |
+| 3.7-ask | `scenes/3.7.mjs` (live) | — | — | — | clip (live) 70.1 s | 30 s · ch 3: 90 s |
+| 4.1 | `scenes/4.1.mjs` (live) | rehearsed · stopped before “Launch” | clip (live) 282.4 s | clip (live) 319.2 s | clip (live) 316.2 s | 30 s · ch 4: 45 s |
+| 4.2 | `scenes/4.2.mjs` (live) | rehearsed · stopped before “Resume (needs 4.1's failed run)” | clip (live) 24.7 s | clip (live) 19.9 s | clip (live) 27.1 s | 25 s · ch 4: 45 s |
+| 4.2-s4 | `scenes/4.2.mjs` (live) | — | — | — | clip (live) 9.7 s | 25 s · ch 4: 45 s |
+| 4.2-p6 | `scenes/4.2.mjs` (live) | — | — | clip (live) 40.1 s | — | 25 s · ch 4: 45 s |
+| 5.1 | `scenes/5.1.mjs` (live) | rehearsed · stopped before “Start run” | clip (live) 26.5 s | clip (live) 22.6 s | — | 25 s · ch 5: 30 s |
+| 5.1-recent | `scenes/5.1.mjs` (live) | rehearsed (live, no spend) | clip (live) 7 s | clip (live) 6.9 s | — | 25 s · ch 5: 30 s |
+| 6.1 | `scenes/6.1.mjs` (live) | rehearsed · stopped before “Run all” | — | clip (live) 28.5 s | — | 30 s · ch 6: 75 s |
+| 6.1-evidence | `scenes/6.1.mjs` (live) | — | — | clip (live) 37.9 s | — | 30 s · ch 6: 75 s |
+| 6.1-p5 | `scenes/6.1.mjs` (live) | — | — | clip (live) 18.5 s | — | 30 s · ch 6: 75 s |
+| 6.1-s4 | `scenes/6.1.mjs` (live) | — | — | clip (live) 9.4 s | — | 30 s · ch 6: 75 s |
+| 6.1-seed | `scenes/6.1.mjs` (live) | — | — | clip (live) 34.4 s | — | 30 s · ch 6: 75 s |
+| 6.2 | `scenes/6.2.mjs` (run) | clip (sample) 23.9 s | — | clip (run) 60.9 s | — | 40 s · ch 6: 75 s |
+| 6.3 | `scenes/6.3.mjs` (run) | rehearsed · stopped before “Start compare” | — | clip (run) 35.4 s | — | 40 s · ch 6: 75 s |
+| 6.3-set | `scenes/6.3.mjs` (run) | — | — | clip (run) 72.1 s | — | 40 s · ch 6: 75 s |
+| 7.1 | `scenes/7.1.mjs` (live) | clip (live) 27.6 s | — | clip (live) 27.7 s | — | 20 s · ch 7: 30 s |
+| 7.2 | `scenes/7.2.mjs` (live) | clip (live) 33.3 s | — | clip (live) 33.6 s | — | 30 s · ch 7: 30 s |
+| 8.1 | `scenes/8.1.mjs` (sample) | clip (sample) 23.6 s | — | — | — | 25 s · ch 8: 25 s |
+| 8.1-web | `scenes/8.1.mjs` (web) | clip (web) 23.5 s | — | — | — | 25 s · ch 8: 25 s |
+| 8.2 | `scenes/8.2.mjs` (motion) | MOTION | MOTION | MOTION | MOTION | — s · ch 8: 25 s |
 <!-- /scenes-table -->
+
+## V3 (2026-10-16): the narrator, the re-shoots on 0.27.0, the title and end cards
+
+Brief `prompts/video-v3.md`, branch `video/v3` from `main` `6b35addc` (= production: Fly v46, Desktop
+`desktop-v0.27.0`, alembic `0053`). No product code. Ledger `video/out/v3/budget.json` (caps 3 runs ·
+0 test replays · 1 Ask): **runs 2 (4.1, 4.2) · test replays 0 · Asks 1 (3.7, Grok)**; voice renders 39
+(≤ 3 a line). Every live take passed the pre-roll, which stops unless the Desktop reads Claude and Grok
+**Connected**; the Claude CLI read `loggedIn` (claude.ai, Max) from a clean environment.
+
+### The narrator — VoxCPM2 on this Mac (D1)
+
+- **Model and settings** (`video/v3/voice-manifest.json` › `settings`): `voxcpm` 2.0.3 (Apache-2.0),
+  `openbmb/VoxCPM2` @ `32279eff`, torch 2.14.1 on **MPS**, float32 (VoxCPM picks it on MPS; bf16 drifts
+  there), 48 kHz out. **Every line is cloned from `video/out/voice/reference.mp3`** (sha256
+  `cd3db9f9…6137df`) in VoxCPM2's "ultimate cloning" mode: the clip as prompt audio with its exact
+  words (`reference.txt`) as prompt text, and the same clip as the isolated reference. `cfg_value` 2.0,
+  `inference_timesteps` 10, no text normalisation, no denoise, VoxCPM's own runaway guard on; render n
+  of a line uses seed 42, 43, 44. Leading/trailing silence trimmed to 120 ms (−40 dB). Nothing left the
+  Mac (weights in the Hugging Face cache; `video/voice-venv/` is ignored).
+- **The gate** (`voice.py gate`): mlx-whisper `large-v3-turbo` (language en, temperature 0, word
+  timestamps) transcribes each render; the normalised transcript (lowercase, no punctuation, digits as
+  words, a small table of same-word spellings — ⌘/cmd → command, "3/4" → "3 of 4", tool kit,
+  guard rails, back-up, Groq → grok …) must equal the line, only "Tvashtr" may differ (1–2 words).
+  `video/v3/test_voice.py` holds the cases.
+- **Result: 35/35 lines rendered, 39 renders, 33 pass the gate; flagged 3.1 and 4.2** (3 renders each,
+  then listed — the brief's NEEDS_HUMAN bar is > 5):
+  - **3.1** — all three renders were heard "add a **whole** moving average"; with the hint "Add a Hull
+    moving average (HMA) indicator." (a diagnostic, not the gate) all three read "Hull". Kept: r2.
+  - **4.2** — all three heard "waits for you **and needs you**" for "in Needs you" (r2 also "Resume
+    **it** from", r2/r3 "it**'s** shipped"); a context hint ("failed runs wait in a list called
+    'Needs you'") did not change it. Kept: r1 (only in/and differs).
+  - The kept render of a flagged line is recorded by `voice.py choose` (the line stays flagged) and
+    used by the timing and the listen-through until the operator judges it by ear.
+- **How "Tvashtr" was heard** (9 lines say it): *tvastor* (0.2, 3.6), *tvasters* (3.4-verdict,
+  possessive), *tevastor* (3.4), *tvastra* (2.4, 8.2), *tvashtra* (2.5), *dvaster* (4.1), *vostor* (7.2).
+  For comparison the operator's reference clip itself is heard as *Tevashtra*: the transcriber's
+  spelling is not a pronunciation measure, so the name lines want an ear (4.1's *dvaster* and 7.2's
+  *vostor* most).
+- **4.2's `{resume_minutes}`** = the re-shot resume run's "Done in 7m 9s" → **"Seven"** (rendered after
+  sitting 6 through the same gate).
+- Files (ignored): `video/out/v3/lines/<scene>.wav` (the kept render; 24-bit 48 kHz mono, ~−25 LUFS),
+  every render in `lines/renders/<scene>-r<n>.wav`, `video/out/v3/voice-sample.wav` (0.1, 3.3, 4.1,
+  8.2 back to back, 42.4 s). Integrated loudness of the sample's lines −25.0 … −26.6 LUFS, peaks ≈ −5 dBFS.
+
+| line | renders (seed: verdict) | kept | length | speech (onset–offset) | “Tvashtr” heard as |
+|---|---|---|---|---|---|
+| 0.1 | r1 (42): pass | r1 | 10.30 s | 0.12–10.19 s | — |
+| 0.2 | r1 (42): pass | r1 | 1.45 s | 0.12–1.33 s | tvastor |
+| 1.1 | r1 (42): pass | r1 | 4.28 s | 0.12–4.16 s | — |
+| 1.2 | r1 (42): pass | r1 | 13.90 s | 0.12–13.79 s | — |
+| 1.3 | r1 (42): pass | r1 | 11.21 s | 0.12–11.09 s | — |
+| 1.4 | r1 (42): pass | r1 | 4.76 s | 0.12–4.64 s | — |
+| 1.5 | r1 (42): pass | r1 | 6.11 s | 0.12–6.00 s | — |
+| 2.1 | r1 (42): pass | r1 | 2.61 s | 0.12–2.50 s | — |
+| 2.2 | r1 (42): pass | r1 | 5.70 s | 0.12–5.57 s | — |
+| 2.3 | r1 (42): pass | r1 | 2.83 s | 0.12–2.71 s | — |
+| 2.4 | r1 (42): pass | r1 | 15.08 s | 0.12–14.96 s | tvastra |
+| 2.5 | r1 (42): pass | r1 | 10.84 s | 0.12–10.72 s | tvashtra |
+| 2.6 | r1 (42): pass | r1 | 4.99 s | 0.12–4.86 s | — |
+| 2.7 | r1 (42): pass | r1 | 6.66 s | 0.12–6.54 s | — |
+| 3.1 | r1 (42): fail · r2 (43): fail · r3 (44): fail | r2 — **flagged** | 8.32 s | 0.12–8.20 s | — |
+| 3.2 | r1 (42): pass | r1 | 5.84 s | 0.12–5.72 s | — |
+| 3.3 | r1 (42): pass | r1 | 12.02 s | 0.12–11.90 s | — |
+| 3.4 | r1 (42): pass | r1 | 12.58 s | 0.12–12.46 s | tevastor |
+| 3.4-verdict | r1 (42): pass | r1 | 13.29 s | 0.12–13.17 s | tvasters |
+| 3.6 | r1 (42): pass | r1 | 9.75 s | 0.12–9.63 s | tvastor |
+| 3.7 | r1 (42): pass | r1 | 10.94 s | 0.12–10.82 s | — |
+| 3.5 | r1 (42): pass | r1 | 8.18 s | 0.12–8.05 s | — |
+| 4.1 | r1 (42): pass | r1 | 14.47 s | 0.12–14.36 s | dvaster |
+| 4.2 | r1 (42): fail · r2 (43): fail · r3 (44): fail | r1 — **flagged** | 13.26 s | 0.12–13.14 s | — |
+| 5.1 | r1 (42): pass | r1 | 11.96 s | 0.12–11.84 s | — |
+| 5.1-recent | r1 (42): pass | r1 | 3.37 s | 0.12–3.24 s | — |
+| 6.1 | r1 (42): pass | r1 | 11.37 s | 0.12–11.25 s | — |
+| 6.2 | r1 (42): pass | r1 | 13.32 s | 0.12–13.21 s | — |
+| 6.3 | r1 (42): pass | r1 | 11.86 s | 0.12–11.74 s | — |
+| 6.3-set | r1 (42): pass | r1 | 9.78 s | 0.12–9.66 s | — |
+| 7.1 | r1 (42): pass | r1 | 6.35 s | 0.12–6.23 s | — |
+| 7.2 | r1 (42): pass | r1 | 10.07 s | 0.12–9.96 s | vostor |
+| 8.1 | r1 (42): pass | r1 | 10.74 s | 0.12–10.62 s | — |
+| 8.1-web | r1 (42): pass | r1 | 2.18 s | 0.12–2.06 s | — |
+| 8.2 | r1 (42): pass | r1 | 3.17 s | 0.12–3.05 s | tvastra |
+
+### Timing — `video/v3/narration-timing.json` (D2)
+
+Per line: file, sha256, duration, speech start/end (first word's start, last word's end — Whisper
+snaps a line's first word to 0.0), onset/offset (the −40 dB speech edges: every file keeps 120 ms of its
+render around them), the render and seed, how the name was heard, gate pass or flagged, and every word
+with its times. `narrationMap`: Product Demo Director's supplied-narration map (`docs/PRODUCTION_CONTRACT.md`
+"Global narration"), one thought per line, `startSec`/`endSec` the wider of the two ranges in the line's
+own file — V4 adds each line's placement in the master (and sets `shotN`) when it lays the lines on the
+picture; the measured times let PDD cut only between thoughts.
+
+### The re-shoots on 0.27.0 (D3) — `video/takes/v3/`
+
+| take | mode | length | what it shows |
+|---|---|---|---|
+| 3.2 | replay of `recordings/hero` | 15.8 s | the Now bar and Activity |
+| 3.3 | replay | 22.9 s | Needs you → the spec → one line added → Approve with my edits (the line now lands as the spec's last paragraph) |
+| 3.4 | replay | 22.2 s | the Engineer's drawer → Raw log; "Tests failed — back to Engineer with the last 12 lines", its output opened |
+| 3.4-verdict | replay | 29.9 s | the Grok Reviewer's verdict with Tvashtr's test result |
+| 3.6 | replay | 24.2 s | the guardrail cards, Ship, PR #57, "Done in 10m 21s" |
+| 3.7-ask | live, 1 Ask (Grok) | 70.1 s | Changes (the file list), cost per round, the Ask and its answer as a list — the Memory beat stays V2b's `3.7` |
+| 4.1 | live, run #8 | 316.2 s | chapter 6's team as "Indicator sprint team"; the bell → notifications on (MAC-3); spec approved; the Engineer paused → Quiet → Stalled → "Failed after 4m 51s · on your Claude subscription" |
+| 4.2 | live, run #9 | 27.1 s on camera | Home's Needs you → Resume → the picker → the confirm (P6) → Carried over → (off camera) → Done, PR #67 |
+| 4.2-s4 | live, no spend | 9.7 s | evidence (not for the film): the resumed run's Engineer → Raw log |
+
+Server-made text in the replays (Activity lines) stays as recorded; the frontend is 0.27.0's (P1's
+gate titles, P2's "tests failed" arc).
+
+### The real runs (V3)
+
+| run | # | scene | task | what happened | wall clock | PR |
+|---|---|---|---|---|---|---|
+| `d4159fe6` | 8 | 4.1 | Add a TRIX indicator — chapter 6's team (Reviewer on Opus, no Query domain step), shown as "Indicator sprint team" | PM → spec gate (one line added at the spec's end, approved on camera) → Engineer started → its Claude CLI paused (SIGSTOP, the Desktop's own process tree) → Quiet → Stalled → Failed | "Failed after 4m 51s · on your Claude subscription" | — |
+| `ae65f353` | 9 | 4.2 | resume of run #8 from Engineer, round 1 — opened from **Home's Needs you** (Activity saved: `video/out/v3/runs-activity.json`) | spec v2 + approval carried ("Skips 1 min of finished work") → Engineer → **Tests failed** (12 lines back) → Engineer round 2 → **Tests passed · 664** → Opus Reviewer **asked for 1 fix** (a test built its frame from a RangeIndex) → Engineer round 3 → Tests passed · 664 → Reviewer **approved** ("core/indicators.py:464-475 implements trix() as a pure function …") → Secret scan → No edits to servers/ → Ship | "Done in 7m 9s · on your Claude subscription" (→ "Seven") | [#67](https://github.com/lazyxgenius/trade_mcp/pull/67) |
+
+The one Ask (3.7-ask, the hero run's Reviewer on Grok, `--sandbox tvashtr-j3f0389`): "Tvashtr's tests
+failed on the first build. What did you check once they passed? Answer in a short bulleted list." →
+"Once the reviewer was told the tests passed (665 passed), it checked the build against the spec:" and
+five bullets (the `hma` function, `INDICATORS`, the tests …). No usage limit: V2b's Ask is not needed.
+
+### The live smoke (V3) — every line with its screenshot (opened)
+
+| check | result | screenshot (`takes/v3/…`) |
+|---|---|---|
+| P2 (3.4's run view: the Tests check's arc) | **PASS** — "changes requested · tests failed" | `3.4/shots/p2-arcs.png` |
+| P1 (3.6's run view: the gate cards) | **PASS** — "PRD approval · Escalation · Tests pass · Secret scan · No edits to servers/", no raw kind | `3.6/shots/p1-gates.png` |
+| P4 (3.7: the Reviewer's round row) | **PASS** — "227,780 in / 12,710 out · on your Grok subscription", no $0.0000 | `3.7-ask/shots/p4-round-row.png` |
+| P5 (3.7: the Ask's answer renders markdown) | **PASS** — strong 1 · li 5 · code 15, no `**` outside code | `3.7-ask/shots/p5-answer-whole.png`, `p5-ask.png` |
+| S4 (3.7's Ask on Grok) | **PASS** — `tvashtr-j3f0389` | `3.7-ask/shots/ask.png` |
+| 4.1 H1 (the failure line) | **PASS** — "Failed after 4m 51s · on your Claude subscription" | `4.1/shots/failed.png` |
+| 4.1 H2 (Next: resume …) | **PASS** — "Next: resume from Engineer, round 1. Tvashtr skips the work that is done, so it doesn't run again." | `4.1/shots/failed.png` |
+| 4.2 opens from Needs you | **PASS** — "Run failed Indicator sprint team · “Add a TRIX indicator” · 1m ago · The Engineer stopped responding: no update for 3 minutes Resume View run Retry" | `4.2/shots/needs-you.png` |
+| 4.2 H2 (the confirm; no dollar per step) | **PASS** — "This starts run #9. It picks up where run #8 stopped." … "Skips 1 min of finished work. Only the steps that run again use your Claude subscription." | `4.2/shots/confirm.png`, `picker.png` |
+| P6 (4.2: the resume confirm) | **PASS** — runs again: "Engineer · round 1 / Tests pass — Tvashtr runs the tests / Reviewer · round 1, and round 2 if it asks for more / Secret scan — Tvashtr checks it / No edits to servers/ — Tvashtr checks it / Ship, if the checks pass"; every plan named (Claude) | `4.2/shots/confirm.png` |
+| S4 (the resumed run's Engineer) | **PASS** — "--model claude-sonnet-5 --restricted --safe-mode; lock line present" (the row is cut at the drawer's width; the smoke reads its title) | `4.2-s4/shots/engineer-raw-log-drawer.png` |
+| S4 (`smoke.mjs s4`, every run's Desktop jobs) | **PASS** 14/14 — V3's #8 (2 Claude jobs) and #9 (5 Claude jobs, 0 Grok) among them (`video/out/v3/smoke-s4.log`) | `4.2-s4/shots/engineer-raw-log-drawer.png` |
+
+### MAC-3 (the operator's Recordly shot)
+
+Posted "MAC-3: open Recordly, record the top-right of the screen, then reply GO" before 4.1; the
+operator replied **GO**; 4.1 turned notifications on through the run toolbar's bell ("When a run
+stalls or fails" ticked → Turn on; the account's `notify_stalls_fails` read back true); no macOS
+prompt was clicked by the camera. After "Failed": "MAC-3: stop recording and save it as
+video/out/mac/MAC-3.mov". Status: **owed** — the operator marked it owed
+(no `video/out/mac/MAC-3.mov` when V3 closed). A re-take needs a 4.1-style stall again (one run on the
+stall stack); the bell's choices stay on for the account until a take's pre-roll turns them off.
+
+### The cards (D5) — `video/v3/cards/cards.html`
+
+Built on Product Demo Director's motion kit (`motion/kit.js`, MIT; rendered by its
+`tools/motion_render.mjs`, 4 sub-frames per frame): background `#F7F4EE`, ink `#2B2622`, accent
+`#C8674A`; the wordmark in **Newsreader** 400 (the app's `--font-serif`, tracking −0.02em), text in
+**Inter**, both from the app's own Google Fonts stylesheet. Silent; staggered gentle arrivals (fade +
+a small rise), a short accent rule drawn from the centre, a 0.6 s fade out.
+
+- `video/out/v3/0.2.mp4` — 4.00 s, 1920×1080, 30 fps, 120 frames: "Tvashtr" / "Design an AI team. It
+  ships reviewed pull requests." Still `video/out/v3/0.2.png`.
+- `video/out/v3/8.2.mp4` — 4.00 s, same: "Tvashtr" / "Your team. Your rules." /
+  "tvashtr.fly.dev · github.com/lazyxgenius/Tvashtr" / "Built by Aditya Sharma". Still `8.2.png`.
+- The encode's background reads (246, 244, 235) against #F7F4EE's (247, 244, 238): yuv420 rounding.
+
+### The listen-through (D6) — `video/out/v3/ch3-narrated.mp4`
+
+`video/v3/listen.py`: chapter 3 = 3.1 (V2b's take, up to Launch), 3.2, 3.3, 3.4, 3.4-verdict, 3.6, 3.7
+(V3's 3.7-ask for Changes and the Ask, V2b's 3.7 for Memory). **83.2 s, 1920×1080, 30 fps, −16.0 LUFS
+(true peak −0.9 dB), no music.** Each line starts 0.4 s into its scene; a scene lasts its line + 1.5 s;
+3.4 and 3.4-verdict (badged "sped up" in the script) are sped up ×1.58 and ×2.02 with the badge drawn;
+the others are trimmed to their last line + 1.5 s before their payoff (3.1: 1 s after the Launch
+click, 17.0 → 18.0 s); 3.7's three beats are cut just after the line's sentence ends. Every piece is
+frame-exact (2,496 frames = 83.200 s, the narration 83.200 s); the plan is `video/out/v3/ch3/plan.json`.
+
+### Bends (V3)
+
+- **3.1 and 4.2 are flagged lines** (above) — rendered, kept, listed for the operator's ear.
+- **The spec edit now lands at the spec's end.** `End` in a wrapped last paragraph split it
+  mid-sentence in V2b's 3.3 and mid-word on 0.27.0's widths; the camera now presses ⌘↓ (the document's
+  end). 3.3 was re-taken (free); 4.1's real spec v2 got the clean line.
+- **Team names off camera (D4):** chapter 6's team (`9dd73d65`) took the plain name; chapter 2's
+  (`631680b8`, no runs) became "Indicator sprint team (earlier)" (first "(chapter 2)", changed before
+  4.1 so no production label shows in Home's Needs you). For the 3.7-ask take the hero team (`9da2b1d7`)
+  showed the plain name like 3.2–3.6's recording, restored to "… (earlier)" right after.
+- **4.2's S4 shot is its own evidence part** (`4.2-s4`): the short drawer keeps the Raw log below its
+  fold in the film take.
+
+### Product notes seen on camera (for the architect; no product code in V3)
+
+- The Now bar's chips and the Activity filter chips still name checks by kind ("Secret leak scan",
+  "Diff touches forbidden paths") — P1 fixed the canvas cards.
+- The run drawer's lower area is short: an Ask's answer and the Raw log sit below its fold; Raw log
+  rows are cut at the drawer's width.
+- Home's Needs you lists one "… can't run on the website" row per team (G9: by design), so every
+  renamed team shows there.
+
+### What V4 needs
+
+- **Narration:** 35 lines `video/out/v3/lines/<scene>.wav` + `video/v3/narration-timing.json`; the
+  operator listens to `voice-sample.wav`, the 9 name lines and the two flagged lines (3.1, 4.2) first —
+  a re-render beyond 3 a line is the operator's call.
+- **Chapter 3:** 3.1 (V2b, up to Launch), 3.2, 3.3, 3.4, 3.4-verdict, 3.6, 3.7-ask (+ V2b 3.7's Memory)
+  — `ch3-narrated.mp4` is the rough cut to hear them together.
+- **Chapter 4:** 3.5 (V2b), 4.1 (316.2 s: trim the Quiet/Stalled/Failed holds; MAC-3 owed), 4.2
+  (27.1 s on camera + jump cuts) — the line says "Seven minutes later".
+- **Cards:** `0.2.mp4`, `8.2.mp4` (4 s, silent) — 0.2's line ("This is Tvashtr.") and 8.2's line play
+  over them.
+- Unchanged: chapter 1, 2.1–2.3, 5.1, 8.1 (as filmed); chapters 2, 5–7 as V2b.
 
 ## V2b, second sitting (2026-10-16): the Reviewer on Claude Opus, chapter 6 on a fresh team, every owed scene
 
