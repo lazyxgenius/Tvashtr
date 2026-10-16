@@ -93,7 +93,7 @@ const checkEdges = (edges) => [
   ),
   edge("e-eng-chk", "n-eng", "n-chk"),
   edge("e-chk-rev", "n-chk", "n-rev", { when: "approved" }),
-  edge("e-chk-eng", "n-chk", "n-eng", { when: "rejected" }),
+  edge("e-chk-eng", "n-chk", "n-eng", { loop_limit: 3 }),
 ];
 
 // ---- The run: its agents with the check's entry, and the run graph they live on ----
@@ -404,7 +404,7 @@ const passedRoutes = patch(
         return [
           {
             ...l,
-            text: "Approved: RSI is registered, bounded 0–100, and the tests Tvashtr ran passed (42 passed)",
+            text: "Approved — RSI is registered, bounded 0–100, and the tests Tvashtr ran passed (42 passed)",
           },
         ];
       if (l.kind === "done")

@@ -915,7 +915,7 @@ function boardOf(board) {
             "11:02:41",
             "Reviewer",
             "verdict",
-            "Approved: RSI is registered, bounded 0–100 and tested",
+            "Approved — RSI is registered, bounded 0–100 and tested",
             "ok",
             { verdict: "approved", reasons: "RSI is registered, bounded 0–100 and tested." },
             3,
