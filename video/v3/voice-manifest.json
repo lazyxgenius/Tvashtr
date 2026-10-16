@@ -1,0 +1,4862 @@
+{
+ "settings": {
+  "model": "openbmb/VoxCPM2",
+  "model_revision": "32279effe8c19989596f05d353d1447f51d9e915",
+  "device": "mps",
+  "dtype": "float32 (voxcpm picks it on MPS; bf16 drifts there)",
+  "mode": "ultimate cloning: prompt_wav_path + prompt_text (the reference and its exact words), reference_wav_path = the same clip",
+  "cfg_value": 2.0,
+  "inference_timesteps": 10,
+  "normalize": false,
+  "denoise": false,
+  "retry_badcase": true,
+  "retry_badcase_max_times": 3,
+  "retry_badcase_ratio_threshold": 6.0,
+  "seeds": [
+   42,
+   43,
+   44
+  ],
+  "trim": "librosa.effects.trim top_db=40, then 120 ms of the render kept each side",
+  "transcriber": "mlx-community/whisper-large-v3-turbo (language en, temperature 0, word timestamps)",
+  "voxcpm": "2.0.3",
+  "torch": "2.14.1",
+  "sample_rate": 48000
+ },
+ "reference": {
+  "file": "video/out/voice/reference.mp3",
+  "sha256": "cd3db9f9af6be6dd5b0d1b451d7ef48640ce2c401a3eba9a9554a9f3cd6137df",
+  "text": "This pull request was planned, written, tested and reviewed by an AI team you drew yourself. When the tests failed, Tvashtr sent the last twelve lines back to the engineer. Ten minutes later, it shipped."
+ },
+ "lines": {
+  "0.1": {
+   "text": "This pull request adds a new indicator to a real trading repo. An AI team planned it, wrote it, tested it and reviewed it. You designed that team.",
+   "renders": [
+    {
+     "n": 1,
+     "seed": 42,
+     "file": "video/out/v3/lines/renders/0.1-r1.wav",
+     "sha256": "87fbbe3f6898fb269dca9cb0144bc8775b015fc4573729ff0d407bb8fc9a0dbb",
+     "raw_s": 10.4,
+     "duration_s": 10.304,
+     "transcript": "This pull request adds a new indicator to a real trading repo. An AI team planned it, wrote it, tested it, and reviewed it. You designed that team.",
+     "words": [
+      {
+       "word": "This",
+       "start": 0.0,
+       "end": 0.38
+      },
+      {
+       "word": "pull",
+       "start": 0.38,
+       "end": 0.62
+      },
+      {
+       "word": "request",
+       "start": 0.62,
+       "end": 1.08
+      },
+      {
+       "word": "adds",
+       "start": 1.08,
+       "end": 1.46
+      },
+      {
+       "word": "a",
+       "start": 1.46,
+       "end": 1.62
+      },
+      {
+       "word": "new",
+       "start": 1.62,
+       "end": 1.82
+      },
+      {
+       "word": "indicator",
+       "start": 1.82,
+       "end": 2.3
+      },
+      {
+       "word": "to",
+       "start": 2.3,
+       "end": 2.56
+      },
+      {
+       "word": "a",
+       "start": 2.56,
+       "end": 2.7
+      },
+      {
+       "word": "real",
+       "start": 2.7,
+       "end": 3.0
+      },
+      {
+       "word": "trading",
+       "start": 3.0,
+       "end": 3.36
+      },
+      {
+       "word": "repo.",
+       "start": 3.36,
+       "end": 3.78
+      },
+      {
+       "word": "An",
+       "start": 4.1,
+       "end": 4.66
+      },
+      {
+       "word": "AI",
+       "start": 4.66,
+       "end": 4.94
+      },
+      {
+       "word": "team",
+       "start": 4.94,
+       "end": 5.32
+      },
+      {
+       "word": "planned",
+       "start": 5.32,
+       "end": 5.76
+      },
+      {
+       "word": "it,",
+       "start": 5.76,
+       "end": 5.94
+      },
+      {
+       "word": "wrote",
+       "start": 6.1,
+       "end": 6.4
+      },
+      {
+       "word": "it,",
+       "start": 6.4,
+       "end": 6.6
+      },
+      {
+       "word": "tested",
+       "start": 6.78,
+       "end": 7.16
+      },
+      {
+       "word": "it,",
+       "start": 7.16,
+       "end": 7.38
+      },
+      {
+       "word": "and",
+       "start": 7.5,
+       "end": 7.58
+      },
+      {
+       "word": "reviewed",
+       "start": 7.58,
+       "end": 7.94
+      },
+      {
+       "word": "it.",
+       "start": 7.94,
+       "end": 8.22
+      },
+      {
+       "word": "You",
+       "start": 8.46,
+       "end": 9.02
+      },
+      {
+       "word": "designed",
+       "start": 9.02,
+       "end": 9.48
+      },
+      {
+       "word": "that",
+       "start": 9.48,
+       "end": 9.74
+      },
+      {
+       "word": "team.",
+       "start": 9.74,
+       "end": 10.02
+      }
+     ],
+     "pass": true,
+     "name_heard": []
+    }
+   ],
+   "chapter": 0,
+   "file": "video/out/v3/lines/0.1.wav",
+   "sha256": "87fbbe3f6898fb269dca9cb0144bc8775b015fc4573729ff0d407bb8fc9a0dbb",
+   "render": 1
+  },
+  "0.2": {
+   "text": "This is Tvashtr.",
+   "renders": [
+    {
+     "n": 1,
+     "seed": 42,
+     "file": "video/out/v3/lines/renders/0.2-r1.wav",
+     "sha256": "552cf6088f4ca33eb63818a9fb6d705339d1f2bd1fbc6c167466d538d9f9b125",
+     "raw_s": 1.6,
+     "duration_s": 1.451,
+     "transcript": "This is Tvastor.",
+     "words": [
+      {
+       "word": "This",
+       "start": 0.0,
+       "end": 0.44
+      },
+      {
+       "word": "is",
+       "start": 0.44,
+       "end": 0.7
+      },
+      {
+       "word": "Tvastor.",
+       "start": 0.7,
+       "end": 1.3
+      }
+     ],
+     "pass": true,
+     "name_heard": [
+      "tvastor"
+     ]
+    }
+   ],
+   "chapter": 0,
+   "file": "video/out/v3/lines/0.2.wav",
+   "sha256": "552cf6088f4ca33eb63818a9fb6d705339d1f2bd1fbc6c167466d538d9f9b125",
+   "render": 1
+  },
+  "1.1": {
+   "text": "Sign in with GitHub, and choose the repo your team will work on.",
+   "renders": [
+    {
+     "n": 1,
+     "seed": 42,
+     "file": "video/out/v3/lines/renders/1.1-r1.wav",
+     "sha256": "ea479f101e58cc9eb599e3f22f1e1176a0ed80fc38fe0041f018f555b6a97d17",
+     "raw_s": 4.64,
+     "duration_s": 4.283,
+     "transcript": "Sign in with GitHub and choose the repo your team will work on.",
+     "words": [
+      {
+       "word": "Sign",
+       "start": 0.0,
+       "end": 0.58
+      },
+      {
+       "word": "in",
+       "start": 0.58,
+       "end": 0.84
+      },
+      {
+       "word": "with",
+       "start": 0.84,
+       "end": 1.06
+      },
+      {
+       "word": "GitHub",
+       "start": 1.06,
+       "end": 1.4
+      },
+      {
+       "word": "and",
+       "start": 1.4,
+       "end": 1.9
+      },
+      {
+       "word": "choose",
+       "start": 1.9,
+       "end": 2.22
+      },
+      {
+       "word": "the",
+       "start": 2.22,
+       "end": 2.44
+      },
+      {
+       "word": "repo",
+       "start": 2.44,
+       "end": 2.8
+      },
+      {
+       "word": "your",
+       "start": 2.8,
+       "end": 3.1
+      },
+      {
+       "word": "team",
+       "start": 3.1,
+       "end": 3.38
+      },
+      {
+       "word": "will",
+       "start": 3.38,
+       "end": 3.64
+      },
+      {
+       "word": "work",
+       "start": 3.64,
+       "end": 3.92
+      },
+      {
+       "word": "on.",
+       "start": 3.92,
+       "end": 4.1
+      }
+     ],
+     "pass": true,
+     "name_heard": []
+    }
+   ],
+   "chapter": 1,
+   "file": "video/out/v3/lines/1.1.wav",
+   "sha256": "ea479f101e58cc9eb599e3f22f1e1176a0ed80fc38fe0041f018f555b6a97d17",
+   "render": 1
+  },
+  "1.2": {
+   "text": "Your agents run on the Claude and Grok subscriptions you already pay for, signed in on your own Mac. For the few jobs a subscription can't do, add an API key. It's stored encrypted and only ever shown masked.",
+   "renders": [
+    {
+     "n": 1,
+     "seed": 42,
+     "file": "video/out/v3/lines/renders/1.2-r1.wav",
+     "sha256": "9db6c4d5e78f16aa5880bd339c797f17180fcebc9268574482882f6d89ae99d2",
+     "raw_s": 14.24,
+     "duration_s": 13.904,
+     "transcript": "Your agents run on the Claude and Grok subscriptions you already pay for, signed in on your own Mac. For the few jobs a subscription can't do, add an API key. It's stored encrypted and only ever shown masked.",
+     "words": [
+      {
+       "word": "Your",
+       "start": 0.0,
+       "end": 0.28
+      },
+      {
+       "word": "agents",
+       "start": 0.28,
+       "end": 0.68
+      },
+      {
+       "word": "run",
+       "start": 0.68,
+       "end": 1.0
+      },
+      {
+       "word": "on",
+       "start": 1.0,
+       "end": 1.14
+      },
+      {
+       "word": "the",
+       "start": 1.14,
+       "end": 1.24
+      },
+      {
+       "word": "Claude",
+       "start": 1.24,
+       "end": 1.58
+      },
+      {
+       "word": "and",
+       "start": 1.58,
+       "end": 1.7
+      },
+      {
+       "word": "Grok",
+       "start": 1.7,
+       "end": 1.98
+      },
+      {
+       "word": "subscriptions",
+       "start": 1.98,
+       "end": 2.54
+      },
+      {
+       "word": "you",
+       "start": 2.54,
+       "end": 2.86
+      },
+      {
+       "word": "already",
+       "start": 2.86,
+       "end": 3.26
+      },
+      {
+       "word": "pay",
+       "start": 3.26,
+       "end": 3.52
+      },
+      {
+       "word": "for,",
+       "start": 3.52,
+       "end": 3.84
+      },
+      {
+       "word": "signed",
+       "start": 4.14,
+       "end": 4.7
+      },
+      {
+       "word": "in",
+       "start": 4.7,
+       "end": 4.94
+      },
+      {
+       "word": "on",
+       "start": 4.94,
+       "end": 5.14
+      },
+      {
+       "word": "your",
+       "start": 5.14,
+       "end": 5.3
+      },
+      {
+       "word": "own",
+       "start": 5.3,
+       "end": 5.6
+      },
+      {
+       "word": "Mac.",
+       "start": 5.6,
+       "end": 5.92
+      },
+      {
+       "word": "For",
+       "start": 6.16,
+       "end": 6.6
+      },
+      {
+       "word": "the",
+       "start": 6.6,
+       "end": 6.72
+      },
+      {
+       "word": "few",
+       "start": 6.72,
+       "end": 6.96
+      },
+      {
+       "word": "jobs",
+       "start": 6.96,
+       "end": 7.4
+      },
+      {
+       "word": "a",
+       "start": 7.4,
+       "end": 7.58
+      },
+      {
+       "word": "subscription",
+       "start": 7.58,
+       "end": 8.02
+      },
+      {
+       "word": "can't",
+       "start": 8.02,
+       "end": 8.54
+      },
+      {
+       "word": "do,",
+       "start": 8.54,
+       "end": 8.82
+      },
+      {
+       "word": "add",
+       "start": 9.06,
+       "end": 9.48
+      },
+      {
+       "word": "an",
+       "start": 9.48,
+       "end": 9.6
+      },
+      {
+       "word": "API",
+       "start": 9.6,
+       "end": 9.9
+      },
+      {
+       "word": "key.",
+       "start": 9.9,
+       "end": 10.24
+      },
+      {
+       "word": "It's",
+       "start": 10.46,
+       "end": 10.94
+      },
+      {
+       "word": "stored",
+       "start": 10.94,
+       "end": 11.28
+      },
+      {
+       "word": "encrypted",
+       "start": 11.28,
+       "end": 11.74
+      },
+      {
+       "word": "and",
+       "start": 11.74,
+       "end": 12.1
+      },
+      {
+       "word": "only",
+       "start": 12.1,
+       "end": 12.5
+      },
+      {
+       "word": "ever",
+       "start": 12.5,
+       "end": 12.78
+      },
+      {
+       "word": "shown",
+       "start": 12.78,
+       "end": 13.12
+      },
+      {
+       "word": "masked.",
+       "start": 13.12,
+       "end": 13.58
+      }
+     ],
+     "pass": true,
+     "name_heard": []
+    }
+   ],
+   "chapter": 1,
+   "file": "video/out/v3/lines/1.2.wav",
+   "sha256": "9db6c4d5e78f16aa5880bd339c797f17180fcebc9268574482882f6d89ae99d2",
+   "render": 1
+  },
+  "1.3": {
+   "text": "The Toolkit is shared by every team: tools, secrets saved by name, and skills imported straight from GitHub. Here, Anthropic's MCP builder.",
+   "renders": [
+    {
+     "n": 1,
+     "seed": 42,
+     "file": "video/out/v3/lines/renders/1.3-r1.wav",
+     "sha256": "02fee968789b9768ec8a33ac4181fd1ae47d097a4f78a283fbf5e6c24d323773",
+     "raw_s": 11.2,
+     "duration_s": 11.205,
+     "transcript": "The toolkit is shared by every team. Tools, secrets saved by name, and skills imported straight from GitHub. Here, Anthropics MCP Builder.",
+     "words": [
+      {
+       "word": "The",
+       "start": 0.0,
+       "end": 0.2
+      },
+      {
+       "word": "toolkit",
+       "start": 0.2,
+       "end": 0.62
+      },
+      {
+       "word": "is",
+       "start": 0.62,
+       "end": 0.94
+      },
+      {
+       "word": "shared",
+       "start": 0.94,
+       "end": 1.24
+      },
+      {
+       "word": "by",
+       "start": 1.24,
+       "end": 1.48
+      },
+      {
+       "word": "every",
+       "start": 1.48,
+       "end": 1.92
+      },
+      {
+       "word": "team.",
+       "start": 1.92,
+       "end": 2.32
+      },
+      {
+       "word": "Tools,",
+       "start": 2.58,
+       "end": 3.32
+      },
+      {
+       "word": "secrets",
+       "start": 3.54,
+       "end": 4.18
+      },
+      {
+       "word": "saved",
+       "start": 4.18,
+       "end": 4.56
+      },
+      {
+       "word": "by",
+       "start": 4.56,
+       "end": 4.78
+      },
+      {
+       "word": "name,",
+       "start": 4.78,
+       "end": 5.14
+      },
+      {
+       "word": "and",
+       "start": 5.3,
+       "end": 5.54
+      },
+      {
+       "word": "skills",
+       "start": 5.54,
+       "end": 6.02
+      },
+      {
+       "word": "imported",
+       "start": 6.02,
+       "end": 6.6
+      },
+      {
+       "word": "straight",
+       "start": 6.6,
+       "end": 7.04
+      },
+      {
+       "word": "from",
+       "start": 7.04,
+       "end": 7.36
+      },
+      {
+       "word": "GitHub.",
+       "start": 7.36,
+       "end": 7.7
+      },
+      {
+       "word": "Here,",
+       "start": 8.16,
+       "end": 8.74
+      },
+      {
+       "word": "Anthropics",
+       "start": 9.16,
+       "end": 9.82
+      },
+      {
+       "word": "MCP",
+       "start": 9.82,
+       "end": 10.6
+      },
+      {
+       "word": "Builder.",
+       "start": 10.6,
+       "end": 11.06
+      }
+     ],
+     "pass": true,
+     "name_heard": []
+    }
+   ],
+   "chapter": 1,
+   "file": "video/out/v3/lines/1.3.wav",
+   "sha256": "02fee968789b9768ec8a33ac4181fd1ae47d097a4f78a283fbf5e6c24d323773",
+   "render": 1
+  },
+  "1.4": {
+   "text": "Connect the apps your work lives in, like Linear, and choose what agents may do there.",
+   "renders": [
+    {
+     "n": 1,
+     "seed": 42,
+     "file": "video/out/v3/lines/renders/1.4-r1.wav",
+     "sha256": "9bc2663cf840b478bc3b27215a3ec08d127449715cbc6ab053eb2ef9e41d043c",
+     "raw_s": 4.8,
+     "duration_s": 4.763,
+     "transcript": "Connect the apps your work lives in, like Linear, and choose what agents may do there.",
+     "words": [
+      {
+       "word": "Connect",
+       "start": 0.0,
+       "end": 0.42
+      },
+      {
+       "word": "the",
+       "start": 0.42,
+       "end": 0.62
+      },
+      {
+       "word": "apps",
+       "start": 0.62,
+       "end": 0.9
+      },
+      {
+       "word": "your",
+       "start": 0.9,
+       "end": 1.06
+      },
+      {
+       "word": "work",
+       "start": 1.06,
+       "end": 1.32
+      },
+      {
+       "word": "lives",
+       "start": 1.32,
+       "end": 1.62
+      },
+      {
+       "word": "in,",
+       "start": 1.62,
+       "end": 1.8
+      },
+      {
+       "word": "like",
+       "start": 1.88,
+       "end": 2.2
+      },
+      {
+       "word": "Linear,",
+       "start": 2.2,
+       "end": 2.64
+      },
+      {
+       "word": "and",
+       "start": 2.82,
+       "end": 2.96
+      },
+      {
+       "word": "choose",
+       "start": 2.96,
+       "end": 3.24
+      },
+      {
+       "word": "what",
+       "start": 3.24,
+       "end": 3.5
+      },
+      {
+       "word": "agents",
+       "start": 3.5,
+       "end": 3.92
+      },
+      {
+       "word": "may",
+       "start": 3.92,
+       "end": 4.16
+      },
+      {
+       "word": "do",
+       "start": 4.16,
+       "end": 4.34
+      },
+      {
+       "word": "there.",
+       "start": 4.34,
+       "end": 4.52
+      }
+     ],
+     "pass": true,
+     "name_heard": []
+    }
+   ],
+   "chapter": 1,
+   "file": "video/out/v3/lines/1.4.wav",
+   "sha256": "9bc2663cf840b478bc3b27215a3ec08d127449715cbc6ab053eb2ef9e41d043c",
+   "render": 1
+  },
+  "1.5": {
+   "text": "And turn your documents into a domain agents can search. Every answer shows its sources.",
+   "renders": [
+    {
+     "n": 1,
+     "seed": 42,
+     "file": "video/out/v3/lines/renders/1.5-r1.wav",
+     "sha256": "374a74837583f0a610afc27726e69d2636e49e74926bbe1694437ae74a8ba671",
+     "raw_s": 6.08,
+     "duration_s": 6.112,
+     "transcript": "and turn your documents into a domain agents can search. Every answer shows its sources.",
+     "words": [
+      {
+       "word": "and",
+       "start": 0.0,
+       "end": 0.24
+      },
+      {
+       "word": "turn",
+       "start": 0.24,
+       "end": 0.5
+      },
+      {
+       "word": "your",
+       "start": 0.5,
+       "end": 0.7
+      },
+      {
+       "word": "documents",
+       "start": 0.7,
+       "end": 1.24
+      },
+      {
+       "word": "into",
+       "start": 1.24,
+       "end": 1.56
+      },
+      {
+       "word": "a",
+       "start": 1.56,
+       "end": 1.74
+      },
+      {
+       "word": "domain",
+       "start": 1.74,
+       "end": 2.12
+      },
+      {
+       "word": "agents",
+       "start": 2.12,
+       "end": 2.62
+      },
+      {
+       "word": "can",
+       "start": 2.62,
+       "end": 2.9
+      },
+      {
+       "word": "search.",
+       "start": 2.9,
+       "end": 3.24
+      },
+      {
+       "word": "Every",
+       "start": 3.68,
+       "end": 4.36
+      },
+      {
+       "word": "answer",
+       "start": 4.36,
+       "end": 4.76
+      },
+      {
+       "word": "shows",
+       "start": 4.76,
+       "end": 5.18
+      },
+      {
+       "word": "its",
+       "start": 5.18,
+       "end": 5.36
+      },
+      {
+       "word": "sources.",
+       "start": 5.36,
+       "end": 5.7
+      }
+     ],
+     "pass": true,
+     "name_heard": []
+    }
+   ],
+   "chapter": 1,
+   "file": "video/out/v3/lines/1.5.wav",
+   "sha256": "374a74837583f0a610afc27726e69d2636e49e74926bbe1694437ae74a8ba671",
+   "render": 1
+  },
+  "2.1": {
+   "text": "Now build the team. Start from a template.",
+   "renders": [
+    {
+     "n": 1,
+     "seed": 42,
+     "file": "video/out/v3/lines/renders/2.1-r1.wav",
+     "sha256": "8aa5dafa0f5d2424bc499eef5ae87d6369f6d2d2d0376e53e2e9a41368c4a2b4",
+     "raw_s": 2.56,
+     "duration_s": 2.613,
+     "transcript": "Now build the team. Start from a template.",
+     "words": [
+      {
+       "word": "Now",
+       "start": 0.0,
+       "end": 0.36
+      },
+      {
+       "word": "build",
+       "start": 0.36,
+       "end": 0.64
+      },
+      {
+       "word": "the",
+       "start": 0.64,
+       "end": 0.78
+      },
+      {
+       "word": "team.",
+       "start": 0.78,
+       "end": 1.1
+      },
+      {
+       "word": "Start",
+       "start": 1.24,
+       "end": 1.64
+      },
+      {
+       "word": "from",
+       "start": 1.64,
+       "end": 1.84
+      },
+      {
+       "word": "a",
+       "start": 1.84,
+       "end": 1.98
+      },
+      {
+       "word": "template.",
+       "start": 1.98,
+       "end": 2.26
+      }
+     ],
+     "pass": true,
+     "name_heard": []
+    }
+   ],
+   "chapter": 2,
+   "file": "video/out/v3/lines/2.1.wav",
+   "sha256": "8aa5dafa0f5d2424bc499eef5ae87d6369f6d2d2d0376e53e2e9a41368c4a2b4",
+   "render": 1
+  },
+  "2.2": {
+   "text": "Every agent is a blank box: its job is whatever you write in its instructions.",
+   "renders": [
+    {
+     "n": 1,
+     "seed": 42,
+     "file": "video/out/v3/lines/renders/2.2-r1.wav",
+     "sha256": "548ff4a5bdf222361c683659d55a40f2b8f332c6b792766b3f8959caca4fc8e1",
+     "raw_s": 5.6,
+     "duration_s": 5.696,
+     "transcript": "Every agent is a blank box. Its job is whatever you write in its instructions.",
+     "words": [
+      {
+       "word": "Every",
+       "start": 0.0,
+       "end": 0.42
+      },
+      {
+       "word": "agent",
+       "start": 0.42,
+       "end": 0.78
+      },
+      {
+       "word": "is",
+       "start": 0.78,
+       "end": 1.04
+      },
+      {
+       "word": "a",
+       "start": 1.04,
+       "end": 1.16
+      },
+      {
+       "word": "blank",
+       "start": 1.16,
+       "end": 1.48
+      },
+      {
+       "word": "box.",
+       "start": 1.48,
+       "end": 2.04
+      },
+      {
+       "word": "Its",
+       "start": 2.24,
+       "end": 2.66
+      },
+      {
+       "word": "job",
+       "start": 2.66,
+       "end": 3.04
+      },
+      {
+       "word": "is",
+       "start": 3.04,
+       "end": 3.34
+      },
+      {
+       "word": "whatever",
+       "start": 3.34,
+       "end": 3.72
+      },
+      {
+       "word": "you",
+       "start": 3.72,
+       "end": 4.04
+      },
+      {
+       "word": "write",
+       "start": 4.04,
+       "end": 4.34
+      },
+      {
+       "word": "in",
+       "start": 4.34,
+       "end": 4.58
+      },
+      {
+       "word": "its",
+       "start": 4.58,
+       "end": 4.74
+      },
+      {
+       "word": "instructions.",
+       "start": 4.74,
+       "end": 5.24
+      }
+     ],
+     "pass": true,
+     "name_heard": []
+    }
+   ],
+   "chapter": 2,
+   "file": "video/out/v3/lines/2.2.wav",
+   "sha256": "548ff4a5bdf222361c683659d55a40f2b8f332c6b792766b3f8959caca4fc8e1",
+   "render": 1
+  },
+  "2.3": {
+   "text": "A step can look things up in your own docs.",
+   "renders": [
+    {
+     "n": 1,
+     "seed": 42,
+     "file": "video/out/v3/lines/renders/2.3-r1.wav",
+     "sha256": "56a32e1c793039a47f1be143ff0ebc7c61d1ed315cbc0055b19282a519e2bd86",
+     "raw_s": 3.2,
+     "duration_s": 2.832,
+     "transcript": "A step can look things up in your own docs.",
+     "words": [
+      {
+       "word": "A",
+       "start": 0.0,
+       "end": 0.2
+      },
+      {
+       "word": "step",
+       "start": 0.2,
+       "end": 0.54
+      },
+      {
+       "word": "can",
+       "start": 0.54,
+       "end": 0.8
+      },
+      {
+       "word": "look",
+       "start": 0.8,
+       "end": 1.02
+      },
+      {
+       "word": "things",
+       "start": 1.02,
+       "end": 1.28
+      },
+      {
+       "word": "up",
+       "start": 1.28,
+       "end": 1.52
+      },
+      {
+       "word": "in",
+       "start": 1.52,
+       "end": 1.64
+      },
+      {
+       "word": "your",
+       "start": 1.64,
+       "end": 1.8
+      },
+      {
+       "word": "own",
+       "start": 1.8,
+       "end": 2.1
+      },
+      {
+       "word": "docs.",
+       "start": 2.1,
+       "end": 2.44
+      }
+     ],
+     "pass": true,
+     "name_heard": []
+    }
+   ],
+   "chapter": 2,
+   "file": "video/out/v3/lines/2.3.wav",
+   "sha256": "56a32e1c793039a47f1be143ff0ebc7c61d1ed315cbc0055b19282a519e2bd86",
+   "render": 1
+  },
+  "2.4": {
+   "text": "Then wire in the checks. You approve the spec. Tvashtr runs your tests, and a failure loops back to the engineer. The reviewer can send work back too. Guardrails scan for secrets and block edits to the servers folder.",
+   "renders": [
+    {
+     "n": 1,
+     "seed": 42,
+     "file": "video/out/v3/lines/renders/2.4-r1.wav",
+     "sha256": "a7359fd1beecff36c1836dd34f268a54f5276237faef92932605031a9be0b2ce",
+     "raw_s": 15.04,
+     "duration_s": 15.077,
+     "transcript": "Then wire in the checks. You approve the spec. Tvastra runs your tests, and a failure loops back to the engineer. The reviewer can send work back too. Guardrails scan for secrets and block edits to the servers folder.",
+     "words": [
+      {
+       "word": "Then",
+       "start": 0.0,
+       "end": 0.34
+      },
+      {
+       "word": "wire",
+       "start": 0.34,
+       "end": 0.7
+      },
+      {
+       "word": "in",
+       "start": 0.7,
+       "end": 0.9
+      },
+      {
+       "word": "the",
+       "start": 0.9,
+       "end": 1.0
+      },
+      {
+       "word": "checks.",
+       "start": 1.0,
+       "end": 1.34
+      },
+      {
+       "word": "You",
+       "start": 1.6,
+       "end": 1.92
+      },
+      {
+       "word": "approve",
+       "start": 1.92,
+       "end": 2.34
+      },
+      {
+       "word": "the",
+       "start": 2.34,
+       "end": 2.5
+      },
+      {
+       "word": "spec.",
+       "start": 2.5,
+       "end": 2.82
+      },
+      {
+       "word": "Tvastra",
+       "start": 3.22,
+       "end": 3.9
+      },
+      {
+       "word": "runs",
+       "start": 3.9,
+       "end": 4.26
+      },
+      {
+       "word": "your",
+       "start": 4.26,
+       "end": 4.48
+      },
+      {
+       "word": "tests,",
+       "start": 4.48,
+       "end": 4.96
+      },
+      {
+       "word": "and",
+       "start": 5.0,
+       "end": 5.48
+      },
+      {
+       "word": "a",
+       "start": 5.48,
+       "end": 5.6
+      },
+      {
+       "word": "failure",
+       "start": 5.6,
+       "end": 6.04
+      },
+      {
+       "word": "loops",
+       "start": 6.04,
+       "end": 6.46
+      },
+      {
+       "word": "back",
+       "start": 6.46,
+       "end": 6.72
+      },
+      {
+       "word": "to",
+       "start": 6.72,
+       "end": 6.9
+      },
+      {
+       "word": "the",
+       "start": 6.9,
+       "end": 7.04
+      },
+      {
+       "word": "engineer.",
+       "start": 7.04,
+       "end": 7.42
+      },
+      {
+       "word": "The",
+       "start": 7.78,
+       "end": 8.3
+      },
+      {
+       "word": "reviewer",
+       "start": 8.3,
+       "end": 8.8
+      },
+      {
+       "word": "can",
+       "start": 8.8,
+       "end": 8.98
+      },
+      {
+       "word": "send",
+       "start": 8.98,
+       "end": 9.36
+      },
+      {
+       "word": "work",
+       "start": 9.36,
+       "end": 9.68
+      },
+      {
+       "word": "back",
+       "start": 9.68,
+       "end": 9.98
+      },
+      {
+       "word": "too.",
+       "start": 9.98,
+       "end": 10.34
+      },
+      {
+       "word": "Guardrails",
+       "start": 10.94,
+       "end": 11.52
+      },
+      {
+       "word": "scan",
+       "start": 11.52,
+       "end": 11.92
+      },
+      {
+       "word": "for",
+       "start": 11.92,
+       "end": 12.16
+      },
+      {
+       "word": "secrets",
+       "start": 12.16,
+       "end": 12.66
+      },
+      {
+       "word": "and",
+       "start": 12.66,
+       "end": 12.94
+      },
+      {
+       "word": "block",
+       "start": 12.94,
+       "end": 13.3
+      },
+      {
+       "word": "edits",
+       "start": 13.3,
+       "end": 13.7
+      },
+      {
+       "word": "to",
+       "start": 13.7,
+       "end": 13.92
+      },
+      {
+       "word": "the",
+       "start": 13.92,
+       "end": 14.04
+      },
+      {
+       "word": "servers",
+       "start": 14.04,
+       "end": 14.46
+      },
+      {
+       "word": "folder.",
+       "start": 14.46,
+       "end": 14.82
+      }
+     ],
+     "pass": true,
+     "name_heard": [
+      "tvastra"
+     ]
+    }
+   ],
+   "chapter": 2,
+   "file": "video/out/v3/lines/2.4.wav",
+   "sha256": "a7359fd1beecff36c1836dd34f268a54f5276237faef92932605031a9be0b2ce",
+   "render": 1
+  },
+  "2.5": {
+   "text": "Choose a model for each agent. Give the reviewer the engineer's model, and Tvashtr warns you: they would share blind spots. So the reviewer gets a different one.",
+   "renders": [
+    {
+     "n": 1,
+     "seed": 42,
+     "file": "video/out/v3/lines/renders/2.5-r1.wav",
+     "sha256": "9ecf9edc245effbf094d015a2539d40d8d1abb247631b4bdbf6a0564298f4aba",
+     "raw_s": 11.04,
+     "duration_s": 10.843,
+     "transcript": "Choose a model for each agent. Give the reviewer the engineer's model and Tvashtra warns you they would share blind spots, so the reviewer gets a different one.",
+     "words": [
+      {
+       "word": "Choose",
+       "start": 0.0,
+       "end": 0.46
+      },
+      {
+       "word": "a",
+       "start": 0.46,
+       "end": 0.66
+      },
+      {
+       "word": "model",
+       "start": 0.66,
+       "end": 0.96
+      },
+      {
+       "word": "for",
+       "start": 0.96,
+       "end": 1.24
+      },
+      {
+       "word": "each",
+       "start": 1.24,
+       "end": 1.56
+      },
+      {
+       "word": "agent.",
+       "start": 1.56,
+       "end": 2.02
+      },
+      {
+       "word": "Give",
+       "start": 2.4,
+       "end": 3.06
+      },
+      {
+       "word": "the",
+       "start": 3.06,
+       "end": 3.2
+      },
+      {
+       "word": "reviewer",
+       "start": 3.2,
+       "end": 3.7
+      },
+      {
+       "word": "the",
+       "start": 3.7,
+       "end": 3.88
+      },
+      {
+       "word": "engineer's",
+       "start": 3.88,
+       "end": 4.48
+      },
+      {
+       "word": "model",
+       "start": 4.48,
+       "end": 4.82
+      },
+      {
+       "word": "and",
+       "start": 4.82,
+       "end": 5.18
+      },
+      {
+       "word": "Tvashtra",
+       "start": 5.18,
+       "end": 5.74
+      },
+      {
+       "word": "warns",
+       "start": 5.74,
+       "end": 6.2
+      },
+      {
+       "word": "you",
+       "start": 6.2,
+       "end": 6.36
+      },
+      {
+       "word": "they",
+       "start": 6.36,
+       "end": 6.94
+      },
+      {
+       "word": "would",
+       "start": 6.94,
+       "end": 7.12
+      },
+      {
+       "word": "share",
+       "start": 7.12,
+       "end": 7.46
+      },
+      {
+       "word": "blind",
+       "start": 7.46,
+       "end": 7.8
+      },
+      {
+       "word": "spots,",
+       "start": 7.8,
+       "end": 8.36
+      },
+      {
+       "word": "so",
+       "start": 8.38,
+       "end": 9.04
+      },
+      {
+       "word": "the",
+       "start": 9.04,
+       "end": 9.2
+      },
+      {
+       "word": "reviewer",
+       "start": 9.2,
+       "end": 9.72
+      },
+      {
+       "word": "gets",
+       "start": 9.72,
+       "end": 9.96
+      },
+      {
+       "word": "a",
+       "start": 9.96,
+       "end": 10.08
+      },
+      {
+       "word": "different",
+       "start": 10.08,
+       "end": 10.36
+      },
+      {
+       "word": "one.",
+       "start": 10.36,
+       "end": 10.62
+      }
+     ],
+     "pass": true,
+     "name_heard": [
+      "tvashtra"
+     ]
+    }
+   ],
+   "chapter": 2,
+   "file": "video/out/v3/lines/2.5.wav",
+   "sha256": "9ecf9edc245effbf094d015a2539d40d8d1abb247631b4bdbf6a0564298f4aba",
+   "render": 1
+  },
+  "2.6": {
+   "text": "Let the engineer remember what it learns, and draw a failure path to a Fixer.",
+   "renders": [
+    {
+     "n": 1,
+     "seed": 42,
+     "file": "video/out/v3/lines/renders/2.6-r1.wav",
+     "sha256": "b5f19fc5e70503a10b15cf5eabc429ec4c985791226e57889d72536a2827e127",
+     "raw_s": 5.28,
+     "duration_s": 4.987,
+     "transcript": "Let the engineer remember what it learns and draw a failure path to a fixer.",
+     "words": [
+      {
+       "word": "Let",
+       "start": 0.0,
+       "end": 0.36
+      },
+      {
+       "word": "the",
+       "start": 0.36,
+       "end": 0.54
+      },
+      {
+       "word": "engineer",
+       "start": 0.54,
+       "end": 0.84
+      },
+      {
+       "word": "remember",
+       "start": 0.84,
+       "end": 1.44
+      },
+      {
+       "word": "what",
+       "start": 1.44,
+       "end": 1.74
+      },
+      {
+       "word": "it",
+       "start": 1.74,
+       "end": 1.86
+      },
+      {
+       "word": "learns",
+       "start": 1.86,
+       "end": 2.26
+      },
+      {
+       "word": "and",
+       "start": 2.26,
+       "end": 2.78
+      },
+      {
+       "word": "draw",
+       "start": 2.78,
+       "end": 3.06
+      },
+      {
+       "word": "a",
+       "start": 3.06,
+       "end": 3.26
+      },
+      {
+       "word": "failure",
+       "start": 3.26,
+       "end": 3.68
+      },
+      {
+       "word": "path",
+       "start": 3.68,
+       "end": 4.06
+      },
+      {
+       "word": "to",
+       "start": 4.06,
+       "end": 4.3
+      },
+      {
+       "word": "a",
+       "start": 4.3,
+       "end": 4.46
+      },
+      {
+       "word": "fixer.",
+       "start": 4.46,
+       "end": 4.82
+      }
+     ],
+     "pass": true,
+     "name_heard": []
+    }
+   ],
+   "chapter": 2,
+   "file": "video/out/v3/lines/2.6.wav",
+   "sha256": "b5f19fc5e70503a10b15cf5eabc429ec4c985791226e57889d72536a2827e127",
+   "render": 1
+  },
+  "2.7": {
+   "text": "Tidy up, group the review loop, and try an agent before you trust it: its test passes, one of one.",
+   "renders": [
+    {
+     "n": 1,
+     "seed": 42,
+     "file": "video/out/v3/lines/renders/2.7-r1.wav",
+     "sha256": "6ffa2ae069bc8b926e2b0d2da9fffdf7f12fda7c2616bb14da9b0b2eede7cf12",
+     "raw_s": 6.88,
+     "duration_s": 6.661,
+     "transcript": "Tidy up, group the review loop, and try an agent before you trust it. Its test passes, one of one.",
+     "words": [
+      {
+       "word": "Tidy",
+       "start": 0.0,
+       "end": 0.44
+      },
+      {
+       "word": "up,",
+       "start": 0.44,
+       "end": 0.72
+      },
+      {
+       "word": "group",
+       "start": 0.98,
+       "end": 1.16
+      },
+      {
+       "word": "the",
+       "start": 1.16,
+       "end": 1.34
+      },
+      {
+       "word": "review",
+       "start": 1.34,
+       "end": 1.62
+      },
+      {
+       "word": "loop,",
+       "start": 1.62,
+       "end": 1.94
+      },
+      {
+       "word": "and",
+       "start": 2.02,
+       "end": 2.22
+      },
+      {
+       "word": "try",
+       "start": 2.22,
+       "end": 2.48
+      },
+      {
+       "word": "an",
+       "start": 2.48,
+       "end": 2.66
+      },
+      {
+       "word": "agent",
+       "start": 2.66,
+       "end": 2.94
+      },
+      {
+       "word": "before",
+       "start": 2.94,
+       "end": 3.24
+      },
+      {
+       "word": "you",
+       "start": 3.24,
+       "end": 3.46
+      },
+      {
+       "word": "trust",
+       "start": 3.46,
+       "end": 3.76
+      },
+      {
+       "word": "it.",
+       "start": 3.76,
+       "end": 4.02
+      },
+      {
+       "word": "Its",
+       "start": 4.2,
+       "end": 4.72
+      },
+      {
+       "word": "test",
+       "start": 4.72,
+       "end": 5.06
+      },
+      {
+       "word": "passes,",
+       "start": 5.06,
+       "end": 5.6
+      },
+      {
+       "word": "one",
+       "start": 5.78,
+       "end": 6.1
+      },
+      {
+       "word": "of",
+       "start": 6.1,
+       "end": 6.22
+      },
+      {
+       "word": "one.",
+       "start": 6.22,
+       "end": 6.46
+      }
+     ],
+     "pass": true,
+     "name_heard": []
+    }
+   ],
+   "chapter": 2,
+   "file": "video/out/v3/lines/2.7.wav",
+   "sha256": "6ffa2ae069bc8b926e2b0d2da9fffdf7f12fda7c2616bb14da9b0b2eede7cf12",
+   "render": 1
+  },
+  "3.1": {
+   "text": "Now give the team a task: add a Hull moving average. Pick the repo, the branch, and the one folder it may touch. Launch.",
+   "renders": [
+    {
+     "n": 1,
+     "seed": 42,
+     "file": "video/out/v3/lines/renders/3.1-r1.wav",
+     "sha256": "ff5d63fe890c719827df487f7863003d9325dc89d980bc32b38df5676d5445f8",
+     "raw_s": 9.12,
+     "duration_s": 9.125,
+     "transcript": "Now give the team a task, add a whole moving average, pick the repo, the branch, and the one folder it may touch, launch.",
+     "words": [
+      {
+       "word": "Now",
+       "start": 0.0,
+       "end": 0.34
+      },
+      {
+       "word": "give",
+       "start": 0.34,
+       "end": 0.64
+      },
+      {
+       "word": "the",
+       "start": 0.64,
+       "end": 0.84
+      },
+      {
+       "word": "team",
+       "start": 0.84,
+       "end": 1.1
+      },
+      {
+       "word": "a",
+       "start": 1.1,
+       "end": 1.34
+      },
+      {
+       "word": "task,",
+       "start": 1.34,
+       "end": 1.78
+      },
+      {
+       "word": "add",
+       "start": 1.96,
+       "end": 2.46
+      },
+      {
+       "word": "a",
+       "start": 2.46,
+       "end": 2.62
+      },
+      {
+       "word": "whole",
+       "start": 2.62,
+       "end": 2.92
+      },
+      {
+       "word": "moving",
+       "start": 2.92,
+       "end": 3.26
+      },
+      {
+       "word": "average,",
+       "start": 3.26,
+       "end": 3.7
+      },
+      {
+       "word": "pick",
+       "start": 4.14,
+       "end": 4.36
+      },
+      {
+       "word": "the",
+       "start": 4.36,
+       "end": 4.5
+      },
+      {
+       "word": "repo,",
+       "start": 4.5,
+       "end": 4.86
+      },
+      {
+       "word": "the",
+       "start": 5.02,
+       "end": 5.32
+      },
+      {
+       "word": "branch,",
+       "start": 5.32,
+       "end": 5.7
+      },
+      {
+       "word": "and",
+       "start": 5.86,
+       "end": 6.18
+      },
+      {
+       "word": "the",
+       "start": 6.18,
+       "end": 6.32
+      },
+      {
+       "word": "one",
+       "start": 6.32,
+       "end": 6.6
+      },
+      {
+       "word": "folder",
+       "start": 6.6,
+       "end": 7.0
+      },
+      {
+       "word": "it",
+       "start": 7.0,
+       "end": 7.28
+      },
+      {
+       "word": "may",
+       "start": 7.28,
+       "end": 7.52
+      },
+      {
+       "word": "touch,",
+       "start": 7.52,
+       "end": 8.02
+      },
+      {
+       "word": "launch.",
+       "start": 8.24,
+       "end": 8.66
+      }
+     ],
+     "pass": false,
+     "name_heard": []
+    },
+    {
+     "n": 2,
+     "seed": 43,
+     "file": "video/out/v3/lines/renders/3.1-r2.wav",
+     "sha256": "fc17a7718f3ba2d225c2f12b467e326dd1d6f0eb997c6dd8321f3e9eb7cf0b32",
+     "raw_s": 8.48,
+     "duration_s": 8.32,
+     "transcript": "Now give the team a task. Add a whole moving average. Pick the repo, the branch, and the one folder it may touch. Launch.",
+     "words": [
+      {
+       "word": "Now",
+       "start": 0.0,
+       "end": 0.38
+      },
+      {
+       "word": "give",
+       "start": 0.38,
+       "end": 0.62
+      },
+      {
+       "word": "the",
+       "start": 0.62,
+       "end": 0.76
+      },
+      {
+       "word": "team",
+       "start": 0.76,
+       "end": 1.02
+      },
+      {
+       "word": "a",
+       "start": 1.02,
+       "end": 1.16
+      },
+      {
+       "word": "task.",
+       "start": 1.16,
+       "end": 1.58
+      },
+      {
+       "word": "Add",
+       "start": 1.76,
+       "end": 2.12
+      },
+      {
+       "word": "a",
+       "start": 2.12,
+       "end": 2.26
+      },
+      {
+       "word": "whole",
+       "start": 2.26,
+       "end": 2.44
+      },
+      {
+       "word": "moving",
+       "start": 2.44,
+       "end": 2.74
+      },
+      {
+       "word": "average.",
+       "start": 2.74,
+       "end": 3.16
+      },
+      {
+       "word": "Pick",
+       "start": 3.34,
+       "end": 3.72
+      },
+      {
+       "word": "the",
+       "start": 3.72,
+       "end": 3.88
+      },
+      {
+       "word": "repo,",
+       "start": 3.88,
+       "end": 4.24
+      },
+      {
+       "word": "the",
+       "start": 4.4,
+       "end": 4.62
+      },
+      {
+       "word": "branch,",
+       "start": 4.62,
+       "end": 5.0
+      },
+      {
+       "word": "and",
+       "start": 5.16,
+       "end": 5.52
+      },
+      {
+       "word": "the",
+       "start": 5.52,
+       "end": 5.66
+      },
+      {
+       "word": "one",
+       "start": 5.66,
+       "end": 5.88
+      },
+      {
+       "word": "folder",
+       "start": 5.88,
+       "end": 6.26
+      },
+      {
+       "word": "it",
+       "start": 6.26,
+       "end": 6.52
+      },
+      {
+       "word": "may",
+       "start": 6.52,
+       "end": 6.7
+      },
+      {
+       "word": "touch.",
+       "start": 6.7,
+       "end": 7.12
+      },
+      {
+       "word": "Launch.",
+       "start": 7.46,
+       "end": 7.96
+      }
+     ],
+     "pass": false,
+     "name_heard": []
+    },
+    {
+     "n": 3,
+     "seed": 44,
+     "file": "video/out/v3/lines/renders/3.1-r3.wav",
+     "sha256": "f647f27f8dff849847d42d68e09c3e233ea4875e2bc123ce83c7c6afdf27dfec",
+     "raw_s": 8.32,
+     "duration_s": 8.149,
+     "transcript": "Now give the team a task. Add a whole moving average. Pick the repo, the branch, and the one folder it may touch. Launch.",
+     "words": [
+      {
+       "word": "Now",
+       "start": 0.0,
+       "end": 0.38
+      },
+      {
+       "word": "give",
+       "start": 0.38,
+       "end": 0.62
+      },
+      {
+       "word": "the",
+       "start": 0.62,
+       "end": 0.76
+      },
+      {
+       "word": "team",
+       "start": 0.76,
+       "end": 0.98
+      },
+      {
+       "word": "a",
+       "start": 0.98,
+       "end": 1.16
+      },
+      {
+       "word": "task.",
+       "start": 1.16,
+       "end": 1.56
+      },
+      {
+       "word": "Add",
+       "start": 1.74,
+       "end": 2.16
+      },
+      {
+       "word": "a",
+       "start": 2.16,
+       "end": 2.3
+      },
+      {
+       "word": "whole",
+       "start": 2.3,
+       "end": 2.5
+      },
+      {
+       "word": "moving",
+       "start": 2.5,
+       "end": 2.84
+      },
+      {
+       "word": "average.",
+       "start": 2.84,
+       "end": 3.24
+      },
+      {
+       "word": "Pick",
+       "start": 3.46,
+       "end": 3.9
+      },
+      {
+       "word": "the",
+       "start": 3.9,
+       "end": 4.04
+      },
+      {
+       "word": "repo,",
+       "start": 4.04,
+       "end": 4.42
+      },
+      {
+       "word": "the",
+       "start": 4.58,
+       "end": 4.82
+      },
+      {
+       "word": "branch,",
+       "start": 4.82,
+       "end": 5.22
+      },
+      {
+       "word": "and",
+       "start": 5.32,
+       "end": 5.54
+      },
+      {
+       "word": "the",
+       "start": 5.54,
+       "end": 5.66
+      },
+      {
+       "word": "one",
+       "start": 5.66,
+       "end": 5.9
+      },
+      {
+       "word": "folder",
+       "start": 5.9,
+       "end": 6.28
+      },
+      {
+       "word": "it",
+       "start": 6.28,
+       "end": 6.56
+      },
+      {
+       "word": "may",
+       "start": 6.56,
+       "end": 6.72
+      },
+      {
+       "word": "touch.",
+       "start": 6.72,
+       "end": 7.16
+      },
+      {
+       "word": "Launch.",
+       "start": 7.32,
+       "end": 7.8
+      }
+     ],
+     "pass": false,
+     "name_heard": []
+    }
+   ],
+   "chapter": 3,
+   "file": "video/out/v3/lines/3.1.wav",
+   "sha256": "fc17a7718f3ba2d225c2f12b467e326dd1d6f0eb997c6dd8321f3e9eb7cf0b32",
+   "render": 2,
+   "flagged": true,
+   "note": "the transcript gate heard 'whole moving average' in all 3 renders; with the hint 'Hull moving average' (a diagnostic, not the gate) all 3 read 'Hull' — r2 used for timing and the listen-through; the operator judges it by ear"
+  },
+  "3.2": {
+   "text": "One bar shows what every agent is doing. Activity tells you, in plain words.",
+   "renders": [
+    {
+     "n": 1,
+     "seed": 42,
+     "file": "video/out/v3/lines/renders/3.2-r1.wav",
+     "sha256": "46c094392ec68a0314f406db16ab375ee3c768c2dbcd4ef8af1dcc61aaffddd4",
+     "raw_s": 5.92,
+     "duration_s": 5.84,
+     "transcript": "One bar shows what every agent is doing. Activity tells you in plain words.",
+     "words": [
+      {
+       "word": "One",
+       "start": 0.0,
+       "end": 0.38
+      },
+      {
+       "word": "bar",
+       "start": 0.38,
+       "end": 0.62
+      },
+      {
+       "word": "shows",
+       "start": 0.62,
+       "end": 1.0
+      },
+      {
+       "word": "what",
+       "start": 1.0,
+       "end": 1.28
+      },
+      {
+       "word": "every",
+       "start": 1.28,
+       "end": 1.62
+      },
+      {
+       "word": "agent",
+       "start": 1.62,
+       "end": 1.98
+      },
+      {
+       "word": "is",
+       "start": 1.98,
+       "end": 2.18
+      },
+      {
+       "word": "doing.",
+       "start": 2.18,
+       "end": 2.46
+      },
+      {
+       "word": "Activity",
+       "start": 2.96,
+       "end": 3.64
+      },
+      {
+       "word": "tells",
+       "start": 3.64,
+       "end": 3.92
+      },
+      {
+       "word": "you",
+       "start": 3.92,
+       "end": 4.18
+      },
+      {
+       "word": "in",
+       "start": 4.18,
+       "end": 4.64
+      },
+      {
+       "word": "plain",
+       "start": 4.64,
+       "end": 5.0
+      },
+      {
+       "word": "words.",
+       "start": 5.0,
+       "end": 5.44
+      }
+     ],
+     "pass": true,
+     "name_heard": []
+    }
+   ],
+   "chapter": 3,
+   "file": "video/out/v3/lines/3.2.wav",
+   "sha256": "46c094392ec68a0314f406db16ab375ee3c768c2dbcd4ef8af1dcc61aaffddd4",
+   "render": 1
+  },
+  "3.3": {
+   "text": "First, the product manager writes a spec, and the run waits for you. The spec is a real document. Fix a line, approve, and only then is any code written.",
+   "renders": [
+    {
+     "n": 1,
+     "seed": 42,
+     "file": "video/out/v3/lines/renders/3.3-r1.wav",
+     "sha256": "228007fbc8f433f872922755ac78ba7cd65cb5e79a9ae91681b004d5ea689a38",
+     "raw_s": 12.48,
+     "duration_s": 12.016,
+     "transcript": "First, the product manager writes a spec and the run waits for you. The spec is a real document. Fix a line, approve, and only then is any code written.",
+     "words": [
+      {
+       "word": "First,",
+       "start": 0.0,
+       "end": 0.52
+      },
+      {
+       "word": "the",
+       "start": 0.8,
+       "end": 1.1
+      },
+      {
+       "word": "product",
+       "start": 1.1,
+       "end": 1.48
+      },
+      {
+       "word": "manager",
+       "start": 1.48,
+       "end": 1.92
+      },
+      {
+       "word": "writes",
+       "start": 1.92,
+       "end": 2.3
+      },
+      {
+       "word": "a",
+       "start": 2.3,
+       "end": 2.46
+      },
+      {
+       "word": "spec",
+       "start": 2.46,
+       "end": 2.72
+      },
+      {
+       "word": "and",
+       "start": 2.72,
+       "end": 3.3
+      },
+      {
+       "word": "the",
+       "start": 3.3,
+       "end": 3.44
+      },
+      {
+       "word": "run",
+       "start": 3.44,
+       "end": 3.74
+      },
+      {
+       "word": "waits",
+       "start": 3.74,
+       "end": 4.12
+      },
+      {
+       "word": "for",
+       "start": 4.12,
+       "end": 4.38
+      },
+      {
+       "word": "you.",
+       "start": 4.38,
+       "end": 4.64
+      },
+      {
+       "word": "The",
+       "start": 4.92,
+       "end": 5.38
+      },
+      {
+       "word": "spec",
+       "start": 5.38,
+       "end": 5.7
+      },
+      {
+       "word": "is",
+       "start": 5.7,
+       "end": 6.04
+      },
+      {
+       "word": "a",
+       "start": 6.04,
+       "end": 6.16
+      },
+      {
+       "word": "real",
+       "start": 6.16,
+       "end": 6.48
+      },
+      {
+       "word": "document.",
+       "start": 6.48,
+       "end": 7.06
+      },
+      {
+       "word": "Fix",
+       "start": 7.32,
+       "end": 7.9
+      },
+      {
+       "word": "a",
+       "start": 7.9,
+       "end": 8.1
+      },
+      {
+       "word": "line,",
+       "start": 8.1,
+       "end": 8.38
+      },
+      {
+       "word": "approve,",
+       "start": 8.58,
+       "end": 9.08
+      },
+      {
+       "word": "and",
+       "start": 9.3,
+       "end": 9.66
+      },
+      {
+       "word": "only",
+       "start": 9.66,
+       "end": 10.1
+      },
+      {
+       "word": "then",
+       "start": 10.1,
+       "end": 10.44
+      },
+      {
+       "word": "is",
+       "start": 10.44,
+       "end": 10.78
+      },
+      {
+       "word": "any",
+       "start": 10.78,
+       "end": 11.06
+      },
+      {
+       "word": "code",
+       "start": 11.06,
+       "end": 11.46
+      },
+      {
+       "word": "written.",
+       "start": 11.46,
+       "end": 11.74
+      }
+     ],
+     "pass": true,
+     "name_heard": []
+    }
+   ],
+   "chapter": 3,
+   "file": "video/out/v3/lines/3.3.wav",
+   "sha256": "228007fbc8f433f872922755ac78ba7cd65cb5e79a9ae91681b004d5ea689a38",
+   "render": 1
+  },
+  "3.4": {
+   "text": "The engineer works on its own copy of your repo, on your Claude subscription. Then Tvashtr runs your tests itself. The first build fails, and the last twelve lines go straight back to the engineer.",
+   "renders": [
+    {
+     "n": 1,
+     "seed": 42,
+     "file": "video/out/v3/lines/renders/3.4-r1.wav",
+     "sha256": "f33f599d5ebcf88377fd9547b90a26f1f667d7da16c703b8c71299fd0c95e4db",
+     "raw_s": 12.96,
+     "duration_s": 12.581,
+     "transcript": "The engineer works on its own copy of your repo, on your Claude subscription. Then, Tevastor runs your tests itself. The first build fails, and the last 12 lines go straight back to the engineer.",
+     "words": [
+      {
+       "word": "The",
+       "start": 0.0,
+       "end": 0.22
+      },
+      {
+       "word": "engineer",
+       "start": 0.22,
+       "end": 0.5
+      },
+      {
+       "word": "works",
+       "start": 0.5,
+       "end": 0.96
+      },
+      {
+       "word": "on",
+       "start": 0.96,
+       "end": 1.14
+      },
+      {
+       "word": "its",
+       "start": 1.14,
+       "end": 1.26
+      },
+      {
+       "word": "own",
+       "start": 1.26,
+       "end": 1.56
+      },
+      {
+       "word": "copy",
+       "start": 1.56,
+       "end": 1.94
+      },
+      {
+       "word": "of",
+       "start": 1.94,
+       "end": 2.1
+      },
+      {
+       "word": "your",
+       "start": 2.1,
+       "end": 2.26
+      },
+      {
+       "word": "repo,",
+       "start": 2.26,
+       "end": 2.6
+      },
+      {
+       "word": "on",
+       "start": 2.76,
+       "end": 3.12
+      },
+      {
+       "word": "your",
+       "start": 3.12,
+       "end": 3.28
+      },
+      {
+       "word": "Claude",
+       "start": 3.28,
+       "end": 3.7
+      },
+      {
+       "word": "subscription.",
+       "start": 3.7,
+       "end": 4.24
+      },
+      {
+       "word": "Then,",
+       "start": 4.6,
+       "end": 5.18
+      },
+      {
+       "word": "Tevastor",
+       "start": 5.34,
+       "end": 5.84
+      },
+      {
+       "word": "runs",
+       "start": 5.84,
+       "end": 6.14
+      },
+      {
+       "word": "your",
+       "start": 6.14,
+       "end": 6.34
+      },
+      {
+       "word": "tests",
+       "start": 6.34,
+       "end": 6.74
+      },
+      {
+       "word": "itself.",
+       "start": 6.74,
+       "end": 7.18
+      },
+      {
+       "word": "The",
+       "start": 7.42,
+       "end": 7.94
+      },
+      {
+       "word": "first",
+       "start": 7.94,
+       "end": 8.26
+      },
+      {
+       "word": "build",
+       "start": 8.26,
+       "end": 8.56
+      },
+      {
+       "word": "fails,",
+       "start": 8.56,
+       "end": 9.0
+      },
+      {
+       "word": "and",
+       "start": 9.12,
+       "end": 9.48
+      },
+      {
+       "word": "the",
+       "start": 9.48,
+       "end": 9.6
+      },
+      {
+       "word": "last",
+       "start": 9.6,
+       "end": 9.92
+      },
+      {
+       "word": "12",
+       "start": 9.92,
+       "end": 10.2
+      },
+      {
+       "word": "lines",
+       "start": 10.2,
+       "end": 10.66
+      },
+      {
+       "word": "go",
+       "start": 10.66,
+       "end": 10.9
+      },
+      {
+       "word": "straight",
+       "start": 10.9,
+       "end": 11.24
+      },
+      {
+       "word": "back",
+       "start": 11.24,
+       "end": 11.58
+      },
+      {
+       "word": "to",
+       "start": 11.58,
+       "end": 11.78
+      },
+      {
+       "word": "the",
+       "start": 11.78,
+       "end": 11.9
+      },
+      {
+       "word": "engineer.",
+       "start": 11.9,
+       "end": 12.2
+      }
+     ],
+     "pass": true,
+     "name_heard": [
+      "tevastor"
+     ]
+    }
+   ],
+   "chapter": 3,
+   "file": "video/out/v3/lines/3.4.wav",
+   "sha256": "f33f599d5ebcf88377fd9547b90a26f1f667d7da16c703b8c71299fd0c95e4db",
+   "render": 1
+  },
+  "3.4-verdict": {
+   "text": "Round two passes: six hundred and sixty-five tests. Only then does the reviewer, on Grok, check the change against the spec. It approves, citing Tvashtr's test result, not the engineer's word.",
+   "renders": [
+    {
+     "n": 1,
+     "seed": 42,
+     "file": "video/out/v3/lines/renders/3.4-verdict-r1.wav",
+     "sha256": "613a9d5c946082805d5737f974dbce164f3465b602185a42ebbb0cbc138a54a6",
+     "raw_s": 13.6,
+     "duration_s": 13.291,
+     "transcript": "Round 2 passes 665 tests. Only then does the reviewer on Grok check the change against the spec. It approves, citing Tvaster's test result, not the engineer's word.",
+     "words": [
+      {
+       "word": "Round",
+       "start": 0.0,
+       "end": 0.46
+      },
+      {
+       "word": "2",
+       "start": 0.46,
+       "end": 0.66
+      },
+      {
+       "word": "passes",
+       "start": 0.66,
+       "end": 1.16
+      },
+      {
+       "word": "665",
+       "start": 1.16,
+       "end": 2.66
+      },
+      {
+       "word": "tests.",
+       "start": 2.66,
+       "end": 3.28
+      },
+      {
+       "word": "Only",
+       "start": 3.58,
+       "end": 4.22
+      },
+      {
+       "word": "then",
+       "start": 4.22,
+       "end": 4.52
+      },
+      {
+       "word": "does",
+       "start": 4.52,
+       "end": 4.76
+      },
+      {
+       "word": "the",
+       "start": 4.76,
+       "end": 4.92
+      },
+      {
+       "word": "reviewer",
+       "start": 4.92,
+       "end": 5.46
+      },
+      {
+       "word": "on",
+       "start": 5.46,
+       "end": 5.72
+      },
+      {
+       "word": "Grok",
+       "start": 5.72,
+       "end": 6.14
+      },
+      {
+       "word": "check",
+       "start": 6.14,
+       "end": 6.56
+      },
+      {
+       "word": "the",
+       "start": 6.56,
+       "end": 6.72
+      },
+      {
+       "word": "change",
+       "start": 6.72,
+       "end": 7.08
+      },
+      {
+       "word": "against",
+       "start": 7.08,
+       "end": 7.38
+      },
+      {
+       "word": "the",
+       "start": 7.38,
+       "end": 7.56
+      },
+      {
+       "word": "spec.",
+       "start": 7.56,
+       "end": 7.8
+      },
+      {
+       "word": "It",
+       "start": 8.14,
+       "end": 8.64
+      },
+      {
+       "word": "approves,",
+       "start": 8.64,
+       "end": 9.3
+      },
+      {
+       "word": "citing",
+       "start": 9.44,
+       "end": 9.9
+      },
+      {
+       "word": "Tvaster's",
+       "start": 9.9,
+       "end": 10.66
+      },
+      {
+       "word": "test",
+       "start": 10.66,
+       "end": 10.94
+      },
+      {
+       "word": "result,",
+       "start": 10.94,
+       "end": 11.38
+      },
+      {
+       "word": "not",
+       "start": 11.62,
+       "end": 12.06
+      },
+      {
+       "word": "the",
+       "start": 12.06,
+       "end": 12.24
+      },
+      {
+       "word": "engineer's",
+       "start": 12.24,
+       "end": 12.8
+      },
+      {
+       "word": "word.",
+       "start": 12.8,
+       "end": 13.06
+      }
+     ],
+     "pass": true,
+     "name_heard": [
+      "tvasters"
+     ]
+    }
+   ],
+   "chapter": 3,
+   "file": "video/out/v3/lines/3.4-verdict.wav",
+   "sha256": "613a9d5c946082805d5737f974dbce164f3465b602185a42ebbb0cbc138a54a6",
+   "render": 1
+  },
+  "3.6": {
+   "text": "A secret scan and a forbidden-paths check both pass. Tvashtr opens the pull request. Done in ten minutes, on your subscriptions.",
+   "renders": [
+    {
+     "n": 1,
+     "seed": 42,
+     "file": "video/out/v3/lines/renders/3.6-r1.wav",
+     "sha256": "4581bdf3d6184135effecd7d912a210d2a5f43af9ed57e2a09b2c34cecdb6639",
+     "raw_s": 10.08,
+     "duration_s": 9.749,
+     "transcript": "A secret scan and a forbidden paths check both pass. Tvastor opens the pull request. Done in 10 minutes on your subscriptions.",
+     "words": [
+      {
+       "word": "A",
+       "start": 0.0,
+       "end": 0.2
+      },
+      {
+       "word": "secret",
+       "start": 0.2,
+       "end": 0.62
+      },
+      {
+       "word": "scan",
+       "start": 0.62,
+       "end": 1.1
+      },
+      {
+       "word": "and",
+       "start": 1.1,
+       "end": 1.36
+      },
+      {
+       "word": "a",
+       "start": 1.36,
+       "end": 1.46
+      },
+      {
+       "word": "forbidden",
+       "start": 1.46,
+       "end": 1.86
+      },
+      {
+       "word": "paths",
+       "start": 1.86,
+       "end": 2.32
+      },
+      {
+       "word": "check",
+       "start": 2.32,
+       "end": 2.66
+      },
+      {
+       "word": "both",
+       "start": 2.66,
+       "end": 3.02
+      },
+      {
+       "word": "pass.",
+       "start": 3.02,
+       "end": 3.48
+      },
+      {
+       "word": "Tvastor",
+       "start": 4.06,
+       "end": 4.82
+      },
+      {
+       "word": "opens",
+       "start": 4.82,
+       "end": 5.22
+      },
+      {
+       "word": "the",
+       "start": 5.22,
+       "end": 5.4
+      },
+      {
+       "word": "pull",
+       "start": 5.4,
+       "end": 5.6
+      },
+      {
+       "word": "request.",
+       "start": 5.6,
+       "end": 6.1
+      },
+      {
+       "word": "Done",
+       "start": 6.4,
+       "end": 7.04
+      },
+      {
+       "word": "in",
+       "start": 7.04,
+       "end": 7.32
+      },
+      {
+       "word": "10",
+       "start": 7.32,
+       "end": 7.6
+      },
+      {
+       "word": "minutes",
+       "start": 7.6,
+       "end": 7.98
+      },
+      {
+       "word": "on",
+       "start": 7.98,
+       "end": 8.6
+      },
+      {
+       "word": "your",
+       "start": 8.6,
+       "end": 8.78
+      },
+      {
+       "word": "subscriptions.",
+       "start": 8.78,
+       "end": 9.26
+      }
+     ],
+     "pass": true,
+     "name_heard": [
+      "tvastor"
+     ]
+    }
+   ],
+   "chapter": 3,
+   "file": "video/out/v3/lines/3.6.wav",
+   "sha256": "4581bdf3d6184135effecd7d912a210d2a5f43af9ed57e2a09b2c34cecdb6639",
+   "render": 1
+  },
+  "3.7": {
+   "text": "Afterwards, see exactly which files changed. Ask any agent why it did what it did. Then choose what the team remembers: keep one lesson, drop another.",
+   "renders": [
+    {
+     "n": 1,
+     "seed": 42,
+     "file": "video/out/v3/lines/renders/3.7-r1.wav",
+     "sha256": "c1eb1816f28508525061c24071a4045f061a90d295a1b8b9992dfb70907c533a",
+     "raw_s": 10.88,
+     "duration_s": 10.939,
+     "transcript": "Afterwards, see exactly which files changed. Ask any agent why it did what it did. Then choose what the team remembers. Keep one lesson, drop another.",
+     "words": [
+      {
+       "word": "Afterwards,",
+       "start": 0.0,
+       "end": 0.56
+      },
+      {
+       "word": "see",
+       "start": 0.88,
+       "end": 1.36
+      },
+      {
+       "word": "exactly",
+       "start": 1.36,
+       "end": 2.0
+      },
+      {
+       "word": "which",
+       "start": 2.0,
+       "end": 2.32
+      },
+      {
+       "word": "files",
+       "start": 2.32,
+       "end": 2.72
+      },
+      {
+       "word": "changed.",
+       "start": 2.72,
+       "end": 3.26
+      },
+      {
+       "word": "Ask",
+       "start": 3.48,
+       "end": 4.1
+      },
+      {
+       "word": "any",
+       "start": 4.1,
+       "end": 4.44
+      },
+      {
+       "word": "agent",
+       "start": 4.44,
+       "end": 4.84
+      },
+      {
+       "word": "why",
+       "start": 4.84,
+       "end": 5.24
+      },
+      {
+       "word": "it",
+       "start": 5.24,
+       "end": 5.44
+      },
+      {
+       "word": "did",
+       "start": 5.44,
+       "end": 5.64
+      },
+      {
+       "word": "what",
+       "start": 5.64,
+       "end": 5.86
+      },
+      {
+       "word": "it",
+       "start": 5.86,
+       "end": 5.98
+      },
+      {
+       "word": "did.",
+       "start": 5.98,
+       "end": 6.24
+      },
+      {
+       "word": "Then",
+       "start": 6.46,
+       "end": 7.0
+      },
+      {
+       "word": "choose",
+       "start": 7.0,
+       "end": 7.28
+      },
+      {
+       "word": "what",
+       "start": 7.28,
+       "end": 7.52
+      },
+      {
+       "word": "the",
+       "start": 7.52,
+       "end": 7.66
+      },
+      {
+       "word": "team",
+       "start": 7.66,
+       "end": 7.9
+      },
+      {
+       "word": "remembers.",
+       "start": 7.9,
+       "end": 8.42
+      },
+      {
+       "word": "Keep",
+       "start": 8.68,
+       "end": 9.12
+      },
+      {
+       "word": "one",
+       "start": 9.12,
+       "end": 9.44
+      },
+      {
+       "word": "lesson,",
+       "start": 9.44,
+       "end": 9.84
+      },
+      {
+       "word": "drop",
+       "start": 10.0,
+       "end": 10.34
+      },
+      {
+       "word": "another.",
+       "start": 10.34,
+       "end": 10.66
+      }
+     ],
+     "pass": true,
+     "name_heard": []
+    }
+   ],
+   "chapter": 3,
+   "file": "video/out/v3/lines/3.7.wav",
+   "sha256": "c1eb1816f28508525061c24071a4045f061a90d295a1b8b9992dfb70907c533a",
+   "render": 1
+  },
+  "3.5": {
+   "text": "On API keys, a busy model doesn't stop the run either: the agent retries, then switches to the backup model you picked.",
+   "renders": [
+    {
+     "n": 1,
+     "seed": 42,
+     "file": "video/out/v3/lines/renders/3.5-r1.wav",
+     "sha256": "dae7bbf4557a9f26a254b51842cd50f9ef65ad681d1f8e59e3ad39bd398740a8",
+     "raw_s": 8.16,
+     "duration_s": 8.176,
+     "transcript": "On API keys, a busy model doesn't stop the run either. The agent retries, then switches to the backup model you picked.",
+     "words": [
+      {
+       "word": "On",
+       "start": 0.0,
+       "end": 0.3
+      },
+      {
+       "word": "API",
+       "start": 0.3,
+       "end": 0.72
+      },
+      {
+       "word": "keys,",
+       "start": 0.72,
+       "end": 1.18
+      },
+      {
+       "word": "a",
+       "start": 1.44,
+       "end": 1.56
+      },
+      {
+       "word": "busy",
+       "start": 1.56,
+       "end": 1.8
+      },
+      {
+       "word": "model",
+       "start": 1.8,
+       "end": 2.16
+      },
+      {
+       "word": "doesn't",
+       "start": 2.16,
+       "end": 2.6
+      },
+      {
+       "word": "stop",
+       "start": 2.6,
+       "end": 2.88
+      },
+      {
+       "word": "the",
+       "start": 2.88,
+       "end": 3.04
+      },
+      {
+       "word": "run",
+       "start": 3.04,
+       "end": 3.26
+      },
+      {
+       "word": "either.",
+       "start": 3.26,
+       "end": 3.56
+      },
+      {
+       "word": "The",
+       "start": 3.9,
+       "end": 4.36
+      },
+      {
+       "word": "agent",
+       "start": 4.36,
+       "end": 4.76
+      },
+      {
+       "word": "retries,",
+       "start": 4.76,
+       "end": 5.4
+      },
+      {
+       "word": "then",
+       "start": 5.54,
+       "end": 5.88
+      },
+      {
+       "word": "switches",
+       "start": 5.88,
+       "end": 6.34
+      },
+      {
+       "word": "to",
+       "start": 6.34,
+       "end": 6.58
+      },
+      {
+       "word": "the",
+       "start": 6.58,
+       "end": 6.7
+      },
+      {
+       "word": "backup",
+       "start": 6.7,
+       "end": 7.0
+      },
+      {
+       "word": "model",
+       "start": 7.0,
+       "end": 7.36
+      },
+      {
+       "word": "you",
+       "start": 7.36,
+       "end": 7.56
+      },
+      {
+       "word": "picked.",
+       "start": 7.56,
+       "end": 7.9
+      }
+     ],
+     "pass": true,
+     "name_heard": []
+    }
+   ],
+   "chapter": 4,
+   "file": "video/out/v3/lines/3.5.wav",
+   "sha256": "dae7bbf4557a9f26a254b51842cd50f9ef65ad681d1f8e59e3ad39bd398740a8",
+   "render": 1
+  },
+  "4.1": {
+   "text": "Not every run goes to plan. Here we froze the engineer on purpose, and shortened the timers for this video. Tvashtr notices: quiet, then stalled, then failed. Nothing hangs in silence, and your Mac tells you.",
+   "renders": [
+    {
+     "n": 1,
+     "seed": 42,
+     "file": "video/out/v3/lines/renders/4.1-r1.wav",
+     "sha256": "05b89c4e6eee13d56882a12454e869dd33bcf9f93f4ef1dcd376d50960876468",
+     "raw_s": 14.56,
+     "duration_s": 14.475,
+     "transcript": "Not every run goes to plan. Here we froze the engineer on purpose and shortened the timers for this video. Dvaster notices, quiet, then stalled, then failed. Nothing hangs in silence, and your Mac tells you.",
+     "words": [
+      {
+       "word": "Not",
+       "start": 0.0,
+       "end": 0.38
+      },
+      {
+       "word": "every",
+       "start": 0.38,
+       "end": 0.74
+      },
+      {
+       "word": "run",
+       "start": 0.74,
+       "end": 0.96
+      },
+      {
+       "word": "goes",
+       "start": 0.96,
+       "end": 1.24
+      },
+      {
+       "word": "to",
+       "start": 1.24,
+       "end": 1.38
+      },
+      {
+       "word": "plan.",
+       "start": 1.38,
+       "end": 1.72
+      },
+      {
+       "word": "Here",
+       "start": 1.98,
+       "end": 2.56
+      },
+      {
+       "word": "we",
+       "start": 2.56,
+       "end": 2.76
+      },
+      {
+       "word": "froze",
+       "start": 2.76,
+       "end": 3.14
+      },
+      {
+       "word": "the",
+       "start": 3.14,
+       "end": 3.36
+      },
+      {
+       "word": "engineer",
+       "start": 3.36,
+       "end": 3.66
+      },
+      {
+       "word": "on",
+       "start": 3.66,
+       "end": 3.96
+      },
+      {
+       "word": "purpose",
+       "start": 3.96,
+       "end": 4.4
+      },
+      {
+       "word": "and",
+       "start": 4.4,
+       "end": 4.8
+      },
+      {
+       "word": "shortened",
+       "start": 4.8,
+       "end": 5.22
+      },
+      {
+       "word": "the",
+       "start": 5.22,
+       "end": 5.42
+      },
+      {
+       "word": "timers",
+       "start": 5.42,
+       "end": 5.86
+      },
+      {
+       "word": "for",
+       "start": 5.86,
+       "end": 6.02
+      },
+      {
+       "word": "this",
+       "start": 6.02,
+       "end": 6.18
+      },
+      {
+       "word": "video.",
+       "start": 6.18,
+       "end": 6.58
+      },
+      {
+       "word": "Dvaster",
+       "start": 7.2,
+       "end": 7.58
+      },
+      {
+       "word": "notices,",
+       "start": 7.58,
+       "end": 8.1
+      },
+      {
+       "word": "quiet,",
+       "start": 8.5,
+       "end": 9.0
+      },
+      {
+       "word": "then",
+       "start": 9.2,
+       "end": 9.46
+      },
+      {
+       "word": "stalled,",
+       "start": 9.46,
+       "end": 10.0
+      },
+      {
+       "word": "then",
+       "start": 10.22,
+       "end": 10.38
+      },
+      {
+       "word": "failed.",
+       "start": 10.38,
+       "end": 10.8
+      },
+      {
+       "word": "Nothing",
+       "start": 11.26,
+       "end": 11.7
+      },
+      {
+       "word": "hangs",
+       "start": 11.7,
+       "end": 12.04
+      },
+      {
+       "word": "in",
+       "start": 12.04,
+       "end": 12.24
+      },
+      {
+       "word": "silence,",
+       "start": 12.24,
+       "end": 12.72
+      },
+      {
+       "word": "and",
+       "start": 12.72,
+       "end": 13.2
+      },
+      {
+       "word": "your",
+       "start": 13.2,
+       "end": 13.4
+      },
+      {
+       "word": "Mac",
+       "start": 13.4,
+       "end": 13.7
+      },
+      {
+       "word": "tells",
+       "start": 13.7,
+       "end": 14.06
+      },
+      {
+       "word": "you.",
+       "start": 14.06,
+       "end": 14.32
+      }
+     ],
+     "pass": true,
+     "name_heard": [
+      "dvaster"
+     ]
+    }
+   ],
+   "chapter": 4,
+   "file": "video/out/v3/lines/4.1.wav",
+   "sha256": "05b89c4e6eee13d56882a12454e869dd33bcf9f93f4ef1dcd376d50960876468",
+   "render": 1
+  },
+  "5.1": {
+   "text": "The next task builds on the last one. Start a DEMA indicator from the shipped run. It brings the spec, the decision and what the agents learned, and starts from the pull request's branch.",
+   "renders": [
+    {
+     "n": 1,
+     "seed": 42,
+     "file": "video/out/v3/lines/renders/5.1-r1.wav",
+     "sha256": "4c36af7170ed1da6326e79d65469c62ad27198db7c18a1343175bd947ba39828",
+     "raw_s": 12.0,
+     "duration_s": 11.957,
+     "transcript": "The next task builds on the last one. Start a DEMA indicator from the shipped run. It brings the spec, the decision, and what the agents learned, and starts from the pull requests branch.",
+     "words": [
+      {
+       "word": "The",
+       "start": 0.0,
+       "end": 0.28
+      },
+      {
+       "word": "next",
+       "start": 0.28,
+       "end": 0.56
+      },
+      {
+       "word": "task",
+       "start": 0.56,
+       "end": 1.0
+      },
+      {
+       "word": "builds",
+       "start": 1.0,
+       "end": 1.42
+      },
+      {
+       "word": "on",
+       "start": 1.42,
+       "end": 1.58
+      },
+      {
+       "word": "the",
+       "start": 1.58,
+       "end": 1.68
+      },
+      {
+       "word": "last",
+       "start": 1.68,
+       "end": 1.98
+      },
+      {
+       "word": "one.",
+       "start": 1.98,
+       "end": 2.24
+      },
+      {
+       "word": "Start",
+       "start": 2.62,
+       "end": 3.16
+      },
+      {
+       "word": "a",
+       "start": 3.16,
+       "end": 3.4
+      },
+      {
+       "word": "DEMA",
+       "start": 3.4,
+       "end": 3.64
+      },
+      {
+       "word": "indicator",
+       "start": 3.64,
+       "end": 4.18
+      },
+      {
+       "word": "from",
+       "start": 4.18,
+       "end": 4.42
+      },
+      {
+       "word": "the",
+       "start": 4.42,
+       "end": 4.56
+      },
+      {
+       "word": "shipped",
+       "start": 4.56,
+       "end": 4.82
+      },
+      {
+       "word": "run.",
+       "start": 4.82,
+       "end": 5.12
+      },
+      {
+       "word": "It",
+       "start": 5.36,
+       "end": 5.8
+      },
+      {
+       "word": "brings",
+       "start": 5.8,
+       "end": 6.1
+      },
+      {
+       "word": "the",
+       "start": 6.1,
+       "end": 6.3
+      },
+      {
+       "word": "spec,",
+       "start": 6.3,
+       "end": 6.64
+      },
+      {
+       "word": "the",
+       "start": 6.9,
+       "end": 7.08
+      },
+      {
+       "word": "decision,",
+       "start": 7.08,
+       "end": 7.52
+      },
+      {
+       "word": "and",
+       "start": 7.72,
+       "end": 8.02
+      },
+      {
+       "word": "what",
+       "start": 8.02,
+       "end": 8.26
+      },
+      {
+       "word": "the",
+       "start": 8.26,
+       "end": 8.42
+      },
+      {
+       "word": "agents",
+       "start": 8.42,
+       "end": 8.8
+      },
+      {
+       "word": "learned,",
+       "start": 8.8,
+       "end": 9.22
+      },
+      {
+       "word": "and",
+       "start": 9.4,
+       "end": 9.72
+      },
+      {
+       "word": "starts",
+       "start": 9.72,
+       "end": 10.16
+      },
+      {
+       "word": "from",
+       "start": 10.16,
+       "end": 10.42
+      },
+      {
+       "word": "the",
+       "start": 10.42,
+       "end": 10.56
+      },
+      {
+       "word": "pull",
+       "start": 10.56,
+       "end": 10.76
+      },
+      {
+       "word": "requests",
+       "start": 10.76,
+       "end": 11.18
+      },
+      {
+       "word": "branch.",
+       "start": 11.18,
+       "end": 11.54
+      }
+     ],
+     "pass": true,
+     "name_heard": []
+    }
+   ],
+   "chapter": 5,
+   "file": "video/out/v3/lines/5.1.wav",
+   "sha256": "4c36af7170ed1da6326e79d65469c62ad27198db7c18a1343175bd947ba39828",
+   "render": 1
+  },
+  "5.1-recent": {
+   "text": "Tasks you've run before come back as you type.",
+   "renders": [
+    {
+     "n": 1,
+     "seed": 42,
+     "file": "video/out/v3/lines/renders/5.1-recent-r1.wav",
+     "sha256": "c786b05d23984b38065623bf5fa13a8bb7afe48ba2ecca640ed48ad888732ea1",
+     "raw_s": 3.68,
+     "duration_s": 3.365,
+     "transcript": "Tasks you've run before come back as you type.",
+     "words": [
+      {
+       "word": "Tasks",
+       "start": 0.0,
+       "end": 0.68
+      },
+      {
+       "word": "you've",
+       "start": 0.68,
+       "end": 0.9
+      },
+      {
+       "word": "run",
+       "start": 0.9,
+       "end": 1.1
+      },
+      {
+       "word": "before",
+       "start": 1.1,
+       "end": 1.5
+      },
+      {
+       "word": "come",
+       "start": 1.5,
+       "end": 2.02
+      },
+      {
+       "word": "back",
+       "start": 2.02,
+       "end": 2.3
+      },
+      {
+       "word": "as",
+       "start": 2.3,
+       "end": 2.66
+      },
+      {
+       "word": "you",
+       "start": 2.66,
+       "end": 2.8
+      },
+      {
+       "word": "type.",
+       "start": 2.8,
+       "end": 3.0
+      }
+     ],
+     "pass": true,
+     "name_heard": []
+    }
+   ],
+   "chapter": 5,
+   "file": "video/out/v3/lines/5.1-recent.wav",
+   "sha256": "c786b05d23984b38065623bf5fa13a8bb7afe48ba2ecca640ed48ad888732ea1",
+   "render": 1
+  },
+  "6.1": {
+   "text": "Turn any round an agent did into a test, with an AI check on what it should say. Add more tests from a spreadsheet, then run them all on your subscription: three of four pass.",
+   "renders": [
+    {
+     "n": 1,
+     "seed": 42,
+     "file": "video/out/v3/lines/renders/6.1-r1.wav",
+     "sha256": "1b20d9f3e0254d9e41fd1bf019e126a653e7f9b1e0b67f6cc3289056dfc975e9",
+     "raw_s": 11.68,
+     "duration_s": 11.371,
+     "transcript": "Turn any round an agent did into a test with an AI check on what it should say. Add more tests from a spreadsheet, then run them all on your subscription. Three of four pass.",
+     "words": [
+      {
+       "word": "Turn",
+       "start": 0.0,
+       "end": 0.42
+      },
+      {
+       "word": "any",
+       "start": 0.42,
+       "end": 0.72
+      },
+      {
+       "word": "round",
+       "start": 0.72,
+       "end": 1.1
+      },
+      {
+       "word": "an",
+       "start": 1.1,
+       "end": 1.3
+      },
+      {
+       "word": "agent",
+       "start": 1.3,
+       "end": 1.62
+      },
+      {
+       "word": "did",
+       "start": 1.62,
+       "end": 1.9
+      },
+      {
+       "word": "into",
+       "start": 1.9,
+       "end": 2.2
+      },
+      {
+       "word": "a",
+       "start": 2.2,
+       "end": 2.4
+      },
+      {
+       "word": "test",
+       "start": 2.4,
+       "end": 2.8
+      },
+      {
+       "word": "with",
+       "start": 2.8,
+       "end": 3.26
+      },
+      {
+       "word": "an",
+       "start": 3.26,
+       "end": 3.38
+      },
+      {
+       "word": "AI",
+       "start": 3.38,
+       "end": 3.66
+      },
+      {
+       "word": "check",
+       "start": 3.66,
+       "end": 4.04
+      },
+      {
+       "word": "on",
+       "start": 4.04,
+       "end": 4.24
+      },
+      {
+       "word": "what",
+       "start": 4.24,
+       "end": 4.4
+      },
+      {
+       "word": "it",
+       "start": 4.4,
+       "end": 4.52
+      },
+      {
+       "word": "should",
+       "start": 4.52,
+       "end": 4.68
+      },
+      {
+       "word": "say.",
+       "start": 4.68,
+       "end": 5.04
+      },
+      {
+       "word": "Add",
+       "start": 5.36,
+       "end": 5.92
+      },
+      {
+       "word": "more",
+       "start": 5.92,
+       "end": 6.14
+      },
+      {
+       "word": "tests",
+       "start": 6.14,
+       "end": 6.56
+      },
+      {
+       "word": "from",
+       "start": 6.56,
+       "end": 6.74
+      },
+      {
+       "word": "a",
+       "start": 6.74,
+       "end": 6.86
+      },
+      {
+       "word": "spreadsheet,",
+       "start": 6.86,
+       "end": 7.38
+      },
+      {
+       "word": "then",
+       "start": 7.56,
+       "end": 7.9
+      },
+      {
+       "word": "run",
+       "start": 7.9,
+       "end": 8.2
+      },
+      {
+       "word": "them",
+       "start": 8.2,
+       "end": 8.36
+      },
+      {
+       "word": "all",
+       "start": 8.36,
+       "end": 8.62
+      },
+      {
+       "word": "on",
+       "start": 8.62,
+       "end": 8.78
+      },
+      {
+       "word": "your",
+       "start": 8.78,
+       "end": 8.92
+      },
+      {
+       "word": "subscription.",
+       "start": 8.92,
+       "end": 9.52
+      },
+      {
+       "word": "Three",
+       "start": 9.8,
+       "end": 10.3
+      },
+      {
+       "word": "of",
+       "start": 10.3,
+       "end": 10.48
+      },
+      {
+       "word": "four",
+       "start": 10.48,
+       "end": 10.68
+      },
+      {
+       "word": "pass.",
+       "start": 10.68,
+       "end": 11.12
+      }
+     ],
+     "pass": true,
+     "name_heard": []
+    }
+   ],
+   "chapter": 6,
+   "file": "video/out/v3/lines/6.1.wav",
+   "sha256": "1b20d9f3e0254d9e41fd1bf019e126a653e7f9b1e0b67f6cc3289056dfc975e9",
+   "render": 1
+  },
+  "6.2": {
+   "text": "Now edit the reviewer: name the file and line of every problem. Save it as version two, and its tests run straight away: four of four. History keeps both versions, and exactly what changed.",
+   "renders": [
+    {
+     "n": 1,
+     "seed": 42,
+     "file": "video/out/v3/lines/renders/6.2-r1.wav",
+     "sha256": "bb5b631e3567a24615e84c854d32fe241811f0b20c1fa8bf46c36f3b7ed7594e",
+     "raw_s": 13.28,
+     "duration_s": 13.323,
+     "transcript": "Now edit the reviewer, name the file and line of every problem, save it as version 2, and its tests run straight away 4 of 4. History keeps both versions and exactly what changed.",
+     "words": [
+      {
+       "word": "Now",
+       "start": 0.0,
+       "end": 0.38
+      },
+      {
+       "word": "edit",
+       "start": 0.38,
+       "end": 0.66
+      },
+      {
+       "word": "the",
+       "start": 0.66,
+       "end": 0.84
+      },
+      {
+       "word": "reviewer,",
+       "start": 0.84,
+       "end": 1.36
+      },
+      {
+       "word": "name",
+       "start": 1.52,
+       "end": 2.02
+      },
+      {
+       "word": "the",
+       "start": 2.02,
+       "end": 2.18
+      },
+      {
+       "word": "file",
+       "start": 2.18,
+       "end": 2.52
+      },
+      {
+       "word": "and",
+       "start": 2.52,
+       "end": 2.76
+      },
+      {
+       "word": "line",
+       "start": 2.76,
+       "end": 3.08
+      },
+      {
+       "word": "of",
+       "start": 3.08,
+       "end": 3.24
+      },
+      {
+       "word": "every",
+       "start": 3.24,
+       "end": 3.6
+      },
+      {
+       "word": "problem,",
+       "start": 3.6,
+       "end": 4.06
+      },
+      {
+       "word": "save",
+       "start": 4.44,
+       "end": 4.88
+      },
+      {
+       "word": "it",
+       "start": 4.88,
+       "end": 5.0
+      },
+      {
+       "word": "as",
+       "start": 5.0,
+       "end": 5.16
+      },
+      {
+       "word": "version",
+       "start": 5.16,
+       "end": 5.5
+      },
+      {
+       "word": "2,",
+       "start": 5.5,
+       "end": 5.86
+      },
+      {
+       "word": "and",
+       "start": 6.04,
+       "end": 6.4
+      },
+      {
+       "word": "its",
+       "start": 6.4,
+       "end": 6.6
+      },
+      {
+       "word": "tests",
+       "start": 6.6,
+       "end": 7.0
+      },
+      {
+       "word": "run",
+       "start": 7.0,
+       "end": 7.26
+      },
+      {
+       "word": "straight",
+       "start": 7.26,
+       "end": 7.62
+      },
+      {
+       "word": "away",
+       "start": 7.62,
+       "end": 7.98
+      },
+      {
+       "word": "4",
+       "start": 7.98,
+       "end": 8.54
+      },
+      {
+       "word": "of",
+       "start": 8.54,
+       "end": 8.76
+      },
+      {
+       "word": "4.",
+       "start": 8.76,
+       "end": 9.08
+      },
+      {
+       "word": "History",
+       "start": 9.48,
+       "end": 10.16
+      },
+      {
+       "word": "keeps",
+       "start": 10.16,
+       "end": 10.46
+      },
+      {
+       "word": "both",
+       "start": 10.46,
+       "end": 10.84
+      },
+      {
+       "word": "versions",
+       "start": 10.84,
+       "end": 11.3
+      },
+      {
+       "word": "and",
+       "start": 11.3,
+       "end": 11.78
+      },
+      {
+       "word": "exactly",
+       "start": 11.78,
+       "end": 12.32
+      },
+      {
+       "word": "what",
+       "start": 12.32,
+       "end": 12.6
+      },
+      {
+       "word": "changed.",
+       "start": 12.6,
+       "end": 13.0
+      }
+     ],
+     "pass": true,
+     "name_heard": []
+    }
+   ],
+   "chapter": 6,
+   "file": "video/out/v3/lines/6.2.wav",
+   "sha256": "bb5b631e3567a24615e84c854d32fe241811f0b20c1fa8bf46c36f3b7ed7594e",
+   "render": 1
+  },
+  "6.3": {
+   "text": "But did the change help on real work? Compare both versions on a new task, taking turns on your subscription. Version two did better: its reviewer passed one more test.",
+   "renders": [
+    {
+     "n": 1,
+     "seed": 42,
+     "file": "video/out/v3/lines/renders/6.3-r1.wav",
+     "sha256": "1e510ebb1a6920b06f31aa9377525da649289206733a229b8a6afdbddfc7a96f",
+     "raw_s": 12.0,
+     "duration_s": 11.861,
+     "transcript": "But did the change help on real work? Compare both versions on a new task, taking turns on your subscription. Version 2 did better. Its reviewer passed one more test.",
+     "words": [
+      {
+       "word": "But",
+       "start": 0.0,
+       "end": 0.3
+      },
+      {
+       "word": "did",
+       "start": 0.3,
+       "end": 0.54
+      },
+      {
+       "word": "the",
+       "start": 0.54,
+       "end": 0.7
+      },
+      {
+       "word": "change",
+       "start": 0.7,
+       "end": 1.02
+      },
+      {
+       "word": "help",
+       "start": 1.02,
+       "end": 1.4
+      },
+      {
+       "word": "on",
+       "start": 1.4,
+       "end": 1.72
+      },
+      {
+       "word": "real",
+       "start": 1.72,
+       "end": 2.0
+      },
+      {
+       "word": "work?",
+       "start": 2.0,
+       "end": 2.38
+      },
+      {
+       "word": "Compare",
+       "start": 2.66,
+       "end": 3.3
+      },
+      {
+       "word": "both",
+       "start": 3.3,
+       "end": 3.62
+      },
+      {
+       "word": "versions",
+       "start": 3.62,
+       "end": 4.12
+      },
+      {
+       "word": "on",
+       "start": 4.12,
+       "end": 4.36
+      },
+      {
+       "word": "a",
+       "start": 4.36,
+       "end": 4.48
+      },
+      {
+       "word": "new",
+       "start": 4.48,
+       "end": 4.66
+      },
+      {
+       "word": "task,",
+       "start": 4.66,
+       "end": 5.14
+      },
+      {
+       "word": "taking",
+       "start": 5.34,
+       "end": 5.88
+      },
+      {
+       "word": "turns",
+       "start": 5.88,
+       "end": 6.28
+      },
+      {
+       "word": "on",
+       "start": 6.28,
+       "end": 6.52
+      },
+      {
+       "word": "your",
+       "start": 6.52,
+       "end": 6.68
+      },
+      {
+       "word": "subscription.",
+       "start": 6.68,
+       "end": 7.22
+      },
+      {
+       "word": "Version",
+       "start": 7.66,
+       "end": 8.3
+      },
+      {
+       "word": "2",
+       "start": 8.3,
+       "end": 8.54
+      },
+      {
+       "word": "did",
+       "start": 8.54,
+       "end": 8.78
+      },
+      {
+       "word": "better.",
+       "start": 8.78,
+       "end": 9.08
+      },
+      {
+       "word": "Its",
+       "start": 9.3,
+       "end": 9.74
+      },
+      {
+       "word": "reviewer",
+       "start": 9.74,
+       "end": 10.24
+      },
+      {
+       "word": "passed",
+       "start": 10.24,
+       "end": 10.62
+      },
+      {
+       "word": "one",
+       "start": 10.62,
+       "end": 10.94
+      },
+      {
+       "word": "more",
+       "start": 10.94,
+       "end": 11.18
+      },
+      {
+       "word": "test.",
+       "start": 11.18,
+       "end": 11.52
+      }
+     ],
+     "pass": true,
+     "name_heard": []
+    }
+   ],
+   "chapter": 6,
+   "file": "video/out/v3/lines/6.3.wav",
+   "sha256": "1e510ebb1a6920b06f31aa9377525da649289206733a229b8a6afdbddfc7a96f",
+   "render": 1
+  },
+  "6.3-set": {
+   "text": "Then a task set: two tasks, with hidden checks the agents never see. Both versions pass every check, so version two stays.",
+   "renders": [
+    {
+     "n": 1,
+     "seed": 42,
+     "file": "video/out/v3/lines/renders/6.3-set-r1.wav",
+     "sha256": "e48f22a5c03142b09de5c4e1de20015962833215f8ec6234fe912c5af0595a50",
+     "raw_s": 9.76,
+     "duration_s": 9.781,
+     "transcript": "Then a task set. Two tasks with hidden checks the agents never see. Both versions pass every check, so version 2 stays.",
+     "words": [
+      {
+       "word": "Then",
+       "start": 0.0,
+       "end": 0.32
+      },
+      {
+       "word": "a",
+       "start": 0.32,
+       "end": 0.5
+      },
+      {
+       "word": "task",
+       "start": 0.5,
+       "end": 0.78
+      },
+      {
+       "word": "set.",
+       "start": 0.78,
+       "end": 1.12
+      },
+      {
+       "word": "Two",
+       "start": 1.38,
+       "end": 2.0
+      },
+      {
+       "word": "tasks",
+       "start": 2.0,
+       "end": 2.46
+      },
+      {
+       "word": "with",
+       "start": 2.46,
+       "end": 2.9
+      },
+      {
+       "word": "hidden",
+       "start": 2.9,
+       "end": 3.24
+      },
+      {
+       "word": "checks",
+       "start": 3.24,
+       "end": 3.58
+      },
+      {
+       "word": "the",
+       "start": 3.58,
+       "end": 3.84
+      },
+      {
+       "word": "agents",
+       "start": 3.84,
+       "end": 4.24
+      },
+      {
+       "word": "never",
+       "start": 4.24,
+       "end": 4.64
+      },
+      {
+       "word": "see.",
+       "start": 4.64,
+       "end": 5.02
+      },
+      {
+       "word": "Both",
+       "start": 5.26,
+       "end": 5.84
+      },
+      {
+       "word": "versions",
+       "start": 5.84,
+       "end": 6.28
+      },
+      {
+       "word": "pass",
+       "start": 6.28,
+       "end": 6.66
+      },
+      {
+       "word": "every",
+       "start": 6.66,
+       "end": 7.18
+      },
+      {
+       "word": "check,",
+       "start": 7.18,
+       "end": 7.52
+      },
+      {
+       "word": "so",
+       "start": 7.7,
+       "end": 8.18
+      },
+      {
+       "word": "version",
+       "start": 8.18,
+       "end": 8.54
+      },
+      {
+       "word": "2",
+       "start": 8.54,
+       "end": 8.9
+      },
+      {
+       "word": "stays.",
+       "start": 8.9,
+       "end": 9.32
+      }
+     ],
+     "pass": true,
+     "name_heard": []
+    }
+   ],
+   "chapter": 6,
+   "file": "video/out/v3/lines/6.3-set.wav",
+   "sha256": "e48f22a5c03142b09de5c4e1de20015962833215f8ec6234fe912c5af0595a50",
+   "render": 1
+  },
+  "7.1": {
+   "text": "Save your best agent as your own, and drop it into any team. It remembers where it came from.",
+   "renders": [
+    {
+     "n": 1,
+     "seed": 42,
+     "file": "video/out/v3/lines/renders/7.1-r1.wav",
+     "sha256": "6ab539ad57e05ff02ea6f6017b8df539dbc9748262e19ba31f3da5f57d60d44f",
+     "raw_s": 6.88,
+     "duration_s": 6.347,
+     "transcript": "Save your best agent as your own and drop it into any team. It remembers where it came from.",
+     "words": [
+      {
+       "word": "Save",
+       "start": 0.0,
+       "end": 0.5
+      },
+      {
+       "word": "your",
+       "start": 0.5,
+       "end": 0.68
+      },
+      {
+       "word": "best",
+       "start": 0.68,
+       "end": 1.0
+      },
+      {
+       "word": "agent",
+       "start": 1.0,
+       "end": 1.4
+      },
+      {
+       "word": "as",
+       "start": 1.4,
+       "end": 1.7
+      },
+      {
+       "word": "your",
+       "start": 1.7,
+       "end": 1.88
+      },
+      {
+       "word": "own",
+       "start": 1.88,
+       "end": 2.1
+      },
+      {
+       "word": "and",
+       "start": 2.1,
+       "end": 2.58
+      },
+      {
+       "word": "drop",
+       "start": 2.58,
+       "end": 2.9
+      },
+      {
+       "word": "it",
+       "start": 2.9,
+       "end": 3.08
+      },
+      {
+       "word": "into",
+       "start": 3.08,
+       "end": 3.32
+      },
+      {
+       "word": "any",
+       "start": 3.32,
+       "end": 3.62
+      },
+      {
+       "word": "team.",
+       "start": 3.62,
+       "end": 4.0
+      },
+      {
+       "word": "It",
+       "start": 4.22,
+       "end": 4.72
+      },
+      {
+       "word": "remembers",
+       "start": 4.72,
+       "end": 5.2
+      },
+      {
+       "word": "where",
+       "start": 5.2,
+       "end": 5.5
+      },
+      {
+       "word": "it",
+       "start": 5.5,
+       "end": 5.64
+      },
+      {
+       "word": "came",
+       "start": 5.64,
+       "end": 5.86
+      },
+      {
+       "word": "from.",
+       "start": 5.86,
+       "end": 6.12
+      }
+     ],
+     "pass": true,
+     "name_heard": []
+    }
+   ],
+   "chapter": 7,
+   "file": "video/out/v3/lines/7.1.wav",
+   "sha256": "6ab539ad57e05ff02ea6f6017b8df539dbc9748262e19ba31f3da5f57d60d44f",
+   "render": 1
+  },
+  "7.2": {
+   "text": "Or share the whole team as one file, with no secrets or sign-ins inside. A teammate imports it, and Tvashtr lists what they still need to set up.",
+   "renders": [
+    {
+     "n": 1,
+     "seed": 42,
+     "file": "video/out/v3/lines/renders/7.2-r1.wav",
+     "sha256": "cb1af6a1d6e9a85838de4726d942f854d29b2cda94056e312121cdc395fc6cbe",
+     "raw_s": 10.4,
+     "duration_s": 10.075,
+     "transcript": "or share the whole team as one file with no secrets or sign-ins inside. A teammate imports it, and Vostor lists what they still need to set up.",
+     "words": [
+      {
+       "word": "or",
+       "start": 0.0,
+       "end": 0.22
+      },
+      {
+       "word": "share",
+       "start": 0.22,
+       "end": 0.56
+      },
+      {
+       "word": "the",
+       "start": 0.56,
+       "end": 0.72
+      },
+      {
+       "word": "whole",
+       "start": 0.72,
+       "end": 0.96
+      },
+      {
+       "word": "team",
+       "start": 0.96,
+       "end": 1.28
+      },
+      {
+       "word": "as",
+       "start": 1.28,
+       "end": 1.56
+      },
+      {
+       "word": "one",
+       "start": 1.56,
+       "end": 1.82
+      },
+      {
+       "word": "file",
+       "start": 1.82,
+       "end": 2.26
+      },
+      {
+       "word": "with",
+       "start": 2.26,
+       "end": 2.72
+      },
+      {
+       "word": "no",
+       "start": 2.72,
+       "end": 3.0
+      },
+      {
+       "word": "secrets",
+       "start": 3.0,
+       "end": 3.5
+      },
+      {
+       "word": "or",
+       "start": 3.5,
+       "end": 3.76
+      },
+      {
+       "word": "sign",
+       "start": 3.76,
+       "end": 4.14
+      },
+      {
+       "word": "-ins",
+       "start": 4.14,
+       "end": 4.32
+      },
+      {
+       "word": "inside.",
+       "start": 4.32,
+       "end": 4.78
+      },
+      {
+       "word": "A",
+       "start": 5.08,
+       "end": 5.58
+      },
+      {
+       "word": "teammate",
+       "start": 5.58,
+       "end": 5.92
+      },
+      {
+       "word": "imports",
+       "start": 5.92,
+       "end": 6.6
+      },
+      {
+       "word": "it,",
+       "start": 6.6,
+       "end": 6.82
+      },
+      {
+       "word": "and",
+       "start": 6.96,
+       "end": 7.24
+      },
+      {
+       "word": "Vostor",
+       "start": 7.24,
+       "end": 7.82
+      },
+      {
+       "word": "lists",
+       "start": 7.82,
+       "end": 8.2
+      },
+      {
+       "word": "what",
+       "start": 8.2,
+       "end": 8.44
+      },
+      {
+       "word": "they",
+       "start": 8.44,
+       "end": 8.6
+      },
+      {
+       "word": "still",
+       "start": 8.6,
+       "end": 8.92
+      },
+      {
+       "word": "need",
+       "start": 8.92,
+       "end": 9.24
+      },
+      {
+       "word": "to",
+       "start": 9.24,
+       "end": 9.42
+      },
+      {
+       "word": "set",
+       "start": 9.42,
+       "end": 9.64
+      },
+      {
+       "word": "up.",
+       "start": 9.64,
+       "end": 9.82
+      }
+     ],
+     "pass": true,
+     "name_heard": [
+      "vostor"
+     ]
+    }
+   ],
+   "chapter": 7,
+   "file": "video/out/v3/lines/7.2.wav",
+   "sha256": "cb1af6a1d6e9a85838de4726d942f854d29b2cda94056e312121cdc395fc6cbe",
+   "render": 1
+  },
+  "8.1": {
+   "text": "Home keeps the rest in one place: what's running, recent runs and their versions, and your API-key spend against its budget. Command-K finds any run.",
+   "renders": [
+    {
+     "n": 1,
+     "seed": 42,
+     "file": "video/out/v3/lines/renders/8.1-r1.wav",
+     "sha256": "101861864bd82447cd88e1172f4fd99f0a7b976de0ade41cae7b13419e9e764e",
+     "raw_s": 11.2,
+     "duration_s": 10.741,
+     "transcript": "Home keeps the rest in one place. What's running, recent runs, and their versions. And your API key spend against its budget. Command K finds any run.",
+     "words": [
+      {
+       "word": "Home",
+       "start": 0.0,
+       "end": 0.42
+      },
+      {
+       "word": "keeps",
+       "start": 0.42,
+       "end": 0.74
+      },
+      {
+       "word": "the",
+       "start": 0.74,
+       "end": 0.94
+      },
+      {
+       "word": "rest",
+       "start": 0.94,
+       "end": 1.2
+      },
+      {
+       "word": "in",
+       "start": 1.2,
+       "end": 1.38
+      },
+      {
+       "word": "one",
+       "start": 1.38,
+       "end": 1.58
+      },
+      {
+       "word": "place.",
+       "start": 1.58,
+       "end": 2.02
+      },
+      {
+       "word": "What's",
+       "start": 2.2,
+       "end": 2.76
+      },
+      {
+       "word": "running,",
+       "start": 2.76,
+       "end": 3.1
+      },
+      {
+       "word": "recent",
+       "start": 3.26,
+       "end": 3.8
+      },
+      {
+       "word": "runs,",
+       "start": 3.8,
+       "end": 4.14
+      },
+      {
+       "word": "and",
+       "start": 4.34,
+       "end": 4.44
+      },
+      {
+       "word": "their",
+       "start": 4.44,
+       "end": 4.66
+      },
+      {
+       "word": "versions.",
+       "start": 4.66,
+       "end": 5.1
+      },
+      {
+       "word": "And",
+       "start": 5.42,
+       "end": 5.84
+      },
+      {
+       "word": "your",
+       "start": 5.84,
+       "end": 6.04
+      },
+      {
+       "word": "API",
+       "start": 6.04,
+       "end": 6.5
+      },
+      {
+       "word": "key",
+       "start": 6.5,
+       "end": 6.86
+      },
+      {
+       "word": "spend",
+       "start": 6.86,
+       "end": 7.26
+      },
+      {
+       "word": "against",
+       "start": 7.26,
+       "end": 7.6
+      },
+      {
+       "word": "its",
+       "start": 7.6,
+       "end": 7.84
+      },
+      {
+       "word": "budget.",
+       "start": 7.84,
+       "end": 8.22
+      },
+      {
+       "word": "Command",
+       "start": 8.78,
+       "end": 9.16
+      },
+      {
+       "word": "K",
+       "start": 9.16,
+       "end": 9.4
+      },
+      {
+       "word": "finds",
+       "start": 9.4,
+       "end": 9.88
+      },
+      {
+       "word": "any",
+       "start": 9.88,
+       "end": 10.22
+      },
+      {
+       "word": "run.",
+       "start": 10.22,
+       "end": 10.48
+      }
+     ],
+     "pass": true,
+     "name_heard": []
+    }
+   ],
+   "chapter": 8,
+   "file": "video/out/v3/lines/8.1.wav",
+   "sha256": "101861864bd82447cd88e1172f4fd99f0a7b976de0ade41cae7b13419e9e764e",
+   "render": 1
+  },
+  "8.1-web": {
+   "text": "On your desktop, or on the web.",
+   "renders": [
+    {
+     "n": 1,
+     "seed": 42,
+     "file": "video/out/v3/lines/renders/8.1-web-r1.wav",
+     "sha256": "54a5d2ec90de413ef67b2c413704ff9b9d1132dc6144545ff5a7065307cec8e8",
+     "raw_s": 2.08,
+     "duration_s": 2.176,
+     "transcript": "on your desktop or on the web.",
+     "words": [
+      {
+       "word": "on",
+       "start": 0.0,
+       "end": 0.26
+      },
+      {
+       "word": "your",
+       "start": 0.26,
+       "end": 0.4
+      },
+      {
+       "word": "desktop",
+       "start": 0.4,
+       "end": 0.78
+      },
+      {
+       "word": "or",
+       "start": 0.78,
+       "end": 1.42
+      },
+      {
+       "word": "on",
+       "start": 1.42,
+       "end": 1.56
+      },
+      {
+       "word": "the",
+       "start": 1.56,
+       "end": 1.66
+      },
+      {
+       "word": "web.",
+       "start": 1.66,
+       "end": 1.86
+      }
+     ],
+     "pass": true,
+     "name_heard": []
+    }
+   ],
+   "chapter": 8,
+   "file": "video/out/v3/lines/8.1-web.wav",
+   "sha256": "54a5d2ec90de413ef67b2c413704ff9b9d1132dc6144545ff5a7065307cec8e8",
+   "render": 1
+  },
+  "8.2": {
+   "text": "Tvashtr. Your team. Your rules.",
+   "renders": [
+    {
+     "n": 1,
+     "seed": 42,
+     "file": "video/out/v3/lines/renders/8.2-r1.wav",
+     "sha256": "b844238a9ce1143a9910eb8aa0b23b1d7263aeef3442392c065655d18cb230ae",
+     "raw_s": 3.52,
+     "duration_s": 3.173,
+     "transcript": "Tvastra, your team, your rules.",
+     "words": [
+      {
+       "word": "Tvastra,",
+       "start": 0.0,
+       "end": 0.68
+      },
+      {
+       "word": "your",
+       "start": 1.06,
+       "end": 1.34
+      },
+      {
+       "word": "team,",
+       "start": 1.34,
+       "end": 1.72
+      },
+      {
+       "word": "your",
+       "start": 2.14,
+       "end": 2.38
+      },
+      {
+       "word": "rules.",
+       "start": 2.38,
+       "end": 2.82
+      }
+     ],
+     "pass": true,
+     "name_heard": [
+      "tvastra"
+     ]
+    }
+   ],
+   "chapter": 8,
+   "file": "video/out/v3/lines/8.2.wav",
+   "sha256": "b844238a9ce1143a9910eb8aa0b23b1d7263aeef3442392c065655d18cb230ae",
+   "render": 1
+  }
+ }
+}
