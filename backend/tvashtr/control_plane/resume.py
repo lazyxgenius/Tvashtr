@@ -21,6 +21,7 @@ from sqlalchemy import func, select
 
 from tvashtr.control_plane import activity, desktop_jobs, run_views
 from tvashtr.control_plane.checkpoints import CheckpointError
+from tvashtr.control_plane.credential_gate import subscription_for_model
 from tvashtr.control_plane.live_state import invocation_live
 from tvashtr.control_plane.node_history import _cost_by_invocation, _run_number
 from tvashtr.control_plane.run_failure import node_label
@@ -308,8 +309,41 @@ def _predecessor(rows: list[dict], k: int, cps: dict) -> tuple[bool, RunCheckpoi
     return (not any(r["kind"] == "agent" for r in rows[:k])), None
 
 
-def _runs_again(session, run: Run, rows: list[dict], k: int, edges: list[dict]) -> list[str]:
-    """The chosen step, then the steps after it along the way to Ship (as an approval routes)."""
+_CHECK_NAMES = {
+    "secret_leak_scan": "Secret leak scan",
+    "diff_touches_forbidden_paths": "Forbidden paths",
+    "output_schema_check": "Output schema",
+}
+_DEFAULT_GATE_TITLE = "Approve before continuing?"  # routers.py, add gate
+
+
+def _check_line(cfg: dict) -> str | None:
+    """M-desk-8 P6: how a check on the way to Ship reads — Tvashtr runs it, no one approves it.
+    ``None`` for a gate that asks a person."""
+    kind = cfg.get("gate_kind")
+    if kind == "tests_pass":
+        return "Tests pass — Tvashtr runs the tests"
+    if kind not in _CHECK_NAMES:
+        return None
+    title = str(cfg.get("title") or "").strip()
+    name = title if title and title != _DEFAULT_GATE_TITLE else _CHECK_NAMES[kind]
+    return f"{name} — Tvashtr checks it"
+
+
+def _plan(run: Run, node: AgentNode) -> str | None:
+    """The plan ``node`` runs on in ``run`` — team_run._desktop_route's rule, read-only: the model's
+    subscription when the launch routed it to the Desktop; ``None`` for a key."""
+    if not run.desktop_target or not node.model:
+        return None
+    sub = subscription_for_model(node.model)
+    return sub if sub and sub in (run.desktop_subscriptions or []) else None
+
+
+def _runs_again(
+    session, run: Run, rows: list[dict], k: int, edges: list[dict]
+) -> tuple[list[str], list[str | None]]:
+    """The chosen step, then the steps after it along the way to Ship (as an approval routes), and
+    the plan each agent step among them runs on (M-desk-8 P6)."""
     from tvashtr.control_plane.team_run import next_node, node_emits_outcome
 
     nodes = {
@@ -323,6 +357,9 @@ def _runs_again(session, run: Run, rows: list[dict], k: int, edges: list[dict]) 
         rounds[r["node_id"]] = max(rounds.get(r["node_id"], 0), r["iteration"])
     chosen = rows[k]
     out = [_title(chosen, edges)]
+    first = nodes.get(chosen["node_id"])
+    plans = [_plan(run, first)] if first is not None and first.kind != "gate" else []
+    checks = 0  # checks walked since the last agent step
     seen = {chosen["node_id"]}
     prev = chosen["node_id"]
     cur = next_node(edges, prev, "approved" if node_emits_outcome(edges, prev) else None)
@@ -337,11 +374,20 @@ def _runs_again(session, run: Run, rows: list[dict], k: int, edges: list[dict]) 
             if cfg.get("terminal_kind") == "ship":
                 gate = node_emits_outcome(edges, prev)
                 prev_label = node_label(nodes[prev].role_name, nodes[prev].kind, nodes[prev].config)
-                out.append(f"Ship, if the {prev_label.lower()} approves" if gate else "Ship")
+                if checks:  # a check decides, not a person
+                    out.append(
+                        "Ship, if the check passes" if checks == 1 else "Ship, if the checks pass"
+                    )
+                else:
+                    out.append(f"Ship, if the {prev_label.lower()} approves" if gate else "Ship")
             break
         if node.kind == "gate":
-            out.append(f"{label}, when you approve")
+            check = _check_line(cfg)
+            out.append(check or f"{label}, when you approve")
+            checks = checks + 1 if check else 0
         else:
+            plans.append(_plan(run, node))
+            checks = 0
             n = rounds.get(cur, 0) + 1
             limit = _loops(edges, cur)
             text = f"{label} · round {n}" if (limit or n > 1) else label
@@ -350,7 +396,7 @@ def _runs_again(session, run: Run, rows: list[dict], k: int, edges: list[dict]) 
             out.append(text)
         prev = cur
         cur = next_node(edges, cur, "approved" if node_emits_outcome(edges, cur) else None)
-    return out
+    return out, plans
 
 
 def _kept(session, run: Run, rows: list[dict], k: int) -> list[dict]:
@@ -465,7 +511,7 @@ def points(
         if resumable and not confirm:
             point["confirm"] = {"step_label": _title(row, edges).replace(" · round ", ", round ")}
         elif resumable:
-            again = _runs_again(session, run, rows, k, edges)
+            again, again_plans = _runs_again(session, run, rows, k, edges)
             step_label = again[0].replace(" · round ", ", round ")
             before = [r for r in rows[:k] if r["kind"] != "gate"]
             point["confirm"] = {
@@ -478,9 +524,8 @@ def points(
             }
             if desktop:  # M-desk-4 (H2): where the skipped and the re-run steps really ran
                 point["confirm"]["skips_ran_on"] = _ran_on(before)
-                point["confirm"]["again_ran_on"] = _ran_on(
-                    [r for r in rows[k:] if r["kind"] != "gate" and r.get("invocation_id")]
-                )
+                # M-desk-8 P6: every agent step that runs again, as the launch routed its model
+                point["confirm"]["again_ran_on"] = _ran_on([{"plan": p} for p in again_plans])
         if desktop:
             point["plan"] = row.get("plan")
         out["points"].append(point)
