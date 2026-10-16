@@ -1,0 +1,93 @@
+<!doctype html>
+<!--
+  V3 (brief video-v3 D5): the film's title card (0.2) and end card (8.2), built on Product Demo
+  Director's motion kit (motion/kit.js contract: window.DUR + a deterministic window.seek(t)).
+  The product's look: background #F7F4EE, ink #2B2622, accent #C8674A; the wordmark in Newsreader
+  (the app's --font-serif, weight 400, tracking -0.02em), text in Inter — loaded from the same Google
+  Fonts stylesheet the app uses. Silent, gentle fades, about 4 s each. Pick a card with ?card=0.2|8.2.
+
+    . video/env.sh && PLAYWRIGHT_MODULE=$PWD/video/node_modules/playwright/index.mjs \
+      node video/vendor/product-demo-director/tools/motion_render.mjs \
+      --film video/v3/cards/cards.html --query card=0.2 --out video/out/v3/0.2.mp4 --fps 30 --sub 4
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400;1,6..72,500&family=Inter:wght@400;450;500;600;700&display=block">
+<style>
+  :root { --bg: #F7F4EE; --ink: #2B2622; --accent: #C8674A; }
+  html, body { margin: 0; width: 1920px; height: 1080px; background: var(--bg); overflow: hidden; }
+  #stage { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; color: var(--ink); -webkit-font-smoothing: antialiased; }
+  .card { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; }
+  .word { font-family: "Newsreader", Georgia, serif; font-weight: 400; letter-spacing: -0.02em; line-height: 1;
+    font-optical-sizing: auto; }
+  .rule { width: 64px; height: 3px; border-radius: 2px; background: var(--accent); }
+  .sans { font-family: "Inter", system-ui, sans-serif; }
+  /* 0.2 — the title */
+  #c02 .word { font-size: 184px; }
+  #c02 .rule { margin: 44px 0 40px; }
+  #c02 .line { font-size: 40px; font-weight: 400; letter-spacing: -0.01em; }
+  /* 8.2 — the end card */
+  #c82 .word { font-size: 132px; }
+  #c82 .rule { margin: 36px 0 34px; }
+  #c82 .rules { font-size: 54px; font-weight: 500; letter-spacing: -0.015em; }
+  #c82 .links { margin-top: 30px; font-size: 30px; font-weight: 450; color: var(--accent); letter-spacing: 0; }
+  /* a softer ink by colour: the kit's S() owns each element's opacity for the fades */
+  #c82 .by { position: absolute; bottom: 72px; font-size: 22px; font-weight: 450; color: rgba(43, 38, 34, .62); letter-spacing: .01em; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <section class="card" id="c02">
+    <div class="word" id="w02">Tvashtr</div>
+    <div class="rule" id="r02"></div>
+    <div class="line sans" id="l02">Design an AI team. It ships reviewed pull requests.</div>
+  </section>
+  <section class="card" id="c82">
+    <div class="word" id="w82">Tvashtr</div>
+    <div class="rule" id="r82"></div>
+    <div class="rules sans" id="y82">Your team. Your rules.</div>
+    <div class="links sans" id="k82">tvashtr.fly.dev · github.com/lazyxgenius/Tvashtr</div>
+    <div class="by sans" id="b82">Built by Aditya Sharma</div>
+  </section>
+</div>
+<script src="../../vendor/product-demo-director/motion/kit.js"></script>
+<script>
+  const card = new URLSearchParams(location.search).get("card") || "0.2";
+  const id = card === "8.2" ? "c82" : "c02";
+  document.getElementById(id).style.display = "flex";
+  window.DUR = 4.0;
+  window.ready = false;
+  Promise.all([document.fonts.load('400 184px "Newsreader"'), document.fonts.load('400 40px "Inter"'),
+    document.fonts.load('500 54px "Inter"'), document.fonts.load('450 30px "Inter"')])
+    .then(() => document.fonts.ready).then(() => { window.ready = true; window.seek(0); });
+
+  const { P, L, eo, eio, S } = MK;
+  // A gentle arrival (fade + a small rise, eased out) at `a`; the whole card fades away over the last 0.6 s.
+  const arrive = (el, t, a, { d = 0.9, dy = 14 } = {}) => {
+    const k = eo(P(t, a, a + d)), out = 1 - eio(P(t, window.DUR - 0.6, window.DUR));
+    S(el, { op: Math.min(P(t, a, a + d * 0.8), out), y: (1 - k) * dy });
+  };
+  const rule = (el, t, a) => { // the accent rule draws out from the centre
+    const k = eo(P(t, a, a + 0.8)), out = 1 - eio(P(t, window.DUR - 0.6, window.DUR));
+    el.style.opacity = Math.min(P(t, a, a + 0.3), out);
+    el.style.transform = `scaleX(${L(0.0, 1, k)})`;
+  };
+  window.seek = (t) => {
+    if (id === "c02") {
+      arrive("w02", t, 0.15, { dy: 18 });
+      rule(document.getElementById("r02"), t, 0.55);
+      arrive("l02", t, 0.8);
+    } else {
+      arrive("w82", t, 0.1, { dy: 16 });
+      rule(document.getElementById("r82"), t, 0.45);
+      arrive("y82", t, 0.6);
+      arrive("k82", t, 0.95, { dy: 10 });
+      arrive("b82", t, 1.25, { dy: 8 });
+    }
+  };
+  window.seek(0);
+</script>
+</body>
+</html>
