@@ -34,6 +34,29 @@ describe("NodeChat — Mode A ask-the-node chat (client-held history)", () => {
     ]);
   });
 
+  it("renders an answer's markdown (bold, list, inline code, code block), never raw HTML (M-desk-8 P5)", async () => {
+    mockAsk.mockResolvedValue({
+      answer:
+        "I changed **pricing.py**:\n\n- added `bulk_discount`\n\n```py\nx = 1\n```\n\n<img src=x onerror=alert(1)>",
+    });
+    const { container } = render(<NodeChat runId="r1" nodeId="n-eng" />);
+    fireEvent.change(screen.getByLabelText("Ask this node"), {
+      target: { value: "What changed?" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    expect((await screen.findByText("pricing.py")).tagName).toBe("STRONG");
+    expect(screen.getByText("bulk_discount").tagName).toBe("CODE");
+    expect(screen.getByRole("listitem")).toHaveTextContent("added bulk_discount");
+    expect(container.querySelector(".tv-chat__msg--assistant pre code")).toHaveTextContent("x = 1");
+    expect(container.textContent).not.toContain("**");
+    // the raw tag shows as text, never as an element
+    expect(container.querySelector("img")).toBeNull();
+    expect(screen.getByText(/<img src=x onerror/)).toBeInTheDocument();
+    // the question stays plain text
+    expect(screen.getByText("What changed?").tagName).toBe("DIV");
+  });
+
   it("keeps the running history across turns (sends the whole transcript each time)", async () => {
     mockAsk.mockResolvedValueOnce({ answer: "First answer." });
     render(<NodeChat runId="r1" nodeId="n-eng" />);
