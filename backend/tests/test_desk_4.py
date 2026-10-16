@@ -302,6 +302,45 @@ def test_p_resume_steps_say_the_plan_each_step_ran_on(client):
     assert resume._ran_on([]) == NONE
 
 
+def test_p6_the_resume_confirm_names_a_check_and_every_plan_that_runs_again(client):
+    """M-desk-8 P6: a check on the way to Ship is never "when you approve" (a Tests check:
+    "Tests pass — Tvashtr runs the tests"), and the subscription line names every plan the steps
+    that run again use — the Grok Reviewer that never ran in the stopped run too."""
+    from test_desk_6 import _tests_team
+    from test_desk_routes import GROK
+
+    from tvashtr.models import AgentNode, Run
+
+    _c, owner = fresh_account("desk8-p6")
+    team = _tests_team()["team"]  # PM -> spec gate -> Engineer -> Tests pass -> Reviewer -> Ship
+    now = datetime.now(UTC)
+    run_id = uuid.uuid4()
+    with session_scope() as session:
+        nodes = {
+            n.role_name: n
+            for n in session.execute(
+                select(AgentNode).where(AgentNode.team_graph_id == uuid.UUID(team))
+            ).scalars()
+        }
+        nodes["engineer"].model, nodes["reviewer"].model = CLAUDE, GROK
+        session.add(Run(id=run_id, team_graph_id=uuid.UUID(team), owner_id=owner, idea="Add RSI",
+                        workflow_id=str(run_id), status="cancelled", desktop_target=True,
+                        desktop_subscriptions=["claude", "grok"]))  # fmt: skip
+        session.flush()
+        session.add(
+            AgentInvocation(run_id=str(run_id), node_id=nodes["engineer"].id, iteration=1,
+                            status="failed", started_at=now - timedelta(minutes=9), ended_at=now)
+        )  # fmt: skip
+    (eng,) = _invocations(str(run_id))
+    _on_desktop(owner, eng, "claude")  # stopped on Claude; the Grok Reviewer never ran
+    with session_scope() as session:
+        reply = resume.points(session, session.get(Run, run_id), desktop=True)
+    confirm = next(p for p in reply["points"] if p["invocation_id"] == eng.id)["confirm"]
+    assert "Tests pass — Tvashtr runs the tests" in confirm["runs_again"]
+    assert not any("when you approve" in t for t in confirm["runs_again"])
+    assert confirm["again_ran_on"] == BOTH
+
+
 def test_p_a_compares_lanes_and_cost_row_say_where_the_work_ran(client):
     c, owner = fresh_account("desk4-p-cmp")
     team = _desk_versions(c)

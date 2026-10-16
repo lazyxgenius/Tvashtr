@@ -464,3 +464,18 @@ def test_tvashtr_own_files_are_never_a_steps_changes_and_one_saved_thing_is_save
         ]
     }
     assert resume.safe_text(reply) == "your approved spec (v1) is saved"
+
+
+def test_a_steps_summary_keeps_the_verdict_headline_whatever_its_reasons_say():
+    """M-desk-8 review: P3 gives an approval its reasons ("Approved — …"), so the resume picker's
+    step text (and a resumed run's carried line) takes the headline from the verdict."""
+    from types import SimpleNamespace
+
+    inv = SimpleNamespace(status="done")
+    said = "Looks good: RSI is bounded 0–100"
+    approved = {"kind": "verdict", "text": f"Approved — {said}",
+                "refs": {"verdict": "approved", "reasons": [said]}}  # fmt: skip
+    asked = {"kind": "verdict", "text": "Asked for 2 fixes: a; b",
+             "refs": {"verdict": "changes_requested", "reasons": ["a", "b"]}}  # fmt: skip
+    assert resume._summary("agent", [approved], inv)["text"] == "Approved"
+    assert resume._summary("agent", [asked], inv)["text"] == "Asked for 2 fixes"

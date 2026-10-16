@@ -1,0 +1,35 @@
+# M-desk-8 — P1–P6 on-camera fixes: design parity (scripts/design-parity), feat/m-desk-8 vs 938dbde6
+# Boards (published before the code): Runs https://claude.ai/artifact/A5nA1F7fAMcLCqLQ1sxQn2 v22 (1792124908-ffc8): P3 "Approved — <reasons>" on the ten
+#   boards that show the Activity verdict line; Team Setup https://claude.ai/artifact/Uzz8uBWdY9jv5teJcLwvBX v27 (1792124949-18c1): P2 Chk-TestsPass — the
+#   check's arc back to the Engineer is the coral Rework loop labelled "tests failed" (was a grey "rejected" branch; the canvas can only draw that line as a
+#   Rework loop, which is how the film team is wired), P3 Ver-RunBar's verdict line.
+# No board on either canvas shows a guardrail card (P1), a round's cost row (P4), an Ask answer (P5) or a check in the resume confirm (P6): every board's
+#   text was searched; Prob-ConfirmDesktop already reads "Only the steps that run again use your Claude and Grok subscriptions." (P6's line).
+# Fixtures follow the server's new words: runs-fixtures.mjs / desk6.mjs verdict "Approved — …"; desk6.mjs check edge {loop_limit: 3} (was {when: rejected}).
+# Shots: shoot-design.mjs (12 boards, 12 fonts-ok) vs shoot-app.mjs on the branch frontend (Vite :5203) with runs-live / desk4 / desk6 / start-from /
+#   versions. Baseline: the same boards before the edit vs the 938dbde6 frontend with 938dbde6's scenarios (Vite :5204, git worktree) — identical counts:
+#   every drift line below predates M-desk-8 (the M10 waivers W1–W3 on Next-* / Ver-RunBar / Live-Done; the toolbar chip "on your Claude and Grok
+#   subscriptions" 13→14px matched to the Done summary since M-desk-7's F2 on the Desktop Done boards).
+# The changed texts, in both board and app at the same size: "Approved — …" 13px on all eleven verdict-line boards; "tests failed" 10px on Chk-TestsPass.
+Live-Done vs -web:                  after matched 54/77 · 5 drift   | before 54/77 · 5 drift
+Live-DoneDesktop vs -desktop:       after matched 56/76 · 1 drift   | before 56/76 · 1 drift
+Live-DoneDesktopLong vs -desktop:   after matched 70/85 · 1 drift   | before 70/85 · 1 drift
+Live-TestsPassed vs -web:           after matched 55/67 · 0 drift   | before 55/67 · 0 drift
+Live-TestsPassedDesktop vs -desktop: after matched 57/69 · 1 drift  | before 57/69 · 1 drift
+Next-Carry vs -desktop:             after matched 70/90 · 5 drift   | before 70/90 · 5 drift
+Next-CarryMerged vs -desktop:       after matched 71/91 · 5 drift   | before 71/91 · 5 drift
+Next-Finished vs -desktop:          after matched 49/69 · 5 drift   | before 49/69 · 5 drift
+Next-Log vs -desktop:               after matched 60/79 · 5 drift   | before 60/79 · 5 drift
+Next-More vs -desktop:              after matched 50/70 · 5 drift   | before 50/70 · 5 drift
+Ver-RunBar vs -web:                 after matched 55/78 · 5 drift   | before 55/78 · 5 drift
+Chk-TestsPass vs -desktop:          after matched 46/56 · 0 drift   | before 46/56 · 0 drift
+# M-desk-8 adds 0 size/type drift on every changed board.
+# Website 0 px (M-desk-4/7's stable kit: deterministic Chromium, two identical frames; the branch's scenario files for both sides; website renders
+#   of compare, task-sets, agent-tests, runs-live, runs-resume, versions, home-runs, engines-keys, panel-model, panel-advanced, start-from, desk5, desk6,
+#   desk7 + desk4, canvas-extras, panel-runs-docs, focus-docs-tabs): base 938dbde6 vs branch — 194/205 at 0 px. The 11 others:
+#   P2 (the check's loop arc label "tests failed", an 87×18 px box at y≈430): Live-RunningLong-web, Live-TestsCouldnt-web, Live-TestsFailed-web,
+#     Live-TestsPassed-web;
+#   P1 (the plain approval gate's card reads its title "Ask me what to do", not "approval"; the canvas reflows around it): Cnv-FailPath-web,
+#     Cnv-FailPathOne-web, Cnv-FailPathRun-web, Cnv-TimeLimit-web, kept-m11-canvas-web, kept-m11-canvas-add-web;
+#   Cnv-EditApproved-web: 1 px at (674,313) — a raster flake: re-shot, branch-r2 vs base-r2 0 px.
+#   P3/P4/P5/P6 change no website render here (server words come from the shared fixtures; P4's words are Desktop-only; no scenario opens an Ask).

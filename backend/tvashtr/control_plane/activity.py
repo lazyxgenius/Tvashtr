@@ -234,6 +234,36 @@ def _reasons(detail: str | None) -> list[str]:
     return [ln for ln in lines if ln]
 
 
+def _written_reasons(events: list) -> list[str]:
+    """M-desk-8 P3: the reasons in the REVIEW_VERDICT.json this step wrote last. team_run keeps only
+    a request's reasons, so an approval's are read from the write itself (the Desktop's Write /
+    write tool, OpenHands' file_editor). Only the newest write counts and it must say "approved";
+    an edit in place (no full text) gives nothing — [] whenever the file's final text is unknown."""
+    for ev in reversed(events):
+        if ev.kind != "action":
+            continue
+        args = _args(str((ev.payload or {}).get("action") or ""))
+        path = str(args.get("file_path") or args.get("path") or "")
+        if path.rsplit("/", 1)[-1] != "REVIEW_VERDICT.json":
+            continue
+        content = args.get("content", args.get("file_text"))
+        if not isinstance(content, str):
+            if any(k in args for k in ("old_str", "new_str", "old_string", "new_string")):
+                return []  # edited in place: its final text isn't in the event
+            continue  # a read
+        try:
+            raw = json.loads(content)
+        except ValueError:
+            return []
+        if not isinstance(raw, dict) or str(raw.get("verdict") or "").strip().lower() != "approved":
+            return []
+        reasons = raw.get("reasons")
+        if isinstance(reasons, list):
+            return [str(r).strip() for r in reasons if str(r).strip()]
+        return _reasons(str(reasons or ""))
+    return []
+
+
 def _duration(seconds: int) -> str:
     if seconds < 60:
         return f"{seconds}s"
@@ -744,8 +774,10 @@ def build(
                 )
         elif kind in _STEP_KINDS and inv.outcome in ("approved", "changes_requested"):
             reasons = _reasons(_m(inv.outcome_detail))
+            if inv.outcome == "approved" and not reasons:
+                reasons = [_m(r) for r in _written_reasons(events_by_inv.get(inv.id, []))]
             if inv.outcome == "approved":
-                text, tone = "Approved" + (f": {'; '.join(reasons)}" if reasons else ""), "ok"
+                text, tone = "Approved" + (f" — {'; '.join(reasons)}" if reasons else ""), "ok"
             else:
                 count = max(len(reasons), 1)
                 fixes = "fix" if count == 1 else "fixes"

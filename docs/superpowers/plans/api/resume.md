@@ -52,6 +52,12 @@ All words are made server-side (`control_plane/resume.py`, `control_plane/activi
 }
 ```
 
+M-desk-8 P6: a check on the way to Ship is never "when you approve" — a Tests check reads
+"Tests pass — Tvashtr runs the tests", another check "<its title or type> — Tvashtr checks it", and
+a Ship reached through checks "Ship, if the check passes" / "Ship, if the checks pass". On the
+Desktop, `again_ran_on` names the plan of every agent step that runs again, as the run's launch
+routed its model (`runs.desktop_subscriptions`), not only the steps that already ran.
+
 `available=false` reasons: the run is still running and nothing is stalled ("The run is still
 going"), it finished ("The run finished"), a Desktop-folder run (its source folder is gone once
 cloned: "Resume isn't available for a folder run yet"), no resumable step.

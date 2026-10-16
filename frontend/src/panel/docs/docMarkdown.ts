@@ -13,6 +13,13 @@ const md = new MarkdownIt({ html: false, linkify: false, breaks: false });
 /** The document as HTML (markdown-it escapes everything the markdown doesn't make). */
 export const renderMarkdown = (markdown: string): string => md.render(markdown);
 
+// M-desk-8 P5: an Ask answer — the same, with no images (an answer must never make the app fetch a
+// URL it names) and its single line breaks kept, as a chat reads.
+const chat = new MarkdownIt({ html: false, linkify: false, breaks: true }).disable("image");
+
+/** An Ask answer as HTML. */
+export const renderChatMarkdown = (markdown: string): string => chat.render(markdown);
+
 /**
  * The document's top-level blocks as markdown source. A list item keeps its marker, so it renders as
  * a one-item list; its nested lines stay with it.

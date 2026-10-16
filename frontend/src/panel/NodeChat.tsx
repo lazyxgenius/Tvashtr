@@ -1,6 +1,8 @@
 import { type FormEvent, useState } from "react";
 
 import { askNode, type AskMessage } from "../lib/api";
+import { renderChatMarkdown } from "./docs/docMarkdown";
+import "./docs/viewer.css";
 
 // Client-side turn cap matching the server's: the client holds + re-sends the whole history each
 // turn, so once the transcript reaches this many messages the next request would be rejected —
@@ -52,11 +54,21 @@ export function NodeChat({ runId, nodeId }: { runId: string | null; nodeId: stri
             from its recorded run.
           </p>
         ) : (
-          messages.map((message, i) => (
-            <div key={i} className={`tv-chat__msg tv-chat__msg--${message.role}`}>
-              {message.content}
-            </div>
-          ))
+          messages.map((message, i) =>
+            message.role === "assistant" ? (
+              // M-desk-8 P5: the answer's markdown (markdown-it, html:false: raw HTML shows as text,
+              // unsafe links stay text; no images, so an answer never makes the app fetch a URL).
+              <div
+                key={i}
+                className="tv-chat__msg tv-chat__msg--assistant dv-md"
+                dangerouslySetInnerHTML={{ __html: renderChatMarkdown(message.content) }}
+              />
+            ) : (
+              <div key={i} className="tv-chat__msg tv-chat__msg--user">
+                {message.content}
+              </div>
+            ),
+          )
         )}
         {pending ? <p className="tv-panel-note">Thinking…</p> : null}
         {error ? <p className="tv-panel-note tv-chat__error">{error}</p> : null}

@@ -13,7 +13,8 @@ import type { WorkEdgeData } from "./WorkEdge";
  * The Reviewer -> Engineer loop-back ("rework") edge: a calm downward dashed arc
  * that bows below the node row — it leaves both nodes from their bottom handles, so
  * it never overlaps the forward PM -> Engineer -> Reviewer edges — with an
- * arrowhead back into the Engineer and a small centered "changes requested" label.
+ * arrowhead back into the Engineer and a small centered "changes requested" label ("tests failed"
+ * when the arc leaves a Tests check — M-desk-8 P2).
  *
  * Static by design: no marching ants, no animation (the canvas ethos — there is no
  * motion here, so `prefers-reduced-motion` has nothing to suppress). The muted
@@ -35,7 +36,7 @@ export function ReworkEdge({ id, sourceX, sourceY, targetX, targetY, markerEnd, 
     targetPosition: Position.Bottom,
     curvature: 0.6, // bow it well below the row, clear of the forward edges
   });
-  const d = (data ?? {}) as WorkEdgeData;
+  const d = (data ?? {}) as WorkEdgeData & { testsFailed?: boolean };
 
   return (
     <>
@@ -52,7 +53,7 @@ export function ReworkEdge({ id, sourceX, sourceY, targetX, targetY, markerEnd, 
           className="rf-edge-rework__label nodrag nopan"
           style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
         >
-          changes requested
+          {d.testsFailed ? "tests failed" : "changes requested"}
         </div>
         {d.editable && d.hovered && (
           <button

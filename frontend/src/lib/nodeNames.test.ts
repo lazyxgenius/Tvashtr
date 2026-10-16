@@ -42,4 +42,28 @@ describe("nodeTitle / nodeDescription", () => {
       "Tests pass",
     );
   });
+
+  it("a guardrail card reads its title, else its type's name — never its raw kind (M-desk-8 P1)", () => {
+    expect(gateLabel("secret_leak_scan")).toBe("Secret leak scan");
+    expect(gateLabel("diff_touches_forbidden_paths")).toBe("Forbidden paths");
+    expect(gateLabel("output_schema_check")).toBe("Output schema");
+    const gate = (gate_kind: string, title?: string) =>
+      nodeTitle(node("gate", "g", { gate_kind, ...(title === undefined ? {} : { title }) }));
+    expect(gate("secret_leak_scan", "Secret scan")).toBe("Secret scan");
+    expect(gate("diff_touches_forbidden_paths", "No edits to servers/")).toBe(
+      "No edits to servers/",
+    );
+    expect(gate("secret_leak_scan", "")).toBe("Secret leak scan");
+    expect(gate("output_schema_check")).toBe("Output schema");
+    // a check switched before F1 still carries the human default: never a question on a check
+    expect(gate("diff_touches_forbidden_paths", "Approve before continuing?")).toBe(
+      "Forbidden paths",
+    );
+    // a plain approval gate reads its title too (the M11 boards' "Ask me what to do")
+    expect(gate("approval", "Ask me what to do")).toBe("Ask me what to do");
+    expect(gate("approval", "Approve before continuing?")).toBe("Approval");
+    // the named human gates keep their short names over their sentence titles
+    expect(gate("prd_approval", "Approve before continuing?")).toBe("PRD approval");
+    expect(gate("review_escalation", "Couldn't satisfy the spec")).toBe("Escalation");
+  });
 });

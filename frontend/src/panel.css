@@ -750,6 +750,19 @@
   border: var(--border-width) solid var(--border-hairline);
   color: var(--text-primary);
 }
+/* M-desk-8 P5: an answer is rendered markdown (.dv-md, the run documents' rules) at the bubble's own
+   size; its block tags carry the spacing, so the bubble stops keeping source newlines. */
+.tv-chat__msg--assistant.dv-md {
+  white-space: normal;
+}
+.tv-chat__msg--assistant.dv-md p,
+.tv-chat__msg--assistant.dv-md li {
+  font-size: inherit;
+  line-height: inherit;
+}
+.tv-chat__msg--assistant.dv-md > :last-child {
+  margin-bottom: 0;
+}
 .tv-chat__error {
   color: var(--danger);
 }
