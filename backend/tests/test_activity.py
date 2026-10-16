@@ -656,6 +656,39 @@ def test_verdict_reasons_given_as_a_list():
     assert activity._reasons(None) == []
 
 
+def test_an_approval_shows_the_reasons_its_verdict_file_gave():
+    """M-desk-8 P3: team_run stores no reasons for an approval (outcome_detail None), so the line
+    reads them from the REVIEW_VERDICT.json the Reviewer wrote — a string (the Desktop's Write) or a
+    list (OpenHands' file_editor) — "Approved — <reasons>", one line, every reason in refs."""
+    pm, gate, eng, rev, ship, edges = _review_world()
+    invs = [
+        _inv(1, pm, end=30),
+        _inv(2, eng, start=40, end=100, outcome="built"),
+        _inv(3, rev, start=101, end=200, outcome="approved"),  # detail None, as team_run stores it
+        _inv(4, eng, iteration=2, start=201, end=300, outcome="built"),
+        _inv(5, rev, iteration=2, start=301, end=400, outcome="approved"),
+        _inv(6, rev, iteration=3, start=401, end=500, outcome="approved"),
+    ]
+    ev = _Events()
+    said = "RSI is registered, bounded 0–100, and the tests Tvashtr ran passed (42 passed)."
+    write = {"file_path": "/Users/me/runner-jobs/j1/ws/REVIEW_VERDICT.json",
+             "content": json.dumps({"verdict": "approved", "reasons": said})}  # fmt: skip
+    ev.add(3, 150, "action", {"tool_name": "Write", "thought": "", "action": json.dumps(write)})
+    listed = json.dumps(
+        {"verdict": "approved", "reasons": ["It doesn't divide by zero", "Add a test"]}
+    )
+    ev.add(5, 350, "action", _editor("create", "REVIEW_VERDICT.json", file_text=listed))
+    reply = _build(_run(), [pm, gate, eng, rev, ship], invs, ev.rows, edges=edges)
+    by_id = {ln["id"]: ln for ln in reply["lines"]}
+    assert by_id["inv:3:end"]["text"] == f"Approved — {said}"
+    assert by_id["inv:3:end"]["refs"] == {"verdict": "approved", "reasons": [said]}
+    assert by_id["inv:5:end"]["text"] == "Approved — It doesn't divide by zero; Add a test"
+    assert by_id["inv:5:end"]["refs"]["reasons"] == ["It doesn't divide by zero", "Add a test"]
+    # no verdict file written with a file tool: the plain word, as before
+    assert by_id["inv:6:end"]["text"] == "Approved"
+    assert by_id["inv:6:end"]["refs"] == {"verdict": "approved", "reasons": []}
+
+
 # ---------------------------------------------------------------------------- cost per poll
 
 

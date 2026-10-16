@@ -234,6 +234,28 @@ def _reasons(detail: str | None) -> list[str]:
     return [ln for ln in lines if ln]
 
 
+def _written_reasons(events: list) -> list[str]:
+    """M-desk-8 P3: the reasons in the last REVIEW_VERDICT.json this step wrote. team_run keeps only
+    a request's reasons, so an approval's are read from the write itself (the Desktop's Write /
+    write tool, OpenHands' file_editor); [] when no file-tool write carried the file's text."""
+    for ev in reversed(events):
+        if ev.kind != "action":
+            continue
+        args = _args(str((ev.payload or {}).get("action") or ""))
+        path = str(args.get("file_path") or args.get("path") or "")
+        content = args.get("content", args.get("file_text"))
+        if path.rsplit("/", 1)[-1] != "REVIEW_VERDICT.json" or not isinstance(content, str):
+            continue
+        try:
+            raw = json.loads(content)
+        except ValueError:
+            continue
+        if isinstance(raw, dict) and raw.get("reasons"):
+            reasons = raw["reasons"]
+            return _reasons(json.dumps(reasons) if isinstance(reasons, list) else str(reasons))
+    return []
+
+
 def _duration(seconds: int) -> str:
     if seconds < 60:
         return f"{seconds}s"
@@ -744,8 +766,10 @@ def build(
                 )
         elif kind in _STEP_KINDS and inv.outcome in ("approved", "changes_requested"):
             reasons = _reasons(_m(inv.outcome_detail))
+            if inv.outcome == "approved" and not reasons:
+                reasons = [_m(r) for r in _written_reasons(events_by_inv.get(inv.id, []))]
             if inv.outcome == "approved":
-                text, tone = "Approved" + (f": {'; '.join(reasons)}" if reasons else ""), "ok"
+                text, tone = "Approved" + (f" — {'; '.join(reasons)}" if reasons else ""), "ok"
             else:
                 count = max(len(reasons), 1)
                 fixes = "fix" if count == 1 else "fixes"
