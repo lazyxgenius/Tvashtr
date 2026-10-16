@@ -150,6 +150,39 @@ describe("TeamCanvas — ONLY the loop_limit loop-back renders as the rework edg
   });
 });
 
+describe("TeamCanvas — a Tests check's loop-back reads 'tests failed' (M-desk-8 P2)", () => {
+  it("labels the Tests check's arc 'tests failed'; the Reviewer's keeps 'changes requested'", () => {
+    const g: GraphData = {
+      ...graph,
+      nodes: [
+        ...graph.nodes,
+        gnode({
+          id: "n-chk",
+          role_name: "gate",
+          kind: "gate",
+          position: { x: 110, y: 0 },
+          config: { gate_kind: "tests_pass", title: "Tests pass", command: "pytest -q" },
+        }),
+      ],
+      edges: [
+        ...graph.edges,
+        edge({
+          id: "e-chk-eng",
+          source_node_id: "n-chk",
+          target_node_id: "n-eng",
+          conditions: { loop_limit: 3 },
+        }),
+      ],
+    };
+    const { container } = render(
+      <TeamCanvas graph={g} run={mkRun()} workflowStatus="PENDING" tasks={[gateTask]} />,
+    );
+    expect(container.querySelectorAll(".react-flow__edge.rf-edge--rework")).toHaveLength(2);
+    expect(screen.getAllByText("tests failed")).toHaveLength(1);
+    expect(screen.getAllByText("changes requested")).toHaveLength(1);
+  });
+});
+
 describe("TeamCanvas — run-view selection is by node id, not role_name (Option A)", () => {
   it("selects two same-role nodes independently by their unique node id", () => {
     const picks: (string | null)[] = [];

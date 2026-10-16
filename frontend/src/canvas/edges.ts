@@ -90,8 +90,12 @@ export function buildEdges(
       onDelete: () => onDelete(e.id),
     };
 
-    // 1. The bounded loop-back (`{loop_limit: N}`, no `when`) → the calm dashed arc.
+    // 1. The bounded loop-back (`{loop_limit: N}`, no `when`) → the calm dashed arc. M-desk-8 P2:
+    //    one that leaves a Tests check says so ("tests failed", not "changes requested").
     if (e.conditions?.loop_limit != null) {
+      const src = graph.nodes.find((n) => n.id === e.source_node_id);
+      const testsFailed =
+        (src?.config as { gate_kind?: string } | null)?.gate_kind === "tests_pass";
       return {
         id: e.id,
         source: e.source_node_id,
@@ -101,7 +105,7 @@ export function buildEdges(
         type: "rework",
         className: `rf-edge--rework${invalid}`,
         markerEnd: reworkMarker(),
-        data: authoring,
+        data: { ...authoring, testsFailed },
       };
     }
 
