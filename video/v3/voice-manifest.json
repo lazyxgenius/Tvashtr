@@ -2099,6 +2099,1662 @@
      ],
      "pass": false,
      "name_heard": []
+    },
+    {
+     "n": 4,
+     "seed": 42,
+     "said": "Now give the team a task: add a Hul moving average. Pick the repo, the branch, and the one folder it may touch. Launch.",
+     "form": "Now give the team a task: add a Hul moving average.",
+     "file": "video/out/v3/lines/renders/3.1-r4.wav",
+     "sha256": "e3aa4d2785a75c0658e68636bd41fa29b2f3495409e8e63f5d8ae5b1c52cb466",
+     "raw_s": 8.96,
+     "duration_s": 8.907,
+     "transcript": "Now give the team a task. Add a hull moving average. Pick the repo, the branch, and the one folder it may touch. Launch.",
+     "words": [
+      {
+       "word": "Now",
+       "start": 0.0,
+       "end": 0.34
+      },
+      {
+       "word": "give",
+       "start": 0.34,
+       "end": 0.64
+      },
+      {
+       "word": "the",
+       "start": 0.64,
+       "end": 0.82
+      },
+      {
+       "word": "team",
+       "start": 0.82,
+       "end": 1.08
+      },
+      {
+       "word": "a",
+       "start": 1.08,
+       "end": 1.26
+      },
+      {
+       "word": "task.",
+       "start": 1.26,
+       "end": 1.64
+      },
+      {
+       "word": "Add",
+       "start": 1.82,
+       "end": 2.22
+      },
+      {
+       "word": "a",
+       "start": 2.22,
+       "end": 2.38
+      },
+      {
+       "word": "hull",
+       "start": 2.38,
+       "end": 2.66
+      },
+      {
+       "word": "moving",
+       "start": 2.66,
+       "end": 3.02
+      },
+      {
+       "word": "average.",
+       "start": 3.02,
+       "end": 3.5
+      },
+      {
+       "word": "Pick",
+       "start": 3.66,
+       "end": 4.06
+      },
+      {
+       "word": "the",
+       "start": 4.06,
+       "end": 4.24
+      },
+      {
+       "word": "repo,",
+       "start": 4.24,
+       "end": 4.64
+      },
+      {
+       "word": "the",
+       "start": 4.84,
+       "end": 5.1
+      },
+      {
+       "word": "branch,",
+       "start": 5.1,
+       "end": 5.54
+      },
+      {
+       "word": "and",
+       "start": 5.66,
+       "end": 5.94
+      },
+      {
+       "word": "the",
+       "start": 5.94,
+       "end": 6.08
+      },
+      {
+       "word": "one",
+       "start": 6.08,
+       "end": 6.34
+      },
+      {
+       "word": "folder",
+       "start": 6.34,
+       "end": 6.76
+      },
+      {
+       "word": "it",
+       "start": 6.76,
+       "end": 7.02
+      },
+      {
+       "word": "may",
+       "start": 7.02,
+       "end": 7.22
+      },
+      {
+       "word": "touch.",
+       "start": 7.22,
+       "end": 7.66
+      },
+      {
+       "word": "Launch.",
+       "start": 7.96,
+       "end": 8.5
+      }
+     ],
+     "pass": false,
+     "name_heard": [],
+     "transcript_pass": true,
+     "sound": false,
+     "phonemes": "[ɐ] h ɔː l [m uː]"
+    },
+    {
+     "n": 5,
+     "seed": 43,
+     "said": "Now give the team a task: add a Hul moving average. Pick the repo, the branch, and the one folder it may touch. Launch.",
+     "form": "Now give the team a task: add a Hul moving average.",
+     "file": "video/out/v3/lines/renders/3.1-r5.wav",
+     "sha256": "a64834c24ad99a199d7f3efd0dec4821be54383284cd9bc2deca0cb6a4068420",
+     "raw_s": 8.48,
+     "duration_s": 8.347,
+     "transcript": "Now give the team a task, add a whole moving average, pick the repo, the branch, and the one folder it may touch. Launch.",
+     "words": [
+      {
+       "word": "Now",
+       "start": 0.0,
+       "end": 0.38
+      },
+      {
+       "word": "give",
+       "start": 0.38,
+       "end": 0.62
+      },
+      {
+       "word": "the",
+       "start": 0.62,
+       "end": 0.76
+      },
+      {
+       "word": "team",
+       "start": 0.76,
+       "end": 1.0
+      },
+      {
+       "word": "a",
+       "start": 1.0,
+       "end": 1.16
+      },
+      {
+       "word": "task,",
+       "start": 1.16,
+       "end": 1.56
+      },
+      {
+       "word": "add",
+       "start": 1.76,
+       "end": 2.14
+      },
+      {
+       "word": "a",
+       "start": 2.14,
+       "end": 2.24
+      },
+      {
+       "word": "whole",
+       "start": 2.24,
+       "end": 2.42
+      },
+      {
+       "word": "moving",
+       "start": 2.42,
+       "end": 2.7
+      },
+      {
+       "word": "average,",
+       "start": 2.7,
+       "end": 3.14
+      },
+      {
+       "word": "pick",
+       "start": 3.44,
+       "end": 3.72
+      },
+      {
+       "word": "the",
+       "start": 3.72,
+       "end": 3.88
+      },
+      {
+       "word": "repo,",
+       "start": 3.88,
+       "end": 4.24
+      },
+      {
+       "word": "the",
+       "start": 4.4,
+       "end": 4.62
+      },
+      {
+       "word": "branch,",
+       "start": 4.62,
+       "end": 5.0
+      },
+      {
+       "word": "and",
+       "start": 5.18,
+       "end": 5.52
+      },
+      {
+       "word": "the",
+       "start": 5.52,
+       "end": 5.66
+      },
+      {
+       "word": "one",
+       "start": 5.66,
+       "end": 5.88
+      },
+      {
+       "word": "folder",
+       "start": 5.88,
+       "end": 6.26
+      },
+      {
+       "word": "it",
+       "start": 6.26,
+       "end": 6.5
+      },
+      {
+       "word": "may",
+       "start": 6.5,
+       "end": 6.64
+      },
+      {
+       "word": "touch.",
+       "start": 6.64,
+       "end": 7.08
+      },
+      {
+       "word": "Launch.",
+       "start": 7.44,
+       "end": 7.94
+      }
+     ],
+     "pass": false,
+     "name_heard": [],
+     "transcript_pass": true,
+     "sound": false,
+     "phonemes": "[ɐ] h oʊ l [m uː]"
+    },
+    {
+     "n": 6,
+     "seed": 44,
+     "said": "Now give the team a task: add a Hul moving average. Pick the repo, the branch, and the one folder it may touch. Launch.",
+     "form": "Now give the team a task: add a Hul moving average.",
+     "file": "video/out/v3/lines/renders/3.1-r6.wav",
+     "sha256": "95146551945e448a6edd5d584e794999129ed6e05fe6e273ba2bccad280008b0",
+     "raw_s": 8.96,
+     "duration_s": 8.784,
+     "transcript": "Now give the team a task. Add a whole moving average. Pick the repo, the branch, and the one folder it may touch. Launch.",
+     "words": [
+      {
+       "word": "Now",
+       "start": 0.0,
+       "end": 0.38
+      },
+      {
+       "word": "give",
+       "start": 0.38,
+       "end": 0.62
+      },
+      {
+       "word": "the",
+       "start": 0.62,
+       "end": 0.76
+      },
+      {
+       "word": "team",
+       "start": 0.76,
+       "end": 0.98
+      },
+      {
+       "word": "a",
+       "start": 0.98,
+       "end": 1.16
+      },
+      {
+       "word": "task.",
+       "start": 1.16,
+       "end": 1.56
+      },
+      {
+       "word": "Add",
+       "start": 1.74,
+       "end": 2.14
+      },
+      {
+       "word": "a",
+       "start": 2.14,
+       "end": 2.3
+      },
+      {
+       "word": "whole",
+       "start": 2.3,
+       "end": 2.46
+      },
+      {
+       "word": "moving",
+       "start": 2.46,
+       "end": 2.82
+      },
+      {
+       "word": "average.",
+       "start": 2.82,
+       "end": 3.22
+      },
+      {
+       "word": "Pick",
+       "start": 3.44,
+       "end": 3.94
+      },
+      {
+       "word": "the",
+       "start": 3.94,
+       "end": 4.1
+      },
+      {
+       "word": "repo,",
+       "start": 4.1,
+       "end": 4.46
+      },
+      {
+       "word": "the",
+       "start": 4.66,
+       "end": 4.9
+      },
+      {
+       "word": "branch,",
+       "start": 4.9,
+       "end": 5.32
+      },
+      {
+       "word": "and",
+       "start": 5.46,
+       "end": 5.78
+      },
+      {
+       "word": "the",
+       "start": 5.78,
+       "end": 5.9
+      },
+      {
+       "word": "one",
+       "start": 5.9,
+       "end": 6.2
+      },
+      {
+       "word": "folder",
+       "start": 6.2,
+       "end": 6.64
+      },
+      {
+       "word": "it",
+       "start": 6.64,
+       "end": 6.94
+      },
+      {
+       "word": "may",
+       "start": 6.94,
+       "end": 7.12
+      },
+      {
+       "word": "touch.",
+       "start": 7.12,
+       "end": 7.58
+      },
+      {
+       "word": "Launch.",
+       "start": 7.88,
+       "end": 8.42
+      }
+     ],
+     "pass": false,
+     "name_heard": [],
+     "transcript_pass": true,
+     "sound": false,
+     "phonemes": "[ɐ] h oʊ l [m uː]"
+    },
+    {
+     "n": 7,
+     "seed": 42,
+     "said": "Now give the team a task: add a Huhl moving average. Pick the repo, the branch, and the one folder it may touch. Launch.",
+     "form": "Now give the team a task: add a Huhl moving average.",
+     "file": "video/out/v3/lines/renders/3.1-r7.wav",
+     "sha256": "233c8a239798151fdf3fba83abe154351410fe78a56ef8b842d54e5b3e25b99c",
+     "raw_s": 9.12,
+     "duration_s": 9.173,
+     "transcript": "Now give the team a task, add a whole moving average, pick the repo, the branch, and the one folder it may touch, launch.",
+     "words": [
+      {
+       "word": "Now",
+       "start": 0.0,
+       "end": 0.34
+      },
+      {
+       "word": "give",
+       "start": 0.34,
+       "end": 0.64
+      },
+      {
+       "word": "the",
+       "start": 0.64,
+       "end": 0.84
+      },
+      {
+       "word": "team",
+       "start": 0.84,
+       "end": 1.1
+      },
+      {
+       "word": "a",
+       "start": 1.1,
+       "end": 1.34
+      },
+      {
+       "word": "task,",
+       "start": 1.34,
+       "end": 1.78
+      },
+      {
+       "word": "add",
+       "start": 1.96,
+       "end": 2.46
+      },
+      {
+       "word": "a",
+       "start": 2.46,
+       "end": 2.62
+      },
+      {
+       "word": "whole",
+       "start": 2.62,
+       "end": 2.94
+      },
+      {
+       "word": "moving",
+       "start": 2.94,
+       "end": 3.26
+      },
+      {
+       "word": "average,",
+       "start": 3.26,
+       "end": 3.7
+      },
+      {
+       "word": "pick",
+       "start": 4.14,
+       "end": 4.36
+      },
+      {
+       "word": "the",
+       "start": 4.36,
+       "end": 4.5
+      },
+      {
+       "word": "repo,",
+       "start": 4.5,
+       "end": 4.88
+      },
+      {
+       "word": "the",
+       "start": 5.04,
+       "end": 5.3
+      },
+      {
+       "word": "branch,",
+       "start": 5.3,
+       "end": 5.68
+      },
+      {
+       "word": "and",
+       "start": 5.88,
+       "end": 6.18
+      },
+      {
+       "word": "the",
+       "start": 6.18,
+       "end": 6.32
+      },
+      {
+       "word": "one",
+       "start": 6.32,
+       "end": 6.6
+      },
+      {
+       "word": "folder",
+       "start": 6.6,
+       "end": 7.02
+      },
+      {
+       "word": "it",
+       "start": 7.02,
+       "end": 7.28
+      },
+      {
+       "word": "may",
+       "start": 7.28,
+       "end": 7.58
+      },
+      {
+       "word": "touch,",
+       "start": 7.58,
+       "end": 8.02
+      },
+      {
+       "word": "launch.",
+       "start": 8.26,
+       "end": 8.76
+      }
+     ],
+     "pass": false,
+     "name_heard": [],
+     "transcript_pass": true,
+     "sound": false,
+     "phonemes": "[ɐ] h oʊ l [m uː]"
+    },
+    {
+     "n": 8,
+     "seed": 43,
+     "said": "Now give the team a task: add a Huhl moving average. Pick the repo, the branch, and the one folder it may touch. Launch.",
+     "form": "Now give the team a task: add a Huhl moving average.",
+     "file": "video/out/v3/lines/renders/3.1-r8.wav",
+     "sha256": "b2998faa43358453cd74bab9114b8f4b7e28b898dc93bd865f08259b8789011d",
+     "raw_s": 8.48,
+     "duration_s": 8.341,
+     "transcript": "Now give the team a task. Add a whole moving average. Pick the repo, the branch, and the one folder it may touch. Launch.",
+     "words": [
+      {
+       "word": "Now",
+       "start": 0.0,
+       "end": 0.38
+      },
+      {
+       "word": "give",
+       "start": 0.38,
+       "end": 0.58
+      },
+      {
+       "word": "the",
+       "start": 0.58,
+       "end": 0.72
+      },
+      {
+       "word": "team",
+       "start": 0.72,
+       "end": 0.92
+      },
+      {
+       "word": "a",
+       "start": 0.92,
+       "end": 1.1
+      },
+      {
+       "word": "task.",
+       "start": 1.1,
+       "end": 1.46
+      },
+      {
+       "word": "Add",
+       "start": 1.62,
+       "end": 2.0
+      },
+      {
+       "word": "a",
+       "start": 2.0,
+       "end": 2.14
+      },
+      {
+       "word": "whole",
+       "start": 2.14,
+       "end": 2.4
+      },
+      {
+       "word": "moving",
+       "start": 2.4,
+       "end": 2.74
+      },
+      {
+       "word": "average.",
+       "start": 2.74,
+       "end": 3.16
+      },
+      {
+       "word": "Pick",
+       "start": 3.38,
+       "end": 3.8
+      },
+      {
+       "word": "the",
+       "start": 3.8,
+       "end": 3.96
+      },
+      {
+       "word": "repo,",
+       "start": 3.96,
+       "end": 4.36
+      },
+      {
+       "word": "the",
+       "start": 4.52,
+       "end": 4.74
+      },
+      {
+       "word": "branch,",
+       "start": 4.74,
+       "end": 5.12
+      },
+      {
+       "word": "and",
+       "start": 5.24,
+       "end": 5.52
+      },
+      {
+       "word": "the",
+       "start": 5.52,
+       "end": 5.64
+      },
+      {
+       "word": "one",
+       "start": 5.64,
+       "end": 5.88
+      },
+      {
+       "word": "folder",
+       "start": 5.88,
+       "end": 6.26
+      },
+      {
+       "word": "it",
+       "start": 6.26,
+       "end": 6.48
+      },
+      {
+       "word": "may",
+       "start": 6.48,
+       "end": 6.64
+      },
+      {
+       "word": "touch.",
+       "start": 6.64,
+       "end": 7.04
+      },
+      {
+       "word": "Launch.",
+       "start": 7.46,
+       "end": 7.96
+      }
+     ],
+     "pass": false,
+     "name_heard": [],
+     "transcript_pass": true,
+     "sound": false,
+     "phonemes": "[ɐ] h oʊ l [m uː]"
+    },
+    {
+     "n": 9,
+     "seed": 44,
+     "said": "Now give the team a task: add a Huhl moving average. Pick the repo, the branch, and the one folder it may touch. Launch.",
+     "form": "Now give the team a task: add a Huhl moving average.",
+     "file": "video/out/v3/lines/renders/3.1-r9.wav",
+     "sha256": "d3dce186aa0d4e0e84687950e7732d5922ba74e9b57912d254a330bfaaef350d",
+     "raw_s": 8.32,
+     "duration_s": 8.171,
+     "transcript": "Now give the team a task. Add a whole moving average. Pick the repo, the branch, and the one folder it may touch. Launch.",
+     "words": [
+      {
+       "word": "Now",
+       "start": 0.0,
+       "end": 0.38
+      },
+      {
+       "word": "give",
+       "start": 0.38,
+       "end": 0.62
+      },
+      {
+       "word": "the",
+       "start": 0.62,
+       "end": 0.76
+      },
+      {
+       "word": "team",
+       "start": 0.76,
+       "end": 0.98
+      },
+      {
+       "word": "a",
+       "start": 0.98,
+       "end": 1.18
+      },
+      {
+       "word": "task.",
+       "start": 1.18,
+       "end": 1.56
+      },
+      {
+       "word": "Add",
+       "start": 1.76,
+       "end": 2.16
+      },
+      {
+       "word": "a",
+       "start": 2.16,
+       "end": 2.28
+      },
+      {
+       "word": "whole",
+       "start": 2.28,
+       "end": 2.5
+      },
+      {
+       "word": "moving",
+       "start": 2.5,
+       "end": 2.82
+      },
+      {
+       "word": "average.",
+       "start": 2.82,
+       "end": 3.26
+      },
+      {
+       "word": "Pick",
+       "start": 3.46,
+       "end": 3.9
+      },
+      {
+       "word": "the",
+       "start": 3.9,
+       "end": 4.04
+      },
+      {
+       "word": "repo,",
+       "start": 4.04,
+       "end": 4.4
+      },
+      {
+       "word": "the",
+       "start": 4.58,
+       "end": 4.82
+      },
+      {
+       "word": "branch,",
+       "start": 4.82,
+       "end": 5.22
+      },
+      {
+       "word": "and",
+       "start": 5.34,
+       "end": 5.54
+      },
+      {
+       "word": "the",
+       "start": 5.54,
+       "end": 5.66
+      },
+      {
+       "word": "one",
+       "start": 5.66,
+       "end": 5.9
+      },
+      {
+       "word": "folder",
+       "start": 5.9,
+       "end": 6.28
+      },
+      {
+       "word": "it",
+       "start": 6.28,
+       "end": 6.56
+      },
+      {
+       "word": "may",
+       "start": 6.56,
+       "end": 6.72
+      },
+      {
+       "word": "touch.",
+       "start": 6.72,
+       "end": 7.16
+      },
+      {
+       "word": "Launch.",
+       "start": 7.34,
+       "end": 7.82
+      }
+     ],
+     "pass": false,
+     "name_heard": [],
+     "transcript_pass": true,
+     "sound": false,
+     "phonemes": "[ɐ] h oʊ l [m uː]"
+    },
+    {
+     "n": 10,
+     "seed": 42,
+     "said": "Now give the team a task: add a Hull, moving average. Pick the repo, the branch, and the one folder it may touch. Launch.",
+     "form": "Now give the team a task: add a Hull, moving average.",
+     "file": "video/out/v3/lines/renders/3.1-r10.wav",
+     "sha256": "56b7eb1ec1546a42867ffe8559cb9b2729f43093176fd5ace87e8f7f863c5e44",
+     "raw_s": 8.8,
+     "duration_s": 8.816,
+     "transcript": "Now give the team a task. Add a hull, moving average. Pick the repo, the branch, and the one folder it may touch. Launch.",
+     "words": [
+      {
+       "word": "Now",
+       "start": 0.0,
+       "end": 0.32
+      },
+      {
+       "word": "give",
+       "start": 0.32,
+       "end": 0.64
+      },
+      {
+       "word": "the",
+       "start": 0.64,
+       "end": 0.82
+      },
+      {
+       "word": "team",
+       "start": 0.82,
+       "end": 1.08
+      },
+      {
+       "word": "a",
+       "start": 1.08,
+       "end": 1.26
+      },
+      {
+       "word": "task.",
+       "start": 1.26,
+       "end": 1.66
+      },
+      {
+       "word": "Add",
+       "start": 1.86,
+       "end": 2.22
+      },
+      {
+       "word": "a",
+       "start": 2.22,
+       "end": 2.38
+      },
+      {
+       "word": "hull,",
+       "start": 2.38,
+       "end": 2.66
+      },
+      {
+       "word": "moving",
+       "start": 2.78,
+       "end": 3.14
+      },
+      {
+       "word": "average.",
+       "start": 3.14,
+       "end": 3.54
+      },
+      {
+       "word": "Pick",
+       "start": 3.8,
+       "end": 4.16
+      },
+      {
+       "word": "the",
+       "start": 4.16,
+       "end": 4.32
+      },
+      {
+       "word": "repo,",
+       "start": 4.32,
+       "end": 4.7
+      },
+      {
+       "word": "the",
+       "start": 4.94,
+       "end": 5.02
+      },
+      {
+       "word": "branch,",
+       "start": 5.02,
+       "end": 5.42
+      },
+      {
+       "word": "and",
+       "start": 5.54,
+       "end": 5.8
+      },
+      {
+       "word": "the",
+       "start": 5.8,
+       "end": 5.94
+      },
+      {
+       "word": "one",
+       "start": 5.94,
+       "end": 6.18
+      },
+      {
+       "word": "folder",
+       "start": 6.18,
+       "end": 6.58
+      },
+      {
+       "word": "it",
+       "start": 6.58,
+       "end": 6.88
+      },
+      {
+       "word": "may",
+       "start": 6.88,
+       "end": 7.08
+      },
+      {
+       "word": "touch.",
+       "start": 7.08,
+       "end": 7.54
+      },
+      {
+       "word": "Launch.",
+       "start": 7.92,
+       "end": 8.44
+      }
+     ],
+     "pass": false,
+     "name_heard": [],
+     "transcript_pass": true,
+     "sound": false,
+     "phonemes": "[ɐ] h ɔ l [m uː]"
+    },
+    {
+     "n": 11,
+     "seed": 43,
+     "said": "Now give the team a task: add a Hull, moving average. Pick the repo, the branch, and the one folder it may touch. Launch.",
+     "form": "Now give the team a task: add a Hull, moving average.",
+     "file": "video/out/v3/lines/renders/3.1-r11.wav",
+     "sha256": "4677e68da1e5700502d6b0535a689c8c801f42ac55ebbc16bf7a6b9d1bef30fd",
+     "raw_s": 9.28,
+     "duration_s": 9.141,
+     "transcript": "Now give the team a task. Add a hull, moving average. Pick the repo, the branch, and the one folder it may touch. Launch.",
+     "words": [
+      {
+       "word": "Now",
+       "start": 0.0,
+       "end": 0.38
+      },
+      {
+       "word": "give",
+       "start": 0.38,
+       "end": 0.58
+      },
+      {
+       "word": "the",
+       "start": 0.58,
+       "end": 0.72
+      },
+      {
+       "word": "team",
+       "start": 0.72,
+       "end": 0.94
+      },
+      {
+       "word": "a",
+       "start": 0.94,
+       "end": 1.1
+      },
+      {
+       "word": "task.",
+       "start": 1.1,
+       "end": 1.46
+      },
+      {
+       "word": "Add",
+       "start": 1.64,
+       "end": 2.02
+      },
+      {
+       "word": "a",
+       "start": 2.02,
+       "end": 2.14
+      },
+      {
+       "word": "hull,",
+       "start": 2.14,
+       "end": 2.44
+      },
+      {
+       "word": "moving",
+       "start": 2.58,
+       "end": 2.98
+      },
+      {
+       "word": "average.",
+       "start": 2.98,
+       "end": 3.4
+      },
+      {
+       "word": "Pick",
+       "start": 3.72,
+       "end": 4.14
+      },
+      {
+       "word": "the",
+       "start": 4.14,
+       "end": 4.3
+      },
+      {
+       "word": "repo,",
+       "start": 4.3,
+       "end": 4.68
+      },
+      {
+       "word": "the",
+       "start": 4.96,
+       "end": 5.22
+      },
+      {
+       "word": "branch,",
+       "start": 5.22,
+       "end": 5.68
+      },
+      {
+       "word": "and",
+       "start": 5.88,
+       "end": 6.14
+      },
+      {
+       "word": "the",
+       "start": 6.14,
+       "end": 6.28
+      },
+      {
+       "word": "one",
+       "start": 6.28,
+       "end": 6.54
+      },
+      {
+       "word": "folder",
+       "start": 6.54,
+       "end": 6.96
+      },
+      {
+       "word": "it",
+       "start": 6.96,
+       "end": 7.2
+      },
+      {
+       "word": "may",
+       "start": 7.2,
+       "end": 7.38
+      },
+      {
+       "word": "touch.",
+       "start": 7.38,
+       "end": 7.8
+      },
+      {
+       "word": "Launch.",
+       "start": 8.18,
+       "end": 8.74
+      }
+     ],
+     "pass": false,
+     "name_heard": [],
+     "transcript_pass": true,
+     "sound": false,
+     "phonemes": "[ɐ] h ɔ l [m uː]"
+    },
+    {
+     "n": 12,
+     "seed": 44,
+     "said": "Now give the team a task: add a Hull, moving average. Pick the repo, the branch, and the one folder it may touch. Launch.",
+     "form": "Now give the team a task: add a Hull, moving average.",
+     "file": "video/out/v3/lines/renders/3.1-r12.wav",
+     "sha256": "b86783ccee6a9e9dd66969c5cadeb960fa8aa788c0af6c52e52701cad47be5cb",
+     "raw_s": 8.32,
+     "duration_s": 8.165,
+     "transcript": "Now give the team a task. Add a hull moving average. Pick the repo, the branch, and the one folder it may touch. Launch.",
+     "words": [
+      {
+       "word": "Now",
+       "start": 0.0,
+       "end": 0.38
+      },
+      {
+       "word": "give",
+       "start": 0.38,
+       "end": 0.62
+      },
+      {
+       "word": "the",
+       "start": 0.62,
+       "end": 0.76
+      },
+      {
+       "word": "team",
+       "start": 0.76,
+       "end": 0.98
+      },
+      {
+       "word": "a",
+       "start": 0.98,
+       "end": 1.16
+      },
+      {
+       "word": "task.",
+       "start": 1.16,
+       "end": 1.56
+      },
+      {
+       "word": "Add",
+       "start": 1.74,
+       "end": 2.18
+      },
+      {
+       "word": "a",
+       "start": 2.18,
+       "end": 2.32
+      },
+      {
+       "word": "hull",
+       "start": 2.32,
+       "end": 2.5
+      },
+      {
+       "word": "moving",
+       "start": 2.5,
+       "end": 2.82
+      },
+      {
+       "word": "average.",
+       "start": 2.82,
+       "end": 3.28
+      },
+      {
+       "word": "Pick",
+       "start": 3.5,
+       "end": 3.94
+      },
+      {
+       "word": "the",
+       "start": 3.94,
+       "end": 4.1
+      },
+      {
+       "word": "repo,",
+       "start": 4.1,
+       "end": 4.46
+      },
+      {
+       "word": "the",
+       "start": 4.62,
+       "end": 4.84
+      },
+      {
+       "word": "branch,",
+       "start": 4.84,
+       "end": 5.22
+      },
+      {
+       "word": "and",
+       "start": 5.32,
+       "end": 5.54
+      },
+      {
+       "word": "the",
+       "start": 5.54,
+       "end": 5.66
+      },
+      {
+       "word": "one",
+       "start": 5.66,
+       "end": 5.9
+      },
+      {
+       "word": "folder",
+       "start": 5.9,
+       "end": 6.28
+      },
+      {
+       "word": "it",
+       "start": 6.28,
+       "end": 6.56
+      },
+      {
+       "word": "may",
+       "start": 6.56,
+       "end": 6.72
+      },
+      {
+       "word": "touch.",
+       "start": 6.72,
+       "end": 7.16
+      },
+      {
+       "word": "Launch.",
+       "start": 7.36,
+       "end": 7.82
+      }
+     ],
+     "pass": false,
+     "name_heard": [],
+     "transcript_pass": true,
+     "sound": false,
+     "phonemes": "[ɐ] h ɔ l [m uː]"
+    },
+    {
+     "n": 13,
+     "seed": 42,
+     "said": "Now give the team a task: add a hull moving average. Pick the repo, the branch, and the one folder it may touch. Launch.",
+     "form": "Now give the team a task: add a hull moving average.",
+     "file": "video/out/v3/lines/renders/3.1-r13.wav",
+     "sha256": "386faf6afa8232ded9413763526369c7cfaa50367d0bb12bad520b3c4fce4d82",
+     "raw_s": 8.96,
+     "duration_s": 8.971,
+     "transcript": "Now give the team a task, add a hull moving average, pick the repo, the branch, and the one folder it may touch. Launch.",
+     "words": [
+      {
+       "word": "Now",
+       "start": 0.0,
+       "end": 0.34
+      },
+      {
+       "word": "give",
+       "start": 0.34,
+       "end": 0.64
+      },
+      {
+       "word": "the",
+       "start": 0.64,
+       "end": 0.82
+      },
+      {
+       "word": "team",
+       "start": 0.82,
+       "end": 1.1
+      },
+      {
+       "word": "a",
+       "start": 1.1,
+       "end": 1.36
+      },
+      {
+       "word": "task,",
+       "start": 1.36,
+       "end": 1.78
+      },
+      {
+       "word": "add",
+       "start": 1.96,
+       "end": 2.44
+      },
+      {
+       "word": "a",
+       "start": 2.44,
+       "end": 2.58
+      },
+      {
+       "word": "hull",
+       "start": 2.58,
+       "end": 2.8
+      },
+      {
+       "word": "moving",
+       "start": 2.8,
+       "end": 3.12
+      },
+      {
+       "word": "average,",
+       "start": 3.12,
+       "end": 3.56
+      },
+      {
+       "word": "pick",
+       "start": 3.94,
+       "end": 4.28
+      },
+      {
+       "word": "the",
+       "start": 4.28,
+       "end": 4.44
+      },
+      {
+       "word": "repo,",
+       "start": 4.44,
+       "end": 4.82
+      },
+      {
+       "word": "the",
+       "start": 5.04,
+       "end": 5.32
+      },
+      {
+       "word": "branch,",
+       "start": 5.32,
+       "end": 5.76
+      },
+      {
+       "word": "and",
+       "start": 5.98,
+       "end": 6.22
+      },
+      {
+       "word": "the",
+       "start": 6.22,
+       "end": 6.36
+      },
+      {
+       "word": "one",
+       "start": 6.36,
+       "end": 6.64
+      },
+      {
+       "word": "folder",
+       "start": 6.64,
+       "end": 7.04
+      },
+      {
+       "word": "it",
+       "start": 7.04,
+       "end": 7.28
+      },
+      {
+       "word": "may",
+       "start": 7.28,
+       "end": 7.42
+      },
+      {
+       "word": "touch.",
+       "start": 7.42,
+       "end": 7.86
+      },
+      {
+       "word": "Launch.",
+       "start": 8.06,
+       "end": 8.62
+      }
+     ],
+     "pass": false,
+     "name_heard": [],
+     "transcript_pass": true,
+     "sound": false,
+     "phonemes": "[ɐ] h ɔ l [m uː]"
+    },
+    {
+     "n": 14,
+     "seed": 43,
+     "said": "Now give the team a task: add a hull moving average. Pick the repo, the branch, and the one folder it may touch. Launch.",
+     "form": "Now give the team a task: add a hull moving average.",
+     "file": "video/out/v3/lines/renders/3.1-r14.wav",
+     "sha256": "6d85a0ccccb5b875500de0374f61f58c8b5fc28d67802d30e0bd6acbf0f0b90e",
+     "raw_s": 9.28,
+     "duration_s": 9.136,
+     "transcript": "Now give the team a task. Add a hull moving average. Pick the repo, the branch, and the one folder it may touch. Launch.",
+     "words": [
+      {
+       "word": "Now",
+       "start": 0.0,
+       "end": 0.38
+      },
+      {
+       "word": "give",
+       "start": 0.38,
+       "end": 0.62
+      },
+      {
+       "word": "the",
+       "start": 0.62,
+       "end": 0.78
+      },
+      {
+       "word": "team",
+       "start": 0.78,
+       "end": 1.0
+      },
+      {
+       "word": "a",
+       "start": 1.0,
+       "end": 1.18
+      },
+      {
+       "word": "task.",
+       "start": 1.18,
+       "end": 1.58
+      },
+      {
+       "word": "Add",
+       "start": 1.76,
+       "end": 2.12
+      },
+      {
+       "word": "a",
+       "start": 2.12,
+       "end": 2.26
+      },
+      {
+       "word": "hull",
+       "start": 2.26,
+       "end": 2.5
+      },
+      {
+       "word": "moving",
+       "start": 2.5,
+       "end": 2.82
+      },
+      {
+       "word": "average.",
+       "start": 2.82,
+       "end": 3.28
+      },
+      {
+       "word": "Pick",
+       "start": 3.58,
+       "end": 4.06
+      },
+      {
+       "word": "the",
+       "start": 4.06,
+       "end": 4.22
+      },
+      {
+       "word": "repo,",
+       "start": 4.22,
+       "end": 4.6
+      },
+      {
+       "word": "the",
+       "start": 4.76,
+       "end": 5.04
+      },
+      {
+       "word": "branch,",
+       "start": 5.04,
+       "end": 5.44
+      },
+      {
+       "word": "and",
+       "start": 5.6,
+       "end": 5.94
+      },
+      {
+       "word": "the",
+       "start": 5.94,
+       "end": 6.08
+      },
+      {
+       "word": "one",
+       "start": 6.08,
+       "end": 6.36
+      },
+      {
+       "word": "folder",
+       "start": 6.36,
+       "end": 6.8
+      },
+      {
+       "word": "it",
+       "start": 6.8,
+       "end": 7.08
+      },
+      {
+       "word": "may",
+       "start": 7.08,
+       "end": 7.3
+      },
+      {
+       "word": "touch.",
+       "start": 7.3,
+       "end": 7.78
+      },
+      {
+       "word": "Launch.",
+       "start": 8.14,
+       "end": 8.72
+      }
+     ],
+     "pass": false,
+     "name_heard": [],
+     "transcript_pass": true,
+     "sound": false,
+     "phonemes": "[ɐ] h oʊ l [m uː]"
+    },
+    {
+     "n": 15,
+     "seed": 44,
+     "said": "Now give the team a task: add a hull moving average. Pick the repo, the branch, and the one folder it may touch. Launch.",
+     "form": "Now give the team a task: add a hull moving average.",
+     "file": "video/out/v3/lines/renders/3.1-r15.wav",
+     "sha256": "d77d171122a70413b5280c90bb81a37f9fbda920febe18dc72fea827caa3b6f8",
+     "raw_s": 8.96,
+     "duration_s": 8.768,
+     "transcript": "Now give the team a task. Add a hull moving average. Pick the repo, the branch, and the one folder it may touch. Launch.",
+     "words": [
+      {
+       "word": "Now",
+       "start": 0.0,
+       "end": 0.38
+      },
+      {
+       "word": "give",
+       "start": 0.38,
+       "end": 0.62
+      },
+      {
+       "word": "the",
+       "start": 0.62,
+       "end": 0.76
+      },
+      {
+       "word": "team",
+       "start": 0.76,
+       "end": 0.98
+      },
+      {
+       "word": "a",
+       "start": 0.98,
+       "end": 1.18
+      },
+      {
+       "word": "task.",
+       "start": 1.18,
+       "end": 1.56
+      },
+      {
+       "word": "Add",
+       "start": 1.76,
+       "end": 2.16
+      },
+      {
+       "word": "a",
+       "start": 2.16,
+       "end": 2.3
+      },
+      {
+       "word": "hull",
+       "start": 2.3,
+       "end": 2.5
+      },
+      {
+       "word": "moving",
+       "start": 2.5,
+       "end": 2.8
+      },
+      {
+       "word": "average.",
+       "start": 2.8,
+       "end": 3.26
+      },
+      {
+       "word": "Pick",
+       "start": 3.52,
+       "end": 3.94
+      },
+      {
+       "word": "the",
+       "start": 3.94,
+       "end": 4.14
+      },
+      {
+       "word": "repo,",
+       "start": 4.14,
+       "end": 4.5
+      },
+      {
+       "word": "the",
+       "start": 4.66,
+       "end": 4.9
+      },
+      {
+       "word": "branch,",
+       "start": 4.9,
+       "end": 5.32
+      },
+      {
+       "word": "and",
+       "start": 5.46,
+       "end": 5.78
+      },
+      {
+       "word": "the",
+       "start": 5.78,
+       "end": 5.9
+      },
+      {
+       "word": "one",
+       "start": 5.9,
+       "end": 6.2
+      },
+      {
+       "word": "folder",
+       "start": 6.2,
+       "end": 6.64
+      },
+      {
+       "word": "it",
+       "start": 6.64,
+       "end": 6.94
+      },
+      {
+       "word": "may",
+       "start": 6.94,
+       "end": 7.12
+      },
+      {
+       "word": "touch.",
+       "start": 7.12,
+       "end": 7.56
+      },
+      {
+       "word": "Launch.",
+       "start": 7.84,
+       "end": 8.4
+      }
+     ],
+     "pass": false,
+     "name_heard": [],
+     "transcript_pass": true,
+     "sound": false,
+     "phonemes": "[ɐ] h oʊ l [m uː]"
     }
    ],
    "chapter": 3,
@@ -2106,7 +3762,13 @@
    "sha256": "fc17a7718f3ba2d225c2f12b467e326dd1d6f0eb997c6dd8321f3e9eb7cf0b32",
    "render": 2,
    "flagged": true,
-   "note": "the transcript gate heard 'whole moving average' in all 3 renders; with the hint 'Hull moving average' (a diagnostic, not the gate) all 3 read 'Hull' — r2 used for timing and the listen-through; the operator judges it by ear"
+   "note": "the transcript gate heard 'whole moving average' in all 3 renders; with the hint 'Hull moving average' (a diagnostic, not the gate) all 3 read 'Hull' — r2 used for timing and the listen-through; the operator judges it by ear",
+   "v3_kept": {
+    "file": "video/out/v3/lines/renders/3.1-v3.wav",
+    "sha256": "fc17a7718f3ba2d225c2f12b467e326dd1d6f0eb997c6dd8321f3e9eb7cf0b32",
+    "render": 2
+   },
+   "v3b": "12 spoken renders (V3b: 'Hul', 'Huhl', 'Hull,', 'hull' × seeds 42/43/44), none passed the sound check — VoxCPM2 said h oʊ l (7), h ɔ l (4) or h ɔː l (1), never ʌ; V3's r2 stays. Best three by the phoneme model's P(ʌ) on the vowel: r10 'Hull,' seed 42 h ɔ l (0.216), r13 'hull' seed 42 h ɔ l (0.200), r11 'Hull,' seed 43 h ɔ l (0.136)."
   },
   "3.2": {
    "text": "One bar shows what every agent is doing. Activity tells you, in plain words.",
@@ -5459,14 +7121,1032 @@
      ],
      "pass": false,
      "name_heard": []
+    },
+    {
+     "n": 4,
+     "seed": 42,
+     "said": "The failed run waits for you, in Needs you. Resume from the step that broke. The spec and your approval are kept, and only the steps that run again use your subscription. Seven minutes later, it shipped.",
+     "form": "The failed run waits for you, in Needs you.",
+     "file": "video/out/v3/lines/renders/4.2-r4.wav",
+     "sha256": "180955c85f2e2e650c6458f3ec0264237124bc4f7fbd5a7590e3b3a730078094",
+     "raw_s": 13.28,
+     "duration_s": 12.885,
+     "transcript": "The failed run waits for you. It needs you. Resume from the step that broke. The spec and your approval are kept, and only the steps that run again use your subscription. Seven minutes later, it's shipped.",
+     "words": [
+      {
+       "word": "The",
+       "start": 0.0,
+       "end": 0.2
+      },
+      {
+       "word": "failed",
+       "start": 0.2,
+       "end": 0.58
+      },
+      {
+       "word": "run",
+       "start": 0.58,
+       "end": 0.9
+      },
+      {
+       "word": "waits",
+       "start": 0.9,
+       "end": 1.24
+      },
+      {
+       "word": "for",
+       "start": 1.24,
+       "end": 1.46
+      },
+      {
+       "word": "you.",
+       "start": 1.46,
+       "end": 1.7
+      },
+      {
+       "word": "It",
+       "start": 1.86,
+       "end": 2.08
+      },
+      {
+       "word": "needs",
+       "start": 2.08,
+       "end": 2.38
+      },
+      {
+       "word": "you.",
+       "start": 2.38,
+       "end": 2.62
+      },
+      {
+       "word": "Resume",
+       "start": 2.86,
+       "end": 3.46
+      },
+      {
+       "word": "from",
+       "start": 3.46,
+       "end": 3.64
+      },
+      {
+       "word": "the",
+       "start": 3.64,
+       "end": 3.8
+      },
+      {
+       "word": "step",
+       "start": 3.8,
+       "end": 4.1
+      },
+      {
+       "word": "that",
+       "start": 4.1,
+       "end": 4.42
+      },
+      {
+       "word": "broke.",
+       "start": 4.42,
+       "end": 4.76
+      },
+      {
+       "word": "The",
+       "start": 5.04,
+       "end": 5.46
+      },
+      {
+       "word": "spec",
+       "start": 5.46,
+       "end": 5.76
+      },
+      {
+       "word": "and",
+       "start": 5.76,
+       "end": 6.06
+      },
+      {
+       "word": "your",
+       "start": 6.06,
+       "end": 6.2
+      },
+      {
+       "word": "approval",
+       "start": 6.2,
+       "end": 6.62
+      },
+      {
+       "word": "are",
+       "start": 6.62,
+       "end": 6.84
+      },
+      {
+       "word": "kept,",
+       "start": 6.84,
+       "end": 7.16
+      },
+      {
+       "word": "and",
+       "start": 7.18,
+       "end": 7.68
+      },
+      {
+       "word": "only",
+       "start": 7.68,
+       "end": 7.98
+      },
+      {
+       "word": "the",
+       "start": 7.98,
+       "end": 8.14
+      },
+      {
+       "word": "steps",
+       "start": 8.14,
+       "end": 8.46
+      },
+      {
+       "word": "that",
+       "start": 8.46,
+       "end": 8.7
+      },
+      {
+       "word": "run",
+       "start": 8.7,
+       "end": 8.94
+      },
+      {
+       "word": "again",
+       "start": 8.94,
+       "end": 9.26
+      },
+      {
+       "word": "use",
+       "start": 9.26,
+       "end": 9.64
+      },
+      {
+       "word": "your",
+       "start": 9.64,
+       "end": 9.8
+      },
+      {
+       "word": "subscription.",
+       "start": 9.8,
+       "end": 10.3
+      },
+      {
+       "word": "Seven",
+       "start": 10.88,
+       "end": 11.24
+      },
+      {
+       "word": "minutes",
+       "start": 11.24,
+       "end": 11.54
+      },
+      {
+       "word": "later,",
+       "start": 11.54,
+       "end": 11.86
+      },
+      {
+       "word": "it's",
+       "start": 12.02,
+       "end": 12.38
+      },
+      {
+       "word": "shipped.",
+       "start": 12.38,
+       "end": 12.58
+      }
+     ],
+     "pass": false,
+     "name_heard": [],
+     "transcript_pass": false,
+     "sound": false,
+     "phonemes": "[j uː] ɪ t [n iː]"
+    },
+    {
+     "n": 5,
+     "seed": 43,
+     "said": "The failed run waits for you, in Needs you. Resume from the step that broke. The spec and your approval are kept, and only the steps that run again use your subscription. Seven minutes later, it shipped.",
+     "form": "The failed run waits for you, in Needs you.",
+     "file": "video/out/v3/lines/renders/4.2-r5.wav",
+     "sha256": "09962e0be3c9138061b12c71013ff9ab26e1ace7b427557330c7299da44ea3e1",
+     "raw_s": 13.6,
+     "duration_s": 13.659,
+     "transcript": "The failed run waits for you and needs you. Resume from the step that broke. The spec and your approval are kept. And only the steps that run again use your subscription. Seven minutes later, it's shipped.",
+     "words": [
+      {
+       "word": "The",
+       "start": 0.0,
+       "end": 0.2
+      },
+      {
+       "word": "failed",
+       "start": 0.2,
+       "end": 0.56
+      },
+      {
+       "word": "run",
+       "start": 0.56,
+       "end": 0.86
+      },
+      {
+       "word": "waits",
+       "start": 0.86,
+       "end": 1.2
+      },
+      {
+       "word": "for",
+       "start": 1.2,
+       "end": 1.42
+      },
+      {
+       "word": "you",
+       "start": 1.42,
+       "end": 1.64
+      },
+      {
+       "word": "and",
+       "start": 1.64,
+       "end": 2.04
+      },
+      {
+       "word": "needs",
+       "start": 2.04,
+       "end": 2.42
+      },
+      {
+       "word": "you.",
+       "start": 2.42,
+       "end": 2.68
+      },
+      {
+       "word": "Resume",
+       "start": 3.26,
+       "end": 3.86
+      },
+      {
+       "word": "from",
+       "start": 3.86,
+       "end": 4.04
+      },
+      {
+       "word": "the",
+       "start": 4.04,
+       "end": 4.2
+      },
+      {
+       "word": "step",
+       "start": 4.2,
+       "end": 4.5
+      },
+      {
+       "word": "that",
+       "start": 4.5,
+       "end": 4.74
+      },
+      {
+       "word": "broke.",
+       "start": 4.74,
+       "end": 5.06
+      },
+      {
+       "word": "The",
+       "start": 5.38,
+       "end": 5.78
+      },
+      {
+       "word": "spec",
+       "start": 5.78,
+       "end": 6.08
+      },
+      {
+       "word": "and",
+       "start": 6.08,
+       "end": 6.36
+      },
+      {
+       "word": "your",
+       "start": 6.36,
+       "end": 6.52
+      },
+      {
+       "word": "approval",
+       "start": 6.52,
+       "end": 6.94
+      },
+      {
+       "word": "are",
+       "start": 6.94,
+       "end": 7.18
+      },
+      {
+       "word": "kept.",
+       "start": 7.18,
+       "end": 7.58
+      },
+      {
+       "word": "And",
+       "start": 7.84,
+       "end": 8.24
+      },
+      {
+       "word": "only",
+       "start": 8.24,
+       "end": 8.58
+      },
+      {
+       "word": "the",
+       "start": 8.58,
+       "end": 8.76
+      },
+      {
+       "word": "steps",
+       "start": 8.76,
+       "end": 9.1
+      },
+      {
+       "word": "that",
+       "start": 9.1,
+       "end": 9.3
+      },
+      {
+       "word": "run",
+       "start": 9.3,
+       "end": 9.52
+      },
+      {
+       "word": "again",
+       "start": 9.52,
+       "end": 9.84
+      },
+      {
+       "word": "use",
+       "start": 9.84,
+       "end": 10.26
+      },
+      {
+       "word": "your",
+       "start": 10.26,
+       "end": 10.44
+      },
+      {
+       "word": "subscription.",
+       "start": 10.44,
+       "end": 11.0
+      },
+      {
+       "word": "Seven",
+       "start": 11.54,
+       "end": 12.08
+      },
+      {
+       "word": "minutes",
+       "start": 12.08,
+       "end": 12.38
+      },
+      {
+       "word": "later,",
+       "start": 12.38,
+       "end": 12.72
+      },
+      {
+       "word": "it's",
+       "start": 12.96,
+       "end": 13.18
+      },
+      {
+       "word": "shipped.",
+       "start": 13.18,
+       "end": 13.38
+      }
+     ],
+     "pass": false,
+     "name_heard": [],
+     "transcript_pass": false,
+     "sound": true,
+     "phonemes": "[j uː] ɪ n [n iː]"
+    },
+    {
+     "n": 6,
+     "seed": 44,
+     "said": "The failed run waits for you, in Needs you. Resume from the step that broke. The spec and your approval are kept, and only the steps that run again use your subscription. Seven minutes later, it shipped.",
+     "form": "The failed run waits for you, in Needs you.",
+     "file": "video/out/v3/lines/renders/4.2-r6.wav",
+     "sha256": "79510c0444612915d8aceaa39f6657e4ddfaf00c4b3d15d2d3715dfd3f3db171",
+     "raw_s": 12.8,
+     "duration_s": 12.683,
+     "transcript": "The failed run waits for you, it needs you. Resume from the step that broke. The spec and your approval are kept. And only the steps that run again use your subscription. Seven minutes later, it's shipped.",
+     "words": [
+      {
+       "word": "The",
+       "start": 0.0,
+       "end": 0.24
+      },
+      {
+       "word": "failed",
+       "start": 0.24,
+       "end": 0.58
+      },
+      {
+       "word": "run",
+       "start": 0.58,
+       "end": 0.9
+      },
+      {
+       "word": "waits",
+       "start": 0.9,
+       "end": 1.24
+      },
+      {
+       "word": "for",
+       "start": 1.24,
+       "end": 1.48
+      },
+      {
+       "word": "you,",
+       "start": 1.48,
+       "end": 1.68
+      },
+      {
+       "word": "it",
+       "start": 1.9,
+       "end": 2.0
+      },
+      {
+       "word": "needs",
+       "start": 2.0,
+       "end": 2.34
+      },
+      {
+       "word": "you.",
+       "start": 2.34,
+       "end": 2.58
+      },
+      {
+       "word": "Resume",
+       "start": 2.82,
+       "end": 3.38
+      },
+      {
+       "word": "from",
+       "start": 3.38,
+       "end": 3.56
+      },
+      {
+       "word": "the",
+       "start": 3.56,
+       "end": 3.74
+      },
+      {
+       "word": "step",
+       "start": 3.74,
+       "end": 4.02
+      },
+      {
+       "word": "that",
+       "start": 4.02,
+       "end": 4.24
+      },
+      {
+       "word": "broke.",
+       "start": 4.24,
+       "end": 4.54
+      },
+      {
+       "word": "The",
+       "start": 4.82,
+       "end": 5.2
+      },
+      {
+       "word": "spec",
+       "start": 5.2,
+       "end": 5.5
+      },
+      {
+       "word": "and",
+       "start": 5.5,
+       "end": 5.78
+      },
+      {
+       "word": "your",
+       "start": 5.78,
+       "end": 5.94
+      },
+      {
+       "word": "approval",
+       "start": 5.94,
+       "end": 6.36
+      },
+      {
+       "word": "are",
+       "start": 6.36,
+       "end": 6.58
+      },
+      {
+       "word": "kept.",
+       "start": 6.58,
+       "end": 6.9
+      },
+      {
+       "word": "And",
+       "start": 7.12,
+       "end": 7.48
+      },
+      {
+       "word": "only",
+       "start": 7.48,
+       "end": 7.82
+      },
+      {
+       "word": "the",
+       "start": 7.82,
+       "end": 8.0
+      },
+      {
+       "word": "steps",
+       "start": 8.0,
+       "end": 8.32
+      },
+      {
+       "word": "that",
+       "start": 8.32,
+       "end": 8.54
+      },
+      {
+       "word": "run",
+       "start": 8.54,
+       "end": 8.76
+      },
+      {
+       "word": "again",
+       "start": 8.76,
+       "end": 9.06
+      },
+      {
+       "word": "use",
+       "start": 9.06,
+       "end": 9.42
+      },
+      {
+       "word": "your",
+       "start": 9.42,
+       "end": 9.58
+      },
+      {
+       "word": "subscription.",
+       "start": 9.58,
+       "end": 10.12
+      },
+      {
+       "word": "Seven",
+       "start": 10.6,
+       "end": 11.08
+      },
+      {
+       "word": "minutes",
+       "start": 11.08,
+       "end": 11.38
+      },
+      {
+       "word": "later,",
+       "start": 11.38,
+       "end": 11.7
+      },
+      {
+       "word": "it's",
+       "start": 11.84,
+       "end": 12.16
+      },
+      {
+       "word": "shipped.",
+       "start": 12.16,
+       "end": 12.4
+      }
+     ],
+     "pass": false,
+     "name_heard": [],
+     "transcript_pass": false,
+     "sound": false,
+     "phonemes": "[j uː] ɪ n d [n iː]"
+    },
+    {
+     "n": 7,
+     "seed": 42,
+     "said": "The failed run waits for you in \"Needs you\". Resume from the step that broke. The spec and your approval are kept, and only the steps that run again use your subscription. Seven minutes later, it shipped.",
+     "form": "The failed run waits for you in \"Needs you\".",
+     "file": "video/out/v3/lines/renders/4.2-r7.wav",
+     "sha256": "5df4e34053429ea20275145b68849e0388bccbfca1e57d570c8303d9fdd76f4a",
+     "raw_s": 13.28,
+     "duration_s": 12.885,
+     "transcript": "The failed run waits for you and needs you. Resume from the step that broke. The spec and your approval are kept, and only the steps that run again use your subscription. Seven minutes later, it's shipped.",
+     "words": [
+      {
+       "word": "The",
+       "start": 0.0,
+       "end": 0.2
+      },
+      {
+       "word": "failed",
+       "start": 0.2,
+       "end": 0.58
+      },
+      {
+       "word": "run",
+       "start": 0.58,
+       "end": 0.88
+      },
+      {
+       "word": "waits",
+       "start": 0.88,
+       "end": 1.22
+      },
+      {
+       "word": "for",
+       "start": 1.22,
+       "end": 1.44
+      },
+      {
+       "word": "you",
+       "start": 1.44,
+       "end": 1.7
+      },
+      {
+       "word": "and",
+       "start": 1.7,
+       "end": 1.94
+      },
+      {
+       "word": "needs",
+       "start": 1.94,
+       "end": 2.28
+      },
+      {
+       "word": "you.",
+       "start": 2.28,
+       "end": 2.58
+      },
+      {
+       "word": "Resume",
+       "start": 2.88,
+       "end": 3.48
+      },
+      {
+       "word": "from",
+       "start": 3.48,
+       "end": 3.66
+      },
+      {
+       "word": "the",
+       "start": 3.66,
+       "end": 3.8
+      },
+      {
+       "word": "step",
+       "start": 3.8,
+       "end": 4.1
+      },
+      {
+       "word": "that",
+       "start": 4.1,
+       "end": 4.42
+      },
+      {
+       "word": "broke.",
+       "start": 4.42,
+       "end": 4.76
+      },
+      {
+       "word": "The",
+       "start": 5.06,
+       "end": 5.46
+      },
+      {
+       "word": "spec",
+       "start": 5.46,
+       "end": 5.78
+      },
+      {
+       "word": "and",
+       "start": 5.78,
+       "end": 6.06
+      },
+      {
+       "word": "your",
+       "start": 6.06,
+       "end": 6.22
+      },
+      {
+       "word": "approval",
+       "start": 6.22,
+       "end": 6.62
+      },
+      {
+       "word": "are",
+       "start": 6.62,
+       "end": 6.84
+      },
+      {
+       "word": "kept,",
+       "start": 6.84,
+       "end": 7.16
+      },
+      {
+       "word": "and",
+       "start": 7.2,
+       "end": 7.68
+      },
+      {
+       "word": "only",
+       "start": 7.68,
+       "end": 7.98
+      },
+      {
+       "word": "the",
+       "start": 7.98,
+       "end": 8.16
+      },
+      {
+       "word": "steps",
+       "start": 8.16,
+       "end": 8.46
+      },
+      {
+       "word": "that",
+       "start": 8.46,
+       "end": 8.68
+      },
+      {
+       "word": "run",
+       "start": 8.68,
+       "end": 8.92
+      },
+      {
+       "word": "again",
+       "start": 8.92,
+       "end": 9.22
+      },
+      {
+       "word": "use",
+       "start": 9.22,
+       "end": 9.62
+      },
+      {
+       "word": "your",
+       "start": 9.62,
+       "end": 9.8
+      },
+      {
+       "word": "subscription.",
+       "start": 9.8,
+       "end": 10.3
+      },
+      {
+       "word": "Seven",
+       "start": 10.86,
+       "end": 11.24
+      },
+      {
+       "word": "minutes",
+       "start": 11.24,
+       "end": 11.54
+      },
+      {
+       "word": "later,",
+       "start": 11.54,
+       "end": 11.86
+      },
+      {
+       "word": "it's",
+       "start": 12.04,
+       "end": 12.38
+      },
+      {
+       "word": "shipped.",
+       "start": 12.38,
+       "end": 12.58
+      }
+     ],
+     "pass": false,
+     "name_heard": [],
+     "transcript_pass": false,
+     "sound": false,
+     "phonemes": "[j uː] ɪ n d [n iː]"
+    },
+    {
+     "n": 8,
+     "seed": 43,
+     "said": "The failed run waits for you in \"Needs you\". Resume from the step that broke. The spec and your approval are kept, and only the steps that run again use your subscription. Seven minutes later, it shipped.",
+     "form": "The failed run waits for you in \"Needs you\".",
+     "file": "video/out/v3/lines/renders/4.2-r8.wav",
+     "sha256": "7674b70b479d22163188c0012e3332cc7a8562e72f535f0cb423599b998b7b22",
+     "raw_s": 13.6,
+     "duration_s": 13.712,
+     "transcript": "The failed run waits for you in Needs You. Resume from the step that broke. The spec and your approval are kept, and only the steps that run again use your subscription. Seven minutes later, It shipped.",
+     "words": [
+      {
+       "word": "The",
+       "start": 0.0,
+       "end": 0.2
+      },
+      {
+       "word": "failed",
+       "start": 0.2,
+       "end": 0.58
+      },
+      {
+       "word": "run",
+       "start": 0.58,
+       "end": 0.86
+      },
+      {
+       "word": "waits",
+       "start": 0.86,
+       "end": 1.18
+      },
+      {
+       "word": "for",
+       "start": 1.18,
+       "end": 1.4
+      },
+      {
+       "word": "you",
+       "start": 1.4,
+       "end": 1.66
+      },
+      {
+       "word": "in",
+       "start": 1.66,
+       "end": 2.06
+      },
+      {
+       "word": "Needs",
+       "start": 2.06,
+       "end": 2.46
+      },
+      {
+       "word": "You.",
+       "start": 2.46,
+       "end": 2.72
+      },
+      {
+       "word": "Resume",
+       "start": 3.26,
+       "end": 3.86
+      },
+      {
+       "word": "from",
+       "start": 3.86,
+       "end": 4.06
+      },
+      {
+       "word": "the",
+       "start": 4.06,
+       "end": 4.22
+      },
+      {
+       "word": "step",
+       "start": 4.22,
+       "end": 4.5
+      },
+      {
+       "word": "that",
+       "start": 4.5,
+       "end": 4.74
+      },
+      {
+       "word": "broke.",
+       "start": 4.74,
+       "end": 5.06
+      },
+      {
+       "word": "The",
+       "start": 5.36,
+       "end": 5.78
+      },
+      {
+       "word": "spec",
+       "start": 5.78,
+       "end": 6.08
+      },
+      {
+       "word": "and",
+       "start": 6.08,
+       "end": 6.4
+      },
+      {
+       "word": "your",
+       "start": 6.4,
+       "end": 6.56
+      },
+      {
+       "word": "approval",
+       "start": 6.56,
+       "end": 7.0
+      },
+      {
+       "word": "are",
+       "start": 7.0,
+       "end": 7.26
+      },
+      {
+       "word": "kept,",
+       "start": 7.26,
+       "end": 7.64
+      },
+      {
+       "word": "and",
+       "start": 7.82,
+       "end": 8.24
+      },
+      {
+       "word": "only",
+       "start": 8.24,
+       "end": 8.58
+      },
+      {
+       "word": "the",
+       "start": 8.58,
+       "end": 8.76
+      },
+      {
+       "word": "steps",
+       "start": 8.76,
+       "end": 9.08
+      },
+      {
+       "word": "that",
+       "start": 9.08,
+       "end": 9.3
+      },
+      {
+       "word": "run",
+       "start": 9.3,
+       "end": 9.54
+      },
+      {
+       "word": "again",
+       "start": 9.54,
+       "end": 9.86
+      },
+      {
+       "word": "use",
+       "start": 9.86,
+       "end": 10.32
+      },
+      {
+       "word": "your",
+       "start": 10.32,
+       "end": 10.48
+      },
+      {
+       "word": "subscription.",
+       "start": 10.48,
+       "end": 11.04
+      },
+      {
+       "word": "Seven",
+       "start": 11.62,
+       "end": 12.08
+      },
+      {
+       "word": "minutes",
+       "start": 12.08,
+       "end": 12.38
+      },
+      {
+       "word": "later,",
+       "start": 12.38,
+       "end": 12.72
+      },
+      {
+       "word": "It",
+       "start": 12.72,
+       "end": 13.1
+      },
+      {
+       "word": "shipped.",
+       "start": 13.1,
+       "end": 13.32
+      }
+     ],
+     "pass": true,
+     "name_heard": [],
+     "transcript_pass": true,
+     "sound": true,
+     "phonemes": "[j uː] ɪ n [n iː]"
     }
    ],
    "chapter": 4,
    "file": "video/out/v3/lines/4.2.wav",
-   "sha256": "ca57cd2870a4bae72453928fb288c3f7cde7420aa1e5b4d417b26b34683a9e97",
-   "render": 1,
-   "flagged": true,
-   "note": "the transcript gate heard 'waits for you and needs you' for 'in Needs you' in all 3 renders (r2 also added 'it' and 'it's shipped', r3 'it's shipped'); a context hint did not change it — r1 (only in/and differs) used for timing; the operator judges it by ear"
+   "sha256": "7674b70b479d22163188c0012e3332cc7a8562e72f535f0cb423599b998b7b22",
+   "render": 8,
+   "v3_kept": {
+    "file": "video/out/v3/lines/renders/4.2-v3.wav",
+    "sha256": "ca57cd2870a4bae72453928fb288c3f7cde7420aa1e5b4d417b26b34683a9e97",
+    "render": 1
+   }
   }
  }
 }

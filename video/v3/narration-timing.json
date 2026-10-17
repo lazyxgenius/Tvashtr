@@ -3003,16 +3003,18 @@
    "chapter": 4,
    "text": "The failed run waits for you in Needs you. Resume from the step that broke. The spec and your approval are kept, and only the steps that run again use your subscription. Seven minutes later, it shipped.",
    "file": "video/out/v3/lines/4.2.wav",
-   "sha256": "ca57cd2870a4bae72453928fb288c3f7cde7420aa1e5b4d417b26b34683a9e97",
-   "duration_s": 13.264,
+   "sha256": "7674b70b479d22163188c0012e3332cc7a8562e72f535f0cb423599b998b7b22",
+   "duration_s": 13.712,
    "speech_start_s": 0.0,
-   "speech_end_s": 12.98,
-   "onset_s": 0.117,
-   "offset_s": 13.141,
-   "render": 1,
-   "seed": 42,
+   "speech_end_s": 13.32,
+   "onset_s": 0.123,
+   "offset_s": 13.589,
+   "render": 8,
+   "seed": 43,
    "name_heard": [],
-   "gate": "flagged: the transcript gate heard 'waits for you and needs you' for 'in Needs you' in all 3 renders (r2 also added 'it' and 'it's shipped', r3 'it's shipped'); a context hint did not change it — r1 (only in/and differs) used for timing; the operator judges it by ear",
+   "gate": "pass",
+   "said": "The failed run waits for you in \"Needs you\". Resume from the step that broke. The spec and your approval are kept, and only the steps that run again use your subscription. Seven minutes later, it shipped.",
+   "phonemes": "[j uː] ɪ n [n iː]",
    "words": [
     {
      "word": "The",
@@ -3027,177 +3029,177 @@
     {
      "word": "run",
      "start": 0.58,
-     "end": 0.88
+     "end": 0.86
     },
     {
      "word": "waits",
-     "start": 0.88,
-     "end": 1.24
+     "start": 0.86,
+     "end": 1.18
     },
     {
      "word": "for",
-     "start": 1.24,
-     "end": 1.44
+     "start": 1.18,
+     "end": 1.4
     },
     {
      "word": "you",
-     "start": 1.44,
-     "end": 1.62
+     "start": 1.4,
+     "end": 1.66
     },
     {
-     "word": "and",
-     "start": 1.62,
-     "end": 1.76
-    },
-    {
-     "word": "needs",
-     "start": 1.76,
+     "word": "in",
+     "start": 1.66,
      "end": 2.06
     },
     {
-     "word": "you.",
+     "word": "Needs",
      "start": 2.06,
-     "end": 2.28
+     "end": 2.46
+    },
+    {
+     "word": "You.",
+     "start": 2.46,
+     "end": 2.72
     },
     {
      "word": "Resume",
-     "start": 2.64,
-     "end": 3.24
+     "start": 3.26,
+     "end": 3.86
     },
     {
      "word": "from",
-     "start": 3.24,
-     "end": 3.46
+     "start": 3.86,
+     "end": 4.06
     },
     {
      "word": "the",
-     "start": 3.46,
-     "end": 3.62
+     "start": 4.06,
+     "end": 4.22
     },
     {
      "word": "step",
-     "start": 3.62,
-     "end": 3.92
+     "start": 4.22,
+     "end": 4.5
     },
     {
      "word": "that",
-     "start": 3.92,
-     "end": 4.14
+     "start": 4.5,
+     "end": 4.74
     },
     {
      "word": "broke.",
-     "start": 4.14,
-     "end": 4.46
+     "start": 4.74,
+     "end": 5.06
     },
     {
      "word": "The",
-     "start": 4.76,
-     "end": 5.18
+     "start": 5.36,
+     "end": 5.78
     },
     {
      "word": "spec",
-     "start": 5.18,
-     "end": 5.48
+     "start": 5.78,
+     "end": 6.08
     },
     {
      "word": "and",
-     "start": 5.48,
-     "end": 5.8
+     "start": 6.08,
+     "end": 6.4
     },
     {
      "word": "your",
-     "start": 5.8,
-     "end": 5.98
+     "start": 6.4,
+     "end": 6.56
     },
     {
      "word": "approval",
-     "start": 5.98,
-     "end": 6.42
+     "start": 6.56,
+     "end": 7.0
     },
     {
      "word": "are",
-     "start": 6.42,
-     "end": 6.68
+     "start": 7.0,
+     "end": 7.26
     },
     {
      "word": "kept,",
-     "start": 6.68,
-     "end": 7.06
+     "start": 7.26,
+     "end": 7.64
     },
     {
      "word": "and",
-     "start": 7.26,
-     "end": 7.66
+     "start": 7.82,
+     "end": 8.24
     },
     {
      "word": "only",
-     "start": 7.66,
-     "end": 8.0
+     "start": 8.24,
+     "end": 8.58
     },
     {
      "word": "the",
-     "start": 8.0,
-     "end": 8.2
+     "start": 8.58,
+     "end": 8.76
     },
     {
      "word": "steps",
-     "start": 8.2,
-     "end": 8.52
+     "start": 8.76,
+     "end": 9.08
     },
     {
      "word": "that",
-     "start": 8.52,
-     "end": 8.74
+     "start": 9.08,
+     "end": 9.3
     },
     {
      "word": "run",
-     "start": 8.74,
-     "end": 9.0
+     "start": 9.3,
+     "end": 9.54
     },
     {
      "word": "again",
-     "start": 9.0,
-     "end": 9.34
+     "start": 9.54,
+     "end": 9.86
     },
     {
      "word": "use",
-     "start": 9.34,
-     "end": 9.78
+     "start": 9.86,
+     "end": 10.32
     },
     {
      "word": "your",
-     "start": 9.78,
-     "end": 9.96
+     "start": 10.32,
+     "end": 10.48
     },
     {
      "word": "subscription.",
-     "start": 9.96,
-     "end": 10.52
+     "start": 10.48,
+     "end": 11.04
     },
     {
      "word": "Seven",
-     "start": 11.06,
-     "end": 11.64
+     "start": 11.62,
+     "end": 12.08
     },
     {
      "word": "minutes",
-     "start": 11.64,
-     "end": 11.96
+     "start": 12.08,
+     "end": 12.38
     },
     {
      "word": "later,",
-     "start": 11.96,
-     "end": 12.3
+     "start": 12.38,
+     "end": 12.72
     },
     {
-     "word": "it",
-     "start": 12.56,
-     "end": 12.66
+     "word": "It",
+     "start": 12.72,
+     "end": 13.1
     },
     {
      "word": "shipped.",
-     "start": 12.66,
-     "end": 12.98
+     "start": 13.1,
+     "end": 13.32
     }
    ]
   },
@@ -4850,7 +4852,7 @@
    "text": "The failed run waits for you in Needs you. Resume from the step that broke. The spec and your approval are kept, and only the steps that run again use your subscription. Seven minutes later, it shipped.",
    "file": "video/out/v3/lines/4.2.wav",
    "startSec": 0.0,
-   "endSec": 13.141
+   "endSec": 13.589
   },
   {
    "id": "5.1",

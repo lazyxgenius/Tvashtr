@@ -1,12 +1,8 @@
 {
  "about": "The voice's spoken form of a line whose word VoxCPM2 says wrong (V3b, brief video-v3b D1). The same words in the same order as video/v3/script.json; only spelling, capitals and punctuation differ, and every changed spelling is declared in respell (spoken → script). The words on screen stay script.json's and the transcript gate compares against them; video/v3/test_say.py proves the forms.",
  "lines": {
-  "3.1": {
-   "say": "Now give the team a task: add a Hul moving average. Pick the repo, the branch, and the one folder it may touch. Launch.",
-   "respell": {"Hul": "Hull"}
-  },
   "4.2": {
-   "say": "The failed run waits for you, in Needs you. Resume from the step that broke. The spec and your approval are kept, and only the steps that run again use your subscription. {resume_minutes} minutes later, it shipped.",
+   "say": "The failed run waits for you in \"Needs you\". Resume from the step that broke. The spec and your approval are kept, and only the steps that run again use your subscription. {resume_minutes} minutes later, it shipped.",
    "respell": {}
   }
  }
