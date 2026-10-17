@@ -94,7 +94,7 @@ word starts run late, so its times alone handed the word's last phoneme (l, d) t
   every other word (the checked word is the one place the transcript may differ: `voice.gate(…, slot)`).
 - **Reproduce first, on V3's kept files:** 3.1 **FAIL** `[ɐ] h oʊ l [m uː]` · 4.2 **FAIL**
   `[j uː] æ n d [n iː]`. V3's other renders: 3.1 r1/r3 `h oʊ l`; 4.2 r2 `ɪ n d`, r3 `ɪ n` (a good "in"
-  — V3's gate failed it on "it's shipped").
+  — V3's gate, with no slot, failed it on the heard "and" and on "it's shipped").
 
 ### The spoken forms — `video/v3/say.json` (D1)
 
@@ -121,10 +121,10 @@ has no entry).
 | 3.1 | r13 | add a **hull** moving average. (own: the common noun) | 42 | `[ɐ] h ɔ l [m uː]` | pass | FAIL |
 | 3.1 | r14 | add a **hull** moving average. | 43 | `[ɐ] h oʊ l [m uː]` | pass | FAIL |
 | 3.1 | r15 | add a **hull** moving average. | 44 | `[ɐ] h oʊ l [m uː]` | pass | FAIL |
-| 4.2 | r4 | waits for you**,** in Needs you. | 42 | `[j uː] ɪ t [n iː]` | fail ("It needs you", "it's shipped") | FAIL |
+| 4.2 | r4 | waits for you**,** in Needs you. | 42 | `[j uː] ɪ t [n iː]` ("It needs you") | fail ("it's shipped") | FAIL |
 | 4.2 | r5 | waits for you**,** in Needs you. | 43 | `[j uː] ɪ n [n iː]` | fail ("it's shipped") | FAIL |
-| 4.2 | r6 | waits for you**,** in Needs you. | 44 | `[j uː] ɪ n d [n iː]` | fail | FAIL |
-| 4.2 | r7 | waits for you in **"Needs you"**. | 42 | `[j uː] ɪ n d [n iː]` | fail | FAIL |
+| 4.2 | r6 | waits for you**,** in Needs you. | 44 | `[j uː] ɪ n d [n iː]` | fail ("it's shipped") | FAIL |
+| 4.2 | r7 | waits for you in **"Needs you"**. | 42 | `[j uː] ɪ n d [n iː]` | fail ("it's shipped") | FAIL |
 | 4.2 | r8 | waits for you in **"Needs you"**. | 43 | `[j uː] ɪ n [n iː]` | **pass** ("waits for you in Needs You … It shipped") | **PASS — kept** |
 
 - **4.2 kept: r8** (form 2, seed 43) → `video/out/v3/lines/4.2.wav` (13.71 s, sha256 `7674b70b…`);
@@ -161,12 +161,13 @@ has no entry).
   Desktop; `video/out/mac/MAC-3.mov` is an exact copy (`cmp`): 430.2 s, 3420×2214 H.264, 384,734,821
   bytes, started 06:11:13Z (Stalled ≈ 200 s in).
 - **SMOKE: MAC-3 FAIL.** No banner: the top-right below the menu bar, scanned twice a second over all
-  430 s, changes only in the first 28 s and the last 20 s (the recording's own start and end); the
-  frames 190–250 s (`video/out/v3b/mac3-frames/sheet-190-250.png`) and 205 s (`full-205.png`: the
+  430 s, changes most in the first 28 s and the last 20 s (the recording's own start and end); its
+  other changes are the Desktop's own toolbar (its chips, the run going Failed at 350 s), never a
+  banner; the frames 190–250 s (`video/out/v3b/mac3-frames/sheet-190-250.png`) and 205 s (`full-205.png`: the
   Desktop active — "Electron" in the menu bar — on the stalled run, "The Engineer may be stuck") show
   none.
 - **Why — measured:** the same test notification with the Desktop made the active app before each
-  show (`notify-check.mjs --pinned`, 17 shows, each `shown`, the window focused) → the operator: **NOT
+  show (`notify-check.mjs --pinned`, 17 shows ~15 s apart, each `shown`, the window focused) → the operator: **NOT
   SEEN**. macOS shows no banner from the dev Desktop while it is the active app, and a take keeps the
   Desktop pinned and focused throughout (`take.mjs` › `frontmost`, for clean frames). The product's
   path held: the bell saved the choice into the notifier's own copy, permission was granted, and the

@@ -20,7 +20,7 @@ Brief `prompts/video-v3b.md`, branch `video/v3b`. Results (every render, the kep
 | `v3/phonemes.py` | the sound check: `facebook/wav2vec2-lv-60-espeak-cv-ft` (Apache-2.0, CPU) reads the checked word between its neighbours (`CHECKS`: 3.1 "Hull", 4.2 "in") |
 | `v3/say.json` | a line's spoken form: the script's words, respelled only where declared (`v3/test_say.py`) |
 | `v3/voice.py` | reads `say.json`; a spoken form gets seeds 42/43/44, ≤ 12 renders a line; its gate = transcript (checked word left to the sound check) + sound check |
-| `camera/notify-check.mjs` | MAC-3's free check: one test notification from the dev Desktop's page, re-shown every 12 s until stopped; `--pinned` makes the Desktop the active app before each show (as in a take) |
+| `camera/notify-check.mjs` | MAC-3's free check: one test notification from the dev Desktop's page, re-shown every 12 s until stopped; `--pinned` makes the Desktop the active app before each show (as in a take; every 15 s) |
 | `camera/scenes/4.1.mjs` | part `4.1-mac3`: 4.1's run again under its own take id (its run → `out/v3b/stall-mac3.json`) |
 
 ```bash
@@ -45,7 +45,7 @@ VIDEO_ALLOW_SPEND=1 node video/camera/take.mjs 4.1-mac3     # after the operator
 - **must/never didn't pin the word.** 4.2's first check passed "it" (`ɪ t`); the review caught it and
   each word may now hold only its own sounds.
 - **Whisper hears "it's shipped" for 4.2's `ɪ t ʃ ɪ p t`.** The transcript gate stays strict there (it
-  failed r4, r5); r8 was heard right.
+  failed r4–r7 on it); r8 was heard right.
 - **MAC-3's recording has no banner.** macOS shows no banner from the dev Desktop while it is the
   active app (the test notification: SEEN with the Desktop in the background, NOT SEEN with it
   active), and a take keeps the Desktop pinned and focused. MAC-3 is still owed: a re-take needs a run

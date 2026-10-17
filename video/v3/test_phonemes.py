@@ -42,6 +42,8 @@ class SoundTest(unittest.TestCase):
         self.assertFalse(sound("3.1", None, HULL_WORDS, ph("æ", "d", "ɐ", "h", "ʌ", "t", "m", "uː", "v"))[0])  # hut
         self.assertFalse(sound("4.2", None, IN_WORDS, ph("f", "ɚ", "j", "uː", "ɪ", "t", "n", "iː", "d", "z"))[0])  # it
         self.assertFalse(sound("4.2", None, IN_WORDS, ph("f", "ɚ", "j", "uː", "ə", "n", "n", "iː", "d", "z"))[0])  # 'n'
+        self.assertTrue(sound("3.1", None, HULL_WORDS, ph("æ", "d", "ɐ", "h", "ʌ", "l̩", "m", "uː", "v"))[0])
+        self.assertTrue(sound("4.2", None, IN_WORDS, ph("f", "ɚ", "j", "uː", "ɪː", "n", "n", "iː", "d", "z"))[0])
         # "in" whose n the decoder merged into "needs": the vowel alone is still the word
         self.assertTrue(sound("4.2", None, IN_WORDS, ph("f", "ɚ", "j", "uː", "ɪ", "n", "iː", "d", "z"))[0])
 

@@ -21,18 +21,20 @@ const SHOW_EVERY_S = process.argv.includes("--pinned") ? 15 : 12;
 const MAX_MIN = 120; // the operator answers in chat; stopped (SIGTERM) as soon as they do
 const out = path.join(repoRoot, "video", "out", "v3b", "notify-check");
 const profile = fs.mkdtempSync(path.join(os.tmpdir(), "tvashtr-notify-check-"));
-const { app, page } = await launchDesktop(out, "notify-check", {}, profile);
+let app = null;
+let page = null;
 let stopping = false;
 const stop = async (code = 0) => {
   if (stopping) return;
   stopping = true;
-  await page.evaluate(() => window.__tvNote?.close()).catch(() => {});
-  await app.close().catch(() => {});
+  await page?.evaluate(() => window.__tvNote?.close()).catch(() => {});
+  await app?.close().catch(() => {});
   fs.rmSync(profile, { recursive: true, force: true });
   console.log("NOTIFY_CHECK_STOPPED");
   process.exit(code);
 };
 for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => void stop(0));
+({ app, page } = await launchDesktop(out, "notify-check", {}, profile));
 
 // Focused as in a take, then let go of always-on-top so the operator can bring the chat forward —
 // or, with --pinned, kept on top and focused exactly as a take keeps it (V3b: MAC-3's file had no

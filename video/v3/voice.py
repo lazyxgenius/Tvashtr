@@ -57,7 +57,7 @@ SETTINGS = {
     "retry_badcase": True,  # voxcpm's own runaway guard inside one render (audio/text ratio)
     "retry_badcase_max_times": 3,
     "retry_badcase_ratio_threshold": 6.0,
-    "seeds": [42, 43, 44],  # render n of a line uses seeds[n-1] (torch, numpy, random)
+    "seeds": [42, 43, 44],  # the nth render of a wording (text or spoken form) uses seeds[n-1] (torch, numpy, random)
     "trim": "librosa.effects.trim top_db=40, then 120 ms of the render kept each side",
     "transcriber": "mlx-community/whisper-large-v3-turbo (language en, temperature 0, word timestamps)",
 }
