@@ -2,7 +2,8 @@
 // Start the stack with QUIET=20 STALLED=60 FAIL=180. The Mac notification is a MAC shot (MAC-3): V3
 // turns notifications on through the run toolbar's bell so macOS shows the stall banner the operator
 // records; a macOS permission prompt is the operator's, never clicked here. V3 (D4): on chapter 6's
-// team under the plain name.
+// team under the plain name. V3b (D6): part `mac3` is the same run under its own take id (V3's 4.1
+// take stays as filmed), for the operator's MAC-3 recording; its run goes to out/v3b/stall-mac3.json.
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -15,6 +16,8 @@ const state = (page, word) => nowBar(page).getByRole("button", { name: /^Enginee
 export const SEED = path.join(repoRoot, "video", "out", "v2b", "seed.json");
 /** V3: the run 4.1 fails, for 4.2 to resume (Needs you lists oldest first; an older failed run must not win). */
 export const STALL = path.join(repoRoot, "video", "out", "v3", "stall.json");
+/** V3b: MAC-3's run (not one for 4.2 to resume). */
+export const STALL_MAC3 = path.join(repoRoot, "video", "out", "v3b", "stall-mac3.json");
 
 /** MAC-3: the run toolbar's bell → "When a run stalls or fails" ticked → Turn on. */
 async function turnOnNotifications(ctx) {
@@ -38,6 +41,57 @@ async function turnOnNotifications(ctx) {
   console.log(`MAC3_BELL: notify_stalls_fails=${prefs.notify_stalls_fails}`);
 }
 
+/** The take: launch, notifications on, spec approved, the Engineer paused → Quiet → Stalled → Failed. */
+const filmStall = (stallFile) => async (ctx) => {
+  const { page, cam, app } = ctx;
+  const run = await composeAndLaunch(ctx, { task: ctx.state.task, repo: ctx.story.repo.full_name, folder: ctx.story.repo.folder });
+  fs.mkdirSync(path.dirname(stallFile), { recursive: true });
+  fs.writeFileSync(stallFile, JSON.stringify({ team: ctx.state.team, run, task: ctx.state.task }, null, 2));
+  ctx.note(`4.1's run: ${run}`);
+  await answerNotifyAsk(ctx, "Not now");
+  await turnOnNotifications(ctx);
+  await watch(ctx, async () => (await gateWaiting(page).count()) > 0, { label: "the spec gate" });
+  await editAndApproveSpec(ctx, "Keep the change small and tested.");
+  await watch(ctx, async () => (await state(page, "Working").count()) > 0, { label: "the Engineer working" });
+  // Pause the Engineer's CLI — found only through this Desktop's own process tree (rule 8).
+  // The runner claims the job a few seconds after "Working"; both CLIs run with --output-format
+  // (Claude takes its prompt on stdin, so its command line has no runner-jobs/ path). V2b: only
+  // Claude's `stream-json` — never a Grok job or its lock check (`streaming-json`).
+  let cli = null;
+  for (let i = 0; i < 90 && !cli; i++) {
+    cli = processTree(app.process().pid).find((p) => /\s--output-format stream-json\s/.test(p.command));
+    if (!cli) await page.waitForTimeout(1000);
+  }
+  if (!cli) throw new Error("no Desktop job CLI in the Electron process tree after 90 s");
+  execFileSync("kill", ["-STOP", String(cli.pid)]);
+  ctx.note(`paused the job CLI pid ${cli.pid}`);
+  try {
+    for (const word of ["Quiet", "Stalled", "Failed"]) {
+      await watch(ctx, async () => (await state(page, word).count()) > 0, { label: word, timeout: 6 * 60000 });
+      console.log(`STALL_STATE ${word} ${new Date().toISOString()}`); // V3b: MAC-3's cue
+      await cam.hover(nowBar(page).getByRole("button", { name: /^Engineer/ }), word);
+      await cam.pause(2500);
+    }
+    await cam.hover(activity(page).locator(".lv-pin__box").first(), "the failed callout");
+    await cam.pause(3000);
+    // The live smoke (H1, H2): the failure line and the callout's "Next:".
+    const failedShot = await ctx.shot("failed");
+    const said = async (loc) => (await loc.innerText()).replace(/\s+/g, " ").trim();
+    const callout = await said(activity(page).locator(".lv-pin__box").first());
+    const ends = (await activity(page).locator(".lv-line__what").filter({ hasText: /^Failed after/ }).allInnerTexts()).map((t) => t.trim());
+    const end = ends.pop() ?? "";
+    smoke(ctx, "4.1 H1 (the failure line)", / · on your Claude subscription$/.test(end) && !/\$\d/.test(end), failedShot, end || "no “Failed after” line");
+    smoke(ctx, "4.1 H2 (Next: resume …)", /Next: resume from Engineer, round 1\. Tvashtr skips the work that is done/.test(callout), failedShot, callout);
+  } finally {
+    try {
+      execFileSync("kill", ["-TERM", String(cli.pid)]);
+      execFileSync("kill", ["-CONT", String(cli.pid)]);
+    } catch {
+      /* already gone */
+    }
+  }
+};
+
 export default {
   id: "4.1",
   title: "The Engineer goes Quiet → Stalled → Failed (shortened timers)",
@@ -46,51 +100,8 @@ export default {
   budget: 30,
   setup: async (ctx) => ({ team: await chapter6Team(ctx.api, SEED), task: ctx.story.runs.stall }),
   before: (ctx) => ctx.go(`#/teams/${ctx.state.team}`, ctx.page.getByRole("button", { name: "Run this team", exact: true })),
-  film: async (ctx) => {
-    const { page, cam, app } = ctx;
-    const run = await composeAndLaunch(ctx, { task: ctx.state.task, repo: ctx.story.repo.full_name, folder: ctx.story.repo.folder });
-    fs.writeFileSync(STALL, JSON.stringify({ team: ctx.state.team, run, task: ctx.state.task }, null, 2));
-    ctx.note(`4.1's run: ${run}`);
-    await answerNotifyAsk(ctx, "Not now");
-    await turnOnNotifications(ctx);
-    await watch(ctx, async () => (await gateWaiting(page).count()) > 0, { label: "the spec gate" });
-    await editAndApproveSpec(ctx, "Keep the change small and tested.");
-    await watch(ctx, async () => (await state(page, "Working").count()) > 0, { label: "the Engineer working" });
-    // Pause the Engineer's CLI — found only through this Desktop's own process tree (rule 8).
-    // The runner claims the job a few seconds after "Working"; both CLIs run with --output-format
-    // (Claude takes its prompt on stdin, so its command line has no runner-jobs/ path). V2b: only
-    // Claude's `stream-json` — never a Grok job or its lock check (`streaming-json`).
-    let cli = null;
-    for (let i = 0; i < 90 && !cli; i++) {
-      cli = processTree(app.process().pid).find((p) => /\s--output-format stream-json\s/.test(p.command));
-      if (!cli) await page.waitForTimeout(1000);
-    }
-    if (!cli) throw new Error("no Desktop job CLI in the Electron process tree after 90 s");
-    execFileSync("kill", ["-STOP", String(cli.pid)]);
-    ctx.note(`paused the job CLI pid ${cli.pid}`);
-    try {
-      for (const word of ["Quiet", "Stalled", "Failed"]) {
-        await watch(ctx, async () => (await state(page, word).count()) > 0, { label: word, timeout: 6 * 60000 });
-        await cam.hover(nowBar(page).getByRole("button", { name: /^Engineer/ }), word);
-        await cam.pause(2500);
-      }
-      await cam.hover(activity(page).locator(".lv-pin__box").first(), "the failed callout");
-      await cam.pause(3000);
-      // The live smoke (H1, H2): the failure line and the callout's "Next:".
-      const failedShot = await ctx.shot("failed");
-      const said = async (loc) => (await loc.innerText()).replace(/\s+/g, " ").trim();
-      const callout = await said(activity(page).locator(".lv-pin__box").first());
-      const ends = (await activity(page).locator(".lv-line__what").filter({ hasText: /^Failed after/ }).allInnerTexts()).map((t) => t.trim());
-      const end = ends.pop() ?? "";
-      smoke(ctx, "4.1 H1 (the failure line)", / · on your Claude subscription$/.test(end) && !/\$\d/.test(end), failedShot, end || "no “Failed after” line");
-      smoke(ctx, "4.1 H2 (Next: resume …)", /Next: resume from Engineer, round 1\. Tvashtr skips the work that is done/.test(callout), failedShot, callout);
-    } finally {
-      try {
-        execFileSync("kill", ["-TERM", String(cli.pid)]);
-        execFileSync("kill", ["-CONT", String(cli.pid)]);
-      } catch {
-        /* already gone */
-      }
-    }
-  },
+  film: filmStall(STALL),
+  parts: [
+    { key: "mac3", title: "4.1 again for MAC-3, the operator's banner recording (V3b; not for the film)", film: filmStall(STALL_MAC3) },
+  ],
 };
