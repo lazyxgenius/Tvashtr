@@ -12,6 +12,11 @@
 Render and gate run as separate processes: VoxCPM2 runs in float32 on MPS (~9 GB) and the
 transcriber never shares memory with it. State lives in video/v3/voice-manifest.json (settings,
 every render with its seed, transcript and verdict); audio stays in video/out/v3/ (ignored).
+
+V3b (brief video-v3b D1–D3): a line in video/v3/say.json is read in its spoken form (the script's
+words, respelled where declared); each spoken form gets its own three seeds, at most 12 renders a
+line. Its gate is the transcript (against the script's words, the checked word left to the sound
+check) plus phonemes.py's sound check.
 """
 
 import argparse
@@ -28,6 +33,7 @@ OUT = ROOT / "video" / "out" / "v3"
 LINES = OUT / "lines"
 RENDERS = LINES / "renders"
 SCRIPT = V3 / "script.json"
+SAY = V3 / "say.json"
 MANIFEST = V3 / "voice-manifest.json"
 TIMING = V3 / "narration-timing.json"
 REFERENCE = ROOT / "video" / "out" / "voice" / "reference.mp3"
@@ -35,6 +41,7 @@ REFERENCE_TXT = ROOT / "video" / "out" / "voice" / "reference.txt"
 REFERENCE_SHA = "cd3db9f9af6be6dd5b0d1b451d7ef48640ce2c401a3eba9a9554a9f3cd6137df"
 
 MAX_RENDERS = 3
+MAX_SAID = 12  # V3b: renders of a line's spoken forms (4 forms × 3 seeds)
 PAD_S = 0.12  # leading/trailing silence kept around the speech
 SETTINGS = {
     "model": "openbmb/VoxCPM2",
@@ -68,16 +75,59 @@ def reference_text():
     return next(line.strip() for line in lines[start + 1 :] if line.strip())
 
 
+def say_words(text):
+    return re.findall(r"[\w{}'’]+", text)
+
+
+def say_errors(text, say, respell):
+    """Why a spoken form is not the line's words: [] when the same words come in the same order and
+    only capitals, punctuation and the declared respellings (spoken → script) differ."""
+    script, spoken = say_words(text), say_words(say)
+    if len(script) != len(spoken):
+        return [f"{len(spoken)} words spoken, {len(script)} in the script"]
+    declared = {k.lower(): v.lower() for k, v in respell.items()}
+    errors, used = [], set()
+    for i, (ours, theirs) in enumerate(zip(script, spoken)):
+        if ours.lower() == theirs.lower():
+            continue
+        if declared.get(theirs.lower()) == ours.lower():
+            used.add(theirs.lower())
+            continue
+        errors.append(f"word {i + 1}: {theirs!r} for {ours!r} is not a declared respelling")
+    errors += [f"respelling {k!r} → {v!r} is never used" for k, v in declared.items() if k not in used]
+    return errors
+
+
+def say_forms():
+    """scene → its spoken form (video/v3/say.json), each checked against the script's words."""
+    if not SAY.exists():
+        return {}
+    narration = {line["scene"]: line["narration"] for line in json.loads(SCRIPT.read_text(encoding="utf-8"))["lines"]}
+    forms = json.loads(SAY.read_text(encoding="utf-8"))["lines"]
+    for scene, form in forms.items():
+        errors = say_errors(narration[scene], form["say"], form.get("respell", {}))
+        if errors:
+            raise SystemExit(f"say.json {scene}: {'; '.join(errors)}")
+    return {scene: form["say"] for scene, form in forms.items()}
+
+
 def script_lines(resume_minutes=None):
-    out = []
+    out, forms = [], say_forms()
     for line in json.loads(SCRIPT.read_text(encoding="utf-8"))["lines"]:
-        text = line["narration"]
+        text, said = line["narration"], forms.get(line["scene"], line["narration"])
         if "{resume_minutes}" in text:
             if not resume_minutes:
                 continue
             text = text.replace("{resume_minutes}", resume_minutes)
-        out.append({**line, "text": text})
+            said = said.replace("{resume_minutes}", resume_minutes)
+        out.append({**line, "text": text, "said": said})
     return out
+
+
+def form_of(text, said):
+    """A spoken form's label: its first sentence that differs from the script's."""
+    split = lambda t: re.split(r"(?<=[.!?])\s+", t)  # noqa: E731
+    return next((b for a, b in zip(split(text), split(said)) if a != b), said)
 
 
 def load_manifest():
@@ -99,13 +149,21 @@ def line_entry(manifest, line):
     return entry
 
 
+def tries(entry, line):
+    """How many renders this line's current wording (its spoken form, else its text) already has."""
+    return sum(1 for r in entry["renders"] if r.get("said", line["text"]) == line["said"])
+
+
 def pending(manifest, lines):
-    """Lines that need one more render: no pass yet, every render gated, fewer than three."""
+    """Lines that need one more render: no pass yet, every render gated, fewer than three of this
+    wording (and, for a spoken form, fewer than MAX_SAID spoken renders in all)."""
     out = []
     for line in lines:
         entry = line_entry(manifest, line)
         renders = entry["renders"]
-        if any(r.get("pass") for r in renders) or len(renders) >= MAX_RENDERS:
+        if any(r.get("pass") for r in renders) or tries(entry, line) >= MAX_RENDERS:
+            continue
+        if line["said"] != line["text"] and sum(1 for r in renders if "said" in r) >= MAX_SAID:
             continue
         if renders and "pass" not in renders[-1]:
             continue  # rendered, not gated yet
@@ -163,12 +221,12 @@ def cmd_render(args):
     for line in lines:
         entry = line_entry(manifest, line)
         n = len(entry["renders"]) + 1
-        seed = SETTINGS["seeds"][n - 1]
+        seed = SETTINGS["seeds"][tries(entry, line)]
         torch.manual_seed(seed)
         np.random.seed(seed)
         random.seed(seed)
         wav = model.generate(
-            text=line["text"],
+            text=line["said"],
             prompt_wav_path=str(REFERENCE),
             prompt_text=prompt_text,
             reference_wav_path=str(REFERENCE),
@@ -184,7 +242,8 @@ def cmd_render(args):
         wav = trim(wav, sr)
         path = RENDERS / f"{line['scene']}-r{n}.wav"
         sf.write(path, wav, sr, subtype="PCM_24")
-        entry["renders"].append({"n": n, "seed": seed, "file": str(path.relative_to(ROOT)),
+        said = {"said": line["said"], "form": form_of(line["text"], line["said"])} if line["said"] != line["text"] else {}
+        entry["renders"].append({"n": n, "seed": seed, **said, "file": str(path.relative_to(ROOT)),
                                  "sha256": sha256(path), "raw_s": round(raw, 3),
                                  "duration_s": round(len(wav) / sr, 3)})
         save_manifest(manifest)
@@ -229,10 +288,15 @@ def norm(text):
     return text
 
 
-def gate(expected, heard):
-    """Pass when the transcript equals the line; only the name may sound different (1–2 words)."""
-    pattern = []
-    for token in norm(expected).split():
+def gate(expected, heard, slot=None):
+    """Pass when the transcript equals the line; only the name may sound different (1–2 words).
+    V3b: `slot` (a phonemes.CHECKS entry) leaves its checked word — between its neighbours — to the
+    sound check: there the transcript may hold any one word."""
+    pattern, tokens = [], norm(expected).split()
+    for i, token in enumerate(tokens):
+        if slot and token == slot["word"] and tokens[i - 1 : i] == [slot["before"]] and tokens[i + 1 : i + 2] == [slot["after"]]:
+            pattern.append(r"(?:\S+)")
+            continue
         pattern.append(r"(\S+(?: \S+)?)" if token.startswith(NAME) else re.escape(token))
     match = re.fullmatch(" ".join(pattern), norm(heard))
     if not match:
@@ -257,6 +321,8 @@ def transcribe(path):
 def cmd_gate(args):
     import shutil
 
+    from phonemes import CHECKS, sound
+
     manifest = load_manifest()
     for scene, entry in manifest["lines"].items():
         for render in entry["renders"]:
@@ -264,15 +330,23 @@ def cmd_gate(args):
                 continue
             path = ROOT / render["file"]
             text, words = transcribe(path)
-            ok, heard_name = gate(entry["text"], text)
+            slot = CHECKS.get(scene) if "said" in render else None
+            ok, heard_name = gate(entry["text"], text, slot)
             render.update({"transcript": text, "words": words, "pass": ok, "name_heard": heard_name})
-            if ok:
+            if slot:  # V3b: the sound check decides the checked word
+                sound_ok, heard = sound(scene, path, words)
+                render.update({"transcript_pass": ok, "sound": sound_ok, "phonemes": heard, "pass": ok and sound_ok})
+                print(f"RENDER: {scene} form={render['form']!r} seed={render['seed']} phonemes={heard} "
+                      f"transcript={'pass' if ok else 'fail'} → {'PASS' if render['pass'] else 'FAIL'}", flush=True)
+            if render["pass"]:
                 final = LINES / f"{scene}.wav"
                 shutil.copyfile(path, final)
                 entry.update({"file": str(final.relative_to(ROOT)), "sha256": sha256(final),
                               "render": render["n"]})
+                for key in ("flagged", "note"):  # a flagged V3 line that now passes
+                    entry.pop(key, None)
             save_manifest(manifest)
-            print(f"GATE {scene} r{render['n']} {'PASS' if ok else 'FAIL'} name={heard_name} | {text}",
+            print(f"GATE {scene} r{render['n']} {'PASS' if render['pass'] else 'FAIL'} name={heard_name} | {text}",
                   flush=True)
 
 
@@ -360,6 +434,8 @@ def cmd_timing(args):
             "onset_s": onset, "offset_s": offset,
             "render": final["n"], "seed": final["seed"], "name_heard": final["name_heard"],
             "gate": "pass" if final.get("pass") else f"flagged: {entry.get('note', '')}",
+            # V3b: a line read in a spoken form says how, and what its checked word sounded like
+            **{k: final[k] for k in ("said", "phonemes") if k in final},
             "words": words,
         })
         nmap.append({"id": line["scene"], "beat": f"scene {line['scene']}", "text": entry["text"],

@@ -39,6 +39,18 @@ class GateTest(unittest.TestCase):
         self.assertTrue(self.gate("on the Claude and Grok subscriptions", "on the Claude and Groq subscriptions")[0])
         self.assertFalse(self.gate("on the Claude and Grok subscriptions", "on the Cloud and Grok subscriptions")[0])
 
+    def test_a_checked_word_is_left_to_the_sound_check(self):
+        from phonemes import CHECKS
+
+        line = "The failed run waits for you in Needs you."
+        slot = CHECKS["4.2"]
+        self.assertTrue(self.gate(line, "The failed run waits for you and needs you.", slot)[0])
+        self.assertFalse(self.gate(line, "The failed run waits for you and needs you.")[0])  # no slot
+        self.assertFalse(self.gate(line, "The failed run waits for you needs you.", slot)[0])  # a word dropped
+        self.assertFalse(self.gate(line, "The failed run waits for you and and needs you.", slot)[0])
+        self.assertFalse(self.gate(line, "A failed run waits for you and needs you.", slot)[0])  # another word
+        self.assertTrue(self.gate("add a Hull moving average", "Add a whole moving average.", CHECKS["3.1"])[0])
+
     def test_any_other_difference_fails(self):
         self.assertFalse(self.gate("Then choose what the team remembers.",
                                    "Then choose what the teams remember.")[0])
