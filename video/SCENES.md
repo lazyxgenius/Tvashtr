@@ -1,4 +1,4 @@
-# The demo film's scenes (V1, V2, V2b, V3)
+# The demo film's scenes (V1, V2, V2b, V3, V3b)
 
 Every scene of the storyboard (`prompts/video-v1.md`) as a take script that re-records by name:
 `make -C video take SCENE=<id>` (`DRY=1` to rehearse; `"<id>*"` for a scene's parts). V3's takes land
@@ -18,6 +18,8 @@ version. Budgets are the scene's own and the plan's chapter budget — raw takes
 (2026-10-16) filmed everything it owed** — 6.1–6.3 on a fresh team with the Reviewer on Claude Opus,
 3.5, chapters 2 and 7, and 0.1 (below). **V3 (2026-10-16)** gave the film its narrator, re-shot
 chapter 3's replays, 3.7's Ask and 4.1/4.2 on the shipped 0.27.0, and built the title and end cards.
+**V3b (2026-10-17)** re-rendered 4.2's line (kept) and 3.1's (owed), and filmed `4.1-mac3` for MAC-3 — whose
+recording has no banner (still owed; below).
 
 <!-- scenes-table -->
 | take | script | V1 | V2 | V2b | V3 | scene budget · chapter budget |
@@ -48,6 +50,7 @@ chapter 3's replays, 3.7's Ask and 4.1/4.2 on the shipped 0.27.0, and built the 
 | 3.7 | `scenes/3.7.mjs` (live) | rehearsed · stopped before “Send” | clip (live) 52.6 s | clip (live) 77.4 s | — | 30 s · ch 3: 90 s |
 | 3.7-ask | `scenes/3.7.mjs` (live) | — | — | — | clip (live) 70.1 s | 30 s · ch 3: 90 s |
 | 4.1 | `scenes/4.1.mjs` (live) | rehearsed · stopped before “Launch” | clip (live) 282.4 s | clip (live) 319.2 s | clip (live) 316.2 s | 30 s · ch 4: 45 s |
+| 4.1-mac3 | `scenes/4.1.mjs` (live) | — | — | — | clip (live) 325.2 s | 30 s · ch 4: 45 s |
 | 4.2 | `scenes/4.2.mjs` (live) | rehearsed · stopped before “Resume (needs 4.1's failed run)” | clip (live) 24.7 s | clip (live) 19.9 s | clip (live) 27.1 s | 25 s · ch 4: 45 s |
 | 4.2-s4 | `scenes/4.2.mjs` (live) | — | — | — | clip (live) 9.7 s | 25 s · ch 4: 45 s |
 | 4.2-p6 | `scenes/4.2.mjs` (live) | — | — | clip (live) 40.1 s | — | 25 s · ch 4: 45 s |
@@ -68,7 +71,112 @@ chapter 3's replays, 3.7's Ask and 4.1/4.2 on the shipped 0.27.0, and built the 
 | 8.2 | `scenes/8.2.mjs` (motion) | MOTION | MOTION | MOTION | MOTION | — s · ch 8: 25 s |
 <!-- /scenes-table -->
 
+## V3b (2026-10-17): two spoken words, MAC-3
+
+Brief `prompts/video-v3b.md`, branch `video/v3b` from `main` `03dac4b9`. No product code; the words on
+screen (`video/v3/script.json`) unchanged (`git diff main -- video/v3/script.json` empty).
+
+### The sound check — `video/v3/phonemes.py` (D2)
+
+Speech-to-text can't settle these two words (Whisper hears "whole" for a good "Hull", and "it's
+shipped" for 4.2's `ɪ t ʃ ɪ p t`), so a phoneme recogniser decides them:
+`facebook/wav2vec2-lv-60-espeak-cv-ft` @ `ae45363b` (Apache-2.0; downloaded to the Hugging Face cache
+for V3b), CPU, greedy CTC, its tokenizer loaded with `do_phonemize=False` (no espeak). The checked word
+is what sounds between its neighbours, each found as its own phonemes ("a" = ɐ, "moving" = m uː, "you"
+= j uː, "Needs" = n iː), the match nearest that word's edge in the transcriber's word times — Whisper's
+word starts run late, so its times alone handed the word's last phoneme (l, d) to the next word.
+
+- **3.1** passes when "Hull" sounds ʌ, never oʊ; **4.2** when "in" has no æ and no d (the brief's
+  rules). Both words may also hold **only their own sounds** (3.1: h ʌ l; 4.2: ɪ/ᵻ/i and n, a vowel
+  required) — added after the review (workflow `wf_41f0687f-a0c`) showed must/never alone passed "it"
+  (`ɪ t`, 4.2's r4 was heard "It needs you") and would pass "hut" or a weak "and" (`ə n`).
+- A spoken-form render passes when the sound check passes **and** V3's transcript gate passes for
+  every other word (the checked word is the one place the transcript may differ: `voice.gate(…, slot)`).
+- **Reproduce first, on V3's kept files:** 3.1 **FAIL** `[ɐ] h oʊ l [m uː]` · 4.2 **FAIL**
+  `[j uː] æ n d [n iː]`. V3's other renders: 3.1 r1/r3 `h oʊ l`; 4.2 r2 `ɪ n d`, r3 `ɪ n` (a good "in"
+  — V3's gate failed it on "it's shipped").
+
+### The spoken forms — `video/v3/say.json` (D1)
+
+The voice reads a line's spoken form: the script's words in the same order, only capitals,
+punctuation and declared respellings (`{"Hul": "Hull"}`) different (`voice.say_errors`;
+`video/v3/test_say.py` fails an extra, missing, swapped, undeclared or unused word, and `voice.py`
+refuses a tampered file). Each form gets seeds 42/43/44 with V3's settings (`voice-manifest.json` ›
+`settings`, unchanged); at most 12 spoken renders a line. Kept: **4.2's form only** (3.1 is owed, so it
+has no entry).
+
+### Every render (D3) — `video/out/v3/lines/renders/<scene>-r<n>.wav`
+
+| line | render | spoken form (its changed sentence) | seed | phonemes | transcript | verdict |
+|---|---|---|---|---|---|---|
+| 3.1 | r4 | add a **Hul** moving average. | 42 | `[ɐ] h ɔː l [m uː]` | pass | FAIL |
+| 3.1 | r5 | add a **Hul** moving average. | 43 | `[ɐ] h oʊ l [m uː]` | pass | FAIL |
+| 3.1 | r6 | add a **Hul** moving average. | 44 | `[ɐ] h oʊ l [m uː]` | pass | FAIL |
+| 3.1 | r7 | add a **Huhl** moving average. | 42 | `[ɐ] h oʊ l [m uː]` | pass | FAIL |
+| 3.1 | r8 | add a **Huhl** moving average. | 43 | `[ɐ] h oʊ l [m uː]` | pass | FAIL |
+| 3.1 | r9 | add a **Huhl** moving average. | 44 | `[ɐ] h oʊ l [m uː]` | pass | FAIL |
+| 3.1 | r10 | add a **Hull,** moving average. | 42 | `[ɐ] h ɔ l [m uː]` | pass | FAIL |
+| 3.1 | r11 | add a **Hull,** moving average. | 43 | `[ɐ] h ɔ l [m uː]` | pass | FAIL |
+| 3.1 | r12 | add a **Hull,** moving average. | 44 | `[ɐ] h ɔ l [m uː]` | pass | FAIL |
+| 3.1 | r13 | add a **hull** moving average. (own: the common noun) | 42 | `[ɐ] h ɔ l [m uː]` | pass | FAIL |
+| 3.1 | r14 | add a **hull** moving average. | 43 | `[ɐ] h oʊ l [m uː]` | pass | FAIL |
+| 3.1 | r15 | add a **hull** moving average. | 44 | `[ɐ] h oʊ l [m uː]` | pass | FAIL |
+| 4.2 | r4 | waits for you**,** in Needs you. | 42 | `[j uː] ɪ t [n iː]` | fail ("It needs you", "it's shipped") | FAIL |
+| 4.2 | r5 | waits for you**,** in Needs you. | 43 | `[j uː] ɪ n [n iː]` | fail ("it's shipped") | FAIL |
+| 4.2 | r6 | waits for you**,** in Needs you. | 44 | `[j uː] ɪ n d [n iː]` | fail | FAIL |
+| 4.2 | r7 | waits for you in **"Needs you"**. | 42 | `[j uː] ɪ n d [n iː]` | fail | FAIL |
+| 4.2 | r8 | waits for you in **"Needs you"**. | 43 | `[j uː] ɪ n [n iː]` | **pass** ("waits for you in Needs You … It shipped") | **PASS — kept** |
+
+- **4.2 kept: r8** (form 2, seed 43) → `video/out/v3/lines/4.2.wav` (13.71 s, sha256 `7674b70b…`);
+  its `{resume_minutes}` is "Seven" as in V3.
+- **3.1 owed** after 12 renders: VoxCPM2 said `h oʊ l` (7), `h ɔ l` (4) or `h ɔː l` (1) — never ʌ, in
+  any spelling. V3's r2 stays its line (`lines/3.1.wav`, sha256 `fc17a771…`, unchanged). The best
+  three, by the phoneme model's probability of ʌ on the vowel's frames (a diagnostic, not the gate):
+  **r10** "Hull," seed 42 `h ɔ l` (P(ʌ) 0.216) · **r13** "hull" seed 42 `h ɔ l` (0.200) · **r11**
+  "Hull," seed 43 `h ɔ l` (0.136); every `oʊ` render scores ≤ 0.005. ɔ differs from ʌ only in lip
+  rounding: the operator's ear decides whether one of them (or V3's r2) is good enough.
+- V3's kept files are saved as `lines/renders/3.1-v3.wav` and `4.2-v3.wav` (the manifest's
+  `v3_kept`); the logs are `video/out/v3b/render-form{1..4}.log`.
+- **Timing (D4):** `narration-timing.json` changed only in 4.2's line and its `narrationMap` entry
+  (render 1 → 8, seed 42 → 43, 13.264 → 13.712 s, gate flagged → pass, `said` and `phonemes` added);
+  `voice-manifest.json` only in 3.1 and 4.2 (V3's renders untouched; 3.1 gains the `v3b` note).
+- **The listen-through:** `video/v3/listen.py` re-rendered `video/out/v3/ch3-narrated.mp4` — **83.2 s,
+  −16.0 LUFS**. With 3.1 owed the cut is V3's: decoded audio and video MD5s equal
+  `ch3-narrated-v3.mp4` (V3's copy, kept).
+
+### MAC-3 (D5–D7) — recorded, but no banner in it
+
+- **The free check** (`video/camera/notify-check.mjs`, no run): the dev Desktop's page shows a "Tvashtr
+  test" notification (`Notification.permission` granted, each one `shown`), re-shown every 12 s; the
+  operator, reading the chat (the Desktop in the background), answered **SEEN** on the first try.
+- **The run** (the spare Claude run; ledger `out/v3/budget.json` run 3/3): take **`4.1-mac3`** (part of
+  `scenes/4.1.mjs`, so V3's `takes/v3/4.1` stays byte-identical, sha256 `c874fc2e…` before and after),
+  rehearsed with `--dry` first (pre-roll: Claude and Grok Connected, stopped before Launch). After the
+  operator's GO: run **`2bce0e59`** "Add a TRIX indicator" on chapter 6's team as "Indicator sprint
+  team"; the bell turned stalls/fails on (`notify_stalls_fails=true`); spec approved; the Engineer's
+  CLI paused → **Quiet 06:13:52Z → Stalled 06:14:33Z → Failed 06:17:03Z**, "Failed after 5m 0s · on your
+  Claude subscription" (SMOKE 4.1 H1/H2 PASS, `takes/v3/4.1-mac3/shots/failed.png`); 325.2 s; left
+  failed (no resume, no delete); its run is in `out/v3b/stall-mac3.json`.
+- **The file:** the operator recorded the whole screen with macOS's own recorder and saved it to the
+  Desktop; `video/out/mac/MAC-3.mov` is an exact copy (`cmp`): 430.2 s, 3420×2214 H.264, 384,734,821
+  bytes, started 06:11:13Z (Stalled ≈ 200 s in).
+- **SMOKE: MAC-3 FAIL.** No banner: the top-right below the menu bar, scanned twice a second over all
+  430 s, changes only in the first 28 s and the last 20 s (the recording's own start and end); the
+  frames 190–250 s (`video/out/v3b/mac3-frames/sheet-190-250.png`) and 205 s (`full-205.png`: the
+  Desktop active — "Electron" in the menu bar — on the stalled run, "The Engineer may be stuck") show
+  none.
+- **Why — measured:** the same test notification with the Desktop made the active app before each
+  show (`notify-check.mjs --pinned`, 17 shows, each `shown`, the window focused) → the operator: **NOT
+  SEEN**. macOS shows no banner from the dev Desktop while it is the active app, and a take keeps the
+  Desktop pinned and focused throughout (`take.mjs` › `frontmost`, for clean frames). The product's
+  path held: the bell saved the choice into the notifier's own copy, permission was granted, and the
+  inbox listed `run_stalled` for the 2.5 minutes the step was Stalled (the notifier polls every 10 s).
+- **What a re-take needs:** a run (the V3 ledger has none left) and the Desktop **not** the active app
+  when the Engineer goes Stalled — e.g. the camera lets go of always-on-top and brings another app
+  forward after pausing the CLI — then the banner should show as it did for the SEEN check.
+
 ## V3 (2026-10-16): the narrator, the re-shoots on 0.27.0, the title and end cards
+
 
 Brief `prompts/video-v3.md`, branch `video/v3` from `main` `6b35addc` (= production: Fly v46, Desktop
 `desktop-v0.27.0`, alembic `0053`). No product code. Ledger `video/out/v3/budget.json` (caps 3 runs ·
@@ -875,6 +983,9 @@ The Desktop opens Terminal only when the CLI is signed out (an already signed-in
 3. The banner shows **"Indicator sprint team stalled"** — "No update for N minutes. Nothing
    shipped; finished steps are saved." (later "Indicator sprint team failed" is suppressed when
    the stall was already announced). Click it: Tvashtr opens the run. Stop recording.
+
+V3b: macOS shows the banner only while the Desktop is **not** the active app — a take that keeps it
+pinned and focused records no banner (V3b › MAC-3).
 
 ### Other operator items
 

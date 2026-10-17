@@ -1,13 +1,57 @@
-# video/ — the demo-film toolchain (V0 toolchain, V1 camera, V2 real runs, V2b re-film, V3 voice + cards)
+# video/ — the demo-film toolchain (V0 toolchain, V1 camera, V2 real runs, V2b re-film, V3 voice + cards, V3b)
 
 Everything the Tvashtr demo film is made with, and nothing of the product: the Desktop **camera**
 (Playwright driving the real dev Desktop), the **reel** builder (Product Demo Director), and two
 report-only **probes**. Briefs: `prompts/video-v0.md`, `prompts/video-v1.md`, `prompts/m-desk-5-v2.md`
-(Part B), `prompts/m-desk-7-v2b.md` (Part B), `prompts/m-desk-8-v2b2.md` (Part B), `prompts/video-v3.md`.
+(Part B), `prompts/m-desk-7-v2b.md` (Part B), `prompts/m-desk-8-v2b2.md` (Part B), `prompts/video-v3.md`,
+`prompts/video-v3b.md`.
 Media, model weights and run data never enter git: `video/out/`, `video/takes/`, `video/recordings/`,
 `video/vendor/`, `video/node_modules/` and `video/voice-venv/` are ignored. V1 (below) made every scene a take script that re-records by
 name; V2 (below) filmed the run scenes on real runs; `video/SCENES.md` has each scene's status, the
 V2 numbers and bends, and the operator's MAC scripts.
+
+## V3b — two spoken words, MAC-3 (2026-10-17)
+
+Brief `prompts/video-v3b.md`, branch `video/v3b`. Results (every render, the kept files, MAC-3):
+`video/SCENES.md` › V3b.
+
+| Path | What |
+|---|---|
+| `v3/phonemes.py` | the sound check: `facebook/wav2vec2-lv-60-espeak-cv-ft` (Apache-2.0, CPU) reads the checked word between its neighbours (`CHECKS`: 3.1 "Hull", 4.2 "in") |
+| `v3/say.json` | a line's spoken form: the script's words, respelled only where declared (`v3/test_say.py`) |
+| `v3/voice.py` | reads `say.json`; a spoken form gets seeds 42/43/44, ≤ 12 renders a line; its gate = transcript (checked word left to the sound check) + sound check |
+| `camera/notify-check.mjs` | MAC-3's free check: one test notification from the dev Desktop's page, re-shown every 12 s until stopped; `--pinned` makes the Desktop the active app before each show (as in a take) |
+| `camera/scenes/4.1.mjs` | part `4.1-mac3`: 4.1's run again under its own take id (its run → `out/v3b/stall-mac3.json`) |
+
+```bash
+PY=video/voice-venv/bin/python; export HF_HUB_OFFLINE=1   # after the phoneme model's first download
+$PY video/v3/phonemes.py 3.1 video/out/v3/lines/3.1.wav     # SOUND 3.1 3.1.wav FAIL [ɐ] h oʊ l [m uː] | …
+$PY video/v3/voice.py all --resume-minutes Seven --only 3.1 4.2   # renders the say.json forms + both checks
+$PY video/v3/voice.py timing && . video/env.sh && $PY video/v3/listen.py
+python3 -m unittest discover -s video/v3 -v                 # + the voice venv for the gate cases
+
+QUIET=20 STALLED=60 FAIL=180 video/stack/up
+node video/camera/notify-check.mjs [--pinned]               # the operator answers SEEN / NOT SEEN; then stop it
+node video/camera/take.mjs 4.1-mac3 --dry                   # the pre-roll, stopped before Launch (no spend)
+VIDEO_ALLOW_SPEND=1 node video/camera/take.mjs 4.1-mac3     # after the operator's GO (the spare run)
+```
+
+### What didn't work (V3b)
+
+- **No spelling made VoxCPM2 say "Hull".** "Hul", "Huhl", "Hull," and "hull" × three seeds: `h oʊ l`
+  or `h ɔ l`, never ʌ. 3.1 is owed (V3's file stays); the best three are listed for the operator's ear.
+- **Whisper's word times alone mis-cut the word.** Its word starts run late, handing the checked
+  word's last phoneme (l, d) to the next word; the window is anchored on the neighbours' own phonemes.
+- **must/never didn't pin the word.** 4.2's first check passed "it" (`ɪ t`); the review caught it and
+  each word may now hold only its own sounds.
+- **Whisper hears "it's shipped" for 4.2's `ɪ t ʃ ɪ p t`.** The transcript gate stays strict there (it
+  failed r4, r5); r8 was heard right.
+- **MAC-3's recording has no banner.** macOS shows no banner from the dev Desktop while it is the
+  active app (the test notification: SEEN with the Desktop in the background, NOT SEEN with it
+  active), and a take keeps the Desktop pinned and focused. MAC-3 is still owed: a re-take needs a run
+  and the Desktop let go of before the stall (`video/SCENES.md` › V3b › MAC-3).
+- **`claude auth status` read "loggedIn: false" from `env -i`.** The CLI finds its Keychain entry by
+  `USER`; with `USER`/`LOGNAME` set it reads `loggedIn: true` (claude.ai, max).
 
 ## V3 — the narrator, the re-shoots on 0.27.0, the cards (2026-10-16)
 
