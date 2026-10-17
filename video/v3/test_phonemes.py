@@ -38,6 +38,13 @@ class SoundTest(unittest.TestCase):
         self.assertEqual(sound("4.2", None, IN_WORDS, ph("f", "ɚ", "j", "uː", "ɪ", "n", "n", "iː", "d", "z")),
                          (True, "[j uː] ɪ n [n iː]"))
 
+    def test_another_word_with_the_right_vowel_fails(self):
+        self.assertFalse(sound("3.1", None, HULL_WORDS, ph("æ", "d", "ɐ", "h", "ʌ", "t", "m", "uː", "v"))[0])  # hut
+        self.assertFalse(sound("4.2", None, IN_WORDS, ph("f", "ɚ", "j", "uː", "ɪ", "t", "n", "iː", "d", "z"))[0])  # it
+        self.assertFalse(sound("4.2", None, IN_WORDS, ph("f", "ɚ", "j", "uː", "ə", "n", "n", "iː", "d", "z"))[0])  # 'n'
+        # "in" whose n the decoder merged into "needs": the vowel alone is still the word
+        self.assertTrue(sound("4.2", None, IN_WORDS, ph("f", "ɚ", "j", "uː", "ɪ", "n", "iː", "d", "z"))[0])
+
     def test_a_dropped_word_or_a_missing_place_fails(self):
         self.assertFalse(sound("4.2", None, IN_WORDS, ph("f", "ɚ", "j", "uː", "n", "iː", "d", "z"))[0])
         ok, why = sound("4.2", None, words(("for", 0.0, 0.1), ("you", 0.1, 0.2), ("too", 0.2, 0.3)), ph("j", "uː"))

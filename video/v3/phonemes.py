@@ -18,16 +18,18 @@ from pathlib import Path
 MODEL = "facebook/wav2vec2-lv-60-espeak-cv-ft"
 REVISION = "ae45363bf3413b374fecd9dc8bc1df0e24c3b7f4"
 # scene → the checked word between its neighbours (script words, lowercase, and how each neighbour
-# sounds at the checked word's side), and the phonemes that must / must never sound in it. 3.1: "Hull"
-# is h ʌ l (V3's renders said "hole", h oʊ l). 4.2: "in" (V3's said "and", æ n d); a vowel must sound
-# there too, so a dropped word can't pass.
+# sounds at the checked word's side), and the phonemes that must / must never sound in it (the
+# brief's rules: 3.1 "Hull" with ʌ, never oʊ — V3's renders said "hole", h oʊ l; 4.2 "in", never æ or
+# d — V3's said "and", æ n d). `only`: the word holds nothing but its own sounds, so another word
+# ("hut" h ʌ t, "it" ɪ t, a weak "and" ə n) can't pass either; 4.2's vowel must sound, so a dropped
+# word can't pass.
 CHECKS = {
     "3.1": {"before": "a", "before_ph": [["ɐ"], ["ə"], ["eɪ"]], "word": "hull",
             "after": "moving", "after_ph": [["m", "uː"], ["m", "u"]],
-            "must": [["ʌ"]], "never": ["oʊ"]},
+            "must": [["ʌ"]], "never": ["oʊ"], "only": ["h", "ʌ", "l", "ɫ", "əl"]},
     "4.2": {"before": "you", "before_ph": [["j", "uː"], ["j", "u"], ["j", "ʊ"]], "word": "in",
             "after": "needs", "after_ph": [["n", "iː"], ["n", "i"]],
-            "must": [["ɪ", "ə", "ᵻ", "ɛ", "i"]], "never": ["æ", "d"]},
+            "must": [["ɪ", "ᵻ", "i"]], "never": ["æ", "d"], "only": ["ɪ", "ᵻ", "i", "n"]},
 }
 NEAR_S = 0.3  # a neighbour's sound must be this close to its word's edge in the transcript
 
@@ -110,7 +112,8 @@ def sound(scene, path, words, ph=None):
     if not left or not right or left[1] >= right[0]:
         return False, f"neighbours not heard: {' '.join(p[0] for p in ph)}"
     said = [p[0] for p in ph[left[1] + 1 : right[0]]]
-    ok = all(any(x in said for x in alts) for alts in check["must"]) and not any(x in said for x in check["never"])
+    ok = (all(any(x in said for x in alts) for alts in check["must"])
+          and not any(x in said for x in check["never"]) and all(x in check["only"] for x in said))
     show = lambda a, b: " ".join(p[0] for p in ph[a : b + 1])  # noqa: E731
     return ok, f"[{show(*left)}] {' '.join(said) or '∅'} [{show(*right)}]"
 
