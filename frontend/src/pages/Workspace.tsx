@@ -35,16 +35,12 @@ import { ToolsPage } from "./tools/ToolsPage";
 import { useGithubReturn } from "./tools/githubReturn";
 import "./badgeLoaders";
 
-/** Where the canvas's "back" and "Open Engines / Toolkit" controls land. */
+/** Where the canvas's "back" and "Open Engines" controls land. */
 function dashViewRoute(view: DashView | undefined): Route {
   switch (view) {
-    case "domains":
-      return { page: "domains" };
     case "engines":
       // "Open Engines" on a blocked run: Overview with the rows to fix highlighted.
       return { page: "engines", tab: "overview", fix: true };
-    case "tools":
-      return { page: "tools", view: "installed" };
     default:
       return { page: "home" };
   }

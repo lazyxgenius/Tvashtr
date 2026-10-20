@@ -139,12 +139,6 @@ describe("New team › Import a team file", () => {
     expect(within(dialog).getByLabelText("Name")).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Create team" })).toBeInTheDocument();
   });
-
-  it("is not offered when nothing takes the file", async () => {
-    withHome(<NewTeamDialog open onClose={vi.fn()} />);
-    await screen.findByRole("button", { name: /PM → Engineer/ });
-    expect(screen.queryByRole("button", { name: /Import a team file/ })).toBeNull();
-  });
 });
 
 describe("Import a team file — the check", () => {

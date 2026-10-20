@@ -33,31 +33,14 @@ describe("Domains this agent can search (Dm-AgentAccess)", () => {
     );
   });
 
-  it("ticking adds the domain; unticking from 'every domain' keeps the others", () => {
+  it("ticking adds the domain; unticking from 'every domain' keeps the others", async () => {
+    mockApi({ "GET /api/domains": { domains: sampleDomains() } });
     const onChange = vi.fn();
-    const { rerender } = render(
-      <DomainsChecklist value={null} onChange={onChange} domains={sampleDomains()} />,
-    );
-    fireEvent.click(within(section()).getByRole("checkbox", { name: /Support docs/ }));
+    const { rerender } = render(<DomainsChecklist value={null} onChange={onChange} />);
+    fireEvent.click(await within(section()).findByRole("checkbox", { name: /Support docs/ }));
     expect(onChange).toHaveBeenLastCalledWith(["d-support"]);
-    rerender(<DomainsChecklist value={true} onChange={onChange} domains={sampleDomains()} />);
+    rerender(<DomainsChecklist value={true} onChange={onChange} />);
     fireEvent.click(within(section()).getByRole("checkbox", { name: /Vendor contracts/ }));
     expect(onChange).toHaveBeenLastCalledWith(["d-support", "d-research", "d-q3"]);
-  });
-
-  it("an agent on a Desktop plan is told it gets no domain tools there", () => {
-    render(
-      <DomainsChecklist
-        value={null}
-        onChange={() => {}}
-        domains={sampleDomains()}
-        subscription="grok"
-      />,
-    );
-    expect(
-      within(section()).getByText(
-        "On Tvashtr Desktop with your Grok plan it can’t search domains yet.",
-      ),
-    ).toBeInTheDocument();
   });
 });

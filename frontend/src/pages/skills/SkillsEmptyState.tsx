@@ -7,16 +7,14 @@ export function SkillsEmptyState({
   title,
   body,
   actions,
-  label,
 }: {
   icon: ReactNode;
   title: string;
   body: ReactNode;
   actions?: ReactNode;
-  label?: string;
 }) {
   return (
-    <section className="sk-card" aria-label={label ?? title}>
+    <section className="sk-card" aria-label={title}>
       <div className="sk-empty">
         <span className="sk-empty__icon" aria-hidden="true">
           {icon}

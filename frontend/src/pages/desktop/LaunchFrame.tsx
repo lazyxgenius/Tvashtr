@@ -15,20 +15,11 @@ import "./desktop.css";
  * <version>" with Help and Privacy, which open in the default browser (DT-4, DT-51). The title
  * strip reads "Tvashtr" here (DT-3).
  */
-export function LaunchFrame({
-  width,
-  label,
-  children,
-}: {
-  width: 820 | 560 | 440;
-  /** The screen's accessible name (the h1 usually gives it; set for a frame without one). */
-  label?: string;
-  children?: ReactNode;
-}) {
+export function LaunchFrame({ width, children }: { width: 820 | 560 | 440; children?: ReactNode }) {
   const version = useAppVersion();
   useEffect(() => setDesktopTitle(TITLE_LAUNCH), []);
   return (
-    <main className="dt-launch" aria-label={label}>
+    <main className="dt-launch">
       <div className="dt-launch__wash">
         <div className="dt-launch__col" style={{ width }}>
           {children}

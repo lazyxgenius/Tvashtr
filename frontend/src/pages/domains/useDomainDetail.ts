@@ -1,8 +1,8 @@
 /**
  * One domain's summary for its page, kept live (DM-4): loaded on mount and on window focus, and
- * every 3 s while its files are being read (or `busy` says the Sources table still is). `tick`
- * counts the loads, so the Sources table reloads on the same beat and the counts in the tabs,
- * strip, header and table always move together. A load also refreshes this domain's nav dot.
+ * every 3 s while its files are being read. `tick` counts the loads, so the Sources table reloads
+ * on the same beat and the counts in the tabs, strip, header and table always move together. A
+ * load also refreshes this domain's nav dot.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -13,10 +13,7 @@ import { isReading } from "./domainFormat";
 import { DOMAIN_POLL_MS } from "./useDomainList";
 import { readStamp } from "./useFileDeletes";
 
-export function useDomainDetail(
-  domainId: string,
-  { busy = false }: { busy?: boolean } = {},
-): {
+export function useDomainDetail(domainId: string): {
   detail: DomainDetailView | null;
   /** The domain doesn't exist (any more) or isn't this account's. */
   missing: boolean;
@@ -74,7 +71,7 @@ export function useDomainDetail(
     };
   }, [reload]);
 
-  const polling = busy || (detail ? isReading(detail) : false);
+  const polling = detail ? isReading(detail) : false;
   useEffect(() => {
     if (!polling) return;
     const t = window.setInterval(() => void reload(), DOMAIN_POLL_MS);

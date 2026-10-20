@@ -31,7 +31,7 @@ function NewTeamBody({
 }: {
   initialTemplate?: string;
   onClose: () => void;
-  onImportFile?: (file: File) => void;
+  onImportFile: (file: File) => void;
 }) {
   const { reloadTeams } = useHome();
   const toast = useToast();
@@ -158,34 +158,32 @@ function NewTeamBody({
           </div>
           {/* M4 (File-NewMenu): a team from a file — the picker, then the check before anything
               changes. Beside the starting points, not one of them. */}
-          {onImportFile && (
-            <>
-              <button
-                type="button"
-                className="hm-newteam__import"
-                disabled={busy}
-                onClick={() => importPicker.current?.click()}
-              >
-                <span className="hm-newteam__import-icon">
-                  <Upload size={15} strokeWidth={1.6} aria-hidden />
-                </span>
-                Import a team file
-                <span className="hm-newteam__import-hint">.yaml or .json</span>
-              </button>
-              <input
-                ref={importPicker}
-                type="file"
-                accept={TEAM_FILE_ACCEPT}
-                hidden
-                data-testid="import-team-input"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  e.target.value = "";
-                  if (file) onImportFile(file);
-                }}
-              />
-            </>
-          )}
+          <>
+            <button
+              type="button"
+              className="hm-newteam__import"
+              disabled={busy}
+              onClick={() => importPicker.current?.click()}
+            >
+              <span className="hm-newteam__import-icon">
+                <Upload size={15} strokeWidth={1.6} aria-hidden />
+              </span>
+              Import a team file
+              <span className="hm-newteam__import-hint">.yaml or .json</span>
+            </button>
+            <input
+              ref={importPicker}
+              type="file"
+              accept={TEAM_FILE_ACCEPT}
+              hidden
+              data-testid="import-team-input"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                if (file) onImportFile(file);
+              }}
+            />
+          </>
           {createError && (
             <div className="hm-newteam__alert" role="alert">
               <CircleAlert size={14} strokeWidth={1.6} aria-hidden />
@@ -225,8 +223,8 @@ export function NewTeamDialog({
   open: boolean;
   initialTemplate?: string;
   onClose: () => void;
-  /** M4: "Import a team file" picked a file (the dialog offers it only when this is set). */
-  onImportFile?: (file: File) => void;
+  /** M4: "Import a team file" picked a file. */
+  onImportFile: (file: File) => void;
 }) {
   if (!open) return null;
   return createPortal(

@@ -45,7 +45,7 @@ function renderDialog(props: { initialTemplate?: string } = {}) {
   render(
     <ToastProvider>
       <HomeContext.Provider value={{ reloadTeams } as unknown as HomeContextValue}>
-        <NewTeamDialog open onClose={onClose} {...props} />
+        <NewTeamDialog open onClose={onClose} onImportFile={vi.fn()} {...props} />
       </HomeContext.Provider>
     </ToastProvider>,
   );

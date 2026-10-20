@@ -23,7 +23,7 @@ export function ConnectorRowMenu({
   onOpen?: () => void;
   /** Absent when the connector has no project to pick. */
   onChangeProject?: () => void;
-  onDisconnect?: () => void;
+  onDisconnect: () => void;
 }) {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const label = `More actions for ${name}`;
@@ -42,16 +42,14 @@ export function ConnectorRowMenu({
       onSelect: then(onChangeProject),
     });
   }
-  if (onDisconnect) {
-    if (items.length > 0) items.push("separator");
-    items.push({
-      key: "disconnect",
-      label: "Disconnect",
-      icon: icon(Unplug),
-      danger: true,
-      onSelect: then(onDisconnect),
-    });
-  }
+  if (items.length > 0) items.push("separator");
+  items.push({
+    key: "disconnect",
+    label: "Disconnect",
+    icon: icon(Unplug),
+    danger: true,
+    onSelect: then(onDisconnect),
+  });
 
   return (
     <span className="tk-rowmenu">

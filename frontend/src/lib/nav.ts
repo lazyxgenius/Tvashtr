@@ -38,8 +38,8 @@ export type MemoryTab = "inbox" | "active" | "archive";
 export type NodeTab = "setup" | "skills" | "memory" | "runs" | "tests" | "docs";
 /** A domain's tabs; `sources` is the bare `#/domains/<id>`. */
 export type DomainTab = "sources" | "ask" | "quality" | "teams" | "settings";
-/** The dashboard section the canvas's back / "Open Engines · Toolkit" controls return to. */
-export type DashView = "home" | "domains" | "engines" | "tools";
+/** The dashboard section the canvas's "Open Engines" control returns to (back, with none: Home). */
+export type DashView = "engines";
 /** Tvashtr Desktop's first-run setup steps (desktop-app.md DT-17). */
 export type SetupStep = "engines" | "project" | "team";
 /** The landing's scroll targets (website.md WEB-7). */

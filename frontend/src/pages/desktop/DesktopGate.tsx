@@ -117,10 +117,10 @@ function DesktopGateInner({ onSetup }: { onSetup: boolean }) {
   const launchEpoch = useRef(0);
 
   /** Signed out: Expired when someone signed in on this Mac before, else Welcome / Handoff. */
-  const toSignedOut = useCallback(async (opts: { afterSignOut?: boolean } = {}) => {
+  const toSignedOut = useCallback(async () => {
     const ctx = await getLaunchContext();
-    setHandoff(opts.afterSignOut ? null : ctx.openedFromWeb);
-    if (!opts.afterSignOut && ctx.lastUser) {
+    setHandoff(ctx.openedFromWeb);
+    if (ctx.lastUser) {
       setState({ kind: "expired", lastLogin: ctx.lastUser.displayName || ctx.lastUser.login });
     } else {
       setState({ kind: "signed_out" });

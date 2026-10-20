@@ -2,7 +2,7 @@
  * An agent's "Domains this agent can search" (DM-105/106, Dm-AgentAccess): every domain as a
  * checkbox with its status, then the callout about the two tools it gets. It edits the agent's
  * `tool_config.tvashtr.domains` — `true` (every domain, the round-1 switch) or a list of ids — and
- * the drawer saves it. An agent on a Desktop plan gets the DM-96 note: those runs get no tools.
+ * the drawer saves it.
  */
 import { useEffect, useId, useState } from "react";
 import { Info } from "lucide-react";
@@ -16,40 +16,31 @@ import {
   toggleAccess,
 } from "./queryNodeFormat";
 import { publishDomainNav } from "./useDomainList";
-import { subscriptionNote } from "./useInTeamsFormat";
 import "./queryNode.css";
 
 export function DomainsChecklist({
   value,
   onChange,
-  subscription = null,
-  domains: given,
 }: {
   /** The agent's `tvashtr.domains` (`null`: no domains). */
   value: DomainAccess | null;
   /** The new list (empty: no domains). */
   onChange: (ids: string[]) => void;
-  /** "claude" / "grok" when the agent runs on a Desktop plan. */
-  subscription?: string | null;
-  /** The account's domains; loaded here when not given. */
-  domains?: DomainListItem[];
 }) {
-  const [loaded, setLoaded] = useState<DomainListItem[] | null>(null);
+  const [domains, setDomains] = useState<DomainListItem[] | null>(null);
   useEffect(() => {
-    if (given) return;
     let live = true;
     listDomainSummaries()
       .then((list) => {
         if (!live) return;
-        setLoaded(list);
+        setDomains(list);
         publishDomainNav(list);
       })
-      .catch(() => live && setLoaded([]));
+      .catch(() => live && setDomains([]));
     return () => {
       live = false;
     };
-  }, [given]);
-  const domains = given ?? loaded;
+  }, []);
   const allIds = (domains ?? []).map((d) => d.domain_id);
   const headId = useId();
 
@@ -84,7 +75,6 @@ export function DomainsChecklist({
           <b>find passages</b> (no answer). It picks the domain by name — no IDs needed.
         </span>
       </div>
-      {subscription && <p className="dm-dlist__note">{subscriptionNote(subscription)}</p>}
     </section>
   );
 }

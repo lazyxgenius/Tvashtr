@@ -7,16 +7,14 @@ export function MemoryEmptyState({
   title,
   body,
   actions,
-  label,
 }: {
   icon: ReactNode;
   title: string;
   body: ReactNode;
   actions?: ReactNode;
-  label?: string;
 }) {
   return (
-    <section className="mem-card" aria-label={label ?? title}>
+    <section className="mem-card" aria-label={title}>
       <div className="mem-empty">
         <span className="mem-empty__icon" aria-hidden="true">
           {icon}
