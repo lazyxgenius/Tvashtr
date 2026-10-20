@@ -242,9 +242,3 @@
 .dm-dlist__text {
   flex: 1;
 }
-.dm-dlist__note {
-  margin: 0;
-  font-size: 12px;
-  line-height: 1.5;
-  color: #6b4a1f;
-}
