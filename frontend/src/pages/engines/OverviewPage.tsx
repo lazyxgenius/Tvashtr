@@ -39,7 +39,7 @@ import { FirstTimeChooser } from "./FirstTimeChooser";
 const LEDE =
   "The models your agents run on. Use your own subscription on Tvashtr Desktop, or an API key anywhere.";
 
-export interface OverviewActions {
+interface OverviewActions {
   /** Add API key (nothing picked) or a row's Add key (that provider picked). */
   onAddKey: (provider?: string) => void;
   /** A row's Connect / Set up / Refresh / Open in Desktop. */

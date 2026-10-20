@@ -4,7 +4,7 @@
  */
 import type { DesktopTemplateNode } from "../../../lib/api/desktop";
 
-export interface SetupTeamCard {
+interface SetupTeamCard {
   /** The key `POST /api/teams` takes. */
   template: string;
   title: string;

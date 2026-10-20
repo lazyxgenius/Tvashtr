@@ -12,7 +12,7 @@ import { useSyncExternalStore } from "react";
 
 import { getAccountPreferences, patchAccountPreferences } from "../../lib/api/teams";
 
-export interface GetStartedState {
+interface GetStartedState {
   /** null until the preference has loaded (or when it couldn't be loaded). */
   hidden: boolean | null;
   /** Home is showing the first-time layout. */

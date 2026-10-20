@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   answerMeta,
-  hasMarkers,
   highlightRange,
   parseAnswer,
   parseInline,
@@ -51,8 +50,6 @@ describe("parseInline / parseAnswer", () => {
 
 it("plainAnswer drops markers and Markdown marks (Copy)", () => {
   expect(plainAnswer("Within **30 days** [1], prorated [2, 3].")).toBe("Within 30 days, prorated.");
-  expect(hasMarkers(ANSWER)).toBe(true);
-  expect(hasMarkers("No sources here.")).toBe(false);
 });
 
 describe("OQ-10 highlight", () => {

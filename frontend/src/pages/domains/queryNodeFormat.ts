@@ -138,7 +138,7 @@ export function drawerSubtitle(title: string, runNumber: number | null | undefin
   return runNumber ? `${title} · run ${runNumber}` : title;
 }
 
-export type RoundBadge = { tone: "ok" | "warn" | "danger"; label: string };
+type RoundBadge = { tone: "ok" | "warn" | "danger"; label: string };
 
 /** A round's badge (DM-103): Answered / No answer / Failed (`null` while it runs). */
 export function roundBadge(

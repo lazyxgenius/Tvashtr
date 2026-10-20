@@ -14,14 +14,14 @@ import { type RunListRow, getRunDetail, listRunsPage } from "../../lib/api/runs"
 import { isDesktopApp } from "../../lib/desktopRepos";
 import { publishBadges } from "../../lib/workspaceStatus";
 
-export interface Loadable<T> {
+interface Loadable<T> {
   data: T | null;
   loading: boolean;
   error: boolean;
 }
 
 /** A run that ended while Home was open: shown muted in Running now for a minute (spec Q6). */
-export interface EndedRun {
+interface EndedRun {
   row: RunListRow;
   endedAt: number;
 }

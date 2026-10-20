@@ -14,7 +14,7 @@ import { cx, useDismiss } from "../../design-system/components/utils";
 import { MonogramTile } from "./enginesUi";
 import type { PickerOption, ProviderPick } from "./sheetModel";
 
-export interface ProviderComboboxProps {
+interface ProviderComboboxProps {
   options: readonly PickerOption[];
   /** The options a search leaves (ENG-64). */
   filter: (query: string) => PickerOption[];

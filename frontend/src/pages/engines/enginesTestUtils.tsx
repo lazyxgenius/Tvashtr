@@ -162,7 +162,7 @@ export function sampleInputs(over: Partial<EngineInputs> = {}): EngineInputs {
   };
 }
 
-export interface Call {
+interface Call {
   method: string;
   path: string;
   body: unknown;

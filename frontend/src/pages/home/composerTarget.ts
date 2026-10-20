@@ -5,7 +5,7 @@
 import type { RunTarget } from "../../lib/api/runs";
 import type { ComposerPrefill, ComposerTarget } from "./homeData";
 
-export interface RetryableRun {
+interface RetryableRun {
   id: string;
   idea: string;
   target?: RunTarget | null;

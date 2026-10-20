@@ -16,7 +16,7 @@ import { ConnectorTile } from "./ConnectorTile";
 import { categoryLabel, registryCount } from "./connectorFormat";
 import type { Catalog } from "./useCatalog";
 
-export interface BrowseActions {
+interface BrowseActions {
   onConnect: (entry: CatalogEntry) => void;
   onCustom: () => void;
 }

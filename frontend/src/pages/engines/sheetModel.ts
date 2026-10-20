@@ -35,7 +35,7 @@ export const NO_PICK: ProviderPick = { kind: "none" };
 
 // ---- titles ----
 
-export interface SheetTitles {
+interface SheetTitles {
   title: string;
   subtitle: string;
 }
@@ -225,7 +225,7 @@ export const SAVE_NETWORK_ERROR =
 /** Where the sheet was opened from, when the toast's words depend on it: the suggested-keys banner
  *  ("Add anthropic too, so …", ENG-58), the Domains embeddings section (ENG-60) or an Overview
  *  row's Add key ("… still needs xai for the website.", ENG-18). */
-export interface SaveOrigin {
+interface SaveOrigin {
   banner?: boolean;
   embeddings?: boolean;
   row?: boolean;
@@ -237,7 +237,7 @@ export type SaveToastAction =
   | { kind: "add-key"; label: string; provider: string; embeddings: boolean }
   | { kind: "open-domains"; label: string };
 
-export interface SaveToast {
+interface SaveToast {
   message: string;
   action: SaveToastAction | null;
 }

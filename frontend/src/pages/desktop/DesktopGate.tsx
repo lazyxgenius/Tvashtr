@@ -42,7 +42,7 @@ import { type WebHandoff, WelcomePage } from "./WelcomePage";
 
 type Account = "current" | "github";
 
-export type GateState =
+type GateState =
   /** The launch check (DT-2): Splash, or Reconnected after Offline's retry worked (DT-15). */
   | { kind: "launching"; progress: LaunchProgress }
   | { kind: "offline"; failure: ProbeFailure; tries: number }

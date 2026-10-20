@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { type Compare, getCompare } from "../../lib/api/compare";
 
 /** R15: a running compare is read every 2 s. */
-export const COMPARE_POLL_MS = 2000;
+const COMPARE_POLL_MS = 2000;
 
 const ended = (c: Compare) => c.status === "finished" || c.status === "stopped";
 

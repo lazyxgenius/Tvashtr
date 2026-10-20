@@ -51,7 +51,7 @@ type ToolsView = "installed" | "browse";
 
 /** The sheets the page opens: the Add tool wizard (optionally with a name, or with "A custom
  *  server" chosen from Browse's Custom server card) or Paste mcp.json. */
-export type ToolSheet = { kind: "add"; name?: string; start?: "custom" } | { kind: "paste" } | null;
+type ToolSheet = { kind: "add"; name?: string; start?: "custom" } | { kind: "paste" } | null;
 
 /** The server's own words for a 4xx (e.g. "tool not found in your library"), else null. */
 function clientError(e: unknown): string | null {

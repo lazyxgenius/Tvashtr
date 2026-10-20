@@ -56,7 +56,7 @@ function checkedAfter(at: string | null, since: string | null): boolean {
   return Date.parse(at) > Date.parse(since);
 }
 
-export interface RowConnect {
+interface RowConnect {
   /** Subscriptions whose rows say "Checking…". */
   checking: SubscriptionProviderId[];
   connect: (sub: SubscriptionProviderId) => void;

@@ -5,7 +5,7 @@
  */
 export type MdInline = { kind: "text" | "code" | "strong"; text: string };
 
-export type MdBlock =
+type MdBlock =
   | { kind: "heading"; level: number; inline: MdInline[] }
   | { kind: "bullet"; inline: MdInline[] }
   | { kind: "number"; marker: string; inline: MdInline[] }

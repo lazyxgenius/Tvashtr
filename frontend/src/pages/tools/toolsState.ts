@@ -8,7 +8,7 @@ import { useSyncExternalStore } from "react";
 
 export type StatusFilter = "all" | "ready" | "needs_attention";
 
-export interface ToolsViewState {
+interface ToolsViewState {
   query: string;
   status: StatusFilter;
   /** Tools created during this visit, newest first. */

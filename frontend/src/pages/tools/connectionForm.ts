@@ -226,7 +226,7 @@ export function suggestedSecret(toolName: string): string {
 
 // ---- A header / env value as literal text and `${NAME}` chips ----
 
-export type ValueSegment = { kind: "text"; text: string } | { kind: "ref"; name: string };
+type ValueSegment = { kind: "text"; text: string } | { kind: "ref"; name: string };
 
 /** "Bearer ${LINEAR_TOKEN}" → text "Bearer ", ref LINEAR_TOKEN. */
 export function valueSegments(value: string): ValueSegment[] {

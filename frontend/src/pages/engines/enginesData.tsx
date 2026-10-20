@@ -45,7 +45,7 @@ import { publishBadges, refreshBadges } from "../../lib/workspaceStatus";
 import { enginesBridge, readLiveStatuses } from "./engineBridge";
 import { type EngineInputs, type Surface, engineBadges } from "./engineModel";
 
-export type LoadStatus = "loading" | "ready" | "error";
+type LoadStatus = "loading" | "ready" | "error";
 
 interface EnginesState {
   status: LoadStatus;

@@ -15,7 +15,7 @@ import {
 import type { TeamShape } from "../../lib/api";
 
 /** Chip sizes the designs use: team card 22, first-time template 20, New team card 18, list row 14. */
-export type StripSize = 22 | 20 | 18 | 14;
+type StripSize = 22 | 20 | 18 | 14;
 
 const ICON_PX: Record<StripSize, number> = { 22: 12, 20: 11, 18: 9, 14: 7 };
 

@@ -8,7 +8,7 @@ import { useId, useState } from "react";
 import type { Config } from "../../lib/api";
 import { COPY } from "./copy";
 
-export interface FaqItem {
+interface FaqItem {
   q: string;
   a: string;
 }

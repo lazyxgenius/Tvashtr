@@ -94,7 +94,7 @@ export function draftSource(d: SkillDraft): SkillSource {
 export const NAME_RULE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 export const NAME_RULE_MESSAGE =
   "Use lowercase letters, numbers and single hyphens, like house-style.";
-export const TRIGGER_REQUIRED = "Add at least one trigger word.";
+const TRIGGER_REQUIRED = "Add at least one trigger word.";
 
 /** The backend's own name rules (SKILL-36): required, kebab-case, at most 64 characters. */
 export function nameError(name: string): string | null {

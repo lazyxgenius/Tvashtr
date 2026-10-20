@@ -60,10 +60,7 @@ export interface AddKeyRequest {
 }
 
 /** Opens the sheet again (a toast's "Add <q>"; an Overview row's toast keeps its wording). */
-export type OpenAddKey = (
-  provider?: string,
-  options?: { embeddings?: boolean; row?: boolean },
-) => void;
+type OpenAddKey = (provider?: string, options?: { embeddings?: boolean; row?: boolean }) => void;
 
 function HintLine({ hint }: { hint: SheetHint }) {
   if (hint.kind === "covers") {

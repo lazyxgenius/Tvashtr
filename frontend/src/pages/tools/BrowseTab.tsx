@@ -48,7 +48,7 @@ function useGithubUrls(): GithubUrls {
   return urls;
 }
 
-export interface BrowseActions {
+interface BrowseActions {
   /** Create the entry's tool; resolves once the page has reacted (list, badge, toast). */
   onAdd: (entry: CatalogEntry) => Promise<void>;
   /** Custom server → the Add tool wizard with "A custom server" chosen. */

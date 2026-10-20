@@ -6,7 +6,7 @@
 import type { MissingSecret, SecretItem, SecretRef, SecretsList } from "../../lib/api/tools";
 
 /** SECRET-10: capital letters, numbers and _, not starting with a number; at most 128. */
-export const SECRET_NAME_RE = /^[A-Z_][A-Z0-9_]*$/;
+const SECRET_NAME_RE = /^[A-Z_][A-Z0-9_]*$/;
 const MAX_NAME = 128;
 const EXAMPLE = "GITHUB_TOKEN";
 

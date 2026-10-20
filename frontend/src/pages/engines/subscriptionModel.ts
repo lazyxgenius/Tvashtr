@@ -54,7 +54,7 @@ export const IDLE_UI: CardUi = {
 
 // ---- the card ----
 
-export type CardBadgeVariant = "neutral" | "info" | "success" | "warning" | "danger";
+type CardBadgeVariant = "neutral" | "info" | "success" | "warning" | "danger";
 
 export interface CardBadge {
   variant: CardBadgeVariant;
@@ -124,7 +124,7 @@ function keyProviderOf(sub: SubscriptionProviderId): string {
 }
 
 /** Codex is installed (any answer but "not found" / a failed or pending check) → Ready (OQ-8). */
-export function codexReady(s: SubscriptionStatus): boolean {
+function codexReady(s: SubscriptionStatus): boolean {
   return s.state === "connected" || s.state === "needs_login" || s.state === "api_key";
 }
 
@@ -506,7 +506,7 @@ export function subscriptionCard(
 
 // ---- the runner banner (ENG-25) ----
 
-export interface RunnerBanner {
+interface RunnerBanner {
   tone: "ok" | "warn";
   text: string;
   /** "Checked just now" / "Last checked in 3h ago", or null. */
@@ -589,7 +589,7 @@ export const CONNECT_FAILED = "Couldn’t open a Terminal window to sign in. Try
 
 // ---- Disconnect (ENG-42/43) ----
 
-export interface DisconnectCopy {
+interface DisconnectCopy {
   title: string;
   body: string;
   toast: string;

@@ -154,7 +154,7 @@ export function suggestedKeys(i: EngineInputs): string[] {
 
 // ---- Domains embeddings (ENG-59, OQ-7) ----
 
-export interface EmbeddingItem {
+interface EmbeddingItem {
   provider: string;
   /** The saved key's last 4, or null when no key is saved. */
   last4: string | null;
@@ -309,7 +309,7 @@ function soleUser(i: EngineInputs, provider: string): string | null {
   return users.length === 1 ? users[0] : null;
 }
 
-export interface ReplaceCopy {
+interface ReplaceCopy {
   title: string;
   body: string;
   /** The success toast. */
@@ -338,7 +338,7 @@ export function replaceCopy(i: EngineInputs, provider: string): ReplaceCopy {
 
 // ---- Remove (ENG-57, OQ-13, OQ-21) ----
 
-export interface RemoveCopy {
+interface RemoveCopy {
   title: string;
   body: string;
   /** The teams whose runs a removal can break (to check for runs in progress). */

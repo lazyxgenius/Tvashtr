@@ -34,7 +34,7 @@ export function EnginesHead({
   );
 }
 
-export type StatusTone = "ok" | "warn" | "muted" | "busy";
+type StatusTone = "ok" | "warn" | "muted" | "busy";
 
 /** "✓ Always available" / "⚠ No API key [Add key]" / "○ Not open on this computer" /
  *  "↺ Checking…". */

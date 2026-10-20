@@ -14,7 +14,7 @@ import { __resetBackendStatusForTests } from "../../lib/backendStatus";
 import { __resetWorkspaceStatusForTests } from "../../lib/workspaceStatus";
 import { resetToolsView } from "./toolsState";
 
-export interface Call {
+interface Call {
   method: string;
   path: string;
   body: unknown;

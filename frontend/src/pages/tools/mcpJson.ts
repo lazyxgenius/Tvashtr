@@ -15,9 +15,9 @@ import type { ServerConfig } from "../../lib/api/tools";
 import { TOOL_NAME_RE } from "./connectionForm";
 import { type Transport, transportOf } from "./toolConfig";
 
-export type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
+type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 
-export interface ScanResult {
+interface ScanResult {
   /** What the scanner read, stepping over mistakes (undefined for blank text). */
   value: Json | undefined;
   /** The first mistake in words, e.g. "Line 3: add a comma after the linear entry.", or null. */

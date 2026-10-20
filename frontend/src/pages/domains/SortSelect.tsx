@@ -9,7 +9,7 @@ import { Check, ChevronDown } from "lucide-react";
 
 import { cx, useDismiss } from "../../design-system/components/utils";
 
-export interface SortOption<V extends string> {
+interface SortOption<V extends string> {
   value: V;
   label: string;
   /** Shown on the right of the option (the Show filter's file counts). */

@@ -389,7 +389,7 @@ export function homeRoutes(over: Record<string, Reply> = {}): Record<string, Rep
   };
 }
 
-export const USER: AuthUser = { id: "u1", email: "lazyx@tvashtr.dev", display_name: "Lazyx" };
+const USER: AuthUser = { id: "u1", email: "lazyx@tvashtr.dev", display_name: "Lazyx" };
 
 export function renderHome() {
   return render(

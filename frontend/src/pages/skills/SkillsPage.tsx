@@ -25,7 +25,7 @@ import { subscribeSkillsHandoff, takeSkillsHandoff } from "./skillsHandoff";
 import { matchesQuery, plural, presetInLibrary, sortByName } from "./skillsModel";
 import "./skills.css";
 
-export type SkillsView = "mine" | "presets";
+type SkillsView = "mine" | "presets";
 
 type Load<T> =
   | { state: "loading" }

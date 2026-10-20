@@ -195,7 +195,7 @@ export function canContinue(opts: { planInUse: boolean; consent: boolean; savedK
 
 // ---- The "Use your <plan> plan" sheet (DT-25, OQ-18) ----
 
-export interface UsePlanCopy {
+interface UsePlanCopy {
   title: string;
   subtitle: string;
   install: { title: string; body: string };

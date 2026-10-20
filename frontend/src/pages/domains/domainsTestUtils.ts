@@ -127,7 +127,7 @@ export function sampleDomains(): DomainListItem[] {
 
 type Reply = ((init: RequestInit | undefined, url: URL) => unknown) | object | null;
 
-export interface MockCall {
+interface MockCall {
   method: string;
   path: string;
   body: unknown;
@@ -228,7 +228,7 @@ export function filesList(files: DomainFile[]): DomainFilesList {
 }
 
 /** One fake upload (XHR): `progress(0.45)`, `respond(status, body)`; `file` is what was sent. */
-export class FakeUpload {
+class FakeUpload {
   static sent: FakeUpload[] = [];
   upload: { onprogress: ((e: ProgressEvent) => void) | null } = { onprogress: null };
   onload: (() => void) | null = null;

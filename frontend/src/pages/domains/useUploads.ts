@@ -52,7 +52,7 @@ export function isLocalFile(f: Pick<DomainFile, "document_id">): boolean {
   return f.document_id.startsWith(LOCAL_PREFIX);
 }
 
-export interface Upload {
+interface Upload {
   key: string;
   name: string;
   size: number;

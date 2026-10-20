@@ -414,11 +414,6 @@ export function kindName(kind: DomainFileKind): string {
   return KIND_NAMES[kind];
 }
 
-/** A file being read, re-read or queued keeps the table polling (DM-4). */
-export function fileBusy(f: Pick<DomainFile, "phase">): boolean {
-  return f.phase === "reading" || f.phase === "rereading" || f.phase === "waiting";
-}
-
 /** The Show filter's options with their counts (DM-47). */
 export function showOptions(
   counts: DomainFileCounts,
@@ -546,7 +541,7 @@ export function uploadProblem(file: { name: string; size: number }): string | nu
 
 // ---- The New domain dialog (DM-22…DM-29) ----
 
-export const MAX_DOMAIN_NAME = 120;
+const MAX_DOMAIN_NAME = 120;
 
 /** The name rule (DM-14, DM-27): trimmed, 1–120 characters, unique ignoring case. */
 export function domainNameProblem(name: string, existing: string[]): string | null {

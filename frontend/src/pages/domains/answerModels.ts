@@ -2,7 +2,7 @@
  * The answer models (DM-63, drawn in DmF-Model-2): what the Ask tab's picker and Settings › Answer
  * model offer. NVIDIA NIM is never offered (it serves no seat); any other model is "Custom…".
  */
-export interface AnswerModel {
+interface AnswerModel {
   /** `null` = the account default. */
   slug: string | null;
   label: string;

@@ -32,7 +32,7 @@ export interface SettingsDraft {
   graph: boolean;
 }
 
-export type SettingsField = keyof SettingsDraft;
+type SettingsField = keyof SettingsDraft;
 
 const LABELS: Record<SettingsField, string> = {
   template: "Starting point",

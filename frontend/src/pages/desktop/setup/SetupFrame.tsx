@@ -15,7 +15,7 @@ const COPY: Record<Exclude<RailStep, "signin">, { title: string; sub: string }> 
   team: { title: "First team", sub: "Start from a template" },
 };
 
-export interface SetupFooter {
+interface SetupFooter {
   /** Back to the previous step; omitted = rendered disabled (Engines, OQ-15). */
   onBack?: () => void;
   /** Skip for now (Engines only, DT-18). */

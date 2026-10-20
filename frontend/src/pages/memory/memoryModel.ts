@@ -56,7 +56,7 @@ export function scopeOf(m: Pick<Memory, "tier">): MemoryScope {
   return m.tier === "node" ? "agent" : m.tier;
 }
 
-export type ScopeChipKind = "agent" | "repo" | "account";
+type ScopeChipKind = "agent" | "repo" | "account";
 
 /**
  * MEM-9 / Q14: an agent memory reads "<Role> · <Team>" ("Removed agent" once the agent is gone), a

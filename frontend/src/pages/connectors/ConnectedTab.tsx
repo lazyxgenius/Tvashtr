@@ -26,7 +26,7 @@ import {
 
 const pageOf = (c: Connection) => ({ page: "connector", connectorId: c.id }) as const;
 
-export interface ConnectedActions {
+interface ConnectedActions {
   /** Sign in again, or replace the key of a connection that uses one. */
   onSignIn: (c: Connection) => void;
   onGiveAccess: (c: Connection) => void;

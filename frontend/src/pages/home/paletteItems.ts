@@ -29,7 +29,7 @@ export type PaletteTarget =
   | { kind: "engines" }
   | { kind: "domains"; domainId?: string };
 
-export interface PaletteOption {
+interface PaletteOption {
   id: string;
   icon: PaletteIcon;
   label: string;
@@ -38,7 +38,7 @@ export interface PaletteOption {
   target: PaletteTarget;
 }
 
-export interface PaletteGroup {
+interface PaletteGroup {
   label: string;
   options: PaletteOption[];
 }

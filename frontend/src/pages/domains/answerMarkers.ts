@@ -7,7 +7,7 @@ import type { DomainPassage } from "../../lib/api/domains";
 
 export type Inline = { kind: "text" | "bold" | "code"; text: string } | { kind: "chip"; n: number };
 
-export type Block = { kind: "p"; parts: Inline[] } | { kind: "ul" | "ol"; items: Inline[][] };
+type Block = { kind: "p"; parts: Inline[] } | { kind: "ul" | "ol"; items: Inline[][] };
 
 const INLINE = /\*\*(.+?)\*\*|`([^`]+)`|\s*\[(\d+(?:\s*,\s*\d+)*)\]/g;
 const MARKER = /\s*\[(\d+(?:\s*,\s*\d+)*)\]/g;
@@ -55,11 +55,6 @@ export function plainAnswer(text: string): string {
     .replace(/\*\*(.+?)\*\*/g, "$1")
     .replace(/`([^`]+)`/g, "$1")
     .trim();
-}
-
-/** Whether the answer points at any passage (OQ-23: else its sources are just the top two). */
-export function hasMarkers(text: string): boolean {
-  return new RegExp(MARKER.source).test(text);
 }
 
 const STOP = new Set(
