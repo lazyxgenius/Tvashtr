@@ -38,7 +38,6 @@ function toRendererStatus(row, provider) {
  *   notify?: (status: object) => void,
  *   now?: () => number,
  *   log?: (m: string) => void,
- *   loginReprobeWindowMs?: number,
  * }} deps
  */
 function createEngineController({
@@ -50,7 +49,6 @@ function createEngineController({
   notify = () => {},
   now = Date.now,
   log = () => {},
-  loginReprobeWindowMs = LOGIN_REPROBE_WINDOW_MS,
 }) {
   /** @type {Map<string, number>} provider -> when Connect opened the vendor login */
   const pendingLogins = new Map();
@@ -153,7 +151,7 @@ function createEngineController({
       const t = now();
       const probes = [];
       for (const [id, startedAt] of [...pendingLogins]) {
-        if (t - startedAt > loginReprobeWindowMs) {
+        if (t - startedAt > LOGIN_REPROBE_WINDOW_MS) {
           pendingLogins.delete(id);
           continue;
         }

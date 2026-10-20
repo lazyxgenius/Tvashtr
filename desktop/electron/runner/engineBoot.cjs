@@ -33,7 +33,7 @@ function errorStatus(provider) {
 /**
  * @param {{ providers: string[], registry: { get(p: string): any },
  *   store: { write(p: string, s: object): unknown },
- *   statusSync: { push(s: object): Promise<void>, clear?(p: string): Promise<void> },
+ *   statusSync: { push(s: object): Promise<void>, clear(p: string): Promise<void> },
  *   isUserDisconnected?: (p: string) => boolean, log?: (m: string) => void }} deps
  */
 async function bootEngines({
@@ -52,7 +52,7 @@ async function bootEngines({
       const status = disconnectedStatus(provider);
       store.write(provider, status);
       out.push(status);
-      if (typeof statusSync.clear === "function") await statusSync.clear(provider);
+      await statusSync.clear(provider);
       continue;
     }
     let status;

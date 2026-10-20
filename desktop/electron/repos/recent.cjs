@@ -12,9 +12,9 @@ const RECENT_MAX = 8;
 
 /**
  * @param {{ userDataDir: string, branchOf: (dir: string) => Promise<string | null>,
- *   home?: string, max?: number }} deps
+ *   home?: string }} deps
  */
-function createRecentFolders({ userDataDir, branchOf, home, max = RECENT_MAX }) {
+function createRecentFolders({ userDataDir, branchOf, home }) {
   const filePath = path.join(userDataDir, RECENT_FILENAME);
 
   /** @returns {string[]} */
@@ -27,7 +27,7 @@ function createRecentFolders({ userDataDir, branchOf, home, max = RECENT_MAX }) 
         const p = f && typeof f.path === "string" ? f.path : null;
         if (p && path.isAbsolute(p) && !out.includes(p)) out.push(p);
       }
-      return out.slice(0, max);
+      return out.slice(0, RECENT_MAX);
     } catch {
       return [];
     }
@@ -37,7 +37,7 @@ function createRecentFolders({ userDataDir, branchOf, home, max = RECENT_MAX }) 
   function save(paths) {
     fs.mkdirSync(userDataDir, { recursive: true });
     const tmp = `${filePath}.tmp`;
-    const body = { version: 1, folders: paths.slice(0, max).map((p) => ({ path: p })) };
+    const body = { version: 1, folders: paths.slice(0, RECENT_MAX).map((p) => ({ path: p })) };
     fs.writeFileSync(tmp, JSON.stringify(body, null, 2));
     fs.renameSync(tmp, filePath);
   }

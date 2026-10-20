@@ -35,7 +35,6 @@ function isAuthError(e) {
  *   home?: string,
  *   tmpRoot?: string,
  *   maxBundleBytes?: number,
- *   maxResultBytes?: number,
  *   log?: (m: string) => void,
  *   login?: () => string | null | undefined,
  * }} deps
@@ -48,7 +47,6 @@ function createRepoService({
   home = os.homedir(),
   tmpRoot = os.tmpdir(),
   maxBundleBytes = MAX_BUNDLE_BYTES,
-  maxResultBytes = MAX_RESULT_BYTES,
   log = () => {},
 }) {
   const branchOf = async (dir) => {
@@ -100,7 +98,7 @@ function createRepoService({
     if (e && e.code === "too_large") {
       return new RepoError(
         "too_large",
-        `The run's result is too big to bring back (over ${mb(maxResultBytes)} MB).`,
+        `The run's result is too big to bring back (over ${mb(MAX_RESULT_BYTES)} MB).`,
       );
     }
     if (e && e.status >= 400 && e.status < 500 && e.detail) {
@@ -169,7 +167,7 @@ function createRepoService({
       return withTempDir(async (dir) => {
         const file = path.join(dir, "result.bundle");
         try {
-          await api.downloadShipBundle(runId, file, { maxBytes: maxResultBytes });
+          await api.downloadShipBundle(runId, file, { maxBytes: MAX_RESULT_BYTES });
         } catch (e) {
           throw downloadError(e);
         }

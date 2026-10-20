@@ -51,8 +51,7 @@ function buildLoginScript({ provider, binaryPath, args, pathValue }) {
  * Open the vendor login in a Terminal window. Resolves as soon as the window is asked to open.
  *
  * @param {{ provider: string, binaryPath: string, args: string[], env: NodeJS.ProcessEnv,
- *   platform?: string, scriptDir?: string, execFile?: Function, spawn?: Function,
- *   writeFile?: (p: string, s: string, o: object) => void }} req
+ *   platform?: string, scriptDir?: string, execFile?: Function }} req
  */
 async function openLoginInTerminal({
   provider,
@@ -62,26 +61,24 @@ async function openLoginInTerminal({
   platform = process.platform,
   scriptDir = os.tmpdir(),
   execFile = defaultExecFile,
-  spawn = childProcess.spawn,
-  writeFile = fs.writeFileSync,
 }) {
   if (platform === "darwin") {
     fs.mkdirSync(scriptDir, { recursive: true });
     const file = path.join(scriptDir, `tvashtr-${provider}-login.command`);
     const script = buildLoginScript({ provider, binaryPath, args, pathValue: env.PATH || "" });
-    writeFile(file, script, { mode: 0o700 });
+    fs.writeFileSync(file, script, { mode: 0o700 });
     await execFile("open", ["-a", "Terminal", file], { env, timeout: 10000 });
     return { opened: "terminal", script: file };
   }
   // Linux / Windows: best effort — a detached login in the platform's terminal.
   const child =
     platform === "win32"
-      ? spawn("cmd.exe", ["/c", "start", "", binaryPath, ...args], {
+      ? childProcess.spawn("cmd.exe", ["/c", "start", "", binaryPath, ...args], {
           detached: true,
           stdio: "ignore",
           env,
         })
-      : spawn("x-terminal-emulator", ["-e", binaryPath, ...args], {
+      : childProcess.spawn("x-terminal-emulator", ["-e", binaryPath, ...args], {
           detached: true,
           stdio: "ignore",
           env,
