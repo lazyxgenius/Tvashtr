@@ -123,7 +123,7 @@ interface AppProps {
   // run_id) instead of the team's authoring view. Seeds `runId`, which is what makes `authoring`
   // false; the existing poll then fills in the run + its graph exactly as a fresh launch does.
   initialRunId?: string | null;
-  /** Return to the dashboard; pass "engines" / "tools" to land on that page (Open Engines). */
+  /** Return to the dashboard; pass "engines" to land on that page (Open Engines). */
   onBackToDashboard?: (view?: DashView) => void;
   /** The public config (the old launch panel read it; launching now happens on Home). */
   config?: Config | null;
@@ -200,10 +200,6 @@ export default function App({
   const [validity, setValidity] = useState<GraphValidity | null>(null);
   const [editBusy, setEditBusy] = useState(false);
   const [acting, setActing] = useState(false);
-  // An error to show beside the toolbar (launching moved to Home's composer, so this is only ever
-  // cleared here now; kept for the canvas' blocked-reason plumbing).
-  const [error, setError] = useState<string | null>(null);
-  const blockedNodes: string[] = [];
   // P1.8d: selection is by NODE ID (duplicate role names possible after topology edits), in the
   // authoring view and the run view alike. The drawer's place (node, tab, focus) lives in the page
   // address when the Workspace passes `onNodeRoute` (spec §3.2: refresh and back/forward keep it); a
@@ -697,7 +693,6 @@ export default function App({
   // Refetches its graph so any edits made elsewhere are reflected.
   const handleEditTeam = useCallback(() => {
     resetRunState();
-    setError(null);
     if (currentTeamId) void loadTeam(currentTeamId);
   }, [resetRunState, loadTeam, currentTeamId]);
 
@@ -1298,7 +1293,6 @@ export default function App({
             )}
           </>
         )}
-        {error && <span className="cv-error">{error}</span>}
         {authoring && teamError && (
           <span className="cv-error">Couldn't load your team — is the backend running?</span>
         )}
@@ -1364,8 +1358,6 @@ export default function App({
           )}
           <div className="cv-canvas">
             <TeamCanvas
-              blockedNodes={blockedNodes}
-              blockedReason={error ?? ""}
               graph={authoring ? teamAsGraph : graph}
               run={run}
               workflowStatus={workflowStatus}

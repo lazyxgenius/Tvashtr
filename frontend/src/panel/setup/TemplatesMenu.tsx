@@ -34,14 +34,12 @@ export function TemplatesMenu({
   onPick,
   onCompare,
   myAgents,
-  disabled = false,
 }: {
   templates: NodeTemplatesState;
   onPick: (template: NodeTemplate) => void;
   /** "Compare templates in focus view" (omitted: no such item). */
   onCompare?: () => void;
   myAgents?: MyAgentsMenu;
-  disabled?: boolean;
 }) {
   const items: MenuEntry[] = [{ heading: "Built-in" }];
   if (templates.status === "ready" && templates.templates.length > 0) {
@@ -103,7 +101,6 @@ export function TemplatesMenu({
             variant="ghost"
             size="sm"
             className="nd-btn-flush"
-            disabled={disabled}
             {...props}
             onClick={() => {
               myAgents?.onOpen();

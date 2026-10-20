@@ -11,7 +11,6 @@ import { InfoTip } from "../InfoTip";
 export function SettingRow({
   label,
   tip,
-  labelId,
   hint,
   changed = false,
   overlay,
@@ -20,7 +19,6 @@ export function SettingRow({
 }: {
   label: string;
   tip?: string;
-  labelId?: string;
   hint?: ReactNode;
   changed?: boolean;
   overlay?: ReactNode;
@@ -31,7 +29,7 @@ export function SettingRow({
     <div className="nd-row">
       <div className="nd-row__grid" ref={gridRef}>
         {changed && <ChangedDot />}
-        <span className="nd-row__label" id={labelId}>
+        <span className="nd-row__label">
           {label}
           {tip && <InfoTip text={tip} />}
         </span>

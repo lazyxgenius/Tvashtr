@@ -30,7 +30,6 @@ interface ButtonOwnProps {
   variant?: ButtonVariant;
   size?: ControlSize;
   iconLeft?: ReactNode;
-  iconRight?: ReactNode;
   loading?: boolean;
   fullWidth?: boolean;
 }
@@ -42,7 +41,6 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
     variant = "primary",
     size = "md",
     iconLeft,
-    iconRight,
     loading = false,
     fullWidth = false,
     disabled = false,
@@ -71,7 +69,6 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       {loading && <span className="ds-btn__spin" aria-hidden="true" />}
       {!loading && iconLeft}
       {children !== undefined && children !== null && <span>{children}</span>}
-      {!loading && iconRight}
     </button>
   );
 });
@@ -81,7 +78,6 @@ export function ButtonLink({
   variant = "secondary",
   size = "sm",
   iconLeft,
-  iconRight,
   className,
   children,
   ...rest
@@ -90,7 +86,6 @@ export function ButtonLink({
     <a className={cx("ds-btn", `ds-btn--${variant}`, `ds-btn--${size}`, className)} {...rest}>
       {iconLeft}
       {children !== undefined && children !== null && <span>{children}</span>}
-      {iconRight}
     </a>
   );
 }
@@ -132,15 +127,11 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
 
 export function Logo({
   size = 28,
-  showWordmark = true,
-  wordmark = "Tvashtr",
   tone = "coral",
   inverse = false,
   className,
 }: {
   size?: number;
-  showWordmark?: boolean;
-  wordmark?: string;
   tone?: "coral" | "charcoal";
   inverse?: boolean;
   className?: string;
@@ -152,13 +143,11 @@ export function Logo({
         src={tone === "charcoal" ? "/mark-charcoal.png" : "/mark-coral.png"}
         width={size}
         height={size}
-        alt={showWordmark ? "" : "Tvashtr"}
+        alt=""
       />
-      {showWordmark && (
-        <span className="ds-logo__word" style={{ fontSize: Math.round(size * 0.78) }}>
-          {wordmark}
-        </span>
-      )}
+      <span className="ds-logo__word" style={{ fontSize: Math.round(size * 0.78) }}>
+        Tvashtr
+      </span>
     </span>
   );
 }
@@ -273,7 +262,6 @@ export function Field({
   helper,
   error,
   htmlFor,
-  labelAside,
   children,
   className,
 }: {
@@ -282,14 +270,12 @@ export function Field({
   helper?: ReactNode;
   error?: ReactNode;
   htmlFor?: string;
-  /** Right side of the label row (e.g. a "Templates" link) — used where the design puts one. */
-  labelAside?: ReactNode;
   children: ReactNode;
   className?: string;
 }) {
   return (
     <div className={cx("ds-field", className)}>
-      {(label || optional || labelAside) && (
+      {(label || optional) && (
         <div className="ds-field__top">
           {label && (
             <label className="ds-field__label" htmlFor={htmlFor}>
@@ -297,7 +283,6 @@ export function Field({
             </label>
           )}
           {optional && <span className="ds-field__optional">Optional</span>}
-          {labelAside}
         </div>
       )}
       {children}
@@ -494,7 +479,6 @@ export interface TabItem<V extends string = string> {
 export function Tabs<V extends string = string>({
   items,
   value,
-  defaultValue,
   onChange,
   variant = "line",
   className,
@@ -502,13 +486,12 @@ export function Tabs<V extends string = string>({
 }: {
   items: TabItem<V>[];
   value?: V;
-  defaultValue?: V;
   onChange?: (value: V) => void;
   variant?: "line" | "pill";
   className?: string;
   "aria-label"?: string;
 }) {
-  const [internal, setInternal] = useState<V | undefined>(defaultValue ?? items[0]?.value);
+  const [internal, setInternal] = useState<V | undefined>(items[0]?.value);
   const active = value !== undefined ? value : internal;
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
   const select = (v: V) => {

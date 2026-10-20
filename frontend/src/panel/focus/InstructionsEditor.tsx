@@ -21,7 +21,6 @@ export function InstructionsEditor({
   templates,
   onPreview,
   autoFocus = false,
-  readOnly = false,
 }: {
   prompt: string;
   /** The saved instructions (changed lines get the coral band); omitted while saving. */
@@ -33,7 +32,6 @@ export function InstructionsEditor({
   onPreview?: () => void;
   /** Put the caret in the editor when the view opens. */
   autoFocus?: boolean;
-  readOnly?: boolean;
 }) {
   const labelId = useId();
   const textRef = useRef<HTMLTextAreaElement>(null);
@@ -111,7 +109,6 @@ export function InstructionsEditor({
             aria-labelledby={labelId}
             value={prompt}
             spellCheck={false}
-            readOnly={readOnly}
             onChange={(e) => {
               setCaret(e.target.selectionStart);
               onChange(e.target.value);

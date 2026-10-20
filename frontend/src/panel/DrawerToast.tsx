@@ -12,32 +12,20 @@ import { TOAST_MS, type ToastSpec } from "./useDrawerToast";
 export function DrawerToast({
   toast,
   onDismiss,
-  duration = TOAST_MS,
 }: {
   toast: ToastSpec | null;
   onDismiss: () => void;
-  duration?: number;
 }) {
   return (
     <div className="nd-toast-host" role="status" aria-live="polite">
-      {toast && (
-        <ToastCard key={toast.id} toast={toast} onDismiss={onDismiss} duration={duration} />
-      )}
+      {toast && <ToastCard key={toast.id} toast={toast} onDismiss={onDismiss} />}
     </div>
   );
 }
 
-function ToastCard({
-  toast,
-  onDismiss,
-  duration,
-}: {
-  toast: ToastSpec;
-  onDismiss: () => void;
-  duration: number;
-}) {
+function ToastCard({ toast, onDismiss }: { toast: ToastSpec; onDismiss: () => void }) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const remaining = useRef(duration);
+  const remaining = useRef(TOAST_MS);
   const startedAt = useRef(0);
   const dismissRef = useRef(onDismiss);
   dismissRef.current = onDismiss;
