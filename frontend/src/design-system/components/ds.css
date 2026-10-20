@@ -211,10 +211,6 @@
   line-height: 1;
   color: var(--text-primary);
 }
-.ds-logo--inverse .ds-logo__word {
-  color: var(--text-inverse);
-}
-
 /* ---- Avatar ---- */
 .ds-avatar {
   display: inline-flex;
