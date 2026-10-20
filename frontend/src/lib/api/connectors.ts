@@ -8,14 +8,20 @@
  * `ApiDetailError` (`message` = the server's copy; `connectorRefusal` reads a `{code, …}` detail).
  */
 import { reportFetchOk } from "../backendStatus";
-import { count, httpsOrNull, isRecord, type Json, list, str, strOrNull } from "./roundConnectors";
+import {
+  count,
+  httpsOrNull,
+  isRecord,
+  type Json,
+  list,
+  str,
+  strings,
+  strOrNull,
+} from "./roundConnectors";
 import { ApiDetailError, apiRequest } from "./runs";
 
 // ---- Small validators (the rest are in `./roundConnectors`) ----
 
-function strings(v: unknown): string[] {
-  return Array.isArray(v) ? v.filter((s): s is string => typeof s === "string") : [];
-}
 function oneOf<T extends string>(v: unknown, allowed: readonly T[]): T | null {
   return allowed.includes(v as T) ? (v as T) : null;
 }

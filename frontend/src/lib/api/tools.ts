@@ -9,36 +9,9 @@
  * (`message` = the server's `detail` copy, `detail` = the raw body for the `{code, …}` refusals of
  * import). `apiRequest` reports the backend status for the header.
  */
+import { count, isRecord, list, str, strOrNull, strings } from "./roundConnectors";
 import { apiRequest } from "./runs";
 
-// ---- Small validators ----
-
-type Json = Record<string, unknown>;
-
-function isRecord(v: unknown): v is Json {
-  return typeof v === "object" && v !== null && !Array.isArray(v);
-}
-function str(v: unknown, fallback = ""): string {
-  return typeof v === "string" ? v : fallback;
-}
-function strOrNull(v: unknown): string | null {
-  return typeof v === "string" ? v : null;
-}
-function count(v: unknown): number {
-  return typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0;
-}
-function strings(v: unknown): string[] {
-  return Array.isArray(v) ? v.filter((s): s is string => typeof s === "string") : [];
-}
-function list<T>(v: unknown, parse: (raw: unknown) => T | null): T[] {
-  if (!Array.isArray(v)) return [];
-  const out: T[] = [];
-  for (const raw of v) {
-    const item = parse(raw);
-    if (item !== null) out.push(item);
-  }
-  return out;
-}
 const enc = encodeURIComponent;
 
 // ---- Tools ----

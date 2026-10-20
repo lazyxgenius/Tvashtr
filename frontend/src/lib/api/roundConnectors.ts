@@ -24,6 +24,9 @@ export function str(v: unknown, fallback = ""): string {
 export function strOrNull(v: unknown): string | null {
   return typeof v === "string" ? v : null;
 }
+export function strings(v: unknown): string[] {
+  return Array.isArray(v) ? v.filter((s): s is string => typeof s === "string") : [];
+}
 export function count(v: unknown): number {
   return typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0;
 }

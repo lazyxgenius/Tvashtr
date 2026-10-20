@@ -192,6 +192,26 @@ describe("tools API — shapes are checked at the boundary", () => {
     const catalog = await listToolCatalog();
     expect(catalog.map((c) => c.key)).toEqual(["fetch"]);
   });
+
+  it("keeps only the string names in import conflicts and catalog secret names", async () => {
+    mockApi({
+      "POST /api/tool-library/import": {
+        added: [{ id: "a", name: "fetch" }],
+        conflicts: ["linear", 3, null, "github"],
+      },
+      "GET /api/tool-catalog": {
+        tools: [
+          { key: "github", secret_names: ["GITHUB_TOKEN", 1, { x: 1 }] },
+          { key: "fetch", secret_names: "GITHUB_TOKEN" },
+        ],
+      },
+    });
+    const res = await importTools({ fetch: { command: "uvx" } }, "rename");
+    expect(res.added.map((t) => t.name)).toEqual(["fetch"]);
+    expect(res.conflicts).toEqual(["linear", "github"]);
+    const catalog = await listToolCatalog();
+    expect(catalog.map((c) => c.secret_names)).toEqual([["GITHUB_TOKEN"], []]);
+  });
 });
 
 describe("the Toolkit nav-badge loader", () => {
