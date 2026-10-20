@@ -202,8 +202,6 @@ def test_a_new_reading_model_rereads_every_file_and_pauses_asking(started):
     ask = c.post(f"/api/domains/{did}/ask", json={"question": "How long do refunds take?"})
     assert ask.status_code == 409
     assert ask.json()["detail"] == "Ask is paused while Support docs re-reads its files."
-    found = c.post(f"/api/domains/{did}/retrieve", json={"query": "refunds"})
-    assert found.status_code == 409
     # The last one read: the re-read is over.
     with session_scope() as s:
         s.get(DomainDocument, uuid.UUID(docs[1])).ingest_status = "ready"

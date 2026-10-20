@@ -380,7 +380,6 @@ def test_ingest_is_404_for_b(w, monkeypatch):
     ("route", "body", "fake"),
     [
         ("ask", {"question": "What is in A's files?"}, "ask_domain"),
-        ("retrieve", {"query": "What is in A's files?"}, "retrieve_domain"),
     ],
 )
 def test_ask_and_retrieve_are_404_for_b(w, monkeypatch, route, body, fake):

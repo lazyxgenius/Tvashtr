@@ -299,10 +299,6 @@ ROUTES: dict[str, tuple[str, object]] = {
         "id",
         ["test_owner_scope_domains::test_reread_is_404_for_b"],
     ),
-    "POST /api/domains/{domain_id}/retrieve": (
-        "id",
-        ["test_owner_scope_domains::test_ask_and_retrieve_are_404_for_b"],
-    ),
     "GET /api/domains/{domain_id}/step-places": (
         "id",
         ["test_owner_scope_domains::test_reads_of_a_domain_are_404_for_b"],
