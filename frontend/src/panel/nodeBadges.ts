@@ -19,7 +19,7 @@ export interface StatusBadge {
 const DONE_OUTCOMES = new Set(["prd_written", "built", "reported", "answered"]);
 
 /** What a badge needs from a run or a round (`last_run`, a history round, a run invocation). */
-export interface RunLike {
+interface RunLike {
   outcome: string | null;
   status?: string | null;
   started_at?: string | null;

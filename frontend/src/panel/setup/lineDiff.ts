@@ -9,7 +9,7 @@ const MAX_CELLS = 250_000;
 
 export type DiffOp = "same" | "del" | "add";
 
-export interface DiffPart {
+interface DiffPart {
   op: DiffOp;
   text: string;
 }
@@ -76,7 +76,7 @@ export interface DiffRow {
   text: string;
 }
 
-export interface LineDiff {
+interface LineDiff {
   rows: DiffRow[];
   added: number;
   removed: number;

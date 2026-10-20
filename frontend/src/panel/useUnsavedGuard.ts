@@ -16,7 +16,7 @@ import { reportUnsaved } from "../lib/unsavedChanges";
  */
 export type LeaveGuard = (proceed: () => void, onStay?: () => void) => void;
 
-export interface UnsavedGuard {
+interface UnsavedGuard {
   /** The confirm is open. */
   asking: boolean;
   request: LeaveGuard;

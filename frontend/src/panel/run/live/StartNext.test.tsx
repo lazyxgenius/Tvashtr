@@ -1,9 +1,10 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, describe, expect, it, type Mock, vi } from "vitest";
 
 import { ApiDetailError } from "../../../lib/api/runs";
 import type { CarrySnapshot, NextInfo } from "../../../lib/api/startFrom";
-import { CameAlong, StartedFrom, StartNextDialog } from "./StartNext";
+import { CameAlongButton, CameAlongPopover, StartedFrom, StartNextDialog } from "./StartNext";
 
 const INFO: NextInfo = {
   available: true,
@@ -224,6 +225,17 @@ describe("StartedFrom (Next-Started)", () => {
     );
   });
 });
+
+/** The button + popover pair as the Activity panel wires it. */
+function CameAlong({ runId }: { runId: string }) {
+  const [at, setAt] = useState<number | null>(null);
+  return (
+    <>
+      <CameAlongButton open={at !== null} onOpen={setAt} />
+      {at !== null && <CameAlongPopover runId={runId} at={at} onClose={() => setAt(null)} />}
+    </>
+  );
+}
 
 describe("CameAlong (Next-CameAlong)", () => {
   const SNAPSHOT: CarrySnapshot = {

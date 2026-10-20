@@ -233,21 +233,6 @@ export function StartedFrom({
   );
 }
 
-/**
- * The Activity's "See what came along" (Next-CameAlong): what the run started from brought, read
- * from its carry snapshot. As drawn, it opens on the right over the run's canvas, 8px below its top
- * (the Activity list scrolls, so it is not inside), and scrolls itself when the window is short.
- */
-export function CameAlong({ runId }: { runId: string }) {
-  const [at, setAt] = useState<number | null>(null);
-  return (
-    <>
-      <CameAlongButton open={at !== null} onOpen={setAt} />
-      {at !== null && <CameAlongPopover runId={runId} at={at} onClose={() => setAt(null)} />}
-    </>
-  );
-}
-
 /** The Activity line's "See what came along"; `onOpen` gets the popover's top (8px below the
  *  run's canvas). */
 export function CameAlongButton({

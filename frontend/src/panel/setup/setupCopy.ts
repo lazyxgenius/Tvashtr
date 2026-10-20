@@ -49,7 +49,6 @@ export const NEW_DOCUMENT_TOAST = "New document. Other agents can add it to thei
 export const TIPS = {
   instructions:
     "Who this agent is and how it works. This is its whole identity: edit it, then run the team.",
-  model: "Only models proven to run a full build are listed.",
   images: "Let it send and read images. Text-only models ignore this.",
   fileAccess: "Can it change files in the repo?",
   reads: "Documents it reads before it starts, in order. Default: the spec.",

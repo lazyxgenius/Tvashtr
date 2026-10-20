@@ -4,7 +4,7 @@ import { getRunActivity, type RunActivity } from "../../../lib/api/activity";
 import { mergeActivity } from "./liveFormat";
 
 /** R15: the run view polls every 2 s. */
-export const ACTIVITY_POLL_MS = 2000;
+const ACTIVITY_POLL_MS = 2000;
 
 /**
  * The run's Activity, polled every 2 s while the run is in flight (one last read when it ends),

@@ -3,7 +3,7 @@ import { Check } from "lucide-react";
 
 import { Menu } from "../../design-system/components";
 
-export interface RunChoice {
+interface RunChoice {
   run_id: string;
   idea: string;
   /** "31m ago · 3 rounds", "Sep 22 · completed". */

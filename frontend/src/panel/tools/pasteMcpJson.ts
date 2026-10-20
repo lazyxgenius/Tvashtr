@@ -7,12 +7,12 @@
 import { jsonProblem } from "../setup/schemaCheck";
 import { asRecord } from "./nodeTools";
 
-export interface PastedServer {
+interface PastedServer {
   name: string;
   server: Record<string, unknown>;
 }
 
-export type PasteResult =
+type PasteResult =
   | { state: "empty" }
   | { state: "error"; message: string }
   /** `skipped`: entries with neither a url nor a command. */

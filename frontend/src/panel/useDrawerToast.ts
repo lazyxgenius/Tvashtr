@@ -19,7 +19,7 @@ export interface ToastSpec {
   action?: ToastAction;
 }
 
-export interface DrawerToastApi {
+interface DrawerToastApi {
   toast: ToastSpec | null;
   show: (message: string, action?: ToastAction) => void;
   dismiss: () => void;

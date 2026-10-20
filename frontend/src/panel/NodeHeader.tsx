@@ -11,7 +11,7 @@ import { Lock, Maximize2, Minimize2, UserRound, X, type LucideIcon } from "lucid
 import { Badge, IconButton } from "../design-system/components";
 import type { StatusBadge } from "./nodeBadges";
 
-export interface HeaderRename {
+interface HeaderRename {
   /** Enter (or leaving the fields): the new name and description, trimmed; the name isn't blank. */
   onCommit: (name: string, description: string) => void;
   /** Escape. */

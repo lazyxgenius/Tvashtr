@@ -29,7 +29,7 @@ const LIVE_LOOK_MS = 10_000;
 const newest = (prev: DocDetail | null, next: DocDetail) =>
   prev?.id === next.id && prev.versions.length > next.versions.length ? prev : next;
 
-export interface DocumentViewerProps {
+interface DocumentViewerProps {
   docId: string;
   /** The version shown (none: the latest) and the one it's compared with. */
   place: DocPlace;

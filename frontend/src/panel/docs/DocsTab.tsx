@@ -11,7 +11,7 @@ import { DocCard } from "./DocCard";
 import { RunPicker } from "./RunPicker";
 import "./docs.css";
 
-export interface DocsTabProps {
+interface DocsTabProps {
   nodeId: string;
   name: string;
   isEntry: boolean;

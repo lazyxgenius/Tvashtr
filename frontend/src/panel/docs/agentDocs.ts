@@ -7,7 +7,7 @@ import type { RunDoc } from "../../lib/api/docs";
 import { joinAnd } from "../nodeActions";
 import { whenShort } from "../runs/rounds";
 
-export interface AgentDocs {
+interface AgentDocs {
   shared: RunDoc | null;
   /** Documents (not the spec) this agent wrote in the run. */
   writes: RunDoc[];

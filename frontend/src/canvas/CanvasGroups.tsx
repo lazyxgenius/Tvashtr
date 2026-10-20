@@ -103,7 +103,7 @@ export function GroupFrame({
   );
 }
 
-export interface FoldData {
+interface FoldData {
   label: string;
   line: string;
   onUnfold: () => void;

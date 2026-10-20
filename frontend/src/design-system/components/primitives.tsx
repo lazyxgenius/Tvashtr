@@ -1,6 +1,6 @@
 /**
  * React port of the Tvashtr Labs design system components (Button, IconButton, Logo, Avatar, Badge,
- * Card, Checkbox, Field, Input, Select, Switch, Tabs). Props and markup mirror the design bundle so a
+ * Checkbox, Field, Input, Select, Switch, Tabs). Props and markup mirror the design bundle so a
  * screen written against the design file renders at the same size; classes use the `ds-` prefix
  * (see ds.css for why).
  */
@@ -23,8 +23,8 @@ import { cx, initials } from "./utils";
 
 // ---- Button ----
 
-export type ButtonVariant = "primary" | "secondary" | "ghost" | "tint" | "danger";
-export type ControlSize = "sm" | "md" | "lg";
+type ButtonVariant = "primary" | "secondary" | "ghost" | "tint" | "danger";
+type ControlSize = "sm" | "md" | "lg";
 
 interface ButtonOwnProps {
   variant?: ButtonVariant;
@@ -35,7 +35,7 @@ interface ButtonOwnProps {
   fullWidth?: boolean;
 }
 
-export type ButtonProps = ButtonOwnProps & ButtonHTMLAttributes<HTMLButtonElement>;
+type ButtonProps = ButtonOwnProps & ButtonHTMLAttributes<HTMLButtonElement>;
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
   {
@@ -219,40 +219,6 @@ export function Badge({
       {dot && <span className="ds-badge__dot" aria-hidden="true" />}
       {children}
     </span>
-  );
-}
-
-// ---- Card ----
-
-export function Card({
-  variant = "paper",
-  pad = "md",
-  interactive = false,
-  as: Tag = "div",
-  className,
-  children,
-  ...rest
-}: {
-  variant?: "paper" | "panel" | "raised" | "inverse";
-  pad?: "none" | "sm" | "md" | "lg";
-  interactive?: boolean;
-  as?: "div" | "section" | "article" | "li";
-} & HTMLAttributes<HTMLElement>) {
-  return (
-    <Tag
-      className={cx(
-        "ds-card",
-        variant === "panel" && "ds-card--panel",
-        variant === "raised" && "ds-card--raised",
-        variant === "inverse" && "ds-card--inverse",
-        pad !== "md" && `ds-card--pad-${pad}`,
-        interactive && "ds-card--interactive",
-        className,
-      )}
-      {...rest}
-    >
-      {children}
-    </Tag>
   );
 }
 
@@ -596,22 +562,6 @@ export function Tabs<V extends string = string>({
 
 export function Kbd({ children }: { children: ReactNode }) {
   return <kbd className="ds-kbd">{children}</kbd>;
-}
-
-export function Count({
-  children,
-  tone = "neutral",
-  className,
-}: {
-  children: ReactNode;
-  tone?: "neutral" | "accent" | "warn";
-  className?: string;
-}) {
-  return (
-    <span className={cx("ds-count", tone !== "neutral" && `ds-count--${tone}`, className)}>
-      {children}
-    </span>
-  );
 }
 
 /** The small square letter tile the designs put before a team or provider name. */

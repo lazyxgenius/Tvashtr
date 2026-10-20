@@ -13,7 +13,7 @@ export const FORCE_OPTIONS = POLARITY_ORDER.map((value) => ({
 
 export const NO_REPO_LABEL = "Not repo-specific";
 
-export interface NoteGroup {
+interface NoteGroup {
   key: string;
   label: string;
   /** Learned on a repo (the group shows the GitHub mark). */

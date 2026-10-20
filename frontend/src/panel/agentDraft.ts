@@ -76,7 +76,7 @@ const cfgOf = (node: TeamGraphNode): Record<string, unknown> =>
 const text = (v: unknown): string => (typeof v === "string" ? v : "");
 
 /** Default File access when a node predates `edits_allowed`: workers edit, thinkers don't. */
-export function editsAllowedOf(node: TeamGraphNode): boolean {
+function editsAllowedOf(node: TeamGraphNode): boolean {
   return node.edits_allowed ?? node.kind === "agent";
 }
 

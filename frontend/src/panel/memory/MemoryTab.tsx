@@ -35,7 +35,7 @@ import type { NodeMemories } from "./useNodeMemories";
 import "../skills/skillsTools.css";
 import "./memory.css";
 
-export interface MemoryTabProps {
+interface MemoryTabProps {
   teamId: string;
   nodeId: string;
   /** The saved "Remember what it learns" flag (`config.memory_remember_enabled`). */

@@ -149,7 +149,7 @@ interface AppProps {
 }
 
 /** The open document, the version shown (none: the latest) and the one it's compared with. */
-export interface DocRoute {
+interface DocRoute {
   id: string;
   version?: number;
   compare?: number;
