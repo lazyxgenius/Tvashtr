@@ -179,4 +179,4 @@ function createRepoService({
   };
 }
 
-module.exports = { createRepoService, MAX_RESULT_BYTES };
+module.exports = { createRepoService };

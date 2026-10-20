@@ -282,7 +282,6 @@ function uniquePreserve(items) {
 
 module.exports = {
   FIXED_UNIX_DIRS,
-  VENDOR_BIN_DIRS,
   listCandidateDirs,
   listBinaryCandidates,
   enrichPathString,

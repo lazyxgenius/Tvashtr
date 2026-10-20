@@ -129,4 +129,4 @@ async function fetchResultBranch({ repoPath, bundleFile, runId, git }) {
   return { branch };
 }
 
-module.exports = { createBaseBundle, fetchResultBranch, isPlausibleBranchName, MAX_BUNDLE_BYTES };
+module.exports = { createBaseBundle, fetchResultBranch, MAX_BUNDLE_BYTES };

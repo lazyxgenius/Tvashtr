@@ -143,4 +143,4 @@ async function initGitRepo(args, { git, home = os.homedir(), login = () => null,
   }
 }
 
-module.exports = { initGitRepo, countFiles, fallbackIdentity, MAX_FILES, COMMIT_MESSAGE };
+module.exports = { initGitRepo, countFiles, fallbackIdentity };

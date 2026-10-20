@@ -80,4 +80,4 @@ function createRecentFolders({ userDataDir, branchOf, home, max = RECENT_MAX }) 
   };
 }
 
-module.exports = { createRecentFolders, RECENT_FILENAME, RECENT_MAX };
+module.exports = { createRecentFolders, RECENT_FILENAME };

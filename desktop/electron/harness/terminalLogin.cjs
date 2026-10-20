@@ -91,4 +91,4 @@ async function openLoginInTerminal({
   return { opened: platform === "win32" ? "cmd" : "x-terminal-emulator" };
 }
 
-module.exports = { buildLoginScript, openLoginInTerminal, shQuote };
+module.exports = { buildLoginScript, openLoginInTerminal };

@@ -118,4 +118,4 @@ async function inspectRepo(dir, { git, home }) {
   };
 }
 
-module.exports = { inspectRepo, summariseTrackedFiles, safeRemoteUrl, SUBPATHS_MAX };
+module.exports = { inspectRepo };
