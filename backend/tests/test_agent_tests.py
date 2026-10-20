@@ -864,6 +864,24 @@ def test_save_as_vn_offers_and_runs_the_changed_agents_tests(tmp_path, monkeypat
     assert history[1]["tests"] is None
 
 
+def test_history_pill_counts_the_passed_tests_of_the_newest_run(tmp_path, monkeypatch):
+    c, owner, team = _account()
+    made = _run_with_rounds(c, owner, team, tmp_path)
+    rev = _node(c, team, "reviewer")
+    _create(c, team, rev["id"], made["ids"]["rev1"], SAY)
+    _create(c, team, rev["id"], made["ids"]["rev2"], {"kind": "must_say", "value": "Approved"})
+    c.get(f"/api/teams/{team}/versions")
+    c.patch(f"/api/teams/{team}/nodes/{rev['id']}", json={"prompt": "Be strict about files."})
+    monkeypatch.setattr(agent_test_runner, "_spawn", lambda target, *a: None)
+    assert c.post(f"/api/teams/{team}/versions", json={"run_tests": True}).status_code == 201
+    run = _tests(c, team, rev["id"])["run"]
+    with session_scope() as session:
+        for result, status in zip(run["results"], ("passed", "failed"), strict=True):
+            session.get(AgentTestResult, uuid.UUID(result["id"])).status = status
+    history = c.get(f"/api/teams/{team}/versions").json()["versions"]
+    assert (history[0]["tests"]["passed"], history[0]["tests"]["total"]) == (1, 2)
+
+
 def test_save_as_vn_without_run_tests_starts_nothing(tmp_path, monkeypatch):
     c, owner, team = _account()
     made = _run_with_rounds(c, owner, team, tmp_path)

@@ -38,6 +38,7 @@ from tvashtr.config import get_settings
 from tvashtr.control_plane import (
     activity,
     agent_test_runner,
+    agent_tests,
     checkpoints,
     desktop_jobs,
     github_app,
@@ -56,7 +57,6 @@ from tvashtr.models import (
     AgentInvocation,
     AgentNode,
     AgentTest,
-    AgentTestResult,
     AgentTestRun,
     Compare,
     CompareDesktopTarget,
@@ -1530,20 +1530,7 @@ def _agent_tests(session, cmp: Compare) -> tuple[str, dict] | None:
         .order_by(AgentTestRun.created_at.desc())
     ).scalars():
         newest.setdefault(run.version_number, run)
-    passed = (
-        dict(
-            session.execute(
-                select(AgentTestResult.test_run_id, func.count())
-                .where(
-                    AgentTestResult.test_run_id.in_([r.id for r in newest.values()]),
-                    AgentTestResult.status == "passed",
-                )
-                .group_by(AgentTestResult.test_run_id)
-            ).all()
-        )
-        if newest
-        else {}
-    )
+    passed = agent_tests.passed_counts(session, [r.id for r in newest.values()])
     label = node_label(node.role_name, node.kind, node.config)
     return label, {n: (int(passed.get(r.id, 0)), r.total) for n, r in newest.items()}
 

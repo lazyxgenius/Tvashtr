@@ -1294,6 +1294,22 @@ def graph_tests(session, node_ids: list[uuid.UUID]) -> dict[uuid.UUID, dict]:
     return out
 
 
+def passed_counts(session, run_ids: list[uuid.UUID]) -> dict[uuid.UUID, int]:
+    """``{test_run_id: passed results}`` for these test runs; ``{}`` for none."""
+    if not run_ids:
+        return {}
+    return dict(
+        session.execute(
+            select(AgentTestResult.test_run_id, func.count())
+            .where(
+                AgentTestResult.test_run_id.in_(run_ids),
+                AgentTestResult.status == "passed",
+            )
+            .group_by(AgentTestResult.test_run_id)
+        ).all()
+    )
+
+
 def version_rows(session, team: TeamGraph) -> dict[int, dict]:
     """History's pill per version: the newest test run of each agent on it, added up."""
     runs = (
@@ -1308,18 +1324,7 @@ def version_rows(session, team: TeamGraph) -> dict[int, dict]:
     newest: dict[tuple[int, uuid.UUID], AgentTestRun] = {}
     for run in runs:
         newest.setdefault((run.version_number, run.node_id), run)
-    if not newest:
-        return {}
-    counts: dict[uuid.UUID, int] = dict(
-        session.execute(
-            select(AgentTestResult.test_run_id, func.count())
-            .where(
-                AgentTestResult.test_run_id.in_([r.id for r in newest.values()]),
-                AgentTestResult.status == "passed",
-            )
-            .group_by(AgentTestResult.test_run_id)
-        ).all()
-    )
+    counts = passed_counts(session, [r.id for r in newest.values()])
     out: dict[int, dict] = {}
     for (number, _node), run in newest.items():
         row = out.setdefault(number, {"passed": 0, "total": 0, "running": False})
