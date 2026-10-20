@@ -135,7 +135,7 @@ export async function deleteLibraryTeam(teamId: string): Promise<void> {
 
 export type TeamFileFormat = "yaml" | "json";
 
-export interface TeamFile {
+interface TeamFile {
   filename: string;
   format: TeamFileFormat;
   content: string;

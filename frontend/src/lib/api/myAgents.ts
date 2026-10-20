@@ -49,7 +49,7 @@ export interface BasedOn {
 }
 
 /** What use-agent / update-team replaced; Undo sends it back. */
-export type AgentParts = Record<string, unknown>;
+type AgentParts = Record<string, unknown>;
 
 export interface RecentTask {
   task: string;

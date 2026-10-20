@@ -43,7 +43,7 @@ export interface NavBadges {
   domains?: NavDomain[];
 }
 
-export type BadgeLoader = () => Promise<Partial<NavBadges>>;
+type BadgeLoader = () => Promise<Partial<NavBadges>>;
 
 let badges: NavBadges = {};
 const listeners = new Set<() => void>();

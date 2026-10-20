@@ -184,7 +184,7 @@ describe("useNav", () => {
     });
     expect(result.current.route).toEqual({ page: "engines", tab: "keys" });
     const before = window.history.length;
-    act(() => result.current.navigate({ page: "secrets" }, { replace: true }));
+    act(() => navigate({ page: "secrets" }, { replace: true }));
     expect(result.current.route).toEqual({ page: "secrets" });
     expect(window.history.length).toBe(before);
   });

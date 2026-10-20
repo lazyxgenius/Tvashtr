@@ -3,7 +3,7 @@
  * `GET /api/public/site`. Shape-checked, and null on any failure, so a page renders without the
  * version or the star count rather than blanking.
  */
-export interface SiteInfo {
+interface SiteInfo {
   /** GitHub stars, or null when GitHub couldn't say. */
   stars: number | null;
   /** The latest Desktop version ("0.7.0"), or null when unknown. */

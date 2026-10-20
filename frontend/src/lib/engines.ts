@@ -36,11 +36,6 @@ export const SUBSCRIPTION_DISCLOSURE =
   "tool — Tvashtr never sees or stores your login. Usage counts against your own plan and follows " +
   "Anthropic's / xAI's terms. Tvashtr isn't affiliated with or endorsed by Anthropic or xAI.";
 
-/** Node picker label for a model the user's subscription covers on Desktop (§3.4). */
-export function subscriptionCoverLabel(provider: SubscriptionProviderId): string {
-  return `via your ${displayNameForSubscription(provider)} subscription · runs on this computer`;
-}
-
 /** Each subscription CLI's install docs (hard-coded — never pulled over IPC). */
 export const SUBSCRIPTION_INSTALL_URLS: Record<SubscriptionProviderId, string> = {
   claude: "https://docs.anthropic.com/en/docs/claude-code/overview",
@@ -141,17 +136,6 @@ export function missingProvidersForModels(opts: {
     missing.add(provider);
   }
   return [...missing].sort();
-}
-
-/**
- * Run CTA tooltip when the team is blocked on missing credentials.
- * Hosted/Fly cannot use Desktop subscriptions — only BYOK API keys satisfy runs there.
- */
-export function missingCredentialCtaTitle(launchTarget: "local" | "hosted"): string {
-  if (launchTarget === "hosted") {
-    return "Add an API key under Engines on the Dashboard (subscriptions only work on local Desktop)";
-  }
-  return "Add API keys or connect a subscription under Engines on the Dashboard";
 }
 
 /**

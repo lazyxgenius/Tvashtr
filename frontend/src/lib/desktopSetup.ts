@@ -12,11 +12,11 @@ import { useEffect, useSyncExternalStore } from "react";
 
 export type SetupStep = TvashtrSetupStep;
 export type DesktopSetup = TvashtrDesktopSetup;
-export type SetupPatch = Partial<Omit<DesktopSetup, "version">>;
+type SetupPatch = Partial<Omit<DesktopSetup, "version">>;
 
-export const SETUP_STEPS: readonly SetupStep[] = ["engines", "project", "team"] as const;
+const SETUP_STEPS: readonly SetupStep[] = ["engines", "project", "team"] as const;
 
-export type SetupState =
+type SetupState =
   /** No setup to do: the website, an older Desktop, or this account's store couldn't be read. */
   | { status: "none"; accountId?: string }
   | { status: "loading"; accountId: string }

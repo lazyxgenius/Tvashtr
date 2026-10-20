@@ -14,30 +14,19 @@ import type {
   ToolLibraryItem,
 } from "./api";
 import {
-  ApiError,
-  createMemory,
   createSkillLibraryItem,
-  createToolLibraryItem,
-  defaultForProvider,
   getConfig,
   rewriteGithubInstallUrlForDesktop,
   getGithubRepos,
   getGraph,
   getProviderCatalogue,
-  getReviewMode,
   getRunEvents,
   inspectRepo,
   listMemories,
-  presetsForProvider,
   promoteMemory,
   providerOf,
-  providersForCapability,
-  providerSuggestions,
   rejectMemory,
-  runTeam,
   setProviderCatalogue,
-  setReviewMode,
-  updateTeamNode,
   updateTerminalNode,
 } from "./api";
 
@@ -48,60 +37,6 @@ describe("providerOf — parity with the backend provider_for_model", () => {
     expect(providerOf("OpenRouter/Foo/Bar")).toBe("openrouter");
     expect(providerOf("nvidia_nim/meta/llama-3.3-70b-instruct")).toBe("nvidia_nim");
     expect(providerOf("gpt-4o-mini")).toBe("gpt-4o-mini"); // no slash → the whole slug
-  });
-
-  it("scopes quick-picks to one provider AND one seat, derived from the served catalogue", () => {
-    // M-seat: the fixture deliberately gives `deepseek` a WORKER seat it cannot serve. That is the
-    // shape the milestone exists for — a provider that talks fine and cannot drive the agent loop —
-    // and a mechanical rename of the old fixture would not have exercised it.
-    setProviderCatalogue([
-      {
-        provider: "openrouter",
-        thinker_default: "openrouter/openai/gpt-4o-mini",
-        worker_default: "openrouter/openai/gpt-4o-mini",
-        thinker_presets: ["openrouter/openai/gpt-4o-mini", "openrouter/google/gemini-flash-1.5"],
-        worker_presets: ["openrouter/openai/gpt-4o-mini"],
-      },
-      {
-        provider: "deepseek",
-        thinker_default: "deepseek/deepseek-chat",
-        worker_default: null,
-        thinker_presets: ["deepseek/deepseek-chat", "deepseek/deepseek-reasoner"],
-        worker_presets: [],
-      },
-    ]);
-    const openrouter = presetsForProvider("openrouter", "thinker");
-    expect(openrouter.length).toBeGreaterThan(0);
-    expect(openrouter.every((m) => providerOf(m) === "openrouter")).toBe(true);
-    expect(presetsForProvider("deepseek", "thinker")).toContain("deepseek/deepseek-chat");
-    // THE REGRESSION: a provider that cannot serve a worker offers that seat NOTHING. Before the
-    // split this returned the thinker list, so the picker invited by hand the exact failure the
-    // backend defaults now avoid.
-    expect(presetsForProvider("deepseek", "worker")).toEqual([]);
-    expect(presetsForProvider("openrouter", "worker")).toEqual(["openrouter/openai/gpt-4o-mini"]);
-    // an unknown / not-yet-loaded provider yields no quick-picks (the free-text field still accepts any slug).
-    expect(presetsForProvider("nope", "thinker")).toEqual([]);
-    expect(presetsForProvider("nope", "worker")).toEqual([]);
-  });
-
-  it("resolves a per-seat default, and refuses to invent one for a seat a provider cannot serve", () => {
-    setProviderCatalogue([
-      {
-        provider: "deepseek",
-        thinker_default: "deepseek/deepseek-chat",
-        worker_default: null,
-        thinker_presets: ["deepseek/deepseek-chat"],
-        worker_presets: [],
-      },
-    ]);
-    expect(defaultForProvider("deepseek", "thinker")).toBe("deepseek/deepseek-chat");
-    // null, NOT the thinker slug: the picker must land the user on nothing rather than on a model
-    // that cannot do the job. `providersForCapability` hides it from the worker list for the same
-    // reason.
-    expect(defaultForProvider("deepseek", "worker")).toBeNull();
-    expect(defaultForProvider("nope", "thinker")).toBeNull();
-    expect(providersForCapability("thinker")).toEqual(["deepseek"]);
-    expect(providersForCapability("worker")).toEqual([]);
   });
 });
 
@@ -152,7 +87,7 @@ describe("rewriteGithubInstallUrlForDesktop", () => {
 });
 
 describe("getConfig — caches the served provider catalogue (M-runnable)", () => {
-  it("populates the cache so presetsForProvider / providerSuggestions derive from the server", async () => {
+  it("populates the provider-catalogue cache from the served config", async () => {
     setProviderCatalogue([]); // start empty — prove getConfig fills it
     const served = {
       hosted_mode: false,
@@ -181,11 +116,6 @@ describe("getConfig — caches the served provider catalogue (M-runnable)", () =
     );
     const cfg = await getConfig();
     expect(cfg.provider_catalogue).toHaveLength(2);
-    expect(providerSuggestions()).toEqual(["deepseek", "openai"]); // catalogue order
-    expect(presetsForProvider("deepseek", "thinker")).toContain("deepseek/deepseek-chat");
-    // both seats survive the round trip, including the null the backend means literally.
-    expect(presetsForProvider("deepseek", "worker")).toEqual([]);
-    expect(defaultForProvider("openai", "worker")).toBe("openai/gpt-4.1-mini");
     expect(getProviderCatalogue()).toEqual(served.provider_catalogue);
   });
 
@@ -239,303 +169,6 @@ describe("updateTerminalNode — PATCHes terminal_kind (M-endpoint-editable)", (
     await expect(updateTerminalNode("team-1", "n-ship", "stop")).rejects.toThrow(
       /PATCH terminal .* -> 409/,
     );
-  });
-});
-
-describe("runTeam surfaces the backend's error detail (M-legible item 2)", () => {
-  function jsonErr(status: number, body: unknown): Response {
-    return { ok: false, status, json: () => Promise.resolve(body) } as unknown as Response;
-  }
-
-  it("throws an ApiError carrying the 429 ceiling message (detail is a {message} object)", async () => {
-    const fetchMock = vi.fn<typeof fetch>(() =>
-      Promise.resolve(
-        jsonErr(429, {
-          detail: {
-            code: "owner_concurrent",
-            message: "You already have 3 runs in flight. Wait for one to finish.",
-          },
-        }),
-      ),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-    const err = await runTeam("team-1").catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(ApiError);
-    expect((err as ApiError).status).toBe(429);
-    expect((err as ApiError).message).toContain("3 runs in flight");
-  });
-
-  it("carries missing_nodes from the M-live unservable-model refusal (422)", async () => {
-    // The canvas highlights the offending node cards from this; without it the user gets a message
-    // naming three nodes and no way to see WHICH cards on the canvas they are.
-    const fetchMock = vi.fn<typeof fetch>(() =>
-      Promise.resolve(
-        jsonErr(422, {
-          detail: {
-            message:
-              "nvidia_nim/meta/llama-3.3-70b-instruct is no longer served by nvidia_nim " +
-              "— used by engineer, pm, reviewer. Pick a current model on those nodes.",
-            missing_providers: [],
-            missing_nodes: ["engineer", "pm", "reviewer"],
-            unservable_models: ["nvidia_nim/meta/llama-3.3-70b-instruct"],
-          },
-        }),
-      ),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-    const err = await runTeam("team-1").catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(ApiError);
-    expect((err as ApiError).status).toBe(422);
-    expect((err as ApiError).message).toContain("no longer served by nvidia_nim");
-    expect((err as ApiError).missingNodes).toEqual(["engineer", "pm", "reviewer"]);
-  });
-
-  it("carries missing_nodes from the pre-existing missing-credential refusal too", async () => {
-    // Both refusals share ONE contract, so the highlight must not care which of them fired.
-    const fetchMock = vi.fn<typeof fetch>(() =>
-      Promise.resolve(
-        jsonErr(422, {
-          detail: {
-            message: "you have no API key for: nvidia_nim — needed by engineer, pm",
-            missing_providers: ["nvidia_nim"],
-            missing_nodes: ["engineer", "pm"],
-          },
-        }),
-      ),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-    const err = await runTeam("team-1").catch((e: unknown) => e);
-    expect((err as ApiError).missingNodes).toEqual(["engineer", "pm"]);
-  });
-
-  it("degrades to no highlight (never a crash) when missing_nodes is a bad shape", async () => {
-    const fetchMock = vi.fn<typeof fetch>(() =>
-      Promise.resolve(jsonErr(422, { detail: { message: "nope", missing_nodes: "engineer" } })),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-    const err = await runTeam("team-1").catch((e: unknown) => e);
-    expect((err as ApiError).message).toBe("nope");
-    expect((err as ApiError).missingNodes).toEqual([]);
-  });
-
-  it("throws an ApiError carrying a STRING detail (422 invalid graph)", async () => {
-    const fetchMock = vi.fn<typeof fetch>(() =>
-      Promise.resolve(jsonErr(422, { detail: "provide github_repo or repo_path, not both" })),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-    const err = await runTeam("team-1").catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(ApiError);
-    expect((err as ApiError).status).toBe(422);
-    expect((err as ApiError).message).toBe("provide github_repo or repo_path, not both");
-  });
-
-  it("falls back to a generic status message when the error body is unparseable", async () => {
-    const fetchMock = vi.fn<typeof fetch>(() =>
-      Promise.resolve({
-        ok: false,
-        status: 500,
-        json: () => Promise.reject(new Error("no body")),
-      } as unknown as Response),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-    const err = await runTeam("team-1").catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(ApiError);
-    expect((err as ApiError).status).toBe(500);
-    expect((err as ApiError).message).toContain("500"); // the generic fallback still carries status
-  });
-});
-
-describe("updateTeamNode — memory_remember_enabled sent only when passed", () => {
-  it("omits memory_remember_enabled when the caller does not pass it", async () => {
-    const fetchMock = vi.fn<typeof fetch>(() => Promise.resolve(jsonOk({ id: "n1" })));
-    vi.stubGlobal("fetch", fetchMock);
-    await updateTeamNode("team-1", "n1", "p", "m");
-    const body = bodyOf(fetchMock.mock.calls[0]) as Record<string, unknown>;
-    expect("memory_remember_enabled" in body).toBe(false);
-    expect(body).toEqual({ prompt: "p", model: "m" });
-  });
-
-  it("sends memory_remember_enabled (true AND false) when passed as the trailing arg", async () => {
-    const fetchOn = vi.fn<typeof fetch>(() => Promise.resolve(jsonOk({ id: "n1" })));
-    vi.stubGlobal("fetch", fetchOn);
-    // Positional tail: capability, toolConfig, skills, editsAllowed, memoryRememberEnabled.
-    await updateTeamNode(
-      "team-1",
-      "n1",
-      "p",
-      "m",
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      true,
-    );
-    expect(bodyOf(fetchOn.mock.calls[0])).toEqual({
-      prompt: "p",
-      model: "m",
-      memory_remember_enabled: true,
-    });
-
-    const fetchOff = vi.fn<typeof fetch>(() => Promise.resolve(jsonOk({ id: "n1" })));
-    vi.stubGlobal("fetch", fetchOff);
-    await updateTeamNode(
-      "team-1",
-      "n1",
-      "p",
-      "m",
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      false,
-    );
-    expect(bodyOf(fetchOff.mock.calls[0])).toEqual({
-      prompt: "p",
-      model: "m",
-      memory_remember_enabled: false,
-    });
-  });
-});
-
-describe("updateTeamNode — writes_to / reads_from (M-docs)", () => {
-  it("omits writes_to/reads_from when not passed (byte-identical PATCH)", async () => {
-    const fetchMock = vi.fn<typeof fetch>(() => Promise.resolve(jsonOk({ id: "n1" })));
-    vi.stubGlobal("fetch", fetchMock);
-    await updateTeamNode("team-1", "n1", "p", "m");
-    const body = bodyOf(fetchMock.mock.calls[0]) as Record<string, unknown>;
-    expect("writes_to" in body).toBe(false);
-    expect("reads_from" in body).toBe(false);
-  });
-
-  it("sends writes_to + reads_from as the trailing args", async () => {
-    const fetchMock = vi.fn<typeof fetch>(() => Promise.resolve(jsonOk({ id: "n1" })));
-    vi.stubGlobal("fetch", fetchMock);
-    // tail: capability, toolConfig, skills, editsAllowed, memoryRememberEnabled, writesTo, readsFrom
-    await updateTeamNode(
-      "team-1",
-      "n1",
-      "p",
-      "m",
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      "design",
-      ["spec", "design"],
-    );
-    expect(bodyOf(fetchMock.mock.calls[0])).toEqual({
-      prompt: "p",
-      model: "m",
-      writes_to: "design",
-      reads_from: ["spec", "design"],
-    });
-  });
-
-  it("sends empty writes_to / reads_from to CLEAR them", async () => {
-    const fetchMock = vi.fn<typeof fetch>(() => Promise.resolve(jsonOk({ id: "n1" })));
-    vi.stubGlobal("fetch", fetchMock);
-    await updateTeamNode(
-      "team-1",
-      "n1",
-      "p",
-      "m",
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      "",
-      [],
-    );
-    expect(bodyOf(fetchMock.mock.calls[0])).toEqual({
-      prompt: "p",
-      model: "m",
-      writes_to: "",
-      reads_from: [],
-    });
-  });
-});
-
-describe("runTeam — POST body shaping (greenfield byte-for-byte)", () => {
-  it("adds desktop_target ONLY for a Desktop launch (M-subs-desktop)", async () => {
-    const on = vi.fn<typeof fetch>(() => Promise.resolve(jsonOk({ run_id: "rd" })));
-    vi.stubGlobal("fetch", on);
-    await runTeam("team-1", { desktop_target: true });
-    expect(bodyOf(on.mock.calls[0])).toEqual({ team_graph_id: "team-1", desktop_target: true });
-
-    const off = vi.fn<typeof fetch>(() => Promise.resolve(jsonOk({ run_id: "rh" })));
-    vi.stubGlobal("fetch", off);
-    await runTeam("team-1", { desktop_target: false });
-    expect(bodyOf(off.mock.calls[0])).toEqual({ team_graph_id: "team-1" });
-  });
-
-  it("posts ONLY { team_graph_id } when called with no opts", async () => {
-    const fetchMock = vi.fn<typeof fetch>(() => Promise.resolve(jsonOk({ run_id: "r1" })));
-    vi.stubGlobal("fetch", fetchMock);
-    const id = await runTeam("team-1");
-    expect(id).toBe("r1");
-    expect(fetchMock.mock.calls[0][0]).toBe("/api/runs");
-    expect(bodyOf(fetchMock.mock.calls[0])).toEqual({ team_graph_id: "team-1" });
-  });
-
-  it("omits empty-string fields ⇒ a greenfield body (the byte-for-byte contract)", async () => {
-    const fetchMock = vi.fn<typeof fetch>(() => Promise.resolve(jsonOk({ run_id: "r2" })));
-    vi.stubGlobal("fetch", fetchMock);
-    await runTeam("team-1", { idea: "", repo_path: "", base_ref: "" });
-    expect(bodyOf(fetchMock.mock.calls[0])).toEqual({ team_graph_id: "team-1" });
-  });
-
-  it("includes idea + brownfield fields when set", async () => {
-    const fetchMock = vi.fn<typeof fetch>(() => Promise.resolve(jsonOk({ run_id: "r3" })));
-    vi.stubGlobal("fetch", fetchMock);
-    await runTeam("team-1", { idea: "add subtract", repo_path: "/repo", base_ref: "main" });
-    expect(bodyOf(fetchMock.mock.calls[0])).toEqual({
-      team_graph_id: "team-1",
-      idea: "add subtract",
-      repo_path: "/repo",
-      base_ref: "main",
-    });
-  });
-
-  it("includes only idea for a greenfield run with a feature request (no repo)", async () => {
-    const fetchMock = vi.fn<typeof fetch>(() => Promise.resolve(jsonOk({ run_id: "r4" })));
-    vi.stubGlobal("fetch", fetchMock);
-    await runTeam("team-1", { idea: "ship a greeting" });
-    expect(bodyOf(fetchMock.mock.calls[0])).toEqual({
-      team_graph_id: "team-1",
-      idea: "ship a greeting",
-    });
-  });
-
-  it("includes subpath when a package is scoped (a wrong key / dropped line fails this)", async () => {
-    const fetchMock = vi.fn<typeof fetch>(() => Promise.resolve(jsonOk({ run_id: "r5" })));
-    vi.stubGlobal("fetch", fetchMock);
-    await runTeam("team-1", { repo_path: "/repo", base_ref: "main", subpath: "core" });
-    expect(bodyOf(fetchMock.mock.calls[0])).toEqual({
-      team_graph_id: "team-1",
-      repo_path: "/repo",
-      base_ref: "main",
-      subpath: "core",
-    });
-  });
-
-  // M-h1b: a hosted launch threads github_repo (owner/name) ONLY when set; an empty value omits it,
-  // so a self-hosted/greenfield launch stays byte-for-byte the prior request contract.
-  it("includes github_repo when a hosted repo is targeted, and omits an empty one", async () => {
-    const fetchOn = vi.fn<typeof fetch>(() => Promise.resolve(jsonOk({ run_id: "r6" })));
-    vi.stubGlobal("fetch", fetchOn);
-    await runTeam("team-1", { idea: "add subtract", github_repo: "octo/app" });
-    expect(bodyOf(fetchOn.mock.calls[0])).toEqual({
-      team_graph_id: "team-1",
-      idea: "add subtract",
-      github_repo: "octo/app",
-    });
-
-    const fetchOff = vi.fn<typeof fetch>(() => Promise.resolve(jsonOk({ run_id: "r7" })));
-    vi.stubGlobal("fetch", fetchOff);
-    await runTeam("team-1", { github_repo: "" });
-    expect(bodyOf(fetchOff.mock.calls[0])).toEqual({ team_graph_id: "team-1" });
   });
 });
 
@@ -729,20 +362,6 @@ describe("M-tools C7.C — library types + clients", () => {
     expect(asSource.type).toBe("library");
   });
 
-  it("createToolLibraryItem POSTs { name, server_config }", async () => {
-    const fetchMock = vi.fn<typeof fetch>(() =>
-      Promise.resolve(jsonOk({ id: "t1", name: "fetch" })),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-    const out = await createToolLibraryItem("fetch", { command: "uvx" });
-    expect(out).toEqual({ id: "t1", name: "fetch" });
-    expect(fetchMock.mock.calls[0][0]).toBe("/api/tool-library");
-    expect(bodyOf(fetchMock.mock.calls[0])).toEqual({
-      name: "fetch",
-      server_config: { command: "uvx" },
-    });
-  });
-
   it("createSkillLibraryItem POSTs { name, source }", async () => {
     const fetchMock = vi.fn<typeof fetch>(() =>
       Promise.resolve(jsonOk({ id: "s1", name: "house" })),
@@ -763,8 +382,7 @@ describe("M-tools C7.C — library types + clients", () => {
 });
 
 // ---- M-memory S5a: the memory client — the request-shaping the shelf drives. The listMemories
-// query-string builder and the SINGULAR /api/memory/review-mode path are the load-bearing bits (a
-// wrong param name / a collision with /api/memories/{id} fails here). ----
+// query-string builder is the load-bearing bit (a wrong param name fails here). ----
 describe("M-memory S5 — the memory client", () => {
   it("listMemories with no params GETs /api/memories (no query) and unwraps { memories }", async () => {
     const fetchMock = vi.fn<typeof fetch>(() =>
@@ -795,37 +413,6 @@ describe("M-memory S5 — the memory client", () => {
     expect(fetchMock.mock.calls[0][0]).toBe("/api/memories");
   });
 
-  it("createMemory POSTs { content, polarity, repo_key } and returns the row", async () => {
-    const row = { id: "m1", content: "use pnpm", polarity: "require", repo_key: null };
-    const fetchMock = vi.fn<typeof fetch>(() => Promise.resolve(jsonOk(row)));
-    vi.stubGlobal("fetch", fetchMock);
-    const out = await createMemory({ content: "use pnpm", polarity: "require", repo_key: null });
-    expect(fetchMock.mock.calls[0][0]).toBe("/api/memories");
-    expect(bodyOf(fetchMock.mock.calls[0])).toEqual({
-      content: "use pnpm",
-      polarity: "require",
-      repo_key: null,
-    });
-    expect(out).toEqual(row);
-  });
-
-  it("getReviewMode GETs the SINGULAR /api/memory/review-mode and unwraps review_mode", async () => {
-    const fetchMock = vi.fn<typeof fetch>(() => Promise.resolve(jsonOk({ review_mode: true })));
-    vi.stubGlobal("fetch", fetchMock);
-    expect(await getReviewMode()).toBe(true);
-    expect(fetchMock.mock.calls[0][0]).toBe("/api/memory/review-mode");
-  });
-
-  it("setReviewMode PATCHes { review_mode } to /api/memory/review-mode and returns the value", async () => {
-    const fetchMock = vi.fn<typeof fetch>(() => Promise.resolve(jsonOk({ review_mode: false })));
-    vi.stubGlobal("fetch", fetchMock);
-    const out = await setReviewMode(false);
-    expect(fetchMock.mock.calls[0][0]).toBe("/api/memory/review-mode");
-    expect((fetchMock.mock.calls[0][1] as RequestInit).method).toBe("PATCH");
-    expect(bodyOf(fetchMock.mock.calls[0])).toEqual({ review_mode: false });
-    expect(out).toBe(false);
-  });
-
   it("promoteMemory / rejectMemory POST the S4 review-queue sub-paths", async () => {
     const fetchMock = vi.fn<typeof fetch>(() =>
       Promise.resolve(jsonOk({ id: "m1", status: "active" })),
@@ -835,105 +422,6 @@ describe("M-memory S5 — the memory client", () => {
     await rejectMemory("m2");
     expect(fetchMock.mock.calls[0][0]).toBe("/api/memories/m1/promote");
     expect(fetchMock.mock.calls[1][0]).toBe("/api/memories/m2/reject");
-  });
-});
-
-describe("updateTeamNode — per-node capabilities (Session A)", () => {
-  it("omits all three capability fields when not passed (byte-identical PATCH)", async () => {
-    const fetchMock = vi.fn<typeof fetch>(() => Promise.resolve(jsonOk({ id: "n1" })));
-    vi.stubGlobal("fetch", fetchMock);
-    await updateTeamNode("team-1", "n1", "p", "m");
-    const body = bodyOf(fetchMock.mock.calls[0]) as Record<string, unknown>;
-    expect("fallback_model" in body).toBe(false);
-    expect("output_schema" in body).toBe(false);
-    expect("multimodal" in body).toBe(false);
-    expect(body).toEqual({ prompt: "p", model: "m" });
-  });
-
-  it("sends each capability field ONLY when the caller provides it", async () => {
-    const fetchMock = vi.fn<typeof fetch>(() => Promise.resolve(jsonOk({ id: "n1" })));
-    vi.stubGlobal("fetch", fetchMock);
-    // Grouped trailing object (the `updateGateNode` precedent) — each key is independent.
-    await updateTeamNode(
-      "team-1",
-      "n1",
-      "p",
-      "m",
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      {
-        fallback_model: "openai/gpt-4o-mini",
-      },
-    );
-    expect(bodyOf(fetchMock.mock.calls[0])).toEqual({
-      prompt: "p",
-      model: "m",
-      fallback_model: "openai/gpt-4o-mini",
-    });
-  });
-
-  it("sends output_schema + multimodal together", async () => {
-    const fetchMock = vi.fn<typeof fetch>(() => Promise.resolve(jsonOk({ id: "n1" })));
-    vi.stubGlobal("fetch", fetchMock);
-    const schema = { type: "object", required: ["title"] };
-    await updateTeamNode(
-      "team-1",
-      "n1",
-      "p",
-      "m",
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      {
-        output_schema: schema,
-        multimodal: true,
-      },
-    );
-    expect(bodyOf(fetchMock.mock.calls[0])).toEqual({
-      prompt: "p",
-      model: "m",
-      output_schema: schema,
-      multimodal: true,
-    });
-  });
-
-  it("sends explicit nulls to CLEAR fallback_model / output_schema", async () => {
-    const fetchMock = vi.fn<typeof fetch>(() => Promise.resolve(jsonOk({ id: "n1" })));
-    vi.stubGlobal("fetch", fetchMock);
-    await updateTeamNode(
-      "team-1",
-      "n1",
-      "p",
-      "m",
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      {
-        fallback_model: null,
-        output_schema: null,
-        multimodal: false,
-      },
-    );
-    expect(bodyOf(fetchMock.mock.calls[0])).toEqual({
-      prompt: "p",
-      model: "m",
-      fallback_model: null,
-      output_schema: null,
-      multimodal: false,
-    });
   });
 });
 

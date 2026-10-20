@@ -14,11 +14,11 @@ import {
   listCatalog,
   listConnections,
   listConnectorAgents,
-  parseRoundConnectors,
   setConnectorAgents,
   startSignIn,
   updateConnection,
 } from "./connectors";
+import { parseRoundConnectors } from "./roundConnectors";
 import { ApiDetailError } from "./runs";
 
 beforeEach(() => __resetBackendStatusForTests());

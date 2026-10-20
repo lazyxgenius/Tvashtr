@@ -6,7 +6,7 @@
  */
 import type { GateConfig, NodeConfig, TerminalConfig } from "./api";
 
-export const ROLE_TITLE: Record<string, string> = {
+const ROLE_TITLE: Record<string, string> = {
   pm: "Product manager",
   architect: "Architect",
   engineer: "Engineer",

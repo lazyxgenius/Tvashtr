@@ -1,7 +1,7 @@
 // M-memory S5 — pure, unit-tested helpers shared by the memory views (Toolkit › Memory, the agent
-// drawer's Memory section, a run's memories): the polarity/tier presentation vocabulary, the repos
-// among a list of facts, and the "Used this run" resolution. No JSX here, so components import from
-// it without tripping react-refresh.
+// drawer's Memory section, a run's memories): the polarity/tier presentation vocabulary and the
+// "Used this run" resolution. No JSX here, so components import from it without tripping
+// react-refresh.
 
 import type { MemoryPolarity, MemoryTier, NodeMemoryRow } from "./api";
 
@@ -32,24 +32,6 @@ export const TIER_LABEL: Record<MemoryTier, string> = {
   node: "This agent",
 };
 
-export interface RepoOption {
-  repo_key: string;
-  count: number;
-}
-
-// The distinct repos among repo/node-tier rows (account-tier rows have no repo_key and are skipped),
-// each with its fact count, most facts first (ties keep first-seen order). Drives the repo selector.
-export function reposOf(rows: NodeMemoryRow[]): RepoOption[] {
-  const counts = new Map<string, number>();
-  for (const r of rows) {
-    if (r.repo_key === null) continue;
-    counts.set(r.repo_key, (counts.get(r.repo_key) ?? 0) + 1);
-  }
-  return [...counts.entries()]
-    .map(([repo_key, count]) => ({ repo_key, count }))
-    .sort((a, b) => b.count - a.count);
-}
-
 // ===== M-memory S5b — the run-inspector "Used this run" resolution ==============================
 // A node's per-round injected memory is stored as {id, polarity} stubs on each round's
 // context_manifest.memory. These pure helpers dedupe those stubs, resolve them against the store,
@@ -63,7 +45,7 @@ export function polarityRank(polarity: string): number {
 
 // One fact a node saw injected this run: the polarity + id, resolved to the stored row — or `null`
 // when the fact has since been deleted (the view then shows "(no longer stored)" with just polarity).
-export interface UsedFact {
+interface UsedFact {
   id: string;
   polarity: MemoryPolarity;
   row: NodeMemoryRow | null;

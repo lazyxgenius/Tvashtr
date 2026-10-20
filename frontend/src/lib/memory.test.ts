@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { NodeMemoryRow } from "./api";
-import { POLARITY_META, polarityRank, reposOf, TIER_LABEL, usedFacts } from "./memory";
+import { POLARITY_META, polarityRank, TIER_LABEL, usedFacts } from "./memory";
 
 function row(over: Partial<NodeMemoryRow> = {}): NodeMemoryRow {
   return {
@@ -41,25 +41,6 @@ describe("TIER_LABEL", () => {
     expect(TIER_LABEL.account).toBe("Account");
     expect(TIER_LABEL.repo).toBe("This repo");
     expect(TIER_LABEL.node).toBe("This agent");
-  });
-});
-
-describe("reposOf", () => {
-  it("lists the distinct repos among repo/node-tier rows, most facts first", () => {
-    const rows = [
-      row({ id: "a", repo_key: "/x", node_id: null }),
-      row({ id: "b", repo_key: "/x", node_id: "n1" }),
-      row({ id: "c", repo_key: "/y", node_id: null }),
-      row({ id: "d", repo_key: null }), // account tier — excluded
-    ];
-    expect(reposOf(rows)).toEqual([
-      { repo_key: "/x", count: 2 },
-      { repo_key: "/y", count: 1 },
-    ]);
-  });
-
-  it("is empty when there are no repo-scoped facts", () => {
-    expect(reposOf([row({ repo_key: null })])).toEqual([]);
   });
 });
 

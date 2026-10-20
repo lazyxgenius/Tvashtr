@@ -181,7 +181,7 @@ export type RunStatusFilter =
   | "failed"
   | "stopped";
 
-export interface RunsPage {
+interface RunsPage {
   runs: RunListRow[];
   next_cursor: string | null;
 }

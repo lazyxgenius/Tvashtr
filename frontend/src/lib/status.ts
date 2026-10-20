@@ -116,21 +116,7 @@ export function deriveTerminalState(terminalKind: string, backendStatus: string)
   return terminalKind === "ship" ? "shipped" : "stopped";
 }
 
-/**
- * Map a persisted reviewer `AgentInvocation.outcome` to its display label + tone for the
- * per-round verdict view (P1.5c §14.1). Pure and total: `approved` reads positive (sage),
- * `changes_requested` reads attention (coral), anything else (a non-reviewer outcome, or a
- * still-open `null` round) reads neutral. Only the LABEL is surfaced today — the reasons
- * ("why B sent it back") would need a new column if we resurface compare later.
- */
-export type VerdictTone = "approved" | "changes" | "neutral";
-export function reviewerVerdictLabel(outcome: string | null): { label: string; tone: VerdictTone } {
-  if (outcome === "approved") return { label: "Approved", tone: "approved" };
-  if (outcome === "changes_requested") return { label: "Changes requested", tone: "changes" };
-  return { label: outcome ?? "—", tone: "neutral" };
-}
-
-export type OverallTone = "idle" | "running" | "paused" | "done" | "failed";
+type OverallTone = "idle" | "running" | "paused" | "done" | "failed";
 
 /**
  * Overall run state for the banner. `run.status` is authoritative and checked
@@ -163,42 +149,4 @@ export function deriveOverall(
   if (workflowStatus === "SUCCESS") return { tone: "done", label: "Shipped" };
   if (WORKFLOW_FAILED.has(workflowStatus ?? "")) return { tone: "failed", label: "Failed" };
   return { tone: "running", label: "Running…" };
-}
-
-/**
- * Map a team's latest-run status to its dashboard status pill (F2c: "a run is a team that ran").
- * The teams table shows this pill in each team's row; `null` (never run) reads as a muted
- * "Not run yet". Human labels; the tone reuses the shared `.tv-pill--*` vocabulary — running=coral,
- * awaiting=ringed coral, completed=sage, failed=red, over budget=amber, rejected|cancelled=a muted
- * "Stopped". Derivation lives here (the one status source of truth), never inline in the component.
- */
-export type RunPillTone =
-  | "idle"
-  | "running"
-  | "paused"
-  | "done"
-  | "failed"
-  | "stopped"
-  | "overbudget";
-
-export function runStatusPill(status: string | null): { tone: RunPillTone; label: string } {
-  if (status === null) return { tone: "idle", label: "Not run yet" };
-  switch (status) {
-    case "running":
-    case "pending":
-      return { tone: "running", label: "Running" };
-    case "awaiting_human":
-      return { tone: "paused", label: "Awaiting you" };
-    case "completed":
-      return { tone: "done", label: "Completed" };
-    case "failed":
-      return { tone: "failed", label: "Failed" };
-    case "over_budget":
-      return { tone: "overbudget", label: "Over budget" };
-    case "rejected":
-    case "cancelled":
-      return { tone: "stopped", label: "Stopped" };
-    default:
-      return { tone: "idle", label: status };
-  }
 }

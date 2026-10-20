@@ -4,13 +4,11 @@ import sharedGate from "./credentialGate.cases.json";
 import {
   RUNNER_SUBSCRIPTIONS,
   SUBSCRIPTION_DISCLOSURE,
-  subscriptionCoverLabel,
   SUBSCRIPTION_PROVIDERS,
   subscriptionProviderForModel,
   modelProvidersForSubscription,
   credentialTreatment,
   missingProvidersForModels,
-  missingCredentialCtaTitle,
   missingProviderBannerDetail,
 } from "./engines";
 
@@ -113,21 +111,7 @@ describe("missingProvidersForModels", () => {
   });
 });
 
-describe("missingCredentialCtaTitle / banner detail", () => {
-  it("hosted CTA requires API keys and excludes subscription as a fix", () => {
-    const title = missingCredentialCtaTitle("hosted");
-    expect(title).toMatch(/API key/i);
-    expect(title).toMatch(/Engines/i);
-    expect(title).toMatch(/Desktop/i);
-    expect(title).not.toMatch(/or connect a subscription/i);
-  });
-
-  it("local CTA still offers API keys or a Desktop subscription", () => {
-    expect(missingCredentialCtaTitle("local")).toBe(
-      "Add API keys or connect a subscription under Engines on the Dashboard",
-    );
-  });
-
+describe("missingProviderBannerDetail", () => {
   it("hosted banner line says API keys are required; subscriptions are Desktop-only", () => {
     expect(missingProviderBannerDetail("openai", "hosted")).toBe(
       "No API key for “openai” (hosted runs need an API key; subscriptions are Desktop-only)",
@@ -166,15 +150,6 @@ describe("shared launch credential rule (FE ⇄ server)", () => {
 });
 
 describe("subscription copy (M-subs-desktop §3.0/§3.4)", () => {
-  it("labels a covered node as running on this computer via the subscription", () => {
-    expect(subscriptionCoverLabel("claude")).toBe(
-      "via your Claude subscription · runs on this computer",
-    );
-    expect(subscriptionCoverLabel("grok")).toBe(
-      "via your Grok subscription · runs on this computer",
-    );
-  });
-
   it("carries the exact compliance disclosure", () => {
     expect(SUBSCRIPTION_DISCLOSURE).toBe(
       "Tvashtr runs your own installed Claude Code / Grok on this computer. You sign in inside that tool — Tvashtr never sees or stores your login. Usage counts against your own plan and follows Anthropic's / xAI's terms. Tvashtr isn't affiliated with or endorsed by Anthropic or xAI.",

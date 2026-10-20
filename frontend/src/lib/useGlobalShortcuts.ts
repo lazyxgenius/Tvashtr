@@ -5,7 +5,7 @@
  */
 import { useEffect, useRef } from "react";
 
-export interface ShortcutHandlers {
+interface ShortcutHandlers {
   onSearch: () => void;
   onNewRun: () => void;
   onNewTeam: () => void;

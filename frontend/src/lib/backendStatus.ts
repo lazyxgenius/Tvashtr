@@ -12,7 +12,7 @@ import { useSyncExternalStore } from "react";
 
 export type BackendState = "checking" | "connected" | "offline";
 
-export interface BackendStatus {
+interface BackendStatus {
   state: BackendState;
   /** When the backend last answered (ms since epoch), or null if it never has. */
   lastOkAt: number | null;
@@ -63,9 +63,9 @@ export type ProbeFailure =
   /** The server answered, but with an error status (or its database is down). */
   | { kind: "error"; status: number | "db down" };
 
-export type ProbeResult = { ok: true } | ({ ok: false } & ProbeFailure);
+type ProbeResult = { ok: true } | ({ ok: false } & ProbeFailure);
 
-export const PROBE_TIMEOUT_MS = 10_000;
+const PROBE_TIMEOUT_MS = 10_000;
 export const PROBE_TRIES = 3;
 /** The waits between tries: 1 s after the first, 2 s after the second. */
 export const PROBE_GAPS_MS: readonly number[] = [1_000, 2_000];

@@ -111,7 +111,7 @@ export interface SkillRepoScan {
   skills: ScannedSkill[];
 }
 
-export interface SkillImportRequest {
+interface SkillImportRequest {
   url: string;
   ref: string;
   sha: string;

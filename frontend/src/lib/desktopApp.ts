@@ -10,9 +10,9 @@ import { DESKTOP_MAC_DMG_URL } from "./desktopDownload";
 import type { SubscriptionStatus } from "./engines";
 
 type AuthBridge = NonNullable<TvashtrDesktopBridge["auth"]>;
-export type SignInEvent = TvashtrSignInEvent;
-export type AppInfo = TvashtrAppInfo;
-export type LaunchContext = Awaited<ReturnType<AuthBridge["getLaunchContext"]>>;
+type SignInEvent = TvashtrSignInEvent;
+type AppInfo = TvashtrAppInfo;
+type LaunchContext = Awaited<ReturnType<AuthBridge["getLaunchContext"]>>;
 
 export const HELP_URL = "https://github.com/lazyxgenius/Tvashtr/blob/main/docs/desktop-v1.md";
 /** Interim, factual "what Tvashtr stores" page (OQ-9: the privacy statement is the operator's). */

@@ -1,8 +1,6 @@
 // Typed client for the Tvashtr control-plane HTTP surface (proxied to :8000 by Vite).
 
-import type { SubscriptionProviderId, SubscriptionSource, SubscriptionStatus } from "./engines";
-
-export type { SubscriptionProviderId, SubscriptionStatus } from "./engines";
+import type { SubscriptionStatus } from "./engines";
 
 import type { TeamLayout } from "./api/canvas";
 import type { DomainCitation } from "./api/domains";
@@ -16,7 +14,7 @@ import { isFeedEvent } from "./events";
 // Absolute API origin when set at build time. Empty = same-origin relative paths (preferred).
 // Desktop v1 leaves this empty and reverse-proxies /api → https://tvashtr.fly.dev from localhost
 // so session cookies stay first-party. See docs/desktop-v1.md.
-export const API_BASE = String(import.meta.env.VITE_API_BASE ?? "").replace(/\/$/, "");
+const API_BASE = String(import.meta.env.VITE_API_BASE ?? "").replace(/\/$/, "");
 export function apiUrl(path: string): string {
   if (!API_BASE) return path;
   if (/^https?:\/\//i.test(path)) return path;
@@ -242,11 +240,6 @@ export interface RunStatus {
   costs: CostRow[];
 }
 
-export interface Health {
-  status: string;
-  db: string;
-}
-
 // ---- Auth (M-accounts Slice A) ----
 
 // The minimal identity the auth endpoints return + the FE carries while logged in.
@@ -312,44 +305,6 @@ export class ApiError extends Error {
   }
 }
 
-/** The `detail.missing_nodes` role names, or `[]`. Never throws — a refusal we cannot parse still
- *  has to surface its message, so a bad shape degrades to "no highlight", never to a crash. */
-function missingNodesOf(body: unknown): string[] {
-  const detail = (body as { detail?: unknown })?.detail;
-  const raw = (detail as { missing_nodes?: unknown })?.missing_nodes;
-  return Array.isArray(raw) ? raw.filter((n): n is string => typeof n === "string") : [];
-}
-
-// M-legible: FastAPI's error `detail` is sometimes a string, sometimes a `{message}` object (and a
-// few endpoints put the human text at a top-level `message`). Read whichever is present so a failed
-// call can surface the backend's REAL reason — a 422/429 means it answered, not that it is down —
-// falling back to the caller's generic text when the body is absent or unparseable.
-/** A Response body can be consumed ONCE, so the message and the nodes must come out of a single
- *  `.json()` — a second call would throw. */
-async function errorDetailFromBody(
-  res: Response,
-  fallback: string,
-): Promise<{ message: string; missingNodes: string[] }> {
-  try {
-    const body: unknown = await res.json();
-    const nodes = missingNodesOf(body);
-    const detail = (body as { detail?: unknown }).detail;
-    if (typeof detail === "string" && detail.trim())
-      return { message: detail, missingNodes: nodes };
-    if (detail && typeof detail === "object") {
-      const nested = (detail as { message?: unknown }).message;
-      if (typeof nested === "string" && nested.trim())
-        return { message: nested, missingNodes: nodes };
-    }
-    const top = (body as { message?: unknown }).message;
-    if (typeof top === "string" && top.trim()) return { message: top, missingNodes: nodes };
-    return { message: fallback, missingNodes: nodes };
-  } catch {
-    // a non-JSON / empty body → the generic fallback
-  }
-  return { message: fallback, missingNodes: [] };
-}
-
 // A single 401 seam: AuthGate registers a handler here; the GET helpers below invoke it when the
 // server rejects an absent/expired session, so a mid-session expiry drops the whole app back to the
 // login screen on the next poll. Set to null on unmount.
@@ -403,8 +358,8 @@ export async function getConfig(): Promise<Config> {
     if (!res.ok) return fallback;
     const data = (await res.json()) as Partial<Config>;
     const catalogue = Array.isArray(data.provider_catalogue) ? data.provider_catalogue : [];
-    // M-runnable: cache the catalogue for the synchronous picker helpers (presetsForProvider /
-    // providerSuggestions) — this runs at app boot, before the node picker / dashboard are opened.
+    // M-runnable: cache the catalogue for the synchronous picker helpers (getProviderCatalogue) —
+    // this runs at app boot, before the node picker / dashboard are opened.
     setProviderCatalogue(catalogue);
     return {
       hosted_mode: data.hosted_mode === true,
@@ -472,49 +427,11 @@ export async function addProvider(
   return (await res.json()) as { provider: string; key_last4: string };
 }
 
-// Remove the account's key for a provider (204, idempotent).
-export async function removeProvider(provider: string): Promise<void> {
-  const res = await fetch(`/api/providers/${encodeURIComponent(provider)}`, { method: "DELETE" });
-  if (!res.ok) throw new Error(`DELETE /api/providers/${provider} -> ${res.status}`);
-}
-
 // ---- Subscription status (mirror: status-only, no secrets in PUT bodies) ----
 
 export async function listSubscriptionStatuses(): Promise<SubscriptionStatus[]> {
   const data = await getJSON<{ subscriptions: SubscriptionStatus[] }>("/api/engines/subscriptions");
   return data.subscriptions;
-}
-
-export async function putSubscriptionStatus(
-  provider: SubscriptionProviderId,
-  body: {
-    connected: boolean;
-    state?: SubscriptionStatus["state"];
-    account_hint?: string | null;
-    source?: SubscriptionSource | null;
-  },
-): Promise<SubscriptionStatus> {
-  const res = await fetch(`/api/engines/subscriptions/${encodeURIComponent(provider)}`, {
-    method: "PUT",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    throw new ApiError(res.status, `PUT /api/engines/subscriptions/${provider} -> ${res.status}`);
-  }
-  return (await res.json()) as SubscriptionStatus;
-}
-
-export async function deleteSubscriptionStatus(provider: SubscriptionProviderId): Promise<void> {
-  const res = await fetch(`/api/engines/subscriptions/${encodeURIComponent(provider)}`, {
-    method: "DELETE",
-  });
-  if (!res.ok) {
-    throw new ApiError(
-      res.status,
-      `DELETE /api/engines/subscriptions/${provider} -> ${res.status}`,
-    );
-  }
 }
 
 // ---- MCP secrets (M-tools C7.A): the account's ${NAME} store for MCP tool_config ----
@@ -531,96 +448,12 @@ export async function listSecrets(): Promise<McpSecretName[]> {
   return data.secrets;
 }
 
-// ---- The account's runs (the dashboard's "previous runs" list) ----
-
-export interface RunSummary {
-  run_id: string;
-  idea: string;
-  status: string;
-  created_at: string;
-  repo_path: string | null;
-}
-
-// The account's runs, newest first (owner-scoped server-side). Empty for a fresh account.
-export async function listRuns(): Promise<RunSummary[]> {
-  const data = await getJSON<{ runs: RunSummary[] }>("/api/runs");
-  return data.runs;
-}
-
 async function getJSON<T>(url: string): Promise<T> {
   const res = await fetch(apiUrl(url));
   // M-accounts Slice A: a 401 on any GET poll means the session expired — surface it to the gate.
   if (res.status === 401) unauthorizedHandler?.();
   if (!res.ok) throw new Error(`GET ${url} -> ${res.status}`);
   return (await res.json()) as T;
-}
-
-// The launch options the launch panel collects (M-brownfield Slice 2). All optional: an `idea`
-// (the feature request — empty ⇒ the server default), and a brownfield run target (`repo_path` +
-// `base_ref`). Each field is included in the POST body ONLY when set, so a no-opts call is
-// byte-for-byte the prior greenfield launch.
-export interface RunTeamOptions {
-  idea?: string;
-  repo_path?: string;
-  base_ref?: string;
-  // scoped-mount Slice 2: an optional package to scope a brownfield run to (the Scope picker's
-  // choice — a tracked dir of the repo). Included in the POST body ONLY when set, so a whole-repo /
-  // greenfield launch omits it entirely (the byte-for-byte contract is preserved).
-  subpath?: string;
-  // M-h1b: the hosted run target — a GitHub App repo `full_name` (owner/name), mutually exclusive
-  // with `repo_path` server-side. Included in the POST body ONLY when set, so a self-hosted /
-  // greenfield launch omits it entirely (the prior request contract is byte-for-byte preserved).
-  github_repo?: string;
-  // M-subs-desktop: a launch from Tvashtr Desktop — its Claude/Grok nodes may run on this computer
-  // with the user's own CLI sign-in. Included ONLY when true (web launches are byte-for-byte).
-  desktop_target?: boolean;
-}
-
-// Clone-on-launch (P1.8b): "Run this team" launches a run on a fresh deep-clone of the persistent
-// authored team (the user's edited prompts/models), not a throwaway builder graph. The backend
-// clones the team, seeds the run, and starts the workflow — the existing live run view then takes
-// over via the returned run_id (the same poll surface as before).
-//
-// M-brownfield Slice 2: `opts` carries the launch panel's idea + optional brownfield target. Each
-// field is added to the body ONLY when non-empty, so `runTeam(id)` (or `runTeam(id, {})`) posts
-// exactly `{ team_graph_id }` — the greenfield launch is byte-for-byte unchanged.
-export async function runTeam(teamGraphId: string, opts: RunTeamOptions = {}): Promise<string> {
-  const body: {
-    team_graph_id: string;
-    idea?: string;
-    repo_path?: string;
-    base_ref?: string;
-    subpath?: string;
-    github_repo?: string;
-    desktop_target?: boolean;
-  } = {
-    team_graph_id: teamGraphId,
-  };
-  if (opts.idea) body.idea = opts.idea;
-  if (opts.repo_path) body.repo_path = opts.repo_path;
-  if (opts.base_ref) body.base_ref = opts.base_ref;
-  // scoped-mount Slice 2: only a picked package threads through — whole-repo/greenfield omits it.
-  if (opts.subpath) body.subpath = opts.subpath;
-  // M-h1b: the hosted GitHub repo target threads through ONLY when set — a self-hosted/greenfield
-  // launch omits it, so its request body is byte-for-byte the prior contract.
-  if (opts.github_repo) body.github_repo = opts.github_repo;
-  if (opts.desktop_target === true) body.desktop_target = true;
-  const res = await fetch("/api/runs", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    // M-legible: carry the backend's real reason (422 invalid graph, 429 ceiling, …) on an ApiError
-    // so App.tsx renders it instead of the misleading "is the backend running?" guess.
-    const { message, missingNodes } = await errorDetailFromBody(
-      res,
-      `POST /api/runs -> ${res.status}`,
-    );
-    throw new ApiError(res.status, message, missingNodes);
-  }
-  const data = (await res.json()) as { run_id: string };
-  return data.run_id;
 }
 
 // ---- Hosted-mode GitHub repos (M-h1b): the account's GitHub App repos the launch panel offers ----
@@ -739,7 +572,7 @@ export interface AskMessage {
   content: string;
 }
 
-export interface AskAnswer {
+interface AskAnswer {
   answer: string;
 }
 
@@ -816,7 +649,7 @@ export interface TeamGraphNode {
   edits_allowed?: boolean;
   config: NodeConfig | null;
   // M-tools C7.0: per-node inline tools (raw MCP config object) + skills (inline sources array).
-  // NULL until a later milestone's UI sets them; the drawer round-trips them via updateTeamNode.
+  // NULL until a later milestone's UI sets them; the drawer round-trips them via patchAgentNode.
   tool_config?: Record<string, unknown> | null;
   skills?: unknown[] | null;
   // M2: the authoring "last run" brief — the latest invocation of any CLONE of this authored node,
@@ -919,20 +752,6 @@ export async function listToolLibrary(): Promise<ToolLibraryItem[]> {
   return data.tools;
 }
 
-// Add (or REPLACE, upsert on name) a library tool. Returns `{id, name}` — never the whole row.
-export async function createToolLibraryItem(
-  name: string,
-  serverConfig: Record<string, unknown>,
-): Promise<{ id: string; name: string }> {
-  const res = await fetch("/api/tool-library", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ name, server_config: serverConfig }),
-  });
-  if (!res.ok) throw new ApiError(res.status, `POST /api/tool-library -> ${res.status}`);
-  return (await res.json()) as { id: string; name: string };
-}
-
 // The account's library skills (oldest first).
 export async function listSkillLibrary(): Promise<SkillLibraryItem[]> {
   const data = await getJSON<{ skills: SkillLibraryItem[] }>("/api/skill-library");
@@ -952,39 +771,8 @@ export async function createSkillLibraryItem(
   return (await res.json()) as { id: string; name: string };
 }
 
-export async function updateSkillLibraryItem(
-  id: string,
-  name: string,
-  source: LibrarySkillItemSource,
-): Promise<{ id: string; name: string }> {
-  const res = await fetch(`/api/skill-library/${encodeURIComponent(id)}`, {
-    method: "PATCH",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ name, source }),
-  });
-  if (!res.ok) throw new ApiError(res.status, `PATCH /api/skill-library/${id} -> ${res.status}`);
-  return (await res.json()) as { id: string; name: string };
-}
-
-export async function deleteSkillLibraryItem(id: string): Promise<void> {
-  const res = await fetch(`/api/skill-library/${encodeURIComponent(id)}`, { method: "DELETE" });
-  if (!res.ok) throw new Error(`DELETE /api/skill-library/${id} -> ${res.status}`);
-}
-
 // ===== Free tools & skills catalog (static built-ins; opt-in via library attach) ================
 export type CatalogAccess = "free" | "needs_secret" | "needs_github_app";
-
-export interface ToolCatalogEntry {
-  key: string;
-  name: string;
-  title: string;
-  description: string;
-  access: CatalogAccess;
-  secret_names: string[];
-  badge: string;
-  attachable: boolean;
-  server_config: Record<string, unknown>;
-}
 
 export interface SkillPresetEntry {
   key: string;
@@ -995,11 +783,6 @@ export interface SkillPresetEntry {
   badge: string;
   attachable: boolean;
   source: InlineSkillSource;
-}
-
-export async function listToolCatalog(): Promise<ToolCatalogEntry[]> {
-  const data = await getJSON<{ tools: ToolCatalogEntry[] }>("/api/tool-catalog");
-  return data.tools;
 }
 
 export async function listSkillPresets(): Promise<SkillPresetEntry[]> {
@@ -1099,13 +882,6 @@ export interface TeamRunRow {
   ran_on?: DesktopRoutes;
 }
 
-// One starter preset in the New-team picker (the curated, code-resident template library).
-export interface Template {
-  template: string; // the stable key passed to createTeam
-  name: string;
-  description: string;
-}
-
 // M-runnable: the provider catalogue is BACKEND-OWNED (control_plane.teams.PROVIDER_CATALOGUE) and
 // served on GET /api/config; the FE declares NO model/provider list. It is cached here at boot
 // (getConfig) so the SYNCHRONOUS picker helpers below can read it without threading it through every
@@ -1123,42 +899,11 @@ export function getProviderCatalogue(): ProviderCatalogueEntry[] {
   return providerCatalogue;
 }
 
-// The provider slugs offered as quick-adds (dashboard datalist + node picker) — DERIVED from the
-// served catalogue in its own order, never a hardcoded list.
-export function providerSuggestions(): string[] {
-  return providerCatalogue.map((e) => e.provider);
-}
-
 // M-accounts Slice C: the ONE provider-canonicalization rule — the leading ``provider/`` slug
 // segment, lower-cased + trimmed. This MUST match the backend ``credentials.provider_for_model``
 // EXACTLY (a parity unit test pins it); the per-node picker derives a model's provider with this.
 export function providerOf(model: string): string {
   return model.split("/")[0].trim().toLowerCase();
-}
-
-// The catalogue quick-picks for one provider IN ONE SEAT — what the Model field offers once a
-// provider is chosen. Reads the served catalogue (matched by the canonical provider key); empty for
-// an unknown or not-yet-loaded provider, and empty for a provider that cannot serve this seat at all
-// (the free-text field still accepts any slug, so this narrows guidance, never the user's choice).
-export function presetsForProvider(provider: string, capability: Capability): string[] {
-  const entry = providerCatalogue.find((e) => e.provider === provider);
-  if (!entry) return [];
-  return (capability === "worker" ? entry.worker_presets : entry.thinker_presets) ?? [];
-}
-
-// One provider's catalogued default for a seat, or null when it cannot serve that seat. The picker
-// uses it to land on a sensible slug when the user switches provider.
-export function defaultForProvider(provider: string, capability: Capability): string | null {
-  const entry = providerCatalogue.find((e) => e.provider === provider);
-  if (!entry) return null;
-  return (capability === "worker" ? entry.worker_default : entry.thinker_default) ?? null;
-}
-
-// The providers that can serve this seat at all — the ones the picker should offer for this node.
-export function providersForCapability(capability: Capability): string[] {
-  return providerCatalogue
-    .filter((e) => (capability === "worker" ? e.worker_default : e.thinker_default))
-    .map((e) => e.provider);
 }
 
 // M-brownfield Slice 2 (D4): above this many tracked files the launch panel surfaces a dismissible
@@ -1170,42 +915,6 @@ export const LARGE_REPO_FILE_THRESHOLD = 300;
 export async function getTeams(): Promise<TeamSummary[]> {
   const data = await getJSON<{ teams: TeamSummary[] }>("/api/teams");
   return data.teams;
-}
-
-// The curated starter templates the New-team picker offers (the FE renders from this list).
-export async function getTemplates(): Promise<Template[]> {
-  const data = await getJSON<{ templates: Template[] }>("/api/templates");
-  return data.templates;
-}
-
-// Create a new library team from a starter template (drop-and-edit). Returns the new team's
-// summary; the caller makes it current + loads its graph.
-export async function createTeam(template: string, name: string): Promise<TeamSummary> {
-  const res = await fetch("/api/teams", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ template, name }),
-  });
-  if (!res.ok) throw new Error(`POST /api/teams -> ${res.status}`);
-  return (await res.json()) as TeamSummary;
-}
-
-// Delete a library team. This also stops and deletes its runs (and their Desktop jobs).
-export async function deleteTeam(teamId: string): Promise<void> {
-  const res = await fetch(`/api/teams/${teamId}`, { method: "DELETE" });
-  if (!res.ok) throw new Error(`DELETE /api/teams/${teamId} -> ${res.status}`);
-}
-
-// Rename a library team. Returns the UPDATED SUMMARY, so the caller can swap the row in place
-// rather than re-derive it. The backend trims the name and rejects a blank one (422).
-export async function renameTeam(teamId: string, name: string): Promise<TeamSummary> {
-  const res = await fetch(`/api/teams/${teamId}`, {
-    method: "PATCH",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ name }),
-  });
-  if (!res.ok) throw new Error(`PATCH /api/teams/${teamId} -> ${res.status}`);
-  return (await res.json()) as TeamSummary;
 }
 
 // A team's full run history, newest first (the dashboard drill-down). `[]` for a team that exists
@@ -1225,83 +934,9 @@ export const getTeamGraph = (teamId: string): Promise<TeamGraphData> =>
 // `teams.CAPABILITIES`), so the client has exactly one definition of the seat vocabulary.
 export type Capability = "thinker" | "worker";
 
-// Persist an edited library-team node's prompt + model, and (P1.8c) optionally its capability,
-// (M-tools C7.0) optionally its inline tools/skills, and (M-unify U3) optionally its edits_allowed —
-// the ONE capability distinction the drawer's Edits toggle now drives (the backend NodeUpdate accepts
-// it; an EXPLICIT value wins over the capability→kind sync). Each optional field is included in the
-// PATCH body ONLY when provided, so existing call sites stay back-compatible and an omitted field
-// leaves the stored value unchanged. Returns the updated node; the caller refetches the team.
-export async function updateTeamNode(
-  teamId: string,
-  nodeId: string,
-  prompt: string,
-  model: string,
-  capability?: Capability,
-  toolConfig?: Record<string, unknown> | null,
-  skills?: unknown[] | null,
-  editsAllowed?: boolean,
-  memoryRememberEnabled?: boolean,
-  writesTo?: string,
-  readsFrom?: string[],
-  // Per-node capabilities (Session A): the three additive drawer settings, GROUPED into one optional
-  // trailing object (the `updateGateNode` precedent) rather than three more positional args. Each key
-  // is independent and follows the same rule as every field above — it reaches the PATCH body ONLY
-  // when the caller provides it, so an omitted key leaves the stored value untouched, and an EXPLICIT
-  // null clears it. A caller that omits the whole object produces a byte-identical PATCH body.
-  capabilities?: {
-    fallback_model?: string | null;
-    output_schema?: Record<string, unknown> | null;
-    multimodal?: boolean;
-  },
-): Promise<TeamGraphNode> {
-  const body: {
-    prompt: string;
-    model: string;
-    capability?: Capability;
-    tool_config?: Record<string, unknown> | null;
-    skills?: unknown[] | null;
-    edits_allowed?: boolean;
-    memory_remember_enabled?: boolean;
-    writes_to?: string;
-    reads_from?: string[];
-    fallback_model?: string | null;
-    output_schema?: Record<string, unknown> | null;
-    multimodal?: boolean;
-  } = { prompt, model };
-  if (capability !== undefined) body.capability = capability;
-  // M-unify U3: the Edits toggle's source of truth. Sent whenever the caller passes it; the backend's
-  // ``model_fields_set`` guard makes an explicit value win over the legacy capability→kind sync.
-  if (editsAllowed !== undefined) body.edits_allowed = editsAllowed;
-  // M-memory: the per-node "Remember what I learn" toggle — sent ONLY when the caller passes it (the
-  // backend's model_fields_set guard leaves config untouched when omitted). Mirrors editsAllowed.
-  if (memoryRememberEnabled !== undefined) body.memory_remember_enabled = memoryRememberEnabled;
-  // M-docs: per-node document routing — writes_to (one doc name) + reads_from (a list of names) in
-  // the node's config JSONB. Sent ONLY when the caller passes it (the backend's model_fields_set
-  // guard leaves config untouched when omitted). Mirrors memoryRememberEnabled.
-  if (writesTo !== undefined) body.writes_to = writesTo;
-  if (readsFrom !== undefined) body.reads_from = readsFrom;
-  // M-tools C7.A (SHARED CONTRACT S2): ALWAYS send tools/skills when the caller passed a value (even
-  // an explicit null → clear to NULL). Only a caller that OMITS the arg (undefined) leaves the stored
-  // value unchanged — the backend distinguishes the two via `model_fields_set`. A caller that omits
-  // both still produces a PATCH body byte-identical to before this milestone.
-  if (toolConfig !== undefined) body.tool_config = toolConfig;
-  if (skills !== undefined) body.skills = skills;
-  // Session A: fallback_model / output_schema / multimodal — same per-key rule as everything above.
-  if (capabilities?.fallback_model !== undefined) body.fallback_model = capabilities.fallback_model;
-  if (capabilities?.output_schema !== undefined) body.output_schema = capabilities.output_schema;
-  if (capabilities?.multimodal !== undefined) body.multimodal = capabilities.multimodal;
-  const res = await fetch(`/api/teams/${teamId}/nodes/${nodeId}`, {
-    method: "PATCH",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error(`PATCH /api/teams/${teamId}/nodes/${nodeId} -> ${res.status}`);
-  return (await res.json()) as TeamGraphNode;
-}
-
 // M-rails C8: persist an edited GATE node's config — its `gate_kind` (`gate_approval` human vs the
 // `secret_leak_scan` guardrail) + human-facing `title`/`description`. A SEPARATE fn from
-// `updateTeamNode` (which owns the agent prompt/model/capability editor): the same node-update
+// `patchAgentNode` (which owns the agent prompt/model/capability editor): the same node-update
 // endpoint accepts EITHER shape, and the backend branches on the node's kind. Returns the updated node.
 export async function updateGateNode(
   teamId: string,
@@ -1333,7 +968,7 @@ export async function updateGateNode(
 }
 
 // M-endpoint-editable: persist an edited TERMINAL node's disposition (ship ↔ stop). Same endpoint
-// as updateTeamNode / updateGateNode; the backend branches on node.kind and syncs role_name to
+// as patchAgentNode / updateGateNode; the backend branches on node.kind and syncs role_name to
 // terminal_kind. Returns the updated node.
 export async function updateTerminalNode(
   teamId: string,
@@ -1443,8 +1078,6 @@ export const getTeamValidity = (teamId: string): Promise<GraphValidity> =>
 
 export const getRunStatus = (runId: string): Promise<RunStatus> =>
   getJSON<RunStatus>(`/api/runs/${runId}${desktopQuery()}`);
-
-export const getHealth = (): Promise<Health> => getJSON<Health>("/health");
 
 // ---- Tasks-for-Human (the gate: approve / reject / cancel) ----
 
@@ -1611,59 +1244,6 @@ export async function listMemories(
   return data.memories;
 }
 
-// POST /api/memories — author a fact. The TIER is encoded by which scoping fields are set (account =
-// neither, repo = repo_key only). Returns the created row (422 on empty content / an invalid tier /
-// a bad polarity; 502 if the embedding provider call fails).
-export async function createMemory(input: {
-  content: string;
-  repo_key?: string | null;
-  node_id?: string | null;
-  pinned?: boolean;
-  polarity?: MemoryPolarity;
-}): Promise<NodeMemoryRow> {
-  const res = await fetch("/api/memories", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(input),
-  });
-  if (!res.ok) throw new ApiError(res.status, `POST /api/memories -> ${res.status}`);
-  return (await res.json()) as NodeMemoryRow;
-}
-
-// PATCH /api/memories/{id} — edit content (re-embeds on a real change), pinned, and/or polarity.
-// Omitted fields are left unchanged. Returns the updated row.
-export async function updateMemory(
-  id: string,
-  patch: { content?: string; pinned?: boolean; polarity?: MemoryPolarity },
-): Promise<NodeMemoryRow> {
-  const res = await fetch(`/api/memories/${encodeURIComponent(id)}`, {
-    method: "PATCH",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(patch),
-  });
-  if (!res.ok) throw new ApiError(res.status, `PATCH /api/memories/${id} -> ${res.status}`);
-  return (await res.json()) as NodeMemoryRow;
-}
-
-// DELETE /api/memories/{id} — hard-delete (204, idempotent + owner-scoped).
-export async function deleteMemory(id: string): Promise<void> {
-  const res = await fetch(`/api/memories/${encodeURIComponent(id)}`, { method: "DELETE" });
-  if (!res.ok) throw new Error(`DELETE /api/memories/${id} -> ${res.status}`);
-}
-
-// POST /api/memories/{id}/pin | /unpin — a pinned fact is "hot" (always injected later). Returns row.
-export async function pinMemory(id: string): Promise<NodeMemoryRow> {
-  const res = await fetch(`/api/memories/${encodeURIComponent(id)}/pin`, { method: "POST" });
-  if (!res.ok) throw new ApiError(res.status, `POST pin ${id} -> ${res.status}`);
-  return (await res.json()) as NodeMemoryRow;
-}
-
-export async function unpinMemory(id: string): Promise<NodeMemoryRow> {
-  const res = await fetch(`/api/memories/${encodeURIComponent(id)}/unpin`, { method: "POST" });
-  if (!res.ok) throw new ApiError(res.status, `POST unpin ${id} -> ${res.status}`);
-  return (await res.json()) as NodeMemoryRow;
-}
-
 // POST /api/memories/{id}/promote | /reject (M-memory S4) — the pending-review queue's two actions.
 // promote → active VIA Consolidate (dedup / supersede-the-contradicted-active / activate). reject →
 // a TOMBSTONE (status rejected + invalid_at) that also suppresses re-proposal. Both return the row.
@@ -1677,26 +1257,6 @@ export async function rejectMemory(id: string): Promise<NodeMemoryRow> {
   const res = await fetch(`/api/memories/${encodeURIComponent(id)}/reject`, { method: "POST" });
   if (!res.ok) throw new ApiError(res.status, `POST reject ${id} -> ${res.status}`);
   return (await res.json()) as NodeMemoryRow;
-}
-
-// GET / PATCH /api/memory/review-mode (M-memory S5a — the ONE new endpoint) — the per-owner
-// review-before-persist toggle (users.memory_review_mode). ON routes every otherwise-active memory
-// write to pending_review until the owner confirms it. Singular /api/memory/ path — never collides
-// with /api/memories/{id}.
-export async function getReviewMode(): Promise<boolean> {
-  const data = await getJSON<{ review_mode: boolean }>("/api/memory/review-mode");
-  return data.review_mode;
-}
-
-export async function setReviewMode(reviewMode: boolean): Promise<boolean> {
-  const res = await fetch("/api/memory/review-mode", {
-    method: "PATCH",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ review_mode: reviewMode }),
-  });
-  if (!res.ok) throw new ApiError(res.status, `PATCH /api/memory/review-mode -> ${res.status}`);
-  const data = (await res.json()) as { review_mode: boolean };
-  return data.review_mode;
 }
 // ===== end M-memory S5 client block ============================================================
 

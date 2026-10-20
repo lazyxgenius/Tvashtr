@@ -214,7 +214,7 @@ export interface TaskSet {
   desktop?: DesktopRoutes;
 }
 
-export type TaskSetBody = {
+type TaskSetBody = {
   name: string;
   items: { task: string; starts_from: string | null; hidden_check: string }[];
 };

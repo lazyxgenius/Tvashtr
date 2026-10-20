@@ -29,7 +29,7 @@
  *   #/download[/started][?os=mac|windows|linux]
  *   #/signin[/done][?error=cancelled|failed|expired&next=<app address>]
  */
-import { useCallback, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 
 export type EnginesTab = "overview" | "subscriptions" | "keys";
 /** A subscription a link asks Subscriptions to point out (it never starts Connect). */
@@ -394,17 +394,10 @@ export function navigate(route: Route, opts: { replace?: boolean } = {}): void {
   }
 }
 
-/** The current Route, re-rendering on every address change, plus `navigate`. */
-export function useNav(): {
-  route: Route;
-  navigate: (route: Route, opts?: { replace?: boolean }) => void;
-} {
+/** The current Route, re-rendering on every address change. */
+export function useNav(): { route: Route } {
   const hash = useSyncExternalStore(subscribe, getHash, () => "");
-  const nav = useCallback(
-    (route: Route, opts?: { replace?: boolean }) => navigate(route, opts),
-    [],
-  );
-  return { route: parseRoute(hash), navigate: nav };
+  return { route: parseRoute(hash) };
 }
 
 /** Fired when a page keeps the user where they are (a leave guard's "Keep editing"): anything

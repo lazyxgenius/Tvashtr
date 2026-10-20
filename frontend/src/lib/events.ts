@@ -1,7 +1,7 @@
 // Turn a persisted run event into a concise, readable feed row.
 // Pure + defensive against missing keys — never throws. Drives the Engineer panel.
 
-export type EventTone = "neutral" | "danger";
+type EventTone = "neutral" | "danger";
 
 // The connectors proxy's own rows (contract: What a run shows). The engine already has an action
 // and an observation for the same call, and the round's Connectors block lists it.

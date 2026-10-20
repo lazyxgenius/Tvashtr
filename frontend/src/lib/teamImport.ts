@@ -9,7 +9,7 @@ import type { Route } from "./nav";
 /** What the file pickers offer: a team file is YAML or JSON. */
 export const TEAM_FILE_ACCEPT = ".yaml,.yml,.json";
 
-export interface ImportNotice {
+interface ImportNotice {
   fixes: ImportFix[];
   note: string;
   /** The card was hidden (the chips stay). */

@@ -306,7 +306,7 @@ export async function listSecrets(): Promise<SecretsList> {
   };
 }
 
-export interface SavedSecret {
+interface SavedSecret {
   name: string;
   created_at: string | null;
   updated_at: string | null;

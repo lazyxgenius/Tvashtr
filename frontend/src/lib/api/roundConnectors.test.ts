@@ -7,7 +7,6 @@
 import { describe, expect, it } from "vitest";
 
 import { ApiError } from "../api";
-import { parseRoundConnectors as fromTheClient } from "./connectors";
 import { parseRoundConnectors } from "./roundConnectors";
 import source from "./roundConnectors.ts?raw";
 
@@ -23,9 +22,5 @@ describe("roundConnectors — the leaf module lib/api.ts can import", () => {
     expect(round?.total_calls).toBe(3);
     expect(round?.calls[0]).toMatchObject({ tool: "list_tables", write: true, ok: false });
     expect(parseRoundConnectors(null)).toBeNull();
-  });
-
-  it("is the parser the connectors client exports", () => {
-    expect(fromTheClient).toBe(parseRoundConnectors);
   });
 });

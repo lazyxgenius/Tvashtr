@@ -7,7 +7,7 @@ import { rewriteGithubInstallUrlForDesktop } from "../api";
 import type { LiveState, RunFailure, RunTarget } from "./runs";
 import { apiRequest } from "./runs";
 
-export type InboxSurface = "website" | "desktop";
+type InboxSurface = "website" | "desktop";
 
 interface InboxTeam {
   id: string;

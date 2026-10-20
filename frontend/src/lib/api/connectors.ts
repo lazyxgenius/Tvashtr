@@ -1,7 +1,7 @@
 /**
  * Connectors API (contract: `docs/superpowers/plans/api/connectors.md`): the catalog, connections
  * (connect, read, change, check, scope options, disconnect), the OAuth sign-in start, the agents
- * that have a connection, and the `connectors` block a run's round carries.
+ * that have a connection. A run's round `connectors` block is parsed in `./roundConnectors`.
  *
  * Every answer is validated here, at the boundary. A list entry with an unexpected shape is
  * dropped or given a safe default; a call whose whole answer can't be read throws. Errors throw
@@ -10,9 +10,6 @@
 import { reportFetchOk } from "../backendStatus";
 import { count, httpsOrNull, isRecord, type Json, list, str, strOrNull } from "./roundConnectors";
 import { ApiDetailError, apiRequest } from "./runs";
-
-// The round block lives in a module that imports nothing, so `lib/api.ts` can use it (see there).
-export { type ConnectorCall, parseRoundConnectors, type RoundConnectors } from "./roundConnectors";
 
 // ---- Small validators (the rest are in `./roundConnectors`) ----
 
@@ -171,7 +168,7 @@ export interface ScopeOptions {
   options: ScopeOption[];
 }
 
-export interface SignInStart {
+interface SignInStart {
   /** The provider's sign-in page. */
   authorize_url: string;
   /** What to open instead when the server names it: Tvashtr's own address, which marks the
@@ -416,7 +413,7 @@ export async function listConnections(): Promise<Connection[]> {
   return list(isRecord(data) ? data.connections : null, parseConnection);
 }
 
-export type NewConnection =
+type NewConnection =
   | { key: string; access?: ConnectorAccess; credentials?: Record<string, string> }
   | { url: string; name: string; access?: ConnectorAccess };
 

@@ -9,7 +9,7 @@
  */
 import { useEffect, useState } from "react";
 
-export type Os = "mac" | "windows" | "linux" | "phone" | "unknown";
+type Os = "mac" | "windows" | "linux" | "phone" | "unknown";
 export type Arch = "arm" | "x86" | "unknown";
 
 interface UaData {

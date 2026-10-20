@@ -21,7 +21,7 @@ import {
 import { isDesktopApp } from "./desktopRepos";
 import { navigate } from "./nav";
 
-export const NOTIFY_POLL_MS = 10_000;
+const NOTIFY_POLL_MS = 10_000;
 
 export interface NotifyPrefs {
   notify_asked: boolean;

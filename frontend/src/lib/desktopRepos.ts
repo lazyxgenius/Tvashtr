@@ -14,7 +14,7 @@ export interface DesktopFolder {
   available?: boolean;
 }
 
-export type DesktopInspect =
+type DesktopInspect =
   | {
       is_git: true;
       current_branch: string | null;

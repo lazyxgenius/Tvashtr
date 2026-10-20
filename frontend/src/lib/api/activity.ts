@@ -36,33 +36,6 @@ export interface ActivityAgent {
   model: string | null;
 }
 
-export type LineKind =
-  | "started"
-  | "read"
-  | "searched"
-  | "edited"
-  | "wrote_doc"
-  | "command"
-  | "tests"
-  | "gate_waiting"
-  | "gate_approved"
-  | "gate_rejected"
-  | "verdict"
-  | "retry"
-  | "backup"
-  | "stalled"
-  | "error"
-  | "pr"
-  | "done"
-  | "message"
-  // M3: a step carried from the run this one resumed, and the Run line saying where it resumed.
-  | "carried"
-  | "resumed"
-  // M11 (R13): "The Engineer failed, so the run takes its failure path to <target>".
-  | "failure_path"
-  // M-desk-6: a Tests pass gate's check ("Running the tests…", "Tests failed — back to …").
-  | "check";
-
 export interface ActivityRefs {
   files?: string[];
   file?: string;
@@ -99,7 +72,7 @@ export interface ActivityLine {
   node_id: string | null;
   label: string;
   iteration: number | null;
-  /** One of {@link LineKind}; a newer server may send others, shown as plain lines. */
+  /** The server's name for the line's kind; a newer server may send others, shown as plain lines. */
   kind: string;
   text: string;
   tone: "neutral" | "ok" | "warn" | "danger";
