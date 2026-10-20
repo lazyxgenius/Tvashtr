@@ -56,6 +56,15 @@ function displayPath(p, home = os.homedir()) {
   return p;
 }
 
+/** The real path of `p` (symlinks resolved), or `p` itself when it can't be resolved. */
+function realPath(p) {
+  try {
+    return fs.realpathSync.native(p);
+  } catch {
+    return p;
+  }
+}
+
 /** Run-id / snapshot-id shape: a UUID (it names a branch and a URL segment). */
 const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
@@ -119,4 +128,4 @@ function gitErrorLine(e) {
   return line ? line.slice(0, 300) : "git failed";
 }
 
-module.exports = { RepoError, requireDirectory, displayPath, createGit, gitErrorLine, UUID_RE };
+module.exports = { RepoError, requireDirectory, displayPath, realPath, createGit, gitErrorLine, UUID_RE };

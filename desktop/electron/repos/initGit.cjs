@@ -11,7 +11,7 @@
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const { RepoError, requireDirectory, displayPath, gitErrorLine } = require("./common.cjs");
+const { RepoError, requireDirectory, displayPath, realPath, gitErrorLine } = require("./common.cjs");
 
 const MAX_FILES = 20_000;
 const COMMIT_MESSAGE = "Start tracking with Tvashtr";
@@ -70,24 +70,17 @@ function fallbackIdentity(login) {
 async function initGitRepo(args, { git, home = os.homedir(), login = () => null, maxFiles = MAX_FILES }) {
   const raw = args && typeof args === "object" ? /** @type {any} */ (args).path : undefined;
   const dir = requireDirectory(raw);
-  const real = (p) => {
-    try {
-      return fs.realpathSync.native(p);
-    } catch {
-      return p;
-    }
-  };
-  if (dir === path.parse(dir).root || (home && real(dir) === real(home))) {
+  if (dir === path.parse(dir).root || (home && realPath(dir) === realPath(home))) {
     throw new RepoError("home_folder", "Choose a project folder, not your home folder.");
   }
 
   const inside = await git.tryRun(dir, ["rev-parse", "--is-inside-work-tree"]);
   if (inside && inside.trim() === "true") {
     const top = ((await git.tryRun(dir, ["rev-parse", "--show-toplevel"])) || "").trim();
-    if (top && real(top) !== real(dir)) {
+    if (top && realPath(top) !== realPath(dir)) {
       throw new RepoError(
         "inside_repo",
-        `This folder is inside the git repository at ${displayPath(real(top), home ? real(home) : home)}. Choose that folder instead.`,
+        `This folder is inside the git repository at ${displayPath(realPath(top), home ? realPath(home) : home)}. Choose that folder instead.`,
       );
     }
     throw new RepoError("already_git", "This folder is already a git repository.");

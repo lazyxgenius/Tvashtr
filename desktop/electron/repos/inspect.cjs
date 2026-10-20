@@ -8,9 +8,8 @@
  * inline. `reason` (bridge v6, additive): "not_git" (offer "Set up git here"), "inside_repo",
  * "missing".
  */
-const fs = require("fs");
 const path = require("path");
-const { RepoError, requireDirectory, displayPath } = require("./common.cjs");
+const { RepoError, requireDirectory, displayPath, realPath } = require("./common.cjs");
 
 /** Same cap as the backend's `_SUBPATHS_MAX`. */
 const SUBPATHS_MAX = 100;
@@ -77,18 +76,11 @@ async function inspectRepo(dir, { git, home }) {
   // The bundle carries the whole repository and Scope is relative to its top, so the folder
   // must BE the top of the work tree, not somewhere inside one.
   const top = (await git.tryRun(repo, ["rev-parse", "--show-toplevel"])) || "";
-  const real = (p) => {
-    try {
-      return fs.realpathSync.native(p);
-    } catch {
-      return p;
-    }
-  };
-  if (!top.trim() || real(top.trim()) !== real(repo)) {
+  if (!top.trim() || realPath(top.trim()) !== realPath(repo)) {
     // Resolve home the same way as the top: git answers with the real path, so a home folder that
     // sits behind a symlink (macOS's /var → /private/var) would otherwise never be shortened to ~.
     const shown = top.trim()
-      ? displayPath(real(top.trim()), home ? real(home) : home)
+      ? displayPath(realPath(top.trim()), home ? realPath(home) : home)
       : "a parent folder";
     return {
       is_git: false,
