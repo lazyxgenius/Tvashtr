@@ -216,6 +216,20 @@ describe("Use your Claude plan (DT-25, DtF-Claude-2)", () => {
       s.getByText("You sign in inside Grok, not in Tvashtr. Tvashtr never sees your login."),
     ).toBeInTheDocument();
   });
+
+  it("Grok's Open install guide opens xAI's CLI reference", async () => {
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    await renderStep({ grok: "needs_install" });
+    fireEvent.click(within(row("grok")).getByRole("button", { name: "Set up" }));
+    fireEvent.click(
+      within(sheet("Use your Grok plan")).getByRole("button", { name: "Open install guide" }),
+    );
+    expect(open).toHaveBeenCalledWith(
+      "https://docs.x.ai/build/cli/reference",
+      "_blank",
+      "noopener,noreferrer",
+    );
+  });
 });
 
 describe("Found and connected (DtF-Claude-3)", () => {

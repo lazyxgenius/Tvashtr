@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
+import { SUBSCRIPTION_INSTALL_URLS } from "../../../lib/engines";
 import { plan } from "../desktopTestUtils";
 import {
   canContinue,
   checkAgainNote,
-  CODEX_INSTALL_URL,
   codexRow,
   planFoundToast,
   planInUse,
@@ -136,7 +136,7 @@ describe("Codex row (DT-22)", () => {
   it("not found: the status-only line and How to install", () => {
     expect(codexRow(plan("codex", "needs_install"), "this Mac")).toEqual({
       line: "Not found. Tvashtr can show its status, but can’t run agents on it yet.",
-      installUrl: CODEX_INSTALL_URL,
+      installUrl: SUBSCRIPTION_INSTALL_URLS.codex,
     });
     expect(codexRow(null, "this Mac").installUrl).toBe("https://developers.openai.com/codex");
   });

@@ -2,15 +2,9 @@ import { useCallback, useEffect, useState } from "react";
 
 import { Button, Sheet } from "../../../design-system/components";
 import { refreshPlan } from "../../../lib/desktopApp";
-import type { SubscriptionStatus } from "../../../lib/engines";
+import { SUBSCRIPTION_INSTALL_URLS, type SubscriptionStatus } from "../../../lib/engines";
 import { ExternalLinkIcon, LockIcon, RefreshIcon } from "../icons";
-import {
-  checkAgainNote,
-  NOT_FOUND_YET,
-  PLAN_INSTALL_URLS,
-  type PlanProvider,
-  usePlanCopy,
-} from "./planRows";
+import { checkAgainNote, NOT_FOUND_YET, type PlanProvider, usePlanCopy } from "./planRows";
 
 /**
  * "Use your Claude plan" (DT-25, DtF-Claude-2) and its Grok variant (OQ-18): a right sheet with
@@ -93,7 +87,7 @@ export function UsePlanSheet({
                 size="sm"
                 onClick={() =>
                   provider &&
-                  window.open(PLAN_INSTALL_URLS[provider], "_blank", "noopener,noreferrer")
+                  window.open(SUBSCRIPTION_INSTALL_URLS[provider], "_blank", "noopener,noreferrer")
                 }
               >
                 <ExternalLinkIcon />

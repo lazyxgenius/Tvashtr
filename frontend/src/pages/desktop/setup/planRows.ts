@@ -6,7 +6,7 @@
  * "Checking…" with Cancel is this page's own state while a Terminal sign-in is open (DT-23).
  */
 import type { BadgeVariant } from "../../../design-system/components";
-import type { SubscriptionStatus } from "../../../lib/engines";
+import { SUBSCRIPTION_INSTALL_URLS, type SubscriptionStatus } from "../../../lib/engines";
 
 export type PlanProvider = "claude" | "grok";
 
@@ -29,13 +29,6 @@ export interface PlanRowView {
   tone: "sage" | "amber" | "line";
   action: PlanAction | null;
 }
-
-export const CODEX_INSTALL_URL = "https://developers.openai.com/codex";
-/** The vendors' install guides (the harness's INSTALL_URL, desktop/electron/harness/*.cjs). */
-export const PLAN_INSTALL_URLS: Record<PlanProvider, string> = {
-  claude: "https://docs.anthropic.com/en/docs/claude-code/overview",
-  grok: "https://docs.x.ai/build/cli/reference",
-};
 
 const TITLE: Record<PlanProvider, string> = { claude: "Claude Code", grok: "Grok" };
 const PLAN: Record<PlanProvider, string> = { claude: "Claude", grok: "Grok" };
@@ -176,7 +169,7 @@ export function codexRow(
       }
     : {
         line: "Not found. Tvashtr can show its status, but can’t run agents on it yet.",
-        installUrl: CODEX_INSTALL_URL,
+        installUrl: SUBSCRIPTION_INSTALL_URLS.codex,
       };
 }
 
