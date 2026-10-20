@@ -48,7 +48,6 @@ from tvashtr.models import (
 # loop only ever stops at the cap (never by a forced approval) — this is what exercises the
 # enforced-termination guard rather than the happy approve-exit.
 FORCE_OVER_CAP = "5"
-MAX_REVIEW_ITERATIONS = 3  # config.py default; the cap the Engineer must stop at
 
 
 def _make_review_loop_run() -> str:

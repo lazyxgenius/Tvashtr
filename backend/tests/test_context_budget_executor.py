@@ -22,7 +22,6 @@ from tvashtr.control_plane import team_run
 from tvashtr.control_plane.context_compiler import SPEC_HANDLE_FILENAME
 from tvashtr.control_plane.teams import build_two_node_team
 from tvashtr.db import session_scope
-from tvashtr.documents.service import create_document_with_initial_version
 from tvashtr.engines.base import AgentRunResult
 from tvashtr.models import AgentInvocation, AgentNode, Run, RunArtifact
 
@@ -55,19 +54,6 @@ def _set_node_config(team_graph_id: str, kind: str, config: dict) -> None:
             )
             .values(config=config)
         )
-
-
-def _seed_prd(run_id: str, content: str) -> dict:
-    """Seed a REAL PRD document (v1) with explicit ``content`` + point the Run at it — like
-    ``conftest.seed_pm_prd`` but with a caller-chosen (e.g. large) spec body."""
-    document = create_document_with_initial_version(
-        "Mini-PRD", "prd", content, "agent:pm", f"{run_id}:pm-prd-v1"
-    )
-    with session_scope() as session:
-        session.execute(
-            update(Run).where(Run.id == uuid.UUID(run_id)).values(pm_document_id=document.id)
-        )
-    return {"document_id": str(document.id), "prd_text": content}
 
 
 class _RecordingAdapter:

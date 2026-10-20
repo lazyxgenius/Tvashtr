@@ -11,8 +11,6 @@ from tvashtr.control_plane import github_app
 from tvashtr.db import session_scope
 from tvashtr.models import GithubInstallation, User
 
-TOKENS = {}
-
 
 def _hosted(monkeypatch, counts: dict[int, int] | None = None, dead: set[int] = frozenset()):
     """Hosted mode with a fake GitHub: installation ``iid`` sees ``counts[iid]`` repos; an

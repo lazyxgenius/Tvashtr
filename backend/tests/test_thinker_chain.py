@@ -25,28 +25,7 @@ from tvashtr.control_plane.shipping import init_workspace_repo
 from tvashtr.control_plane.teams import build_thinker_chain_team
 from tvashtr.db import session_scope
 from tvashtr.documents.service import get_document_with_versions
-from tvashtr.gateway.types import CompletionResult
 from tvashtr.models import AgentInvocation, AgentNode, DocumentVersion, EngineerRunAttempt, Run
-
-# Unique markers the fakes plant so the assertions can't pass on a stale/echoed value.
-_PM_MARKER = "SPEC-PM"
-_ARCHITECT_MARKER = "SPEC-ARCHITECT"
-
-
-def _completion(text: str) -> CompletionResult:
-    """A minimal real ``CompletionResult`` — the same object the gateway returns, so ``record_cost``
-    reads its token/cost attrs exactly as in production (no SimpleNamespace shim)."""
-    return CompletionResult(
-        text=text,
-        model_requested="fake/thinker",
-        model_used="fake/thinker",
-        prompt_tokens=10,
-        completion_tokens=5,
-        total_tokens=15,
-        cost_usd=0.0,
-        raw_provider="fake",
-        latency_ms=1.0,
-    )
 
 
 def _make_thinker_chain_run() -> str:
@@ -75,17 +54,6 @@ def test_thinker_chain_runs_the_non_start_thinker_and_ships(client, monkeypatch,
     init_workspace_repo(str(workspace))
 
     worker_prd: list[str] = []
-
-    def _fake_complete(request):
-        # PM call -> SPEC-PM only; Architect call -> restate SPEC-PM AND append SPEC-ARCHITECT.
-        # Distinguish by the node prompt the executor put into the message (the only LLM callers
-        # here are pm_step and thinker_refine_step).
-        content = request.messages[0]["content"].lower()
-        if "architect" in content:
-            return _completion(
-                f"{_PM_MARKER} (restated)\n\n## Technical design\n{_ARCHITECT_MARKER}"
-            )
-        return _completion(f"{_PM_MARKER}: write greeting.txt")
 
     def _fake_engineer_setup_step(run_id):
         return str(workspace)
@@ -126,8 +94,7 @@ def test_thinker_chain_runs_the_non_start_thinker_and_ships(client, monkeypatch,
         }
 
     # M-unify U1: no `team_run.complete` — the entry/architect run the agent path (fake below), not
-    # a
-    # direct completion. `_fake_complete` is retained only to document the old two-thinker markers.
+    # a direct completion.
     monkeypatch.setattr(team_run, "engineer_setup_step", _fake_engineer_setup_step)
     monkeypatch.setattr(team_run, "agent_run_step", _fake_agent_run_step)
 

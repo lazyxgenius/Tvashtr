@@ -306,7 +306,6 @@ def test_a_keyless_call_tears_down_its_own_machine(tmp_path):
 
 def test_a_failed_keyless_run_still_tears_down(tmp_path):
     with _Ctx() as ctx:
-        ctx.convos_error = True
         with patch.object(mod, "Conversation", side_effect=RuntimeError("boom")):
             result = mod.OpenHandsFlyAdapter().run(_task(tmp_path, None))
     assert result.status == "failed"
