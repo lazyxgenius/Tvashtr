@@ -240,6 +240,21 @@ describe("NodeEditor — Setup read view", () => {
     expect(within(drawer).getByText("Uses your xAI API key")).toBeInTheDocument();
   });
 
+  it("on Tvashtr Desktop a model on a connected subscription runs on this computer", () => {
+    document.documentElement.dataset.tvashtrDesktop = "true";
+    try {
+      const { drawer } = renderEditor({ cover: { byok: new Set(), subs: { grok: true } } });
+      const head = drawer.querySelector(".nd-head") as HTMLElement;
+      expect(within(head).getByText("Grok 4.7")).toBeInTheDocument();
+      expect(within(head).queryByText("Needs a model")).toBeNull();
+      expect(
+        within(drawer).getByText("Your Grok subscription · runs on this computer"),
+      ).toBeInTheDocument();
+    } finally {
+      delete document.documentElement.dataset.tvashtrDesktop;
+    }
+  });
+
   it("warns when the instructions no longer write the verdict the arrows route on", () => {
     const { drawer } = renderEditor({ node: reviewer({ prompt: "Review it." }) });
     expect(

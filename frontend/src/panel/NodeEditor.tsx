@@ -18,6 +18,7 @@ import {
   type TeamGraphNode,
 } from "../lib/api";
 import { deleteMemory, type Memory } from "../lib/api/memory";
+import { isDesktopApp } from "../lib/desktopRepos";
 import {
   applyAgentToNode,
   basedOnOf,
@@ -68,7 +69,7 @@ import { useSaveShortcut } from "./saveShortcut";
 import { isGettingReady } from "./setup/getReady";
 import { RoutingUpdateConfirm, TemplateReplaceConfirm } from "./setup/InstructionConfirms";
 import { type ModelGroup, seatOf } from "./setup/modelCatalog";
-import { type CredentialCover, isDesktopApp, needsModel } from "./setup/modelCopy";
+import { type CredentialCover, needsModel } from "./setup/modelCopy";
 import type { ModelPickerContext } from "./setup/ModelSection";
 import { OutputSchemaEditor } from "./setup/OutputSchemaEditor";
 import { type ContractUpdate, contractUpdate, routingOf } from "./setup/routing";

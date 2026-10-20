@@ -2,12 +2,13 @@ import { useState } from "react";
 import { Globe, Monitor } from "lucide-react";
 
 import { Logo } from "../design-system/components";
+import { isDesktopApp } from "../lib/desktopRepos";
 import { AccountMenu, type ShellUser } from "../pages/shell/Shell";
 import { ShortcutsDialog } from "../pages/shell/ShortcutsDialog";
 
 /** "Tvashtr Desktop" with a monitor inside the app; the site's actual host with a globe on the web. */
 function EnvChip() {
-  const desktop = document.documentElement.dataset.tvashtrDesktop === "true";
+  const desktop = isDesktopApp();
   return (
     <span className="cv-env" data-testid="env-chip">
       {desktop ? (

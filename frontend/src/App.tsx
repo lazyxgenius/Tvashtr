@@ -1041,8 +1041,7 @@ export default function App({
   const teamRunnable = validity === null || validity.runnable;
   const validityErrors = validity?.errors ?? [];
 
-  const launchTarget =
-    document.documentElement.dataset.tvashtrDesktop === "true" ? "local" : "hosted";
+  const launchTarget = isDesktopApp() ? "local" : "hosted";
   const agentModels = (teamGraph?.nodes ?? [])
     .filter((n) => n.kind === "agent" || n.kind === "completion")
     .map((n) => n.model);

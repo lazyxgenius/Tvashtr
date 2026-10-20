@@ -4,6 +4,7 @@
  * lib/engines.ts (the Engines area owns that file).
  */
 import { providerOf, type ProviderCatalogueEntry } from "../../lib/api";
+import { isDesktopApp } from "../../lib/desktopRepos";
 import {
   credentialTreatment,
   displayNameForSubscription,
@@ -30,10 +31,6 @@ const NONE: ReadonlySet<string> = new Set();
 function labelOf(provider: string, catalogue?: readonly ProviderCatalogueEntry[]): string {
   const label = catalogue?.find((e) => e.provider === provider)?.label;
   return label || providerLabel(provider);
-}
-
-export function isDesktopApp(): boolean {
-  return document.documentElement.dataset.tvashtrDesktop === "true";
 }
 
 /** How this model would run: on a subscription (Desktop), on an API key, or not at all. */

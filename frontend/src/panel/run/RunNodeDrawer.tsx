@@ -12,7 +12,7 @@ import {
   type RunRow,
 } from "../../lib/api";
 import { listRunDocs } from "../../lib/api/docs";
-import { spendText } from "../../lib/desktopRepos";
+import { isDesktopApp, spendText } from "../../lib/desktopRepos";
 import { getNodeRuns, type NodeRound } from "../../lib/api/nodes";
 import type { NodeTab } from "../../lib/nav";
 import { nodeDescription, nodeTitle } from "../../lib/nodeNames";
@@ -41,7 +41,6 @@ import { RunMemory } from "../RunMemory";
 import { EmptyCard, LoadState, RoundsList } from "../runs/RunsTab";
 import { useLoaded } from "../runs/useLoaded";
 import { seatOf } from "../setup/modelCatalog";
-import { isDesktopApp } from "../setup/modelCopy";
 import { SetupTab } from "../setup/SetupTab";
 import { SkillsToolsTab } from "../skills/SkillsToolsTab";
 import { useShelves } from "../skills/useShelves";
