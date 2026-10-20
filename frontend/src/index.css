@@ -386,14 +386,6 @@ html:has(.tv-titlebar) .ds-scrim {
   align-items: center;
   gap: var(--space-3);
 }
-.tv-task__prio {
-  font-family: var(--font-ui);
-  font-size: var(--fs-micro);
-  font-weight: var(--fw-medium);
-  letter-spacing: var(--tracking-wide);
-  text-transform: uppercase;
-  color: var(--coral-700);
-}
 .tv-task__title {
   font-family: var(--font-display);
   font-weight: var(--fw-display);
