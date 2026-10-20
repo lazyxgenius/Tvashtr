@@ -5,8 +5,8 @@ import { joinNames } from "../secrets/secretFormat";
 import type { StatusFilter } from "./toolsState";
 
 /** "1 agent", "3 agents". */
-export function plural(n: number, one: string, many = `${one}s`): string {
-  return `${n} ${n === 1 ? one : many}`;
+export function plural(n: number, one: string): string {
+  return `${n} ${n === 1 ? one : `${one}s`}`;
 }
 
 /** "2 agents · 1 team", or "Not used yet". */

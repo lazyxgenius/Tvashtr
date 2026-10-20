@@ -41,14 +41,12 @@ export function Menu({
   label,
   items,
   align = "end",
-  size = "sm",
   trigger,
   width,
 }: {
   label: string;
   items: MenuEntry[];
   align?: "start" | "end";
-  size?: "sm" | "md";
   /** Custom trigger renderer; receives the props to spread onto a button. */
   trigger?: (props: {
     onClick: () => void;
@@ -93,7 +91,7 @@ export function Menu({
       {trigger ? (
         trigger(triggerProps)
       ) : (
-        <IconButton size={size} aria-label={label} {...triggerProps}>
+        <IconButton size="sm" aria-label={label} {...triggerProps}>
           <MoreHorizontal size={16} strokeWidth={1.8} aria-hidden />
         </IconButton>
       )}

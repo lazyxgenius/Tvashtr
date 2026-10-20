@@ -125,26 +125,10 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
 
 // ---- Logo ----
 
-export function Logo({
-  size = 28,
-  tone = "coral",
-  inverse = false,
-  className,
-}: {
-  size?: number;
-  tone?: "coral" | "charcoal";
-  inverse?: boolean;
-  className?: string;
-}) {
+export function Logo({ size = 28 }: { size?: number }) {
   return (
-    <span className={cx("ds-logo", inverse && "ds-logo--inverse", className)}>
-      <img
-        className="ds-logo__mark"
-        src={tone === "charcoal" ? "/mark-charcoal.png" : "/mark-coral.png"}
-        width={size}
-        height={size}
-        alt=""
-      />
+    <span className="ds-logo">
+      <img className="ds-logo__mark" src="/mark-coral.png" width={size} height={size} alt="" />
       <span className="ds-logo__word" style={{ fontSize: Math.round(size * 0.78) }}>
         Tvashtr
       </span>
@@ -263,7 +247,6 @@ export function Field({
   error,
   htmlFor,
   children,
-  className,
 }: {
   label?: ReactNode;
   optional?: boolean;
@@ -271,10 +254,9 @@ export function Field({
   error?: ReactNode;
   htmlFor?: string;
   children: ReactNode;
-  className?: string;
 }) {
   return (
-    <div className={cx("ds-field", className)}>
+    <div className="ds-field">
       {(label || optional) && (
         <div className="ds-field__top">
           {label && (

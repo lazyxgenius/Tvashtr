@@ -113,7 +113,8 @@ export function forcesLine(memory: readonly { polarity: string }[]): string {
 }
 
 /** A verdict's reasons cut to their first clause: "No new indicator was added…". */
-export function firstClause(text: string, limit = 60): string {
+export function firstClause(text: string): string {
+  const limit = 60;
   const t = text.trim();
   const stop = t.search(/[:.;](\s|$)/);
   if (stop >= 0 && stop <= limit) return stop === t.length - 1 ? t : `${t.slice(0, stop)}…`;

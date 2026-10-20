@@ -116,10 +116,10 @@ export function EnginesLoadError({ onRetry }: { onRetry: () => void }) {
 }
 
 /** ENG-78: skeleton rows while keys, subscriptions and usage load. */
-export function EnginesSkeleton({ rows = 3 }: { rows?: number }) {
+export function EnginesSkeleton() {
   return (
     <div className="eng-card eng-skel" aria-busy="true" aria-label="Loading your engines">
-      {Array.from({ length: rows }, (_, i) => (
+      {Array.from({ length: 3 }, (_, i) => (
         <div key={i} className="eng-skel__row">
           <span className="eng-skel__bar eng-skel__bar--short" />
           <span className="eng-skel__bar" />

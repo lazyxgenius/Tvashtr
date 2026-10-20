@@ -30,11 +30,11 @@ export function GithubIcon({ size = 14 }: { size?: number }) {
 }
 
 /** The design's filled "play" triangle on Launch / Run. */
-export function PlayIcon({ size = 14 }: { size?: number }) {
+export function PlayIcon() {
   return (
     <svg
-      width={size}
-      height={size}
+      width={14}
+      height={14}
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
