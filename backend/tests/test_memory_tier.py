@@ -9,7 +9,7 @@ import uuid
 
 import pytest
 
-from tvashtr.control_plane.memory import InvalidTierError, is_valid_tier, memory_tier
+from tvashtr.control_plane.memory import InvalidTierError, memory_tier
 
 _NODE = uuid.uuid4()
 
@@ -30,13 +30,6 @@ def test_node_only_tier_when_node_id_without_repo():
     # Revamp (FOCUS-58 / OQ-18): an agent's "Not repo-specific" note — node_id set, repo_key NULL —
     # is a valid node tier (it used to raise InvalidTierError).
     assert memory_tier(None, _NODE) == "node"
-
-
-def test_is_valid_tier_matrix():
-    assert is_valid_tier(None, None) is True
-    assert is_valid_tier("/r", None) is True
-    assert is_valid_tier("/r", _NODE) is True
-    assert is_valid_tier(None, _NODE) is True  # the node-only tier is valid since the revamp
 
 
 def test_invalid_tier_error_is_still_importable_for_scope_errors():

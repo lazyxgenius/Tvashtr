@@ -58,7 +58,6 @@ def domain_query_manifest(result: dict[str, Any], domain_id: str) -> dict[str, A
 # ---- Revamp Domains G12: the node's pass-to-spec / no-answer run side (DM-98–104) ---------------
 
 SPEC_SECTION = "What the docs say"
-ON_NO_ANSWER = ("continue", "stop")
 DEFAULT_TITLE = "Query domain"
 
 

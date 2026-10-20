@@ -211,14 +211,6 @@ def find_or_create_run_document(
         return document
 
 
-def get_version_by_key(idempotency_key: str) -> DocumentVersion | None:
-    """Return the version previously written under this key, if any."""
-    with session_scope() as session:
-        return session.execute(
-            select(DocumentVersion).where(DocumentVersion.idempotency_key == idempotency_key)
-        ).scalar_one_or_none()
-
-
 def add_version(
     document_id: uuid.UUID,
     content: str,
@@ -363,13 +355,6 @@ def get_document_with_versions(document_id: uuid.UUID) -> Document | None:
             .where(Document.id == document_id)
             .options(selectinload(Document.versions))
         ).scalar_one_or_none()
-
-
-def list_documents() -> list[Document]:
-    """Return all documents (metadata only), oldest first. NOT owner-scoped — internal use only;
-    the HTTP list goes through :func:`list_documents_for_owner`."""
-    with session_scope() as session:
-        return list(session.execute(select(Document).order_by(Document.created_at)).scalars().all())
 
 
 def owned_by(owner_id: uuid.UUID):

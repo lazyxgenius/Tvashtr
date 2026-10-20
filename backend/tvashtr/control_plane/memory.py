@@ -4,9 +4,9 @@ The persistence + embedding seam behind ``/api/memories``. Kept openhands-free a
 executor (S1 does NOT touch run execution): the router stays thin (validate + map errors to HTTP)
 and calls these owner-scoped functions, mirroring ``node_library`` for Tools/Skills.
 
-Two pure, unit-tested pieces sit up front — ``memory_tier`` (which of ``repo_key`` / ``node_id`` are
-set ⇒ account / repo / node) and its validity check — because the tier model is the one bit of real
-logic here and the later slices (retrieval, distillation) depend on it being exactly right.
+One pure, unit-tested piece sits up front — ``memory_tier`` (which of ``repo_key`` / ``node_id`` are
+set ⇒ account / repo / node) — because the tier model is the one bit of real logic here and the
+later slices (retrieval, distillation) depend on it being exactly right.
 
 Embedding uses the gateway ``embed`` on the MANUAL/non-run path (``api_key=None`` ⇒ litellm's own
 ``.env`` ``OPENAI_API_KEY`` lookup) and meters the call OFF-LEDGER (``workflow_id=None``) — a manual
@@ -37,14 +37,6 @@ class InvalidTierError(ValueError):
 
 class InvalidScopeError(InvalidTierError):
     """An unknown ``scope`` value, or a ``repo_key`` sent without a ``scope`` (422)."""
-
-
-def is_valid_tier(repo_key: str | None, node_id: uuid.UUID | None) -> bool:
-    """Every combination of ``repo_key`` / ``node_id`` is a valid tier. The node-only tier
-    (``node_id`` set, ``repo_key`` NULL — an agent's "Not repo-specific" note) is allowed since the
-    revamp; kept for callers that still ask."""
-    memory_tier(repo_key, node_id)
-    return True
 
 
 def memory_tier(repo_key: str | None, node_id: uuid.UUID | None) -> MemoryTier:
@@ -391,14 +383,6 @@ def _enrich(session, owner_id: uuid.UUID, items: list[dict]) -> list[dict]:
             }
         )
     return out
-
-
-def enrich_memories(owner_id: uuid.UUID, items: list[dict]) -> list[dict]:
-    """:func:`_enrich` in its own session — for callers that already closed theirs."""
-    if not items:
-        return []
-    with session_scope() as session:
-        return _enrich(session, owner_id, items)
 
 
 def create_memory(

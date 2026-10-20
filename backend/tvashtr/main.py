@@ -53,7 +53,6 @@ from tvashtr.routes import compare as revamp_compare
 from tvashtr.routes import connectors as revamp_connectors
 from tvashtr.routes import connectors_oauth as revamp_connectors_oauth
 from tvashtr.routes import desktop_app as revamp_desktop_app
-from tvashtr.routes import documents as revamp_documents
 from tvashtr.routes import domains as revamp_domains
 from tvashtr.routes import engines as revamp_engines
 from tvashtr.routes import home as revamp_home
@@ -187,7 +186,6 @@ for _revamp_router in (
     revamp_compare.router,
     revamp_task_sets.router,
     revamp_start_from.router,
-    revamp_documents.router,
     revamp_memory.router,
     revamp_local_repo.router,
     revamp_domains.router,

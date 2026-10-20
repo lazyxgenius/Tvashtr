@@ -196,7 +196,6 @@ class _Candidate:
     evidence: str
     tier: str  # requested tier: account | repo | node
     node_role: str | None
-    rationale: str
 
 
 def _gate(ops: list[dict], outcome_class: OutcomeClass) -> list[_Candidate]:
@@ -232,7 +231,6 @@ def _gate(ops: list[dict], outcome_class: OutcomeClass) -> list[_Candidate]:
                 evidence=evidence[:500],
                 tier=tier,
                 node_role=node_role,
-                rationale=str(op.get("rationale") or "")[:300],
             )
         )
     cands.sort(
@@ -927,7 +925,6 @@ def _remember_candidates(captures: list[dict]) -> list[_Candidate]:
                 evidence="",
                 tier="repo",
                 node_role=None,
-                rationale="agent-remember",
             )
         )
     cands.sort(key=lambda c: _FORCE_RANK.get(c.polarity, 3))  # layer 4: keep the strongest

@@ -37,7 +37,6 @@ from tvashtr.models import (
 
 RESUMABLE_STATUSES = ("failed", "cancelled")
 _IN_FLIGHT = ("pending", "running", "awaiting_human")
-_AGENT_KINDS = ("agent", "completion")
 _ROW_KINDS = ("agent", "completion", "gate", "domain_query")
 
 
@@ -92,10 +91,6 @@ def seed_of(session, run: Run) -> RunCheckpoint | None:
             RunCheckpoint.run_id == run.id, RunCheckpoint.invocation_id.is_(None)
         )
     ).scalar_one_or_none()
-
-
-def _lower_first(text: str) -> str:
-    return text[:1].lower() + text[1:] if text else text
 
 
 def _summary(kind: str, lines: list[dict], inv: AgentInvocation) -> dict:
