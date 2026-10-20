@@ -317,51 +317,6 @@
   background: currentColor;
 }
 
-/* ---- Card ---- */
-.ds-card {
-  background: var(--surface-card);
-  border: var(--border-width) solid var(--border-hairline);
-  border-radius: var(--radius-lg);
-  padding: var(--space-6);
-  box-sizing: border-box;
-}
-.ds-card--panel {
-  background: var(--surface-panel);
-  border-color: var(--border-hairline);
-}
-.ds-card--raised {
-  box-shadow: var(--shadow-md);
-  border-color: var(--border-faint);
-}
-.ds-card--inverse {
-  background: var(--surface-inverse);
-  border-color: var(--ink-700);
-  color: var(--text-inverse);
-}
-.ds-card--pad-sm {
-  padding: var(--space-4);
-}
-.ds-card--pad-lg {
-  padding: var(--space-8);
-}
-.ds-card--pad-none {
-  padding: 0;
-}
-.ds-card--interactive {
-  cursor: pointer;
-  transition:
-    border-color var(--dur-fast) var(--ease-standard),
-    box-shadow var(--dur-fast) var(--ease-standard),
-    transform var(--dur-fast) var(--ease-standard);
-}
-.ds-card--interactive:hover {
-  border-color: var(--border-strong);
-  box-shadow: var(--shadow-sm);
-}
-.ds-card--interactive:active {
-  transform: translateY(0.5px);
-}
-
 /* ---- Checkbox / radio ---- */
 .ds-check {
   position: relative;
@@ -1111,29 +1066,6 @@
   line-height: 1.4;
   color: var(--ink-600);
   background: var(--surface-card);
-}
-.ds-count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 6px;
-  box-sizing: border-box;
-  border-radius: 999px;
-  font-family: var(--font-ui);
-  font-size: 11px;
-  font-weight: 600;
-  background: var(--panel-300);
-  color: var(--ink-600);
-}
-.ds-count--accent {
-  background: var(--coral-100);
-  color: var(--coral-700);
-}
-.ds-count--warn {
-  background: var(--amber-100);
-  color: #7a5423;
 }
 .ds-letter {
   width: 18px;
