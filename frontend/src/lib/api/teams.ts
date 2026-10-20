@@ -145,12 +145,12 @@ interface TeamFile {
 }
 
 /** Why a file can't be imported: "Line 12: `agents` should be a list of agents." */
-export interface TeamFileError {
+interface TeamFileError {
   line: number | null;
   message: string;
 }
 
-export interface ImportCheckRow {
+interface ImportCheckRow {
   key: string;
   tone: "ok" | "warn";
   title: string;

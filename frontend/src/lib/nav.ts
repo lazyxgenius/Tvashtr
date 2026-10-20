@@ -41,7 +41,7 @@ export type DomainTab = "sources" | "ask" | "quality" | "teams" | "settings";
 /** The dashboard section the canvas's "Open Engines" control returns to (back, with none: Home). */
 export type DashView = "engines";
 /** Tvashtr Desktop's first-run setup steps (desktop-app.md DT-17). */
-export type SetupStep = "engines" | "project" | "team";
+type SetupStep = "engines" | "project" | "team";
 /** The landing's scroll targets (website.md WEB-7). */
 export type SiteSection = "product" | "how" | "domains" | "two-ways" | "faq";
 /** The download page's platform, when the address names one (`?os=`, WEB-32). */

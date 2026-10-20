@@ -51,7 +51,7 @@ export interface CatalogueEntry {
   subscription: string | null;
 }
 
-export interface EmbeddingPreset {
+interface EmbeddingPreset {
   id: string;
   label: string;
   slug: string;
@@ -172,7 +172,7 @@ export interface ProviderDomainUse {
   use: "embedding" | "generation";
 }
 
-export interface ProviderUse {
+interface ProviderUse {
   /** Teams whose nodes use it as their primary model — the only use verdicts count. */
   teams: ProviderTeamUse[];
   /** Nodes that use it only as a fallback model (listed "(fallback)", never in verdicts). */

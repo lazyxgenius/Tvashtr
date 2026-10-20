@@ -15,7 +15,7 @@ export interface CarryDecision {
   text: string | null;
 }
 
-export interface CarrySummary {
+interface CarrySummary {
   agent: string;
   text: string;
 }

@@ -6,7 +6,7 @@ import { desktopQuery, type DesktopRoutes } from "../desktopRepos";
 import { apiRequest } from "./runs";
 
 /** The Prob-Confirm dialog for one resume point. */
-export interface ResumeConfirm {
+interface ResumeConfirm {
   title: string;
   step_label: string;
   kept: { text: string; at: string | null }[];

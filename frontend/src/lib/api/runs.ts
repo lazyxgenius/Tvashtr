@@ -77,7 +77,7 @@ export async function apiRequest<T>(method: string, path: string, body?: unknown
 
 // ---- Shared shapes ----
 
-export type StatusGroup = "running" | "needs_you" | "completed" | "failed" | "stopped";
+type StatusGroup = "running" | "needs_you" | "completed" | "failed" | "stopped";
 
 export interface RunTarget {
   kind: "github" | "desktop_folder" | "local" | "none";
@@ -86,7 +86,7 @@ export interface RunTarget {
   subpath: string | null;
 }
 
-export interface RunAwaiting {
+interface RunAwaiting {
   task_id: number;
   kind: string;
   title: string;
@@ -108,7 +108,7 @@ export interface RunFailure {
 
 export type ProgressState = "done" | "active" | "waiting" | "idle" | "failed" | "stopped";
 
-export interface RunProgressChip {
+interface RunProgressChip {
   node_id: string;
   origin_node_id: string | null;
   role_name: string;
@@ -240,7 +240,7 @@ export async function getRunDetail(runId: string): Promise<RunDetail | null> {
 
 // ---- Launch ----
 
-export interface LocalRepoTarget {
+interface LocalRepoTarget {
   snapshot_id: string;
   label: string;
   base_ref: string;

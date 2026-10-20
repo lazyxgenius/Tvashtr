@@ -12,7 +12,7 @@ import { apiRequest } from "./runs";
 
 export type SkillMode = "always" | "trigger" | "agent";
 
-export interface InlineSkillSource {
+interface InlineSkillSource {
   type: "inline";
   name: string;
   content: string;
@@ -21,7 +21,7 @@ export interface InlineSkillSource {
 }
 
 /** A GitHub repo: a bundle row (`filter` = globs) or one imported skill (`filter` = its name). */
-export interface RepoSkillSource {
+interface RepoSkillSource {
   type: "repo";
   url: string;
   ref: string;

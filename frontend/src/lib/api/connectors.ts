@@ -25,7 +25,7 @@ const unreadable = (what: string) => new Error(`The server sent ${what} we could
 // ---- Shapes ----
 
 export type ConnectorAccess = "read" | "write";
-export type ConnectorAuth = "oauth" | "api_key" | "none";
+type ConnectorAuth = "oauth" | "api_key" | "none";
 export type ConnectionStatus = "connected" | "needs_signin" | "pending";
 export type ReadOnlyBy = "provider" | "scopes" | "annotations";
 
@@ -44,12 +44,12 @@ export interface KeyField {
   required: boolean;
 }
 
-export interface ScopePicker {
+interface ScopePicker {
   param: string;
   label: string;
 }
 
-export interface ConnectorScope {
+interface ConnectorScope {
   value: string;
   label: string;
 }
@@ -78,7 +78,7 @@ export interface CatalogEntry {
   connection_status: ConnectionStatus | null;
 }
 
-export interface ConnectorTool {
+interface ConnectorTool {
   name: string;
   title: string | null;
   /** Tvashtr counts the tool as a write. */
@@ -154,7 +154,7 @@ export interface CatalogPage {
   categories: string[];
 }
 
-export interface ScopeOption {
+interface ScopeOption {
   value: string;
   label: string;
   detail: string | null;

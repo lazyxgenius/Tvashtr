@@ -9,14 +9,14 @@ import { apiRequest } from "./runs";
 /** The parts a saved version holds (memories only when asked). */
 export type AgentPart = "instructions" | "model" | "skills_tools" | "file_access" | "memories";
 
-export interface SavedAgentVersion {
+interface SavedAgentVersion {
   number: number;
   created_at: string;
   included: AgentPart[];
 }
 
 /** A team that uses a saved agent (with its lowest version there). */
-export interface SavedAgentTeam {
+interface SavedAgentTeam {
   team_id: string;
   team_name: string;
   version: number;

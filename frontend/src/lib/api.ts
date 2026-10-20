@@ -46,7 +46,7 @@ export interface GateConfig {
 export interface TerminalConfig {
   terminal_kind: "ship" | "stop";
 }
-export interface DomainQueryConfig {
+interface DomainQueryConfig {
   domain_id: string | null;
 }
 export type NodeConfig = GateConfig | TerminalConfig | DomainQueryConfig | Record<string, unknown>;
@@ -144,7 +144,7 @@ export interface GraphNode {
 }
 
 /** M1: a node's live block on the run graph. */
-export interface NodeLive {
+interface NodeLive {
   live_state: string;
   last_event_at: string | null;
   activity: string | null;
@@ -461,7 +461,7 @@ async function getJSON<T>(url: string): Promise<T> {
 // One repo the account's GitHub App installation can see, as `GET /api/github/repos` serializes it.
 // `full_name` (owner/name) is what a hosted launch threads as `github_repo`; `private` marks the
 // dropdown label; `default_branch` is the read-only base the run's PR is opened against.
-export interface GithubRepo {
+interface GithubRepo {
   name: string;
   full_name: string;
   private: boolean;
@@ -730,7 +730,7 @@ export type SkillSource =
 // the run-time resolver merges the referenced content with the node's inline config (inline wins).
 
 // A library skill's stored source is one of the non-reference sources (never nests another library).
-export type LibrarySkillItemSource = InlineSkillSource | RepoSkillSource | ProjectRulesSkillSource;
+type LibrarySkillItemSource = InlineSkillSource | RepoSkillSource | ProjectRulesSkillSource;
 
 export interface ToolLibraryItem {
   id: string;
@@ -772,7 +772,7 @@ export async function createSkillLibraryItem(
 }
 
 // ===== Free tools & skills catalog (static built-ins; opt-in via library attach) ================
-export type CatalogAccess = "free" | "needs_secret" | "needs_github_app";
+type CatalogAccess = "free" | "needs_secret" | "needs_github_app";
 
 export interface SkillPresetEntry {
   key: string;
@@ -849,7 +849,7 @@ export interface TeamShape {
 }
 
 /** Can the team launch, per target — the same rule POST /api/runs enforces. */
-export interface TeamReadiness {
+interface TeamReadiness {
   website: { ready: boolean; missing_providers: string[]; missing_nodes: string[] };
   desktop: {
     ready: boolean;
@@ -989,9 +989,9 @@ export async function updateTerminalNode(
 
 // The canvas vocabulary the palette drops + the four edge roles the inline editor offers. Each maps
 // server-side onto the (kind, engine) / (edge_type, conditions) the executor routes on.
-export type NodeKind = "thinker" | "worker" | "gate" | "terminal" | "domain_query";
+type NodeKind = "thinker" | "worker" | "gate" | "terminal" | "domain_query";
 export type EdgeRole = "forward" | "branch" | "loop_back" | "escalation";
-export type RolePreset = "pm" | "architect" | "engineer" | "reviewer";
+type RolePreset = "pm" | "architect" | "engineer" | "reviewer";
 
 export interface CreateNodeBody {
   node_kind: NodeKind;

@@ -41,7 +41,7 @@ export interface InboxApproval {
   document_id: string | null;
 }
 
-export interface InboxNudge {
+interface InboxNudge {
   key: string;
   kind: "nudge";
   since: string;
@@ -71,7 +71,7 @@ export interface InboxRunFailed {
 }
 
 /** A running step with no update for 5 minutes (M1, ruling R1); Resume arrives with M3. */
-export interface InboxRunStalled {
+interface InboxRunStalled {
   key: string;
   kind: "run_stalled";
   since: string;
@@ -97,7 +97,7 @@ export interface InboxRunStalled {
   resume?: { invocation_id: number; label: string } | null;
 }
 
-export interface InboxSetupGap {
+interface InboxSetupGap {
   key: string;
   kind: "setup_gap";
   since: string;
@@ -108,7 +108,7 @@ export interface InboxSetupGap {
   desktop_covers: string[];
 }
 
-export interface InboxSetupGapsFolded {
+interface InboxSetupGapsFolded {
   key: string;
   kind: "setup_gaps_folded";
   since: string;
@@ -116,7 +116,7 @@ export interface InboxSetupGapsFolded {
   teams: { id: string; name: string; target: InboxSurface; missing_providers: string[] }[];
 }
 
-export interface InboxMemories {
+interface InboxMemories {
   key: string;
   kind: "memories";
   since: string;

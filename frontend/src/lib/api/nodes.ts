@@ -44,14 +44,14 @@ export interface NodeRunSummary {
   last_round_at: string | null;
 }
 
-export interface RoundCost {
+interface RoundCost {
   prompt_tokens: number;
   completion_tokens: number;
   total_tokens: number;
   cost_usd: number;
 }
 
-export interface RoundDocument {
+interface RoundDocument {
   document_id: string;
   name: string;
   version_no: number;
@@ -85,7 +85,7 @@ export interface NodeRound {
   test_blocked?: string | null;
 }
 
-export interface NodeRunDetail {
+interface NodeRunDetail {
   run_id: string;
   idea: string;
   status: string;
@@ -99,7 +99,7 @@ export interface NodeRuns {
   run: NodeRunDetail | null;
 }
 
-export interface ContextPart {
+interface ContextPart {
   key: string;
   label: string;
   text: string;

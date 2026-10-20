@@ -9,7 +9,7 @@ import { apiRequest } from "./runs";
 export type CheckKind = "must_say" | "must_not_say" | "must_name_file" | "ai";
 
 /** A check's AI-check agreement with the owner's labels (null: never labelled). */
-export interface CheckJudge {
+interface CheckJudge {
   agree: number;
   total: number;
   trusted: boolean;
@@ -56,7 +56,7 @@ export interface CheckResult {
   reason: string | null;
 }
 
-export type ResultStatus = "waiting" | "running" | "passed" | "failed" | "stopped";
+type ResultStatus = "waiting" | "running" | "passed" | "failed" | "stopped";
 
 export interface TestResult {
   id: string;
@@ -174,7 +174,7 @@ export interface ReplayDetail {
   error: string | null;
 }
 
-export interface JudgeRow {
+interface JudgeRow {
   answer: string;
   you: boolean;
   /** null: the month's AI checks ran out mid-way. */

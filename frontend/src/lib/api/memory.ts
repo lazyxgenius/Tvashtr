@@ -16,7 +16,7 @@ export type { MemoryPolarity, MemoryTier } from "../api";
 export type MemoryStatus = "active" | "pending_review" | "superseded" | "rejected";
 
 /** The agent a node-tier memory is scoped to. `role_name: null` = the agent was removed. */
-export interface MemoryAgent {
+interface MemoryAgent {
   node_id: string;
   role_name: string | null;
   title: string | null;
@@ -25,7 +25,7 @@ export interface MemoryAgent {
 }
 
 /** Where a memory came from: a run (with its title, status and round) or a person. */
-export interface MemorySource {
+interface MemorySource {
   kind: "run" | "manual";
   run_id: string | null;
   run_title: string | null;
@@ -37,7 +37,7 @@ export interface MemorySource {
   node_id: string | null;
 }
 
-export type SupersededReason = "merged" | "replaced";
+type SupersededReason = "merged" | "replaced";
 
 export interface Memory {
   id: string;
@@ -73,7 +73,7 @@ export interface MemoryCounts {
   archive: number;
 }
 
-export type PromoteAction = "promote" | "promote_merged" | "promote_supersede";
+type PromoteAction = "promote" | "promote_merged" | "promote_supersede";
 
 /** Keep's answer. For a merge `memory` is the EXISTING memory and Undo must requeue `mergedId`. */
 export interface PromoteResult {

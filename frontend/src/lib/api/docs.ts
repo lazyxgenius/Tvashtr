@@ -28,7 +28,7 @@ export interface RunDocAgent {
   label: string;
 }
 
-export interface RunDocVersion {
+interface RunDocVersion {
   version_no: number;
   created_at: string;
   author: DocAuthor | null;
@@ -47,7 +47,7 @@ export interface RunDoc {
   read_by: RunDocAgent[];
 }
 
-export interface DocRun {
+interface DocRun {
   run_id: string;
   idea: string;
   status: string;

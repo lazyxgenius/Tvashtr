@@ -10,7 +10,7 @@ export type SubscriptionCardState =
   | "connected"
   | "error";
 
-export type SubscriptionSource = "harness" | "oauth";
+type SubscriptionSource = "harness" | "oauth";
 
 export interface SubscriptionStatus {
   provider: SubscriptionProviderId;

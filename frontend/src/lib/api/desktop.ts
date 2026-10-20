@@ -138,7 +138,7 @@ export async function saveProviderKey(provider: string, apiKey: string): Promise
 // ---- Setup's First team step (DT-34..DT-37) ----
 
 /** Where a template node will run for this account: a plan in use, a saved key, or neither. */
-export type RunsOn = "claude" | "grok" | "api_key";
+type RunsOn = "claude" | "grok" | "api_key";
 
 export interface DesktopTemplateNode {
   role: string;

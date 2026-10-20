@@ -39,7 +39,7 @@ export type CompareStatus = "waiting" | "running" | "finished" | "stopped";
 export type SideStatus = "waiting" | "running" | "needs_you" | "finished" | "failed" | "stopped";
 
 /** One step chip of a lane's pipeline strip (the shape Home's RunProgressStrip gets). */
-export interface CompareStripChip {
+interface CompareStripChip {
   node_id: string;
   label: string;
   kind: string;
@@ -78,7 +78,7 @@ export interface CompareRow {
   difference: string;
 }
 
-export interface CompareResults {
+interface CompareResults {
   headline: string;
   rows: CompareRow[];
   current_version: number;
@@ -123,7 +123,7 @@ export interface SetCell {
   ran_on?: DesktopRoutes;
 }
 
-export interface SetItem {
+interface SetItem {
   task: string;
   a: SetCell;
   b: SetCell;
@@ -192,7 +192,7 @@ export function stopCompare(compareId: string): Promise<{ status: "stopped" }> {
 
 // ---- M9: task sets (`docs/superpowers/plans/api/task-sets.md`) ----
 
-export interface TaskSetItem {
+interface TaskSetItem {
   id?: string;
   position?: number;
   task: string;

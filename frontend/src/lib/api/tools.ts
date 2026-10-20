@@ -46,7 +46,7 @@ const enc = encodeURIComponent;
 /** An MCP server's config: `{command,args,env}` (Local) or `{url,headers,type?}` (Remote). */
 export type ServerConfig = Record<string, unknown>;
 
-export type ToolStatus = "ready" | "needs_attention";
+type ToolStatus = "ready" | "needs_attention";
 
 export interface ToolItem {
   id: string;
@@ -205,7 +205,7 @@ export async function setToolAgents(id: string, nodeIds: string[]): Promise<SetA
 
 // ---- Agents (the "Turn on for…" picker) ----
 
-export interface AgentChoice {
+interface AgentChoice {
   node_id: string;
   role_name: string;
   title: string | null;

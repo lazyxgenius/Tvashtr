@@ -36,7 +36,7 @@ export interface ActivityAgent {
   model: string | null;
 }
 
-export interface ActivityRefs {
+interface ActivityRefs {
   files?: string[];
   file?: string;
   added?: number;

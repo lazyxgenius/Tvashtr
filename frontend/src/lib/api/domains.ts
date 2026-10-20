@@ -62,7 +62,7 @@ export interface DomainFiles {
   needs_attention: number;
 }
 
-export interface DomainQuality {
+interface DomainQuality {
   cases: number;
   last_run_at: string | null;
   /** 0–1 fraction of test questions whose expected file was found. */
@@ -72,14 +72,14 @@ export interface DomainQuality {
   top_k: number | null;
 }
 
-export interface DomainUsage {
+interface DomainUsage {
   uses: number;
   teams: number;
   steps: number;
   agents: number;
 }
 
-export interface DomainReadingModel {
+interface DomainReadingModel {
   slug: string;
   label: string;
   provider: string;
@@ -216,7 +216,7 @@ export async function listDomainTemplates(): Promise<DomainTemplate[]> {
 // ---- The detail page and its Sources tab (GET /api/domains/{id}, …/documents) ----
 
 /** The setup strip's four steps (DM-37); the strip shows while `files_read` is false. */
-export interface DomainSetup {
+interface DomainSetup {
   key: boolean;
   files_read: boolean;
   tested: boolean;
@@ -327,7 +327,7 @@ export async function createNewDomain(body: {
 }
 
 /** A file's phase in the Status column (DM-42). `uploading` is local to this browser. */
-export type DomainFilePhase =
+type DomainFilePhase =
   | "uploading"
   | "ready"
   | "reading"
@@ -339,7 +339,7 @@ export type DomainFilePhase =
 export type DomainFileKind = "PDF" | "MD" | "HTML" | "TXT";
 
 /** A failed read in the table's words (DM-43). */
-export interface DomainFileProblem {
+interface DomainFileProblem {
   kind: string;
   message: string;
   /** `engines_key`: the fix is a key in Engines ("Fix key in Engines"). */
@@ -468,7 +468,7 @@ export async function listDomainFiles(
   };
 }
 
-export interface DomainPiece {
+interface DomainPiece {
   number: number;
   chars: number;
   page: number | null;
@@ -955,7 +955,7 @@ export interface DomainTestCase {
 }
 
 /** One of the first passages search found for a test question (DM-77). */
-export interface DomainTestPassage {
+interface DomainTestPassage {
   number: number;
   document_id: string;
   filename: string;
@@ -971,7 +971,7 @@ export interface DomainTestResult {
   error: string | null;
 }
 
-export type DomainTestRunStatus = "running" | "completed" | "failed";
+type DomainTestRunStatus = "running" | "completed" | "failed";
 
 export interface DomainTestRun {
   run_id: string;
