@@ -24,6 +24,7 @@ import {
   stopCompare,
 } from "../../lib/api/compare";
 import type { ProgressState } from "../../lib/api/runs";
+import { spendSoFar } from "../../lib/agentTestsFormat";
 import { spendText } from "../../lib/desktopRepos";
 import { navigate } from "../../lib/nav";
 import { versionAge } from "../../lib/versionFormat";
@@ -125,7 +126,7 @@ function Running({ c, teamId, onStopped }: { c: Compare; teamId: string; onStopp
         </Badge>
         <span className="cmp-run__meta">
           <span className="cmp-mono">
-            {duration(c.elapsed_s)} · {soFar(c.cost_usd, c.ran_on)}
+            {duration(c.elapsed_s)} · {spendSoFar(money(c.cost_usd), c.ran_on)}
           </span>
           {going && (
             <Button
@@ -478,13 +479,6 @@ function Foot({
 }
 
 const rounds = (n: number) => `${n} ${n === 1 ? "round" : "rounds"}`;
-
-/** "$2.02 so far"; M-desk-4 (H1), the Desktop: "on your Claude subscription" (no "so far" for
- *  work wholly on subscriptions), mixed "$0.12 + your Claude subscription so far". */
-function soFar(usd: number, ran: Compare["ran_on"]): string {
-  const spent = spendText(money(usd), ran);
-  return ran?.all && spent !== money(usd) ? spent : `${spent} so far`;
-}
 
 /** One side of one task (Set-Running / Set-Results): its state, or ✓/✗ with rounds · cost · note. */
 function SetCellView({ cell }: { cell: SetCell }) {

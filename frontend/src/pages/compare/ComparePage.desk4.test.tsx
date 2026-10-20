@@ -166,6 +166,28 @@ describe("Set-RunningDesktop: a set compare running on the Desktop", () => {
     expect(cells.some((c) => c.includes("2 rounds · on your Claude subscription"))).toBe(true);
   });
 
+  it("mixed: the key part's dollars and the plan, so far", async () => {
+    document.documentElement.dataset.tvashtrDesktop = "true";
+    const mixed: Compare = {
+      ...running(true),
+      cost_usd: 0.12,
+      ran_on: { subscriptions: ["claude"], all: false },
+    };
+    const base = globalThis.fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) =>
+        url.startsWith("/api/compares/cmp-set")
+          ? Promise.resolve(new Response(JSON.stringify(mixed), { status: 200 }))
+          : base(url),
+      ),
+    );
+    await open("cmp-set", "v6 and v7 on Indicators");
+    expect(document.querySelector(".cmp-run__meta")?.textContent).toContain(
+      "12m 05s · $0.12 + your Claude subscription so far",
+    );
+  });
+
   it("the website's words are today's", async () => {
     await open("cmp-set", "v6 and v7 on Indicators");
     expect(document.querySelector(".cmp-run__meta")?.textContent).toContain(

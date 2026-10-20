@@ -12,7 +12,7 @@ import type {
   TestGets,
   TestRun,
 } from "./api/agentTests";
-import { spendText } from "./desktopRepos";
+import { type DesktopRoutes, spendText } from "./desktopRepos";
 
 export const CHECK_LABEL: Record<CheckKind, string> = {
   must_say: "Must say",
@@ -106,12 +106,16 @@ export function elapsedText(seconds: number): string {
 export const runningTitle = (run: TestRun) =>
   `Running ${Math.min(run.done + 1, run.total)} of ${run.total}`;
 
+/** "$2.02 so far"; M-desk-4 (H1), the Desktop: "on your Claude subscription" (no "so far" for
+ *  work wholly on subscriptions), mixed "$0.12 + your Claude subscription so far". */
+export function spendSoFar(money: string, ran: DesktopRoutes | null | undefined): string {
+  const spent = spendText(money, ran);
+  return ran?.all && spent !== money ? spent : `${spent} so far`;
+}
+
 /** "On v7 · $0.14 so far" (M-desk-4, the Desktop: "On v7 · on your Grok subscription"). */
-export const runningSub = (run: TestRun) => {
-  const spent = spendText(dollars(run.cost_usd), run.ran_on);
-  const soFar = run.ran_on?.all && spent !== dollars(run.cost_usd) ? "" : " so far";
-  return `${run.version != null ? `On v${run.version} · ` : ""}${spent}${soFar}`;
-};
+export const runningSub = (run: TestRun) =>
+  `${run.version != null ? `On v${run.version} · ` : ""}${spendSoFar(dollars(run.cost_usd), run.ran_on)}`;
 
 /** "On v7 · just now · $0.38" (Test-Stopped: "On v7 · $0.14", no time). M-desk-4: on the
  *  Desktop, replays that ran on a subscription name it instead of a price. */
