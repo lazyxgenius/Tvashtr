@@ -355,6 +355,33 @@ describe("MemoryPage — Keep and Discard", () => {
     fireEvent.click(within(rowOf(MEM_SHOULD.content)).getByRole("button", { name: "Keep" }));
     expect(await toastWith("That memory is no longer in the Inbox.")).toBeTruthy();
   });
+
+  it("a Keep that fails says why and keeps the row", async () => {
+    memoryApi({
+      routes: {
+        "POST /api/memories/:id/promote": () => jsonError(409, "The memory changed. Try again."),
+      },
+    });
+    renderAt("#/toolkit/memory/inbox");
+    await within(await inbox()).findByText(MEM_SHOULD.content);
+    fireEvent.click(within(rowOf(MEM_SHOULD.content)).getByRole("button", { name: "Keep" }));
+    expect(await toastWith("The memory changed. Try again.")).toBeTruthy();
+    expect(within(rowOf(MEM_SHOULD.content)).getByRole("button", { name: "Keep" })).toBeTruthy();
+  });
+
+  it("an Undo that fails says why", async () => {
+    memoryApi({
+      routes: {
+        "POST /api/memories/:id/requeue": () => jsonError(409, "The memory changed. Try again."),
+      },
+    });
+    renderAt("#/toolkit/memory/inbox");
+    await within(await inbox()).findByText(MEM_MUST_NOT.content);
+    fireEvent.click(within(rowOf(MEM_MUST_NOT.content)).getByRole("button", { name: "Discard" }));
+    const toast = await toastWith("Discarded. You’ll find it in Archive.");
+    fireEvent.click(within(toast).getByRole("button", { name: "Undo" }));
+    expect(await toastWith("Couldn’t undo: The memory changed. Try again.")).toBeTruthy();
+  });
 });
 
 describe("MemoryPage — Undo after switching tabs", () => {
@@ -484,6 +511,18 @@ describe("MemoryPage — inline editor", () => {
       "This memory has no agent to scope to.",
     );
     expect(screen.getByRole("textbox", { name: "Memory text" })).toBeTruthy();
+  });
+
+  it("an edit to a memory someone else already handled closes the editor and reloads the Inbox", async () => {
+    const { state } = memoryApi();
+    renderAt("#/toolkit/memory/inbox");
+    const box = await openEditor(MEM_MUST_NOT.content);
+    fireEvent.change(box, { target: { value: "Never edit web/generated/ by hand." } });
+    state.pending = state.pending.filter((m) => m.id !== MEM_MUST_NOT.id);
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await toastWith("That memory is no longer in the Inbox.")).toBeTruthy();
+    expect(screen.queryByRole("textbox", { name: "Memory text" })).toBeNull();
+    await waitFor(() => expect(screen.queryByText(MEM_MUST_NOT.content)).toBeNull());
   });
 
   it("an edit the embedding service can't take says so, without calling the app offline", async () => {

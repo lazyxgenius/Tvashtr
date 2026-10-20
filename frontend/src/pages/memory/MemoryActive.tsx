@@ -2,7 +2,6 @@ import { Brain, Pencil, Pin, Search, Trash, TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button, ConfirmDialog, IconButton, Input, useToast } from "../../design-system/components";
-import { ApiError } from "../../lib/api";
 import { reportFetchOk } from "../../lib/backendStatus";
 import {
   type Memory,
@@ -25,23 +24,19 @@ import { MemoryRow } from "./MemoryRow";
 import {
   EDIT_EMBED_FAILED,
   FORCE_FILTER_OPTIONS,
+  type Load,
   type MemoryFilters,
   NO_FILTERS,
   SCOPE_FILTER_OPTIONS,
   activeMeta,
+  errorText,
   isFiltered,
+  isGone,
   matchesFilters,
   repoFilterOptions,
   sortActive,
 } from "./memoryModel";
 
-type Load =
-  | { state: "loading" }
-  | { state: "error"; message: string }
-  | { state: "ready"; data: Memory[] };
-
-const errorText = (e: unknown) => (e instanceof Error && e.message ? e.message : String(e));
-const isGone = (e: unknown) => e instanceof ApiError && e.status === 404;
 const icon = { size: 14, strokeWidth: 1.6, "aria-hidden": true } as const;
 
 /**
@@ -64,7 +59,7 @@ export function MemoryActive({
   version?: number;
 }) {
   const toast = useToast();
-  const [load, setLoad] = useState<Load>({ state: "loading" });
+  const [load, setLoad] = useState<Load<Memory[]>>({ state: "loading" });
   const [repos, setRepos] = useState<MemoryRepo[] | null>(null);
   const [filters, setFilters] = useState<MemoryFilters>(NO_FILTERS);
   const [busy, setBusy] = useState<ReadonlySet<string>>(new Set());

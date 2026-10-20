@@ -2,7 +2,6 @@ import { CircleCheck, TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import { Button, useToast } from "../../design-system/components";
-import { ApiError } from "../../lib/api";
 import { reportFetchOk } from "../../lib/backendStatus";
 import {
   type Memory,
@@ -17,15 +16,14 @@ import {
 import { MemoryEditor } from "./MemoryEditor";
 import { MemoryEmptyState, MemoryLoading } from "./MemoryEmptyState";
 import { MemoryRow } from "./MemoryRow";
-import { EDIT_EMBED_FAILED, keptMessage, sortNewestFirst } from "./memoryModel";
-
-type Load<T> =
-  | { state: "loading" }
-  | { state: "error"; message: string }
-  | { state: "ready"; data: T };
-
-const errorText = (e: unknown) => (e instanceof Error && e.message ? e.message : String(e));
-const isGone = (e: unknown) => e instanceof ApiError && e.status === 404;
+import {
+  EDIT_EMBED_FAILED,
+  type Load,
+  errorText,
+  isGone,
+  keptMessage,
+  sortNewestFirst,
+} from "./memoryModel";
 
 /**
  * Memory › Inbox (Toolkit-MemoryInbox, TkF-Inbox-1…4): what runs taught, newest first, each with

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { ApiError } from "../../lib/api";
 import type { Memory } from "../../lib/api/memory";
 import {
   FORCE_FILTER_OPTIONS,
@@ -13,7 +14,9 @@ import {
   defaultRepo,
   draftOf,
   editPatch,
+  errorText,
   isFiltered,
+  isGone,
   keptMessage,
   matchesFilters,
   provenance,
@@ -366,5 +369,19 @@ describe("Add memory", () => {
       "Added. It applies to lazyxgenius/trade_mcp right away.",
     );
     expect(addedMessage(null)).toBe("Added. It applies to every repo right away.");
+  });
+});
+
+describe("errors", () => {
+  it("reads an error's message, or the thing itself", () => {
+    expect(errorText(new ApiError(503, "The database is busy."))).toBe("The database is busy.");
+    expect(errorText(new Error(""))).toBe("Error");
+    expect(errorText("offline")).toBe("offline");
+  });
+
+  it("only a 404 from the API means the memory is gone", () => {
+    expect(isGone(new ApiError(404, "memory not found"))).toBe(true);
+    expect(isGone(new ApiError(409, "conflict"))).toBe(false);
+    expect(isGone(Object.assign(new Error("x"), { status: 404 }))).toBe(false);
   });
 });

@@ -2,9 +2,10 @@
  * Toolkit › Memory — the pure labels behind the page (no JSX): force badges, the scope chip,
  * provenance lines, Keep's toast, the inline editor's scope choices and its patch, and the Active
  * tab's meta line, filters and order, the Archive's rows and Restore toast, and Add memory's forces,
- * default repo and toast.
+ * default repo and toast; plus the tabs' load state and error helpers.
  */
 import type { BadgeVariant } from "../../design-system/components";
+import { ApiError } from "../../lib/api";
 import type {
   Memory,
   MemoryPatch,
@@ -16,6 +17,16 @@ import type {
 import { POLARITY_META, POLARITY_ORDER } from "../../lib/memory";
 import { formatRelativeTime } from "../../lib/time";
 import { agentLabel } from "../skills/skillsModel";
+
+/** A tab's rows as they load. */
+export type Load<T> =
+  | { state: "loading" }
+  | { state: "error"; message: string }
+  | { state: "ready"; data: T };
+
+export const errorText = (e: unknown) => (e instanceof Error && e.message ? e.message : String(e));
+/** A 404: the memory went meanwhile (another tab). */
+export const isGone = (e: unknown) => e instanceof ApiError && e.status === 404;
 
 /** MEM-8: MUST / MUST NOT = danger, SHOULD / SHOULD NOT = warning, MAY = info, CONTEXT = neutral. */
 export const FORCE_VARIANT: Record<MemoryPolarity, BadgeVariant> = {

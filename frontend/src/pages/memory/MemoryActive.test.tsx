@@ -405,4 +405,87 @@ describe("MemoryPage › Active — note actions", () => {
     await toastWith("That memory is no longer in Active.");
     await waitFor(async () => expect(rowTexts(await activeCard())).toHaveLength(3));
   });
+
+  it("a Pin that fails says why and keeps the row", async () => {
+    activeApi({
+      routes: {
+        "POST /api/memories/:id/pin": () => jsonError(409, "The memory changed. Try again."),
+      },
+    });
+    renderAt("#/toolkit/memory/active");
+    await activeCard();
+    fireEvent.click(within(rowOf(ACT_MAY.content)).getByRole("button", { name: "Pin" }));
+    await toastWith("The memory changed. Try again.");
+    expect(rowTexts(await activeCard())).toHaveLength(4);
+  });
+
+  it("an edit to a memory that's gone meanwhile closes the editor, reloads Active and says so", async () => {
+    const { state } = activeApi();
+    renderAt("#/toolkit/memory/active");
+    await activeCard();
+    fireEvent.click(within(rowOf(ACT_SHOULD.content)).getByRole("button", { name: "Edit" }));
+    const card = await activeCard();
+    fireEvent.change(within(card).getByRole("textbox", { name: "Memory text" }), {
+      target: { value: "Approve only with the docs list in step." },
+    });
+    state.rows = state.rows.filter((r) => r.id !== ACT_SHOULD.id);
+    fireEvent.click(within(card).getByRole("button", { name: "Save" }));
+
+    await toastWith("That memory is no longer in Active.");
+    expect(screen.queryByRole("textbox", { name: "Memory text" })).toBeNull();
+    await waitFor(async () => expect(rowTexts(await activeCard())).toHaveLength(3));
+  });
+
+  it("keeps the editor open with the backend's reason when an edit fails", async () => {
+    activeApi({
+      routes: {
+        "PATCH /api/memories/:id": () => jsonError(422, "This memory has no agent to scope to."),
+      },
+    });
+    renderAt("#/toolkit/memory/active");
+    await activeCard();
+    fireEvent.click(within(rowOf(ACT_SHOULD.content)).getByRole("button", { name: "Edit" }));
+    const card = await activeCard();
+    const box = within(card).getByRole("textbox", { name: "Memory text" });
+    fireEvent.change(box, { target: { value: "Approve only with the docs list in step." } });
+    fireEvent.click(within(card).getByRole("button", { name: "Save" }));
+
+    expect((await within(card).findByRole("alert")).textContent).toBe(
+      "This memory has no agent to scope to.",
+    );
+    expect(box).toHaveValue("Approve only with the docs list in step.");
+  });
+
+  it("deleting a memory that's gone meanwhile closes the dialog, reloads Active and says so", async () => {
+    const { state } = activeApi();
+    renderAt("#/toolkit/memory/active");
+    await activeCard();
+    fireEvent.click(within(rowOf(ACT_CONTEXT.content)).getByRole("button", { name: "Delete" }));
+    state.rows = state.rows.filter((r) => r.id !== ACT_CONTEXT.id);
+    fireEvent.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete memory" }),
+    );
+
+    await toastWith("That memory is no longer in Active.");
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    await waitFor(async () => expect(rowTexts(await activeCard())).toHaveLength(3));
+  });
+
+  it("keeps the dialog open with the backend's reason when a delete fails", async () => {
+    activeApi({
+      routes: {
+        "DELETE /api/memories/:id": () => jsonError(503, "The database is busy. Try again."),
+      },
+    });
+    renderAt("#/toolkit/memory/active");
+    await activeCard();
+    fireEvent.click(within(rowOf(ACT_CONTEXT.content)).getByRole("button", { name: "Delete" }));
+    const dialog = screen.getByRole("alertdialog", { name: "Delete this memory?" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete memory" }));
+
+    expect((await within(dialog).findByRole("alert")).textContent).toBe(
+      "The database is busy. Try again.",
+    );
+    expect(rowTexts(await activeCard())).toContain(ACT_CONTEXT.content);
+  });
 });

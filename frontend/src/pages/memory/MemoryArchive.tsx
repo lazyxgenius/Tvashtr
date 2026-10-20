@@ -2,19 +2,17 @@ import { Archive, TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Badge, Button, useToast } from "../../design-system/components";
-import { ApiError } from "../../lib/api";
 import { type Memory, listMemories, promoteMemory } from "../../lib/api/memory";
 import { MemoryEmptyState, MemoryLoading } from "./MemoryEmptyState";
 import { MemoryRow } from "./MemoryRow";
-import { archiveMeta, restoredMessage, sortArchive } from "./memoryModel";
-
-type Load =
-  | { state: "loading" }
-  | { state: "error"; message: string }
-  | { state: "ready"; data: Memory[] };
-
-const errorText = (e: unknown) => (e instanceof Error && e.message ? e.message : String(e));
-const isGone = (e: unknown) => e instanceof ApiError && e.status === 404;
+import {
+  type Load,
+  archiveMeta,
+  errorText,
+  isGone,
+  restoredMessage,
+  sortArchive,
+} from "./memoryModel";
 
 const fetchArchive = (): Promise<Memory[]> =>
   Promise.all([listMemories("superseded"), listMemories("rejected")]).then(([replaced, gone]) =>
@@ -39,7 +37,7 @@ export function MemoryArchive({
   version?: number;
 }) {
   const toast = useToast();
-  const [load, setLoad] = useState<Load>({ state: "loading" });
+  const [load, setLoad] = useState<Load<Memory[]>>({ state: "loading" });
   const [busy, setBusy] = useState<ReadonlySet<string>>(new Set());
   const live = useRef(true);
   useEffect(() => {
