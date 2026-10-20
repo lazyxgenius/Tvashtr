@@ -36,6 +36,23 @@ interface OpenRef {
 
 const refText = (name: string) => "${" + name + "}";
 
+/** `value` with each `${NAME}` as a chip marked "· set" / "· not set" (no state when `stored` is null). */
+export function SecretRefChips({ value, stored }: { value: string; stored: Set<string> | null }) {
+  return valueSegments(value).map((s, i) =>
+    s.kind === "text" ? (
+      s.text
+    ) : (
+      <span key={i} className={cx("tk-chip", stored?.has(s.name) && "tk-chip--set")}>
+        <KeyRound size={12} strokeWidth={1.6} aria-hidden />
+        {refText(s.name)}{" "}
+        {stored && (
+          <span className="tk-chip__state">{stored.has(s.name) ? "· set" : "· not set"}</span>
+        )}
+      </span>
+    ),
+  );
+}
+
 export function SecretRefInput({
   value,
   onChange,
@@ -157,21 +174,7 @@ export function SecretRefInput({
       />
       {chips && (
         <div className="tk-ref__display" aria-hidden="true">
-          {valueSegments(shown).map((s, i) =>
-            s.kind === "text" ? (
-              s.text
-            ) : (
-              <span key={i} className={cx("tk-chip", stored?.has(s.name) && "tk-chip--set")}>
-                <KeyRound size={12} strokeWidth={1.6} aria-hidden />
-                {refText(s.name)}{" "}
-                {stored && (
-                  <span className="tk-chip__state">
-                    {stored.has(s.name) ? "· set" : "· not set"}
-                  </span>
-                )}
-              </span>
-            ),
-          )}
+          <SecretRefChips value={shown} stored={stored} />
         </div>
       )}
       {open && (

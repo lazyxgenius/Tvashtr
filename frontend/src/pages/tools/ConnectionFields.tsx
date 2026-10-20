@@ -16,6 +16,7 @@ import { useId } from "react";
 import { Input, cx } from "../../design-system/components";
 import { KeyValueRows } from "./KeyValueRows";
 import { RawJsonDisclosure } from "./RawJsonDisclosure";
+import { SecretRefChips } from "./SecretRefInput";
 import {
   type ConnectionForm,
   type SecretOption,
@@ -25,7 +26,6 @@ import {
   formToConfig,
   misplacedRefNote,
   parseConfigText,
-  valueSegments,
 } from "./connectionForm";
 import type { KeyValueRow, Transport } from "./toolConfig";
 
@@ -180,8 +180,6 @@ export function ConnectionFields({
   );
 }
 
-const refText = (name: string) => "${" + name + "}";
-
 /**
  * The tool page's headers ("Authorization: Bearer ${GITHUB_TOKEN} · set") or environment
  * ("API_KEY=${SQLITE_API_KEY} · not set"), read-only: literal text, and each secret as a chip.
@@ -204,21 +202,7 @@ function ReadOnlyRows({
       {filled.map((row, i) => (
         <div key={i} className="tk-lines__row">
           {kind === "header" ? `${row.key.trim()}: ` : `${row.key.trim()}=`}
-          {valueSegments(row.value).map((s, j) =>
-            s.kind === "text" ? (
-              s.text
-            ) : (
-              <span key={j} className={cx("tk-chip", stored?.has(s.name) && "tk-chip--set")}>
-                <KeyRound size={12} strokeWidth={1.6} aria-hidden />
-                {refText(s.name)}{" "}
-                {stored && (
-                  <span className="tk-chip__state">
-                    {stored.has(s.name) ? "· set" : "· not set"}
-                  </span>
-                )}
-              </span>
-            ),
-          )}
+          <SecretRefChips value={row.value} stored={stored} />
         </div>
       ))}
     </div>
