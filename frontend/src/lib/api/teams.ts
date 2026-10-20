@@ -115,10 +115,10 @@ export async function renameLibraryTeam(teamId: string, name: string): Promise<T
 }
 
 /** Copy a team (every node, edge and setting; no runs, no agent memories) as "{name} (copy)". */
-export async function duplicateTeam(teamId: string, name?: string): Promise<TeamSummary> {
+export async function duplicateTeam(teamId: string): Promise<TeamSummary> {
   const res = await send(
     `/api/teams/${encodeURIComponent(teamId)}/duplicate`,
-    jsonInit("POST", name === undefined ? {} : { name }),
+    jsonInit("POST", {}),
   );
   if (!res.ok) await fail(res, `POST /api/teams/${teamId}/duplicate -> ${res.status}`);
   return (await res.json()) as TeamSummary;

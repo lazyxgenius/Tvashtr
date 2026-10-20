@@ -226,7 +226,7 @@ const isObj = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 const str = (v: unknown, d = ""): string => (typeof v === "string" ? v : d);
 const strOrNull = (v: unknown): string | null => (typeof v === "string" ? v : null);
-const num = (v: unknown, d = 0): number => (typeof v === "number" && Number.isFinite(v) ? v : d);
+const num = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : 0);
 const strList = (v: unknown): string[] =>
   Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
 

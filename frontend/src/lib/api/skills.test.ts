@@ -104,12 +104,6 @@ describe("skills client", () => {
     });
   });
 
-  it("passes on_conflict=replace only when asked", async () => {
-    const calls = mockApi({ "POST /api/skill-library": item });
-    await createSkill("house-style", item.source as never, { onConflict: "replace" });
-    expect(calls.at(-1)?.path).toBe("/api/skill-library?on_conflict=replace");
-  });
-
   it("reads one skill with the agents that use it", async () => {
     mockApi({
       "GET /api/skill-library/:id": {

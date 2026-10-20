@@ -258,13 +258,8 @@ export async function getSkill(id: string): Promise<SkillDetail> {
 }
 
 /** POST /api/skill-library — create-only: 409 "You already have a skill called <name>.". */
-export async function createSkill(
-  name: string,
-  source: SkillSource,
-  opts: { onConflict?: "error" | "replace" } = {},
-): Promise<Skill> {
-  const q = opts.onConflict === "replace" ? "?on_conflict=replace" : "";
-  const body = await apiRequest<unknown>("POST", `/api/skill-library${q}`, { name, source });
+export async function createSkill(name: string, source: SkillSource): Promise<Skill> {
+  const body = await apiRequest<unknown>("POST", "/api/skill-library", { name, source });
   return expectSkill(body, "POST /api/skill-library");
 }
 

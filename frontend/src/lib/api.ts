@@ -1125,12 +1125,11 @@ export async function resolveTask(
   runId: string,
   taskId: number,
   decision: TaskDecision,
-  note?: string | null,
 ): Promise<ResolveResponse> {
   const res = await fetch(`/api/runs/${runId}/tasks/${taskId}/resolve`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ decision, note: note ?? null }),
+    body: JSON.stringify({ decision, note: null }),
   });
   if (!res.ok) throw new Error(`POST resolve ${taskId} -> ${res.status}`);
   return (await res.json()) as ResolveResponse;

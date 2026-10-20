@@ -41,9 +41,9 @@ function firstLine(value: unknown): string {
   return "";
 }
 
-function cap(s: string, n: number = DETAIL_CAP): string {
-  if (s.length <= n) return s;
-  return `${s.slice(0, n - 1).trimEnd()}…`;
+function cap(s: string): string {
+  if (s.length <= DETAIL_CAP) return s;
+  return `${s.slice(0, DETAIL_CAP - 1).trimEnd()}…`;
 }
 
 /**

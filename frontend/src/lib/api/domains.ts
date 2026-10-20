@@ -558,12 +558,12 @@ export async function renameDomain(domainId: string, name: string): Promise<void
   if (!res.ok) throw new ApiError(res.status, await detailOf(res, BACKEND_DOWN));
 }
 
-/** Duplicate settings (DM-16): an empty copy named "<name> copy" (or `name`), with its summary. */
-export async function duplicateDomain(domainId: string, name?: string): Promise<DomainDetailView> {
+/** Duplicate settings (DM-16): an empty copy named "<name> copy", with its summary. */
+export async function duplicateDomain(domainId: string): Promise<DomainDetailView> {
   const res = await send(`/api/domains/${encodeURIComponent(domainId)}/duplicate`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(name === undefined ? {} : { name }),
+    body: JSON.stringify({}),
   });
   if (!res.ok) throw new ApiError(res.status, await detailOf(res, BACKEND_DOWN));
   const detail = normalizeDomainDetail((await res.json()) as unknown);

@@ -221,8 +221,11 @@ function isSpend(body: unknown): body is Spend {
 
 /** Spend for Home. An answer in any other shape counts as a failed load (the header leaves the
  * figure out, the card shows its error) rather than crashing the page. */
-export async function getSpend(tz: string = browserTimeZone()): Promise<Spend> {
-  const body = await apiRequest<unknown>("GET", `/api/spend?tz=${encodeURIComponent(tz)}`);
+export async function getSpend(): Promise<Spend> {
+  const body = await apiRequest<unknown>(
+    "GET",
+    `/api/spend?tz=${encodeURIComponent(browserTimeZone())}`,
+  );
   if (!isSpend(body)) throw new Error("Unexpected answer from /api/spend");
   return body;
 }

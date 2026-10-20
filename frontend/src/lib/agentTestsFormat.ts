@@ -51,7 +51,7 @@ export const COLUMN_USES: { value: ColumnUse; label: string }[] = [
 /** The file picker's types (Test-Empty: "CSV or JSON lines"). */
 export const TEST_FILE_ACCEPT = ".csv,.jsonl,.json,text/csv";
 
-const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+const plural = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
 const dollars = (usd: number) => `$${usd.toFixed(2)}`;
 
 /** "6 tests". */
