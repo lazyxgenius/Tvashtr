@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { aboutMinutes } from "../../panel/run/live/liveFormat";
 import {
-  aboutMinutes,
   createLabel,
   deleteDomainInUse,
   deleteDomainText,

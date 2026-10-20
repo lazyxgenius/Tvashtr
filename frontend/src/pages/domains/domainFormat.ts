@@ -17,9 +17,6 @@ import type {
 } from "../../lib/api/domains";
 import { aboutMinutes } from "../../panel/run/live/liveFormat";
 
-/** "about 2 minutes" (DM-88/89/90) — shared with the run panel; settingsFormat imports it from here. */
-export { aboutMinutes };
-
 export type DomainSort = "recent" | "name" | "used" | "attention";
 
 /** The Sort listbox, in the design's order (DmF-Find-3). */

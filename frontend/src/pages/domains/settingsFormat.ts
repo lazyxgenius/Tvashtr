@@ -5,7 +5,8 @@
  */
 import type { DomainTemplate } from "../../lib/api/domains";
 import { normalizeEmbeddingModel } from "../../lib/domains";
-import { aboutMinutes, formatNumber, pieceSizeLabel, templateLabel } from "./domainFormat";
+import { aboutMinutes } from "../../panel/run/live/liveFormat";
+import { formatNumber, pieceSizeLabel, templateLabel } from "./domainFormat";
 import { keyWord, readSeconds, readingModel, sameReadingWeights } from "./readingModels";
 
 type SearchMode = "dense" | "lexical" | "hybrid";

@@ -37,13 +37,8 @@ import "./badgeLoaders";
 
 /** Where the canvas's "back" and "Open Engines" controls land. */
 function dashViewRoute(view: DashView | undefined): Route {
-  switch (view) {
-    case "engines":
-      // "Open Engines" on a blocked run: Overview with the rows to fix highlighted.
-      return { page: "engines", tab: "overview", fix: true };
-    default:
-      return { page: "home" };
-  }
+  // "Open Engines" on a blocked run: Overview with the rows to fix highlighted.
+  return view === "engines" ? { page: "engines", tab: "overview", fix: true } : { page: "home" };
 }
 
 // The mark on a history step the canvas pushed to open the document viewer (Back closes it).

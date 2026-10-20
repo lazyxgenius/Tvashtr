@@ -11,13 +11,11 @@ import {
   listMemoryRepos,
 } from "../../lib/api/memory";
 import { ApiDetailError } from "../../lib/api/runs";
-import { FORCE_CHOICES, FORCE_VARIANT, defaultRepo } from "./memoryModel";
+import { FORCE_CHOICES, FORCE_VARIANT, defaultRepo, errorText } from "./memoryModel";
 
 type Applies = "every" | "one";
 
 const EMPTY = "Write the memory first.";
-
-const errorText = (e: unknown) => (e instanceof Error && e.message ? e.message : String(e));
 
 /**
  * Add memory (Toolkit-AddMemory, TkF-AddMemory-1…3): a right-side sheet with what agents should
