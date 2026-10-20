@@ -3164,8 +3164,6 @@ def patch_domain(
             _parse_domain_id(domain_id),
             name=body.name,
             config=body.config,
-            # Revamp (DM-14): a rename follows the account's name rule (409 on a clash).
-            name_rule=True,
             template=body.template,
         )
     except DomainNameTaken as exc:

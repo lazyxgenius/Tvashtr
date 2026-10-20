@@ -50,13 +50,10 @@ import subprocess
 
 
 def _emit_skill_warning(run_id: str, name: str, reason: str) -> None:
-    """Emit a skill resolution warning through C7.A's shared recorder (SHARED CONTRACT S1). Lazy +
-    import-guarded because the recorder module lands with C7.A (merged A-first, then this session
-    cherry-picked on top); a no-op in isolation. Tests patch THIS function to assert the emit."""
-    try:
-        from tvashtr.control_plane.resolution_warnings import record_resolution_warning
-    except ImportError:
-        return
+    """Emit a skill resolution warning through C7.A's shared recorder (SHARED CONTRACT S1). Tests
+    patch THIS function to assert the emit."""
+    from tvashtr.control_plane.resolution_warnings import record_resolution_warning
+
     record_resolution_warning(run_id, "skill", name, reason)
 
 

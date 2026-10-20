@@ -1528,7 +1528,7 @@ def build_spec_only_team(
         return str(graph.id)
 
 
-def clone_team_graph(source_team_graph_id: str, name: str | None = None) -> str:
+def clone_team_graph(source_team_graph_id: str) -> str:
     """Deep-clone a team graph into a NEW run-scoped ``TeamGraph`` and return its id — the
     clone-on-launch snapshot (P1.8b): fresh node ids, every edge remapped onto the cloned node
     ids, and ``position``/``config``/``prompt``/``model``/``engine``/``tool_config``/``skills``/
@@ -1541,7 +1541,7 @@ def clone_team_graph(source_team_graph_id: str, name: str | None = None) -> str:
         # Distinct name so the clone never collides with PERSISTENT_TEAM_NAME (which would corrupt
         # the get-or-create lookup) and is legible as a run snapshot in the team list.
         clone_id = _copy_graph(
-            session, src_id, name=name or f"{source.name} (run snapshot)", link_origin=True
+            session, src_id, name=f"{source.name} (run snapshot)", link_origin=True
         )
         return str(clone_id)
 

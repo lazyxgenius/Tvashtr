@@ -504,10 +504,10 @@ def _block(lead: str, key: str, text: str, indent: str) -> list[str]:
     return [f"{lead}{key}: {style}", *lines]
 
 
-def to_yaml(data: dict, *, made: datetime | None = None) -> str:
+def to_yaml(data: dict) -> str:
     """The board's layout: a header comment, top-level fields, agents as blocks (instructions as a
     literal block), gates / ends / routes one flow mapping per line, needs with their notes."""
-    made = made or datetime.now(UTC)
+    made = datetime.now(UTC)
     title = " ".join(str(data["name"]).split())  # a line break in a name never makes a new key
     out = [f"# Tvashtr team file · {title} · made {made:%Y-%m-%d}"]
     for key in ("tvashtr_team", "name", "budget_usd", "repo"):

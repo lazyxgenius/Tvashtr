@@ -538,11 +538,10 @@ def update_domain(
     *,
     name: str | None = None,
     config: dict | None = None,
-    name_rule: bool = False,
     template: str | None = None,
 ) -> dict | None:
-    """Rename and/or replace the settings. ``name_rule`` applies the account's name rule to a new
-    name (``clean_domain_name``, the domain itself excluded) — the HTTP PATCH sets it (DM-14).
+    """Rename and/or replace the settings. A new name follows the account's name rule
+    (``clean_domain_name``, the domain itself excluded; DM-14).
     ``template`` is the Settings tab's starting point (DM-81); the route checks it's a known one.
 
     The answer adds ``reread``: ``required`` (reason ``reading_model``) when the new reading model
@@ -562,13 +561,8 @@ def update_domain(
         ).scalar_one_or_none()
         if row is None:
             return None
-        if name is not None and name_rule:
+        if name is not None:
             row.name = clean_domain_name(session, owner_id, name, exclude_id=row.id)
-        elif name is not None:
-            cleaned = name.strip()
-            if not cleaned:
-                raise ValueError("a domain name is required")
-            row.name = cleaned
         if template is not None:
             row.template = template
         if config is not None:

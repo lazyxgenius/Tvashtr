@@ -37,10 +37,10 @@ def period_starts(now_local: datetime) -> tuple[datetime, datetime]:
     return midnight.replace(day=1), midnight - timedelta(days=midnight.weekday())
 
 
-def owner_spend(owner_id: uuid.UUID, tz_name: str | None = None, *, now=None) -> dict:
+def owner_spend(owner_id: uuid.UUID, tz_name: str | None = None) -> dict:
     """The owner's spend this month and this week, and this month per library team."""
     tz = resolve_tz(tz_name)
-    now_local = (now or datetime.now(tz)).astimezone(tz)
+    now_local = datetime.now(tz)
     month_start, week_start = period_starts(now_local)
     since = min(month_start, week_start)
     in_month = CostRecord.created_at >= month_start

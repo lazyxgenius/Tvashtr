@@ -1,14 +1,2 @@
 """The versioned-document layer: a ``Document`` is an ordered chain of immutable
 ``DocumentVersion`` rows, editable later by both humans and agents."""
-
-from tvashtr.documents.service import (
-    add_version,
-    create_document,
-    get_document_with_versions,
-)
-
-__all__ = [
-    "add_version",
-    "create_document",
-    "get_document_with_versions",
-]

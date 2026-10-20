@@ -454,12 +454,10 @@ def _check_surface(surface: str) -> str:
     return surface
 
 
-def get_inbox(
-    owner_id: uuid.UUID, *, surface: str = "website", now: datetime | None = None
-) -> dict:
+def get_inbox(owner_id: uuid.UUID, *, surface: str = "website") -> dict:
     """``{"count", "items"}`` — every current item the owner hasn't dismissed or snoozed."""
     _check_surface(surface)
-    now = now or datetime.now(UTC)
+    now = datetime.now(UTC)
     items = _raw_items(owner_id, surface, now)
     with session_scope() as session:
         dismissals = {
@@ -480,13 +478,12 @@ def dismiss(
     until: datetime | None,
     *,
     surface: str = "website",
-    now: datetime | None = None,
 ) -> dict:
     """Dismiss (``action="dismiss"``) or snooze (``"snooze"`` until ``until``) one current item.
     Raises :class:`InboxError`: 404 for a key that isn't a current item, 422 for dismissing an
     approval or a snooze without a future ``until``."""
     _check_surface(surface)
-    now = now or datetime.now(UTC)
+    now = datetime.now(UTC)
     item = next((i for i in _raw_items(owner_id, surface, now) if i["key"] == key), None)
     if item is None:
         raise InboxError(404, "inbox item not found")
