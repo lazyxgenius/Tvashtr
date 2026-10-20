@@ -15,6 +15,10 @@ import type {
   DomainRereading,
   DomainState,
 } from "../../lib/api/domains";
+import { aboutMinutes } from "../../panel/run/live/liveFormat";
+
+/** "about 2 minutes" (DM-88/89/90) — shared with the run panel; settingsFormat imports it from here. */
+export { aboutMinutes };
 
 export type DomainSort = "recent" | "name" | "used" | "attention";
 
@@ -228,12 +232,6 @@ export function pieceSizeOf(config: Record<string, unknown>): number {
   const size =
     chunking && typeof chunking === "object" ? (chunking as Record<string, unknown>).size : null;
   return typeof size === "number" && size > 0 ? size : 0;
-}
-
-/** "about 2 minutes" (DM-88/89/90): whole minutes, at least one. */
-export function aboutMinutes(seconds: number): string {
-  const m = Math.max(1, Math.round(seconds / 60));
-  return `about ${m} minute${m === 1 ? "" : "s"}`;
 }
 
 /** The Sources banner while a new reading model is read (DmF-Embed-4). */
