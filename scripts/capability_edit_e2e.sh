@@ -9,7 +9,7 @@
 #   the Architect now edits_allowed=true (the flip PERSISTED), (b) the canvas card re-labels
 #   "Edits on", and (c) the PM (start node) toggle is disabled/locked. This is the toggle-plumbing +
 #   start-lock proof; the "a graph with a non-start thinker runs correctly"
-#   proof is carried by the offline keystone (test_thinker_chain.py) + `make thinker-chain-e2e`.
+#   proof is carried by the offline keystone (test_thinker_chain.py).
 #
 # Orchestration mirrors scripts/team_library_e2e.sh (Postgres + migrate + a real backend + the Vite
 # dev server + a headless Playwright run). No agent runs (pure authoring), but the skip guard +
