@@ -1532,7 +1532,7 @@ def _agent_tests(session, cmp: Compare) -> tuple[str, dict] | None:
         newest.setdefault(run.version_number, run)
     passed = agent_tests.passed_counts(session, [r.id for r in newest.values()])
     label = node_label(node.role_name, node.kind, node.config)
-    return label, {n: (int(passed.get(r.id, 0)), r.total) for n, r in newest.items()}
+    return label, {n: (passed.get(r.id, 0), r.total) for n, r in newest.items()}
 
 
 def _row(key: str, label: str, a: str, b: str, better=None, difference: str = "") -> dict:

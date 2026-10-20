@@ -840,11 +840,7 @@ def _run_view(session, run: AgentTestRun, desktop: bool = False) -> dict:
             .limit(1)
         ).scalar_one_or_none()
         if prev is not None:
-            prev_ok = session.execute(
-                select(func.count())
-                .select_from(AgentTestResult)
-                .where(AgentTestResult.test_run_id == prev.id, AgentTestResult.status == "passed")
-            ).scalar_one()
+            prev_ok = passed_counts(session, [prev.id]).get(prev.id, 0)
             since = {"version": prev.version_number, "delta": ok - prev_ok}
     end = run.ended_at or datetime.now(UTC)
     return {
@@ -1328,7 +1324,7 @@ def version_rows(session, team: TeamGraph) -> dict[int, dict]:
     out: dict[int, dict] = {}
     for (number, _node), run in newest.items():
         row = out.setdefault(number, {"passed": 0, "total": 0, "running": False})
-        row["passed"] += int(counts.get(run.id, 0))
+        row["passed"] += counts.get(run.id, 0)
         row["total"] += run.total
         row["running"] = row["running"] or _live(run)
     return out
