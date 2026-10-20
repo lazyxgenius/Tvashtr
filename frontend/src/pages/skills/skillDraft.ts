@@ -155,7 +155,7 @@ export function modeHelper(mode: SkillMode, existing: boolean): string {
   return "The full skill goes into every prompt.";
 }
 
-export type DraftField = "name" | "content" | "repo" | "triggers";
+type DraftField = "name" | "content" | "repo" | "triggers";
 
 /** Which field a 409/422 refusal belongs under (the backend's own words); null = a toast. */
 export function errorField(status: number, message: string): DraftField | null {

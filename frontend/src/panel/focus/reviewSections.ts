@@ -17,7 +17,7 @@ export interface ReviewValue {
   model?: boolean;
 }
 
-export interface ReviewLine {
+interface ReviewLine {
   op: "add" | "del" | "change";
   text: string;
 }

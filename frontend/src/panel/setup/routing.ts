@@ -8,7 +8,7 @@ import { nodeTitle } from "../../lib/nodeNames";
 import { applyEmitContract, emitContract } from "../../lib/topology";
 import { changedLines } from "./lineDiff";
 
-export interface VerdictBranch {
+interface VerdictBranch {
   label: string;
   target: string;
 }

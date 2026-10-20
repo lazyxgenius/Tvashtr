@@ -147,7 +147,7 @@ export function usedByCell(segments: readonly string[]): string {
 
 // ---- Overview cells (ENG-13/14) ----
 
-export type CellActionKind = "add-key" | "connect" | "set-up" | "refresh" | "open-desktop";
+type CellActionKind = "add-key" | "connect" | "set-up" | "refresh" | "open-desktop";
 
 export interface CellAction {
   kind: CellActionKind;

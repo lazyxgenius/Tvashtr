@@ -14,7 +14,7 @@ import { cx, type ToastOptions, ToastContext, useDismiss } from "./utils";
 
 // ---- Menu (⋯) ----
 
-export interface MenuItem {
+interface MenuItem {
   key: string;
   label: ReactNode;
   description?: ReactNode;
@@ -27,7 +27,7 @@ export interface MenuItem {
 }
 
 /** A section heading ("Built-in", "My agents"): a label, not an item. */
-export interface MenuHeading {
+interface MenuHeading {
   heading: string;
 }
 

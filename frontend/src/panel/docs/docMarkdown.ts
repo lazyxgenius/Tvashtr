@@ -38,7 +38,7 @@ export function docBlocks(markdown: string): string[] {
   return out;
 }
 
-export interface DocDiffBlock {
+interface DocDiffBlock {
   op: DiffOp;
   html: string;
 }

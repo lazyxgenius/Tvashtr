@@ -8,7 +8,7 @@ import { normalizeEmbeddingModel } from "../../lib/domains";
 import { aboutMinutes, formatNumber, pieceSizeLabel, templateLabel } from "./domainFormat";
 import { keyWord, readSeconds, readingModel, sameReadingWeights } from "./readingModels";
 
-export type SearchMode = "dense" | "lexical" | "hybrid";
+type SearchMode = "dense" | "lexical" | "hybrid";
 
 /** Search by, in the design's order (Meaning | Exact words | Both). */
 export const SEARCH_MODES: { value: SearchMode; label: string }[] = [
@@ -149,7 +149,7 @@ export function configOf(
   };
 }
 
-export type SaveAction = "save" | "run-tests" | "reread" | "pieces";
+type SaveAction = "save" | "run-tests" | "reread" | "pieces";
 
 export interface SaveImpact {
   /** "1 unsaved change · Search by: Both" / "2 unsaved changes". */

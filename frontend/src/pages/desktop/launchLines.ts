@@ -6,7 +6,7 @@ import type { AuthUser } from "../../lib/api";
 import type { ProbeFailure } from "../../lib/backendStatus";
 import type { SubscriptionStatus } from "../../lib/engines";
 
-export type StatusTone = "done" | "warn" | "busy" | "note";
+type StatusTone = "done" | "warn" | "busy" | "note";
 
 export interface StatusLine {
   tone: StatusTone;

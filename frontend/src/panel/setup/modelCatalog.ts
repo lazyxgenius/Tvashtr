@@ -18,7 +18,7 @@ export function seatOf(node: Pick<TeamGraphNode, "kind">): Capability {
 }
 
 /** How the account runs a provider's models: its Desktop subscription, its API key, or not yet. */
-export type GroupState = "subscription" | "key" | "none";
+type GroupState = "subscription" | "key" | "none";
 
 export interface ModelGroup {
   provider: string;

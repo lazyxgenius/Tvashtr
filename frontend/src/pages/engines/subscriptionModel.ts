@@ -56,20 +56,20 @@ export const IDLE_UI: CardUi = {
 
 type CardBadgeVariant = "neutral" | "info" | "success" | "warning" | "danger";
 
-export interface CardBadge {
+interface CardBadge {
   variant: CardBadgeVariant;
   dot: boolean;
   text: string;
 }
 
-export type CardMessage =
+type CardMessage =
   | { kind: "text"; text: string; link?: { label: string; href: string } }
   /** The coral Terminal callout while a sign-in is pending (Eng-Flow-Grok-2). */
   | { kind: "terminal"; text: string }
   /** The amber PATH callout after a Refresh that still found nothing (Eng-Flow-Codex-2). */
   | { kind: "warn"; text: string };
 
-export type CardActionKind = "connect" | "cancel" | "refresh" | "disconnect" | "open-desktop";
+type CardActionKind = "connect" | "cancel" | "refresh" | "disconnect" | "open-desktop";
 
 export interface CardAction {
   kind: CardActionKind;
