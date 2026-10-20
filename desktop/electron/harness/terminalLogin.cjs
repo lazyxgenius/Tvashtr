@@ -68,7 +68,7 @@ async function openLoginInTerminal({
     const script = buildLoginScript({ provider, binaryPath, args, pathValue: env.PATH || "" });
     fs.writeFileSync(file, script, { mode: 0o700 });
     await execFile("open", ["-a", "Terminal", file], { env, timeout: 10000 });
-    return { opened: "terminal", script: file };
+    return { script: file };
   }
   // Linux / Windows: best effort — a detached login in the platform's terminal.
   const child =
@@ -85,7 +85,6 @@ async function openLoginInTerminal({
         });
   if (child && typeof child.unref === "function") child.unref();
   if (child && typeof child.on === "function") child.on("error", () => {});
-  return { opened: platform === "win32" ? "cmd" : "x-terminal-emulator" };
 }
 
 module.exports = { buildLoginScript, openLoginInTerminal };
