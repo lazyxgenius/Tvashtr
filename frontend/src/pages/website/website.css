@@ -3,10 +3,11 @@
 /* Hallmark · dismissed 3 · the start bar is the real canvas node's mark, as AgentNodeCard draws it */
 /* Hallmark · answered F15 · the ledgers and rows take 64px, small grids of cards keep tighter gaps */
 /* Hallmark · answered F3 · every display head here carries text-wrap: balance */
-/* Hallmark · waive 39b · FAQ rows are full-width rows, their height is the question's padding · they are not buttons in a bar */
-/* Hallmark · waive 44c · the team card runs past the fold on purpose, its first row in view · the operator's own layout */
-/* Hallmark · waive 59 · the gaps vary from 104px up, the small one is where the paper changes tone · tone carries that break */
+/* Hallmark · waive 39b · FAQ rows are full-width rows, not buttons in a bar · the questions read as rows, so the height comes from each question and its padding */
+/* Hallmark · waive 44c · the card crosses the fold with its first row in view · the team picture runs past the fold on purpose, as the operator drew it */
+/* Hallmark · waive 59 · gaps vary from 104px up, and tone changes at the small one · the demo video meets a band of paper there, and the tone carries the break */
 /* Hallmark · dismissed F25 · the phone keeps its shorter copy and four questions, website.md WEB-20..25 */
+/* Hallmark · waive 69 · the row is wiring, OQ-13 · the source on GitHub row carries the live stars count, so it stays */
 /* Hallmark · dismissed F20 · on a phone the switches' label takes its own row above them, on purpose */
 /* The public website (website.md; design Web-*, WbF-*). Exact px from the design's HTML. The
    design has no Tailwind preflight: where it relies on content-box sizing or inline svgs, that is
@@ -896,12 +897,23 @@
   gap: 8px;
 }
 .web-page:has(.web-lead) .web-head {
+  padding-inline: max(32px, calc((100% - 1200px) / 2));
   border-bottom: 0;
   background: var(--surface-page);
   backdrop-filter: none;
 }
-.web-page:has(.web-lead) .web-head .ds-logo__word {
-  display: none;
+@supports (animation-timeline: scroll()) {
+  .web-page:has(.web-lead) .web-head .ds-logo__word,
+  .web-m:has(.web-lead) .web-m__head .ds-logo__word {
+    animation: web-name linear both;
+    animation-timeline: scroll(root);
+    animation-range: 120px 200px;
+  }
+}
+@keyframes web-name {
+  from {
+    opacity: 0;
+  }
 }
 .web-page:has(.web-lead) .web-head__nav {
   margin-left: auto;
@@ -1063,6 +1075,9 @@
 }
 .tp__tip {
   fill: var(--accent);
+}
+.tp__tip--back {
+  fill: var(--accent-active);
 }
 .tp__loop {
   fill: none;
@@ -1322,9 +1337,11 @@
 }
 .web-video {
   position: relative;
+  overflow: hidden;
   width: 100%;
-  max-width: 1120px;
+  max-width: 1200px;
   aspect-ratio: 16 / 9;
+  border-radius: var(--radius-2xl);
   background: var(--panel-300);
 }
 .web-video__el {
@@ -1385,6 +1402,7 @@
 
 /* ---- Landing 1: the rest of the page ---- */
 .web-sec {
+  box-sizing: content-box;
   max-width: 1200px;
   margin: 0 auto;
   padding: 120px 32px 0;
@@ -1430,6 +1448,7 @@
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 24px;
+  box-sizing: content-box;
   max-width: 1200px;
   margin: 0 auto 112px;
   padding: 0 32px;
@@ -1565,17 +1584,22 @@
 
 /* A team, drawn with the real canvas's card and its lines behind the grid of cards. */
 .web-crew {
+  --g: 44px;
+  --foot: 56px;
+  --c1: calc((100% - var(--g)) / 4);
   position: relative;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 32px 28px;
-  padding-bottom: 48px;
+  grid-auto-rows: 1fr;
+  gap: var(--g);
+  padding-bottom: var(--foot);
 }
 .web-crew__lines {
   position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
+  top: 0;
+  left: var(--c1);
+  width: calc(100% - 2 * var(--c1));
+  height: calc(100% - var(--foot));
   overflow: visible;
 }
 .web-crew__lines path {
@@ -1584,9 +1608,51 @@
   stroke-width: 1.5;
   vector-effect: non-scaling-stroke;
 }
-.web-crew__lines .web-crew__back {
-  stroke: var(--accent-active);
-  stroke-dasharray: 5 5;
+.web-crew__n:nth-child(even)::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 100%;
+  width: var(--g);
+  height: 1.5px;
+  background: var(--accent);
+}
+.web-crew__n:nth-child(even)::before {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  top: calc(50% - 4px);
+  left: calc(100% + var(--g) - 9px);
+  width: 9px;
+  height: 9px;
+  background: var(--accent);
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
+}
+.web-crew__back {
+  position: absolute;
+  right: var(--c1);
+  bottom: 12px;
+  left: var(--c1);
+  height: calc(var(--foot) - 12px);
+  border: 1.5px dashed var(--accent-active);
+  border-top: 0;
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+.web-crew__tip {
+  position: absolute;
+  left: calc(var(--c1) - 4px);
+  width: 9px;
+  height: 9px;
+}
+.web-crew__tip--down {
+  top: calc((100% - var(--foot) + var(--g)) / 2 - 9px);
+  background: var(--accent);
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+.web-crew__tip--up {
+  bottom: calc(var(--foot) - 9px);
+  background: var(--accent-active);
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
 }
 .web-crew__n {
   position: relative;
@@ -1614,7 +1680,7 @@
   bottom: 0;
   left: 50%;
   transform: translateX(-50%);
-  padding: 1px 9px;
+  padding: 2px 9px;
   border-radius: var(--radius-pill);
   background: var(--accent-tint);
   color: var(--web-hot);
@@ -1899,9 +1965,6 @@
 .web-m .web-lead__lede {
   font-size: 17px;
 }
-.web-m:has(.web-lead) .web-m__head .ds-logo__word {
-  display: none;
-}
 .web-m .web-lead__actions {
   display: flex;
   flex-direction: column;
@@ -1970,7 +2033,7 @@
   padding: 16px;
 }
 .web-m .web-crew {
-  gap: 28px 16px;
+  --g: 28px;
 }
 .web-m .web-crew__n {
   padding: 8px;
@@ -2000,6 +2063,12 @@
   font-size: 16px;
   line-height: 1.5;
 }
+.web-m__way b {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 400;
+}
 .web-m .web-two-ways .web-sec__head + .web-m__way {
   margin-top: 28px;
 }
@@ -2008,5 +2077,9 @@
   .tp__toggle,
   .web-video__disc {
     transition: none;
+  }
+  .web-page:has(.web-lead) .web-head .ds-logo__word,
+  .web-m:has(.web-lead) .web-m__head .ds-logo__word {
+    animation: none;
   }
 }

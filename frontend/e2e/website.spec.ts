@@ -53,6 +53,29 @@ test.describe("the public website", () => {
     await expect(page.getByRole("heading", { name: "Sign in to Tvashtr" })).toBeVisible();
   });
 
+  test("the landing loads no video until a press, and the team picture answers its switches", async ({
+    page,
+  }) => {
+    const videos: string[] = [];
+    page.on("request", (r) => {
+      if (r.url().includes(".mp4")) videos.push(r.url());
+    });
+    await page.goto("/#/welcome");
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible({ timeout: 30_000 });
+    for (const id of ["product", "how", "domains", "two-ways", "faq"]) {
+      await expect(page.locator(`#${id}`)).toHaveCount(1);
+    }
+    const reviewer = page.getByRole("button", { name: "Reviewer" });
+    await reviewer.click();
+    await expect(reviewer).toHaveAttribute("aria-pressed", "false");
+    await expect(page.locator('[data-stop="rev"]')).toHaveCount(0);
+    await page.locator("#faq").scrollIntoViewIfNeeded();
+    await noSidewaysScroll(page);
+    expect(videos).toEqual([]);
+    await page.getByRole("button", { name: "Play the 1-minute demo, with sound" }).click();
+    await expect.poll(() => videos.length).toBeGreaterThan(0);
+  });
+
   test.describe("on a Mac with Apple silicon", () => {
     test.use({ userAgent: MAC_UA });
 

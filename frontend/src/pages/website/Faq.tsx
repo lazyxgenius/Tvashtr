@@ -2,7 +2,7 @@
  * The website's questions (website.md WEB-17, OQ-11, OQ-28): a single-open accordion. The 1440
  * landing opens the first answer on load; opening another closes it.
  */
-import { ArrowUp, ChevronDown } from "lucide-react";
+import { ChevronUp, ChevronDown } from "lucide-react";
 import { useId, useState } from "react";
 
 import type { Config } from "../../lib/api";
@@ -62,7 +62,7 @@ export function Faq({
     <div className={phone ? "web-faq web-faq--phone" : "web-faq"}>
       {items.map((item, i) => {
         const expanded = open === i;
-        const Icon = expanded ? ArrowUp : ChevronDown;
+        const Icon = expanded ? ChevronUp : ChevronDown;
         return (
           <div key={item.q} className="web-faq__item">
             <button

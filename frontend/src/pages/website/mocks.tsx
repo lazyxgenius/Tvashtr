@@ -174,13 +174,12 @@ const CREW: { title: string; does: string; model: string; Icon: LucideIcon; star
 ];
 
 /** Why Tvashtr, "Your team is yours": a team you drew, with the Reviewer's way back. It flows with
- * its column, so its lines are percentages of the grid the cards sit in. */
+ * its column, so its lines hang off the grid the cards sit in (website.css, `.web-crew`). */
 export function TeamFragment() {
   return (
     <div className="web-crew" data-ui aria-hidden="true">
       <svg className="web-crew__lines" viewBox="0 0 100 100" preserveAspectRatio="none">
-        <path d="M25 22H75C75 50 25 50 25 66H75" />
-        <path className="web-crew__back" d="M75 66C75 104 25 104 25 66" />
+        <path d="M100 25V50H0V75" />
       </svg>
       {CREW.map(({ title, does, model, Icon, start }) => (
         <div key={title} className={`web-crew__n${start ? " web-crew__n--start" : ""}`}>
@@ -194,6 +193,9 @@ export function TeamFragment() {
           <span className="tp__m">{model}</span>
         </div>
       ))}
+      <span className="web-crew__back" />
+      <span className="web-crew__tip web-crew__tip--down" />
+      <span className="web-crew__tip web-crew__tip--up" />
       <span className="web-crew__label">changes requested</span>
     </div>
   );

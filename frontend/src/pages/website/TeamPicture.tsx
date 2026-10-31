@@ -184,9 +184,9 @@ function layout(width: number): Layout {
   for (const stop of STOPS) {
     const [w, h] = size(stop.kind);
     at[stop.id] = { x, y: y + h / 2, w, h };
-    y += h + 22;
+    y += h + 30;
   }
-  return { wide, width, height: y - 22, at };
+  return { wide, width, height: y - 30, at };
 }
 
 /** The line from one stop to the next one on the path. */
@@ -439,6 +439,17 @@ export function TeamPicture({ id }: { id?: string }) {
             >
               <path className="tp__tip" d="M0 0L8 4L0 8z" />
             </marker>
+            <marker
+              id="tp-back"
+              viewBox="0 0 8 8"
+              refX="7"
+              refY="4"
+              markerWidth="7"
+              markerHeight="7"
+              orient="auto-start-reverse"
+            >
+              <path className="tp__tip tp__tip--back" d="M0 0L8 4L0 8z" />
+            </marker>
           </defs>
           {stops.slice(1).map((stop, i) => (
             <path
@@ -449,8 +460,10 @@ export function TeamPicture({ id }: { id?: string }) {
               d={edgePath(place.at[order[i]], place.at[stop.id], place.wide)}
             />
           ))}
-          {tests && <path data-loop="tests" className="tp__loop" d={tests.d} />}
-          {rev && <path data-loop="rev" className="tp__loop" d={rev.d} />}
+          {tests && (
+            <path data-loop="tests" className="tp__loop" markerEnd="url(#tp-back)" d={tests.d} />
+          )}
+          {rev && <path data-loop="rev" className="tp__loop" markerEnd="url(#tp-back)" d={rev.d} />}
         </svg>
         {stops.map((stop) => {
           const box = place.at[stop.id];

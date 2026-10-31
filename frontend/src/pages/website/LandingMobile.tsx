@@ -113,10 +113,10 @@ export function LandingMobile({
         <section id="two-ways" className="web-sec web-two-ways">
           <Head title="Website or Mac app" />
           <div className="web-m__way">
-            <b>Website</b> · runs on Tvashtr’s servers with your API keys.
+            <b>Website</b> Runs on Tvashtr’s servers with your API keys.
           </div>
           <div className="web-m__way">
-            <b>Desktop app</b> · runs your Claude or Grok plan’s steps on your Mac.
+            <b>Desktop app</b> Runs your Claude or Grok plan’s steps on your Mac.
           </div>
         </section>
 
