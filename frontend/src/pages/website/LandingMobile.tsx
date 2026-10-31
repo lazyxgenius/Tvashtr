@@ -13,11 +13,11 @@ import { DOCS_URL, GITHUB_REPO_URL } from "../../lib/desktopDownload";
 import { useModalDialog } from "../../lib/useModalDialog";
 import { GithubIcon } from "../desktop/icons";
 import { COPY } from "./copy";
-import { PosterVideo, VideoDialog, watch } from "./DemoVideo";
+import { PosterVideo, VideoDialog } from "./DemoVideo";
 import { SendLink } from "./DownloadPage";
 import { Faq, faqItems } from "./Faq";
-import { Head, WhyRows } from "./LandingParts";
-import { DEMO, REEL } from "./media";
+import { GapSection, Head, HowSection, WhoSection, WhyRows } from "./LandingParts";
+import { DEMO, REEL, watch } from "./media";
 import { onSectionLink } from "./sections";
 import { TeamPicture } from "./TeamPicture";
 import { useLandingMotion } from "./useLandingMotion";
@@ -37,8 +37,7 @@ export function LandingMobile({
   const openSheet = () => setSheet(true);
   const reel = useRef<HTMLVideoElement>(null);
   const [fullRun, setFullRun] = useState(false);
-  const page = useRef<HTMLElement>(null);
-  useLandingMotion(page);
+  useLandingMotion();
 
   return (
     <div className="web-page web-m">
@@ -50,9 +49,9 @@ export function LandingMobile({
           <Menu size={16} strokeWidth={1.6} aria-hidden />
         </IconButton>
       </header>
-      <main ref={page} id="main" tabIndex={-1}>
-        <div className="web-hero web-warm">
-          <section className="web-lead">
+      <main id="main" tabIndex={-1}>
+        <section className="web-hero web-warm">
+          <div className="web-lead">
             <p className="web-lead__name">Tvashtr</p>
             <h1 className="web-lead__title">Compose your own team of AI agents</h1>
             <p className="web-lead__lede">
@@ -77,13 +76,13 @@ export function LandingMobile({
               <span>{COPY.phonePill}</span>
               <span>Tvashtr is built for a computer screen.</span>
             </div>
-          </section>
+          </div>
 
-          {/* "How it works" on a phone: the team at work (the 1440 cards aren't drawn at 390). */}
-          <section className="web-counter">
+          {/* "How it works" on a phone: the team at work. */}
+          <div className="web-counter">
             <TeamPicture id="how" />
-          </section>
-        </div>
+          </div>
+        </section>
 
         <section className="web-demo">
           <h2 className="web-demo__title">See it in a minute</h2>
@@ -100,13 +99,19 @@ export function LandingMobile({
           )}
         </section>
 
+        <div className="web-band">
+          <GapSection />
+        </div>
+
         <section id="product" className="web-sec web-why">
-          <Head eyebrow="Why Tvashtr" title="Composable. Legible. Steerable." />
+          <Head title="Composable. Legible. Steerable." />
           <WhyRows />
         </section>
 
+        <HowSection />
+
         <section id="two-ways" className="web-sec web-two-ways">
-          <Head eyebrow="Two ways to run" title="Website or Mac app" />
+          <Head title="Website or Mac app" />
           <div className="web-m__way">
             <b>Website</b> · runs on Tvashtr’s servers with your API keys.
           </div>
@@ -115,10 +120,14 @@ export function LandingMobile({
           </div>
         </section>
 
-        <section id="faq" className="web-sec web-questions">
-          <Head eyebrow="Questions" title="Before you start." />
-          <Faq items={faqItems(config).slice(0, 4)} initialOpen={null} phone />
-        </section>
+        <WhoSection />
+
+        <div className="web-band">
+          <section id="faq" className="web-sec web-questions">
+            <Head title="Before you start." />
+            <Faq items={faqItems(config).slice(0, 4)} initialOpen={null} phone />
+          </section>
+        </div>
 
         <section className="web-close web-warm">
           <div data-rise>

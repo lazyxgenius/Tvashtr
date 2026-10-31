@@ -16,3 +16,16 @@ export const DEMO: Media = {
   poster: "/media/demo-2min-poster.webp",
   captions: "/media/demo-2min.en.vtt",
 };
+
+export function playWithSound(video: HTMLVideoElement | null): void {
+  if (!video) return;
+  video.muted = false;
+  void video.play();
+}
+
+/** The hero's "Watch the demo": bring the player into view and start it, in the same press. */
+export function watch(video: HTMLVideoElement | null): void {
+  const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  video?.scrollIntoView?.({ behavior: reduce ? "auto" : "smooth", block: "center" });
+  playWithSound(video);
+}

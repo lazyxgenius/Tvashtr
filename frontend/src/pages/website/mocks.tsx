@@ -177,7 +177,7 @@ const CREW: { title: string; does: string; model: string; Icon: LucideIcon; star
  * its column, so its lines are percentages of the grid the cards sit in. */
 export function TeamFragment() {
   return (
-    <div className="web-crew" aria-hidden="true">
+    <div className="web-crew" data-ui aria-hidden="true">
       <svg className="web-crew__lines" viewBox="0 0 100 100" preserveAspectRatio="none">
         <path d="M25 22H75C75 50 25 50 25 66H75" />
         <path className="web-crew__back" d="M75 66C75 104 25 104 25 66" />
@@ -202,7 +202,7 @@ export function TeamFragment() {
 /** Why Tvashtr, "Steerable live documents": the spec with a line added mid-run. */
 export function SpecMock() {
   return (
-    <div className="web-mock-card" aria-hidden="true">
+    <div className="web-mock-card" data-ui aria-hidden="true">
       <div className="web-mock__row">
         <FileText size={16} strokeWidth={1.6} className="web-mock__ink" aria-hidden />
         <span className="web-mock-card__title">Spec · refund button</span>
@@ -226,7 +226,7 @@ export function SpecMock() {
 /** Why Tvashtr, "Domains": an answer that shows the passage it came from. */
 export function DomainMock() {
   return (
-    <div className="web-mock-card" aria-hidden="true">
+    <div className="web-mock-card" data-ui aria-hidden="true">
       <div className="web-mock__row">
         <BookOpen size={16} strokeWidth={1.6} className="web-mock__ink" aria-hidden />
         <span className="web-mock-card__title">Support docs</span>
@@ -248,7 +248,7 @@ export function DomainMock() {
  * buttons are pictures: no handlers, never focusable (WEB-10). */
 export function GateMock() {
   return (
-    <div className="web-gates" aria-hidden="true">
+    <div className="web-gates" data-ui aria-hidden="true">
       <div className="web-gates__gate">
         <div className="web-mock__row">
           <ShieldCheck size={16} strokeWidth={1.6} className="web-gates__shield" aria-hidden />

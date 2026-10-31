@@ -6,13 +6,12 @@
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
-import type { RefObject } from "react";
 
 gsap.registerPlugin(useGSAP);
 
 const ARRIVE = "expo.out";
 
-export function useLandingMotion(root: RefObject<HTMLElement | null>): void {
+export function useLandingMotion(): void {
   useGSAP(
     () => {
       const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? true;
@@ -80,6 +79,6 @@ export function useLandingMotion(root: RefObject<HTMLElement | null>): void {
       }
       void document.fonts?.ready.then(() => ScrollTrigger.refresh());
     },
-    { scope: root },
+    { scope: "#main" },
   );
 }

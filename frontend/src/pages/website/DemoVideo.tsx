@@ -7,7 +7,7 @@ import { type RefObject, useEffect, useRef, useState } from "react";
 
 import { IconButton } from "../../design-system/components";
 import { useModalDialog } from "../../lib/useModalDialog";
-import type { Media } from "./media";
+import { type Media, playWithSound } from "./media";
 import { useScrollLock } from "./useScrollLock";
 
 let playing: HTMLVideoElement | null = null;
@@ -73,19 +73,6 @@ export function PosterVideo({
       )}
     </div>
   );
-}
-
-function playWithSound(video: HTMLVideoElement | null): void {
-  if (!video) return;
-  video.muted = false;
-  void video.play();
-}
-
-/** The hero's "Watch the demo": bring the player into view and start it, in the same press. */
-export function watch(video: HTMLVideoElement | null): void {
-  const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-  video?.scrollIntoView?.({ behavior: reduce ? "auto" : "smooth", block: "center" });
-  playWithSound(video);
 }
 
 /** The secondary video, in a lightbox with its captions on. Escape or Close returns to the page. */
