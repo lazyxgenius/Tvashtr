@@ -4,6 +4,7 @@
     $PY video/demo/qa.py cuts        # the frames either side of every cut → video/out/demo/work/cuts-N.png
     $PY video/demo/qa.py film        # checks 1–4, 6 and the film's part of 7
     $PY video/demo/qa.py files       # check 7 for every other file, and check 8's hashes
+    $PY video/demo/qa.py privacy     # check 5's "nothing private": the text of every frame (macOS Vision) against patterns
 """
 
 import json
@@ -256,5 +257,31 @@ def file_checks():
     print("ALL FILE CHECKS", "PASS" if ok else "FAIL")
 
 
+def privacy():
+    """OCR two frames a second of the film plus the thumbnail, both posters and the hero loop; grep for emails, personal paths,
+    keys and tokens (the agents' sandbox paths and the product's own words about keys are listed, not hidden)."""
+    exe, shots = WORK / "ocr-bin", WORK / "ocr-frames"
+    if not exe.exists():
+        sh(["swiftc", "-O", str(ROOT / "video/demo/ocr.swift"), "-o", str(exe)])
+    shots.mkdir(exist_ok=True)
+    for f in shots.glob("*"):
+        f.unlink()
+    sh(["ffmpeg", "-y", "-v", "error", "-i", str(FILM), "-vf", "fps=2", str(shots / "film%04d.png")])
+    sh(["ffmpeg", "-y", "-v", "error", "-i", str(OUT / "hero-loop.mp4"), "-vf", "fps=1", str(shots / "hero%02d.png")])
+    for name in ("demo-poster.webp", "hero-poster.webp"):
+        sh(["ffmpeg", "-y", "-v", "error", "-i", str(OUT / name), str(shots / (name + ".png"))])
+    sh(["cp", str(OUT / "youtube-thumbnail.jpg"), str(shots / "thumb.jpg")])
+    files = sorted(str(p) for p in shots.glob("*.*"))
+    text = subprocess.run([str(exe), *files], capture_output=True, text=True).stdout
+    pats = {"email": r"[A-Za-z0-9._-]{2,}@[A-Za-z0-9-]{2,}\.[a-z]{2,}", "personal path": r"/Users/|adimac|C:\\Users|gmail",
+            "key / token": r"sk-[A-Za-z0-9]{8,}|ghp_|gho_|xai-[A-Za-z0-9]|AIza|Bearer |eyJ[A-Za-z0-9]{10,}|\b[A-Za-z0-9]{32,}\b"}
+    hits = {k: sorted({l.split("\t", 1)[-1] for l in text.splitlines() if re.search(p, l, re.I)}) for k, p in pats.items()}
+    sandbox = sorted({re.sub(r".*?(/home/openhands/\S+).*", r"\1", l.split("\t", 1)[-1]) for l in text.splitlines() if "/home/openhands" in l})
+    print(f"PRIVACY: {len(files)} images, {len(text.splitlines())} lines of text read → " + "; ".join(f"{k}: {v or 'none'}" for k, v in hits.items()))
+    print(f"  the agent sandbox's own paths in the pytest output ({len(sandbox)} distinct, none personal): {sandbox[:2]} …")
+    print("  on screen by design: the private repo's name lazyxgenius/trade_mcp (PR page header with its lock icon, Home's repo chip, the repo picker), "
+          "the GitHub account's avatar on the PR page, run ids and branch names")
+
+
 if __name__ == "__main__":
-    {"cuts": cuts_sheets, "film": film_checks, "files": file_checks}[sys.argv[1]]()
+    {"cuts": cuts_sheets, "film": film_checks, "files": file_checks, "privacy": privacy}[sys.argv[1]]()

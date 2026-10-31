@@ -26,7 +26,7 @@ $PY video/demo/lines.py          # their endings and loudness against the 11 old
 $PY video/demo/build.py          # demo-2min.mp4, captions, cuts.json, contact sheet (cached pieces: only changed shots re-encode)
 $PY video/demo/assets.py         # thumbnail, both posters, the hero loop, hero-loop.json, the YouTube description
 # 3. the brief's §6 checks
-$PY video/demo/qa.py cuts && $PY video/demo/qa.py film && $PY video/demo/qa.py files
+$PY video/demo/qa.py cuts && $PY video/demo/qa.py film && $PY video/demo/qa.py files && $PY video/demo/qa.py privacy
 ```
 
 | `video/demo/` | What |
@@ -36,6 +36,7 @@ $PY video/demo/qa.py cuts && $PY video/demo/qa.py film && $PY video/demo/qa.py f
 | `voice-manifest.json` | their renders (seed, transcript, words, verdict) |
 | `lines.py` · `build.py` · `assets.py` · `qa.py` | line gates · the cut · the side files · the checks |
 | `thumb.html` · `shot.mjs` | the thumbnail page (the brand type) and the Chromium screenshot that renders it |
+| `ocr.swift` | the privacy check: reads the text of every frame (macOS Vision) so `qa.py privacy` can grep it |
 
 | `video/out/demo/` | What |
 |---|---|
