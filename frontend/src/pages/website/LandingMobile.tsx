@@ -4,8 +4,8 @@
  * the closing button all open the "Best on a computer" sheet (OQ-24), which sends the page to a
  * computer instead of emailing a sign-in link (no email service, OQ-10).
  */
-import { Download, Mail, Menu, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Download, Mail, Menu, Play, X } from "lucide-react";
+import { useRef, useState } from "react";
 
 import { Button, ButtonLink, IconButton, Logo } from "../../design-system/components";
 import type { AuthUser, Config } from "../../lib/api";
@@ -13,10 +13,13 @@ import { DOCS_URL, GITHUB_REPO_URL } from "../../lib/desktopDownload";
 import { useModalDialog } from "../../lib/useModalDialog";
 import { GithubIcon } from "../desktop/icons";
 import { COPY } from "./copy";
+import { PosterVideo, VideoDialog, watch } from "./DemoVideo";
 import { SendLink } from "./DownloadPage";
 import { Faq, faqItems } from "./Faq";
-import { PhoneTeamMock } from "./mocks";
+import { DEMO, REEL } from "./media";
 import { onSectionLink } from "./sections";
+import { TeamPicture } from "./TeamPicture";
+import { useScrollLock } from "./useScrollLock";
 
 const WHY = [
   ["Your team is yours", "Draw the process you actually use: roles, handoffs, loops and gates."],
@@ -37,6 +40,8 @@ export function LandingMobile({
   const [menu, setMenu] = useState(false);
   const [sheet, setSheet] = useState(false);
   const openSheet = () => setSheet(true);
+  const reel = useRef<HTMLVideoElement>(null);
+  const [fullRun, setFullRun] = useState(false);
 
   return (
     <div className="web-page web-m">
@@ -49,26 +54,51 @@ export function LandingMobile({
         </IconButton>
       </header>
       <main id="main" tabIndex={-1}>
-        <section className="web-m__hero">
-          <span className="web-badge web-badge--cream">{COPY.phonePill}</span>
-          <h1 className="web-m__title">
-            Compose your own team of AI agents, <em>not just use one.</em>
-          </h1>
-          <p className="web-m__lede">
+        <section className="web-lead">
+          <p className="web-lead__name">Tvashtr</p>
+          <h1 className="web-lead__title">Compose your own team of AI agents</h1>
+          <p className="web-lead__lede">
             Draw the team on a canvas. It works on your GitHub repo and hands back a reviewed pull
             request.
           </p>
-          <Button variant="primary" size="lg" fullWidth onClick={openSheet}>
-            <GithubIcon size={16} />
-            <span>Start building</span>
-          </Button>
-          <Button variant="secondary" size="lg" fullWidth onClick={openSheet}>
-            <Download size={16} strokeWidth={1.6} aria-hidden />
-            <span>Download for Mac</span>
-          </Button>
-          <div className="web-m__note">Tvashtr is built for a computer screen.</div>
-          {/* "How it works" on a phone: the team at work (the 1440 cards aren't drawn at 390). */}
-          <PhoneTeamMock id="how" />
+          <div className="web-lead__actions">
+            <Button variant="primary" size="lg" fullWidth onClick={openSheet}>
+              <GithubIcon size={16} />
+              <span>Start building</span>
+            </Button>
+            <Button variant="secondary" size="lg" fullWidth onClick={openSheet}>
+              <Download size={16} strokeWidth={1.6} aria-hidden />
+              <span>Download for Mac</span>
+            </Button>
+            <button type="button" className="web-watch" onClick={() => watch(reel.current)}>
+              <Play size={16} strokeWidth={1.6} aria-hidden />
+              Watch the demo · 1 min
+            </button>
+          </div>
+          <div className="web-lead__meta">
+            <span>{COPY.phonePill}</span>
+            <span>Tvashtr is built for a computer screen.</span>
+          </div>
+        </section>
+
+        {/* "How it works" on a phone: the team at work (the 1440 cards aren't drawn at 390). */}
+        <section className="web-counter">
+          <TeamPicture id="how" />
+        </section>
+
+        <section className="web-demo">
+          <h2 className="web-demo__title">See it in a minute</h2>
+          <PosterVideo media={REEL} label="Play the 1-minute demo, with sound" videoRef={reel} />
+          <button type="button" className="web-watch" onClick={() => setFullRun(true)}>
+            See one full run · 2 min
+          </button>
+          {fullRun && (
+            <VideoDialog
+              media={DEMO}
+              title="One full run · 2 min"
+              onClose={() => setFullRun(false)}
+            />
+          )}
         </section>
 
         <section id="product" className="web-m__sec web-m__sec--why">
@@ -137,17 +167,6 @@ export function LandingMobile({
       {sheet && <PhoneSheet onClose={() => setSheet(false)} />}
     </div>
   );
-}
-
-/** A scrim or full-screen layer holds the page still while it's open. */
-function useScrollLock() {
-  useEffect(() => {
-    const before = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = before;
-    };
-  }, []);
 }
 
 /** WbF-Mob-2: the full-screen menu (WEB-23). */

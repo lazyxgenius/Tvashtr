@@ -1,0 +1,102 @@
+WEBVTT
+
+00:00:00.470 --> 00:00:04.220
+This pull request adds a new
+indicator to a real trading repo.
+
+00:00:04.770 --> 00:00:10.530
+An AI team planned it, wrote it, tested it
+and reviewed it. You designed that team.
+
+00:00:11.740 --> 00:00:12.950
+This is Tvashtr.
+
+00:00:15.740 --> 00:00:18.120
+Now build the team. Start from a template.
+
+00:00:19.310 --> 00:00:24.760
+Every agent is a blank box: its job is
+whatever you write in its instructions.
+
+00:00:25.940 --> 00:00:28.770
+Then wire in the checks.
+You approve the spec.
+
+00:00:29.100 --> 00:00:33.410
+Tvashtr runs your tests, and a
+failure loops back to the engineer.
+
+00:00:33.950 --> 00:00:36.280
+The reviewer can send work back too.
+
+00:00:36.710 --> 00:00:40.790
+Guardrails scan for secrets and
+block edits to the servers folder.
+
+00:00:41.970 --> 00:00:43.610
+Now give the team a task.
+
+00:00:43.970 --> 00:00:48.500
+Pick the repo, the branch, and the
+one folder it may touch. Launch.
+
+00:00:49.660 --> 00:00:54.240
+First, the product manager writes
+a spec, and the run waits for you.
+
+00:00:54.790 --> 00:00:56.810
+The spec is a real document.
+
+00:00:57.070 --> 00:01:01.450
+Fix a line, approve, and only
+then is any code written.
+
+00:01:02.640 --> 00:01:06.940
+The engineer works on its own copy of
+your repo, on your Claude subscription.
+
+00:01:07.420 --> 00:01:09.900
+Then Tvashtr runs your tests itself.
+
+00:01:10.380 --> 00:01:14.990
+The first build fails, and the last twelve
+lines go straight back to the engineer.
+
+00:01:16.170 --> 00:01:19.720
+Round two passes: six
+hundred and sixty-five tests.
+
+00:01:19.970 --> 00:01:24.050
+Only then does the reviewer, on Grok,
+check the change against the spec.
+
+00:01:24.600 --> 00:01:29.230
+It approves, citing Tvashtr's test
+result, not the engineer's word.
+
+00:01:30.400 --> 00:01:36.520
+A secret scan and a forbidden-paths check
+both pass. Tvashtr opens the pull request.
+
+00:01:36.930 --> 00:01:39.920
+Done in ten minutes,
+on your subscriptions.
+
+00:01:41.110 --> 00:01:44.090
+Change an agent, and the
+team keeps both versions.
+
+00:01:44.460 --> 00:01:48.120
+Then compare them on a real task,
+taking turns on your subscription.
+
+00:01:48.660 --> 00:01:52.440
+Version two did better: its
+reviewer passed one more test.
+
+00:01:53.640 --> 00:01:55.570
+On your desktop, or on the web.
+
+00:01:56.580 --> 00:01:59.560
+Tvashtr. Your team. Your rules.
+

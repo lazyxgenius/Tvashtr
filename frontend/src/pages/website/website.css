@@ -1597,3 +1597,420 @@
   line-height: 1.55;
   color: var(--ink-600);
 }
+
+/* ---- Landing 1: the lead, the team and the demo (prompts/landing-1.md) ---- */
+.web-page .ds-btn--primary {
+  --_fg: var(--ink-900);
+}
+.web-lead .ds-btn > span,
+.web-m .web-lead .ds-btn {
+  gap: 8px;
+}
+.web-page:has(.web-lead) .web-head {
+  border-bottom: 0;
+  background: var(--surface-page);
+  backdrop-filter: none;
+}
+.web-page:has(.web-lead) .web-head .ds-logo__word {
+  display: none;
+}
+.web-page:has(.web-lead) .web-head__nav {
+  margin-left: auto;
+}
+.web-page:has(.web-lead) .web-head__right {
+  margin-left: 0;
+}
+.web-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.web-lead {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 44px 32px 56px;
+  text-align: center;
+}
+.web-lead__name {
+  margin: 0 -0.5em 0 0;
+  font-family: var(--font-display);
+  font-size: clamp(32px, 5.4vw, 80px);
+  line-height: 1;
+  letter-spacing: 0.5em;
+  text-transform: uppercase;
+}
+.web-lead__title {
+  margin: 22px 0 0;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: clamp(30px, 3.5vw, 52px);
+  line-height: 1.1;
+  letter-spacing: -0.015em;
+}
+.web-lead__lede {
+  max-width: 60ch;
+  margin: 18px 0 0;
+  font-size: 18px;
+  line-height: 1.5;
+  color: var(--ink-900);
+}
+.web-lead > .web-ctas {
+  margin: 28px 0 0;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+}
+.web-watch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 8px;
+  border: 0;
+  background: none;
+  color: var(--ink-900);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  cursor: pointer;
+}
+.web-watch:hover {
+  color: var(--accent-active);
+}
+.web-lead__meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 24px;
+  margin-top: 20px;
+  font-size: 14px;
+  color: var(--ink-500);
+}
+
+/* The counter: one step of tone across the page, with the team set on it. */
+.web-counter {
+  padding: 40px 32px 48px;
+  background: var(--cream-200);
+}
+.tp {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+.tp__stage {
+  position: relative;
+  width: 100%;
+}
+.tp__lines {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+}
+.tp__edge {
+  fill: none;
+  stroke: var(--stone-400);
+  stroke-width: 1.5;
+}
+.tp__tip {
+  fill: var(--stone-400);
+}
+.tp__loop {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 5;
+}
+.tp__n {
+  position: absolute;
+  box-sizing: border-box;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 8px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: var(--surface-card);
+  line-height: 1.3;
+}
+.tp__n--gate {
+  align-items: center;
+  border-radius: 999px;
+  text-align: center;
+}
+.tp__n--task,
+.tp__n--pr {
+  align-items: center;
+  border-radius: 10px;
+}
+.tp__n--start {
+  border-left: 3px solid var(--accent);
+}
+.tp__ring {
+  position: absolute;
+  inset: -3px;
+  border: 2px solid var(--accent);
+  border-radius: inherit;
+  opacity: 0;
+  pointer-events: none;
+}
+.tp__lit {
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  background: var(--accent);
+}
+.tp__t {
+  position: relative;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.tp__states {
+  position: relative;
+  display: grid;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.tp__st {
+  grid-area: 1 / 1;
+  color: var(--ink-500);
+  opacity: 0;
+}
+.tp__st--hot {
+  color: var(--accent-active);
+}
+.tp__st--end {
+  opacity: 1;
+}
+.tp__m {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--ink-500);
+}
+.tp__label {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  padding: 1px 9px;
+  border-radius: 999px;
+  background: var(--accent-tint);
+  color: var(--accent-active);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.tp__dot {
+  position: absolute;
+  top: -6px;
+  left: -6px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: 0;
+}
+.tp__foot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+.tp__caps {
+  display: grid;
+  justify-items: center;
+  font-family: var(--font-display);
+  font-size: 24px;
+  line-height: 1.25;
+  text-align: center;
+}
+.tp__cap {
+  grid-area: 1 / 1;
+  opacity: 0;
+}
+.tp__cap--end {
+  opacity: 1;
+}
+.tp__try {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px 10px;
+  font-size: 15px;
+}
+.tp__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-900);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  transition: transform 120ms ease;
+}
+.tp__toggle:active {
+  transform: scale(0.97);
+}
+.tp__toggle[aria-pressed="true"] {
+  border-color: var(--ink-900);
+  background: var(--ink-900);
+  color: var(--text-inverse);
+}
+.tp:not(.tp--wide) .tp__foot {
+  order: -1;
+}
+
+/* The demo: one big poster, one press. */
+.web-demo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+  padding: 96px 32px 48px;
+}
+.web-demo__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: clamp(30px, 3.5vw, 52px);
+  line-height: 1.1;
+  letter-spacing: -0.015em;
+}
+.web-video {
+  position: relative;
+  width: 100%;
+  max-width: 1120px;
+  aspect-ratio: 16 / 9;
+  background: var(--panel-300);
+}
+.web-video__el {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.web-video__play {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+.web-video__disc {
+  display: grid;
+  place-items: center;
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--ink-900);
+  transition: transform 160ms ease;
+}
+.web-video__play:hover .web-video__disc {
+  transform: scale(1.06);
+}
+.web-video__play:focus-visible {
+  outline: 3px solid var(--accent-active);
+  outline-offset: -3px;
+}
+.web-lightbox__scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: var(--ink-900);
+  opacity: 0.8;
+}
+.web-lightbox {
+  position: fixed;
+  z-index: 41;
+  top: 50%;
+  left: 50%;
+  width: min(1120px, calc(100vw - 32px));
+  transform: translate(-50%, -50%);
+  background: var(--surface-page);
+}
+.web-lightbox__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 8px 8px 16px;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+/* The phone's lead. */
+.web-m .web-lead {
+  align-items: flex-start;
+  padding: 28px 16px 40px;
+  text-align: left;
+}
+.web-m .web-lead__name {
+  font-size: 9.4vw;
+}
+.web-m .web-lead__lede {
+  font-size: 17px;
+}
+.web-m:has(.web-lead) .web-m__head .ds-logo__word {
+  display: none;
+}
+.web-m .web-lead__actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  width: 100%;
+  margin-top: 24px;
+}
+.web-m .web-lead__meta {
+  justify-content: flex-start;
+}
+.web-m .web-counter {
+  padding: 32px 16px 40px;
+}
+.web-m .tp__caps {
+  min-height: 56px;
+  justify-items: start;
+  font-size: 22px;
+  text-align: left;
+}
+.web-m .tp__foot,
+.web-m .tp__try {
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+.web-m .tp__try > span {
+  width: 100%;
+}
+.web-m .web-demo {
+  align-items: flex-start;
+  padding: 56px 16px 32px;
+}
+.web-m .web-video__disc {
+  width: 64px;
+  height: 64px;
+}
+.web-m .web-demo .web-watch {
+  padding-left: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tp__toggle,
+  .web-video__disc {
+    transition: none;
+  }
+}

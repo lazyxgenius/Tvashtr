@@ -12,19 +12,23 @@ import {
   Globe,
   KeyRound,
   Monitor,
+  Play,
   Users,
   X,
   Zap,
 } from "lucide-react";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 
 import { ButtonLink } from "../../design-system/components";
 import type { AuthUser, Config } from "../../lib/api";
 import { getSiteInfo } from "../../lib/api/site";
 import { GithubIcon } from "../desktop/icons";
 import { COPY } from "./copy";
+import { PosterVideo, VideoDialog, watch } from "./DemoVideo";
 import { Faq, faqItems } from "./Faq";
-import { DomainMock, GateMock, ProductMock, SpecMock, TeamCanvasMock } from "./mocks";
+import { DEMO, REEL } from "./media";
+import { DomainMock, GateMock, SpecMock, TeamCanvasMock } from "./mocks";
+import { TeamPicture } from "./TeamPicture";
 
 const WHY: {
   id?: string;
@@ -168,6 +172,8 @@ export function LandingPage({
 }) {
   const start = user ? "#/home" : "#/signin";
   const [stars, setStars] = useState<number | null>(null);
+  const reel = useRef<HTMLVideoElement>(null);
+  const [fullRun, setFullRun] = useState(false);
   useEffect(() => {
     let live = true;
     void getSiteInfo().then((info) => {
@@ -180,26 +186,44 @@ export function LandingPage({
 
   return (
     <>
-      <section className="web-hero">
-        <div className="web-hero__in">
-          <span className="web-badge web-badge--cream">{COPY.heroPill}</span>
-          <h1 className="web-hero__title">
-            Compose your own team of AI agents, <em>not just use one.</em>
-          </h1>
-          <p className="web-hero__lede">
-            Draw the team on a canvas: who plans, who builds, who reviews, and where you step in. It
-            works on your real GitHub repo and hands back a reviewed pull request.
-          </p>
+      <section className="web-lead">
+        <p className="web-lead__name">Tvashtr</p>
+        <h1 className="web-lead__title">Compose your own team of AI agents</h1>
+        <p className="web-lead__lede">
+          Draw the team on a canvas: who plans, who builds, who reviews, and where you step in. It
+          works on your real GitHub repo and hands back a reviewed pull request.
+        </p>
+        <div className="web-ctas">
           <Ctas start={start} />
-          <div className="web-hero__meta">
-            <span>{COPY.heroMeta}</span>
-            <span>No card needed</span>
-            <span>Desktop: Mac only for now</span>
-          </div>
+          <button type="button" className="web-watch" onClick={() => watch(reel.current)}>
+            <Play size={16} strokeWidth={1.6} aria-hidden />
+            Watch the demo · 1 min
+          </button>
         </div>
-        <div className="web-hero__mock">
-          <ProductMock />
+        <div className="web-lead__meta">
+          <span>{COPY.heroMeta}</span>
+          <span>No card needed</span>
+          <span>Desktop: Mac only for now</span>
         </div>
+      </section>
+
+      <section className="web-counter">
+        <TeamPicture />
+      </section>
+
+      <section className="web-demo">
+        <h2 className="web-demo__title">See it in a minute</h2>
+        <PosterVideo media={REEL} label="Play the 1-minute demo, with sound" videoRef={reel} />
+        <button type="button" className="web-watch" onClick={() => setFullRun(true)}>
+          See one full run · 2 min
+        </button>
+        {fullRun && (
+          <VideoDialog
+            media={DEMO}
+            title="One full run · 2 min"
+            onClose={() => setFullRun(false)}
+          />
+        )}
       </section>
 
       <div className="web-sec web-sec--proof">
