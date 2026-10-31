@@ -139,6 +139,16 @@ const CAPTIONS = {
 type CaptionKey = keyof typeof CAPTIONS;
 const FINISHED: CaptionKey = "pr";
 
+/** The last caption says what the team the visitor kept actually did. */
+function ending(removed: Optional[]): string {
+  const noTests = removed.includes("tests");
+  const noReview = removed.includes("rev");
+  if (noTests && noReview) return "A pull request: no tests ran, and no one reviewed it.";
+  if (noReview) return "A pull request, but no one reviewed it.";
+  if (noTests) return "A reviewed pull request, but your tests never ran.";
+  return CAPTIONS[FINISHED];
+}
+
 const WIDE_AT = 1000;
 
 interface Box {
@@ -384,9 +394,18 @@ export function TeamPicture({ id }: { id?: string }) {
       aria-labelledby="team-picture-says"
     >
       <p id="team-picture-says" className="web-visually-hidden">
-        A team at work: a task goes to the Product manager, you approve the spec, the Engineer
-        builds it, Tests pass fails once and sends the work back, then passes, the Reviewer
-        approves, the checks pass, and Ship opens a pull request.
+        {[
+          "A team at work: a task goes to the Product manager",
+          "you approve the spec",
+          "the Engineer builds it",
+          !removed.includes("tests") &&
+            "Tests pass fails once and sends the work back, then passes",
+          !removed.includes("rev") && "the Reviewer approves",
+          "the checks pass",
+          "and Ship opens a pull request.",
+        ]
+          .filter(Boolean)
+          .join(", ")}
       </p>
       <figcaption className="tp__bar">
         <span className="tp__caps" aria-hidden="true">
@@ -396,7 +415,7 @@ export function TeamPicture({ id }: { id?: string }) {
               data-cap={key}
               className={`tp__cap${key === FINISHED ? " tp__cap--end" : ""}`}
             >
-              {CAPTIONS[key]}
+              {key === FINISHED ? ending(removed) : CAPTIONS[key]}
             </span>
           ))}
         </span>

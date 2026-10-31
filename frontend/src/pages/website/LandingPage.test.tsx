@@ -269,6 +269,30 @@ describe("The team picture (landing-1.md §1)", () => {
     fireEvent.click(reviewer);
     expect(container.querySelector('[data-stop="rev"]')).toBeInTheDocument();
   });
+
+  it.each([
+    { label: "nothing", off: [], ending: "A reviewed pull request, on your repo." },
+    { label: "Reviewer", off: ["Reviewer"], ending: "A pull request, but no one reviewed it." },
+    {
+      label: "Tests pass",
+      off: ["Tests pass"],
+      ending: "A reviewed pull request, but your tests never ran.",
+    },
+    {
+      label: "both",
+      off: ["Tests pass", "Reviewer"],
+      ending: "A pull request: no tests ran, and no one reviewed it.",
+    },
+  ])("ends honestly with $label switched off", ({ off, ending }) => {
+    const { container } = renderLanding();
+    for (const name of off) fireEvent.click(screen.getByRole("button", { name }));
+    expect(container.querySelector('[data-cap="pr"]')?.textContent).toBe(ending);
+    const says = container.querySelector("#team-picture-says")!.textContent;
+    for (const name of ["Tests pass", "Reviewer"]) {
+      if (off.includes(name)) expect(says).not.toContain(name);
+      else expect(says).toContain(name);
+    }
+  });
 });
 
 describe("The demo videos (landing-1.md §8)", () => {
