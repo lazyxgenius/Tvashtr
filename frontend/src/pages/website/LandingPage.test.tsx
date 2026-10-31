@@ -74,7 +74,7 @@ describe("The landing (WEB-9..18)", () => {
     renderLanding();
     expect(document.title).toBe("Tvashtr — compose your own team of AI agents");
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
-      "Compose your own team of AI agents, not just use one.",
+      "Compose your own team of AI agents",
     );
     for (const name of [
       "Agent tools are either a black box or a pile of code.",
@@ -92,7 +92,7 @@ describe("The landing (WEB-9..18)", () => {
 
   it("says 'source on GitHub', never 'open source', until a license lands (OQ-4)", () => {
     const { container } = renderLanding();
-    expect(screen.getByText(/^Source on GitHub · Your keys/)).toBeInTheDocument();
+    expect(screen.getByText(/^Source on GitHub$/)).toBeInTheDocument();
     expect(screen.getByText("Free, source on GitHub")).toBeInTheDocument();
     expect(
       screen.getByText(
@@ -163,11 +163,23 @@ describe("The landing (WEB-9..18)", () => {
       "Approve",
     );
     expect(approve.closest("button")).toHaveAttribute("tabindex", "-1");
-    for (const mock of container.querySelectorAll(
-      ".web-product, .web-mock__canvas, .web-mock-card, .web-gates",
-    )) {
+    const pictures = container.querySelectorAll(
+      ".tp__stage, .web-crew, .web-mock-card, .web-gates",
+    );
+    expect(pictures).toHaveLength(5);
+    for (const mock of pictures) {
       expect(mock).toHaveAttribute("aria-hidden", "true");
     }
+  });
+
+  it("shows no times, counts or run results on its pictures (landing-1.md §5)", () => {
+    const { container } = renderLanding();
+    for (const picture of container.querySelectorAll(".web-crew, .web-mock-card, .web-gates")) {
+      // A model's name and the Domains answer's numbered source are the only digits it may show.
+      const words = picture.textContent?.replace(/grok-4\.7|claude-sonnet-5|back\s*1/g, "");
+      expect(words).not.toMatch(/\d/);
+    }
+    expect(screen.queryByText(/Real run/)).toBeNull();
   });
 
   it("compares the two ways to run in a real table (WEB-15)", () => {
@@ -228,5 +240,82 @@ describe("The questions (WEB-17, OQ-28)", () => {
     ).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "Which models can I use?" }));
     expect(screen.getByText(/any model from a supported provider,/)).toBeVisible();
+  });
+});
+
+describe("The team picture (landing-1.md §1)", () => {
+  it("tells assistive tech what it shows, and rests on the finished state", () => {
+    const { container } = renderLanding();
+    expect(
+      screen.getByText(/^A team at work: a task goes to the Product manager/),
+    ).toBeInTheDocument();
+    expect(container.querySelector('[data-cap="pr"]')).toHaveClass("tp__cap--end");
+    expect(container.querySelector('[data-stop="ship"] [data-st="done"]')).toHaveClass(
+      "tp__st--end",
+    );
+    expect(container.querySelector(".tp__lit")).toBeInTheDocument();
+  });
+
+  it("takes a stop out of the team and re-routes the path, and puts it back", () => {
+    const { container } = renderLanding();
+    const reviewer = screen.getByRole("button", { name: "Reviewer" });
+    expect(reviewer).toHaveAttribute("aria-pressed", "true");
+    expect(container.querySelector('[data-edge="tests-rev"]')).toBeInTheDocument();
+    fireEvent.click(reviewer);
+    expect(reviewer).toHaveAttribute("aria-pressed", "false");
+    expect(container.querySelector('[data-stop="rev"]')).toBeNull();
+    expect(container.querySelector('[data-edge="tests-scan"]')).toBeInTheDocument();
+    expect(screen.queryByText("changes requested", { selector: ".tp__label" })).toBeNull();
+    fireEvent.click(reviewer);
+    expect(container.querySelector('[data-stop="rev"]')).toBeInTheDocument();
+  });
+});
+
+describe("The demo videos (landing-1.md §8)", () => {
+  let play: ReturnType<typeof vi.fn>;
+  beforeEach(() => {
+    play = vi.fn().mockResolvedValue(undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(play);
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("loads nothing before a press, then plays Reel 1 with sound and the browser's controls", () => {
+    const { container } = renderLanding();
+    const video = container.querySelector<HTMLVideoElement>(".web-demo video")!;
+    expect(video).toHaveAttribute("preload", "none");
+    expect(video).toHaveAttribute("src", "/media/reel-1.mp4");
+    expect(video).toHaveAttribute("poster", "/media/reel-1-poster.webp");
+    expect(video.hasAttribute("playsinline")).toBe(true);
+    expect(video).not.toHaveAttribute("controls");
+    expect(play).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Play the 1-minute demo, with sound" }));
+    expect(play).toHaveBeenCalledTimes(1);
+    expect(video.muted).toBe(false);
+    fireEvent.play(video);
+    expect(video).toHaveAttribute("controls");
+    expect(screen.queryByRole("button", { name: /Play the 1-minute demo/ })).toBeNull();
+  });
+
+  it("plays one full run in a lightbox, with captions, and Escape returns to the page", () => {
+    const { container } = renderLanding();
+    expect(container.querySelector('video[src="/media/demo-2min.mp4"]')).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "See one full run · 2 min" }));
+    const dialog = screen.getByRole("dialog", { name: "One full run · 2 min" });
+    const track = dialog.querySelector("track")!;
+    expect(track).toHaveAttribute("src", "/media/demo-2min.en.vtt");
+    expect(track).toHaveAttribute("kind", "captions");
+    expect(track).toHaveAttribute("srclang", "en");
+    expect(track.hasAttribute("default")).toBe(true);
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("the hero's Watch the demo starts Reel 1", () => {
+    renderLanding();
+    fireEvent.click(screen.getByRole("button", { name: "Watch the demo · 1 min" }));
+    expect(play).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 
 import { ToastProvider } from "../design-system/components";
 import {
@@ -11,9 +11,13 @@ import {
 } from "../lib/api";
 import { isDesktopApp } from "../lib/desktopRepos";
 import { appAddress, isPublicRoute, navigate, parseRoute, useNav } from "../lib/nav";
-import { DesktopGate } from "../pages/desktop/DesktopGate";
 import { SiteRoot } from "../pages/website/SiteRoot";
-import { Workspace } from "../pages/Workspace";
+
+// The public pages load without the signed-in app's code (landing-1.md §9).
+const DesktopGate = lazy(() =>
+  import("../pages/desktop/DesktopGate").then((m) => ({ default: m.DesktopGate })),
+);
+const Workspace = lazy(() => import("../pages/Workspace").then((m) => ({ default: m.Workspace })));
 
 /**
  * The app's root gate. Tvashtr Desktop has its own launch and sign-in screens
@@ -21,7 +25,11 @@ import { Workspace } from "../pages/Workspace";
  * or login wizard. The website keeps the gate below.
  */
 export function AuthGate() {
-  return isDesktopApp() ? <DesktopGate /> : <WebAuthGate />;
+  return (
+    <Suspense fallback={<div className="web-blank" />}>
+      {isDesktopApp() ? <DesktopGate /> : <WebAuthGate />}
+    </Suspense>
+  );
 }
 
 /**

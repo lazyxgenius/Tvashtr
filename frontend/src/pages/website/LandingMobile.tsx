@@ -1,6 +1,6 @@
 /**
- * `#/welcome` on a phone, below 720px (website.md WEB-20..25; design Web-Mobile, WbF-Mob-1..3). Its
- * own copy, not a reflow. Phones never get the DMG (WEB-25): Start building, Download for Mac and
+ * `#/welcome` on a phone, below 720px (website.md WEB-20..25; landing-1.md). The website's design at
+ * phone size, with its own shorter copy where it needs it. Phones never get the DMG (WEB-25): Start building, Download for Mac and
  * the closing button all open the "Best on a computer" sheet (OQ-24), which sends the page to a
  * computer instead of emailing a sign-in link (no email service, OQ-10).
  */
@@ -16,17 +16,12 @@ import { COPY } from "./copy";
 import { PosterVideo, VideoDialog, watch } from "./DemoVideo";
 import { SendLink } from "./DownloadPage";
 import { Faq, faqItems } from "./Faq";
+import { Head, WhyRows } from "./LandingParts";
 import { DEMO, REEL } from "./media";
 import { onSectionLink } from "./sections";
 import { TeamPicture } from "./TeamPicture";
+import { useLandingMotion } from "./useLandingMotion";
 import { useScrollLock } from "./useScrollLock";
-
-const WHY = [
-  ["Your team is yours", "Draw the process you actually use: roles, handoffs, loops and gates."],
-  ["A living spec", "Edit the spec mid-run. The next agent reads the new version."],
-  ["Domains", "Your own documents, answered with the exact passage."],
-  ["Gates", "Approve the spec, send work back, and get a reviewed PR."],
-];
 
 const external = { target: "_blank", rel: "noopener noreferrer" } as const;
 
@@ -42,6 +37,8 @@ export function LandingMobile({
   const openSheet = () => setSheet(true);
   const reel = useRef<HTMLVideoElement>(null);
   const [fullRun, setFullRun] = useState(false);
+  const page = useRef<HTMLElement>(null);
+  useLandingMotion(page);
 
   return (
     <div className="web-page web-m">
@@ -53,8 +50,8 @@ export function LandingMobile({
           <Menu size={16} strokeWidth={1.6} aria-hidden />
         </IconButton>
       </header>
-      <main id="main" tabIndex={-1}>
-        <div className="web-hero">
+      <main ref={page} id="main" tabIndex={-1}>
+        <div className="web-hero web-warm">
           <section className="web-lead">
             <p className="web-lead__name">Tvashtr</p>
             <h1 className="web-lead__title">Compose your own team of AI agents</h1>
@@ -103,24 +100,13 @@ export function LandingMobile({
           )}
         </section>
 
-        <section id="product" className="web-m__sec web-m__sec--why">
-          <span className="web-eyebrow">Why Tvashtr</span>
-          <h2 className="web-m__h2">Composable. Legible. Steerable.</h2>
-          {WHY.map(([title, body]) => (
-            <div
-              key={title}
-              id={title === "Domains" ? "domains" : undefined}
-              className="web-m__card"
-            >
-              <span className="web-eyebrow">{title}</span>
-              <div className="web-m__card-body">{body}</div>
-            </div>
-          ))}
+        <section id="product" className="web-sec web-why">
+          <Head eyebrow="Why Tvashtr" title="Composable. Legible. Steerable." />
+          <WhyRows />
         </section>
 
-        <section id="two-ways" className="web-m__sec web-m__sec--two">
-          <span className="web-eyebrow">Two ways to run</span>
-          <h2 className="web-m__h2 web-m__h2--two">Website or Mac app</h2>
+        <section id="two-ways" className="web-sec web-two-ways">
+          <Head eyebrow="Two ways to run" title="Website or Mac app" />
           <div className="web-m__way">
             <b>Website</b> · runs on Tvashtr’s servers with your API keys.
           </div>
@@ -129,17 +115,19 @@ export function LandingMobile({
           </div>
         </section>
 
-        <section id="faq" className="web-m__faq">
-          <span className="web-eyebrow">Questions</span>
+        <section id="faq" className="web-sec web-questions">
+          <Head eyebrow="Questions" title="Before you start." />
           <Faq items={faqItems(config).slice(0, 4)} initialOpen={null} phone />
         </section>
 
-        <section className="web-m__close">
-          <h2 className="web-m__close-title">Start weaving.</h2>
-          <Button variant="primary" size="lg" fullWidth onClick={openSheet}>
-            <Mail size={15} strokeWidth={1.6} aria-hidden />
-            <span>Send me a link for my computer</span>
-          </Button>
+        <section className="web-close web-warm">
+          <div data-rise>
+            <h2 className="web-close__title">Start weaving.</h2>
+            <Button variant="primary" size="lg" fullWidth onClick={openSheet}>
+              <Mail size={15} strokeWidth={1.6} aria-hidden />
+              <span>Send me a link for my computer</span>
+            </Button>
+          </div>
         </section>
       </main>
       <footer className="web-m__foot">

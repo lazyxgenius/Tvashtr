@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 
-gsap.registerPlugin(useGSAP, ScrollTrigger);
+gsap.registerPlugin(useGSAP);
 
 type Kind = "task" | "agent" | "gate" | "pr";
 type StopId = "task" | "pm" | "prd" | "eng" | "tests" | "rev" | "scan" | "edits" | "ship" | "pr";
@@ -354,6 +354,7 @@ export function TeamPicture({ id }: { id?: string }) {
     () => {
       const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? true;
       if (reduce || !width || !root.current) return;
+      gsap.registerPlugin(ScrollTrigger);
       const cycle = buildCycle(root.current, order);
       if (!cycle) return;
       ScrollTrigger.create({

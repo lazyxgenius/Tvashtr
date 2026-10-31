@@ -55,6 +55,20 @@ describe("The landing on a phone (WEB-20..22)", () => {
     expect(screen.queryByRole("link", { name: "Start building" })).toBeNull();
   });
 
+  it("has the website's team picture, demo and product pictures, at phone size", () => {
+    const { container } = renderPhone();
+    expect(screen.getByRole("button", { name: "Tests pass" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(document.getElementById("how")).toHaveClass("tp");
+    expect(container.querySelector(".web-demo video")).toHaveAttribute("preload", "none");
+    expect(container.querySelectorAll(".web-plate")).toHaveLength(4);
+    for (const id of ["product", "domains", "two-ways", "faq"]) {
+      expect(document.getElementById(id)).toBeInTheDocument();
+    }
+  });
+
   it("is the 1440 page from 720px up", () => {
     phone(720);
     renderPhone();

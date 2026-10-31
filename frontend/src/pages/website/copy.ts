@@ -4,8 +4,6 @@
  * the operator picks a license. On that day, restore the design's copy (in the comments) here.
  */
 export const COPY = {
-  /** Design: "Open source · Your keys, or your own Claude or Grok plan". */
-  heroPill: "Source on GitHub · Your keys, or your own Claude or Grok plan",
   /** Design (Web-Mobile): "Open source · your keys or your plan". */
   phonePill: "Source on GitHub · your keys or your plan",
   /** Design: "Free and open source". */
