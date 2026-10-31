@@ -54,37 +54,39 @@ export function LandingMobile({
         </IconButton>
       </header>
       <main id="main" tabIndex={-1}>
-        <section className="web-lead">
-          <p className="web-lead__name">Tvashtr</p>
-          <h1 className="web-lead__title">Compose your own team of AI agents</h1>
-          <p className="web-lead__lede">
-            Draw the team on a canvas. It works on your GitHub repo and hands back a reviewed pull
-            request.
-          </p>
-          <div className="web-lead__actions">
-            <Button variant="primary" size="lg" fullWidth onClick={openSheet}>
-              <GithubIcon size={16} />
-              <span>Start building</span>
-            </Button>
-            <Button variant="secondary" size="lg" fullWidth onClick={openSheet}>
-              <Download size={16} strokeWidth={1.6} aria-hidden />
-              <span>Download for Mac</span>
-            </Button>
-            <button type="button" className="web-watch" onClick={() => watch(reel.current)}>
-              <Play size={16} strokeWidth={1.6} aria-hidden />
-              Watch the demo · 1 min
-            </button>
-          </div>
-          <div className="web-lead__meta">
-            <span>{COPY.phonePill}</span>
-            <span>Tvashtr is built for a computer screen.</span>
-          </div>
-        </section>
+        <div className="web-hero">
+          <section className="web-lead">
+            <p className="web-lead__name">Tvashtr</p>
+            <h1 className="web-lead__title">Compose your own team of AI agents</h1>
+            <p className="web-lead__lede">
+              Draw the team on a canvas. It works on your GitHub repo and hands back a reviewed pull
+              request.
+            </p>
+            <div className="web-lead__actions">
+              <Button variant="primary" size="lg" fullWidth onClick={openSheet}>
+                <GithubIcon size={16} />
+                <span>Start building</span>
+              </Button>
+              <Button variant="secondary" size="lg" fullWidth onClick={openSheet}>
+                <Download size={16} strokeWidth={1.6} aria-hidden />
+                <span>Download for Mac</span>
+              </Button>
+              <button type="button" className="web-watch" onClick={() => watch(reel.current)}>
+                <Play size={16} strokeWidth={1.6} aria-hidden />
+                Watch the demo · 1 min
+              </button>
+            </div>
+            <div className="web-lead__meta">
+              <span>{COPY.phonePill}</span>
+              <span>Tvashtr is built for a computer screen.</span>
+            </div>
+          </section>
 
-        {/* "How it works" on a phone: the team at work (the 1440 cards aren't drawn at 390). */}
-        <section className="web-counter">
-          <TeamPicture id="how" />
-        </section>
+          {/* "How it works" on a phone: the team at work (the 1440 cards aren't drawn at 390). */}
+          <section className="web-counter">
+            <TeamPicture id="how" />
+          </section>
+        </div>
 
         <section className="web-demo">
           <h2 className="web-demo__title">See it in a minute</h2>

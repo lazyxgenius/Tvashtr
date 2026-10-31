@@ -7,7 +7,16 @@
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
-import { Check, Plus } from "lucide-react";
+import {
+  Check,
+  ClipboardCheck,
+  type LucideIcon,
+  Package,
+  PenLine,
+  Plus,
+  ShieldCheck,
+  Terminal,
+} from "lucide-react";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 
 gsap.registerPlugin(useGSAP, ScrollTrigger);
@@ -20,11 +29,14 @@ interface Stop {
   id: StopId;
   kind: Kind;
   title: string;
-  /** Under the title: at rest, working, failed, finished. */
-  idle?: string;
+  /** The line under the title, and the status chip while it works, fails and finishes. */
+  does?: string;
   run?: string;
   fail?: string;
   done?: string;
+  /** Drawn the way the real canvas draws them (AgentNodeCard): icon, capability, model. */
+  Icon?: LucideIcon;
+  edits?: "Edits on" | "Edits off";
   model?: string;
 }
 
@@ -34,55 +46,78 @@ const STOPS: Stop[] = [
     id: "pm",
     kind: "agent",
     title: "Product manager",
-    idle: "Writes the spec",
-    run: "Writing the spec",
+    does: "Writes the spec",
+    run: "Writing",
     done: "Done",
+    Icon: PenLine,
+    edits: "Edits off",
     model: "grok-4.7",
   },
   {
     id: "prd",
     kind: "gate",
     title: "PRD approval",
-    idle: "You approve the spec",
+    does: "You approve the spec",
     run: "Waiting for you",
     done: "Approved",
+    Icon: ShieldCheck,
   },
   {
     id: "eng",
     kind: "agent",
     title: "Engineer",
-    idle: "Builds it",
+    does: "Builds it",
     run: "Building",
     done: "Done",
+    Icon: Terminal,
+    edits: "Edits on",
     model: "claude-sonnet-5",
   },
   {
     id: "tests",
     kind: "gate",
     title: "Tests pass",
-    idle: "Tvashtr runs your tests",
-    run: "Running your tests",
+    does: "Tvashtr runs your tests",
+    run: "Running",
     fail: "Failed",
     done: "Passed",
+    Icon: ShieldCheck,
   },
   {
     id: "rev",
     kind: "agent",
     title: "Reviewer",
-    idle: "Checks against the spec",
+    does: "Checks against the spec",
     run: "Checking",
     done: "Approved",
+    Icon: ClipboardCheck,
+    edits: "Edits off",
     model: "grok-4.7",
   },
-  { id: "scan", kind: "gate", title: "Secret scan", idle: "Looks for secrets", done: "Passed" },
+  {
+    id: "scan",
+    kind: "gate",
+    title: "Secret scan",
+    does: "Looks for secrets",
+    done: "Passed",
+    Icon: ShieldCheck,
+  },
   {
     id: "edits",
     kind: "gate",
     title: "No edits to a folder",
-    idle: "The one you name",
+    does: "The one you name",
     done: "Passed",
+    Icon: ShieldCheck,
   },
-  { id: "ship", kind: "gate", title: "Ship", idle: "Opens a pull request", done: "Opened" },
+  {
+    id: "ship",
+    kind: "gate",
+    title: "Ship",
+    does: "Opens a pull request",
+    done: "Opened",
+    Icon: Package,
+  },
   { id: "pr", kind: "pr", title: "Pull request" },
 ];
 
@@ -104,7 +139,7 @@ const CAPTIONS = {
 type CaptionKey = keyof typeof CAPTIONS;
 const FINISHED: CaptionKey = "pr";
 
-const WIDE_AT = 1040;
+const WIDE_AT = 1000;
 
 interface Box {
   x: number;
@@ -116,42 +151,42 @@ type Layout = { wide: boolean; width: number; height: number; at: Record<StopId,
 
 function layout(width: number): Layout {
   const wide = width >= WIDE_AT;
+  const nodeW = wide ? Math.min(196, width / 5 - 24) : Math.max(180, Math.min(220, width - 90));
   const size = (kind: Kind): [number, number] => {
     if (kind === "task") return [104, 44];
     if (kind === "pr") return [150, 44];
-    if (kind === "gate") return [186, wide ? 60 : 56];
-    return [186, wide ? 84 : 64];
+    return [nodeW, kind === "gate" ? 86 : 118];
   };
   const at = {} as Record<StopId, Box>;
   if (wide) {
     const column = (i: number) => (width * (2 * i + 1)) / 10;
     const rows: [StopId, number, number][] = [
-      ["task", 0, 100],
-      ["pm", 1, 100],
-      ["prd", 2, 100],
-      ["eng", 3, 100],
-      ["tests", 4, 100],
-      ["rev", 4, 290],
-      ["scan", 3, 290],
-      ["edits", 2, 290],
-      ["ship", 1, 290],
-      ["pr", 0, 290],
+      ["task", 0, 104],
+      ["pm", 1, 104],
+      ["prd", 2, 104],
+      ["eng", 3, 104],
+      ["tests", 4, 104],
+      ["rev", 4, 296],
+      ["scan", 3, 296],
+      ["edits", 2, 296],
+      ["ship", 1, 296],
+      ["pr", 0, 296],
     ];
     for (const [id, i, y] of rows) {
       const [w, h] = size(STOPS.find((s) => s.id === id)!.kind);
       at[id] = { x: column(i), y, w, h };
     }
-    return { wide, width, height: 350, at };
+    return { wide, width, height: 364, at };
   }
   // One column on the left, with the loops running back up its right side.
-  const x = Math.max(0, (width - 340) / 2) + 93;
+  const x = Math.max(0, (width - nodeW - 96) / 2) + nodeW / 2;
   let y = 0;
   for (const stop of STOPS) {
     const [w, h] = size(stop.kind);
     at[stop.id] = { x, y: y + h / 2, w, h };
-    y += h + 26;
+    y += h + 22;
   }
-  return { wide, width, height: y - 26, at };
+  return { wide, width, height: y - 22, at };
 }
 
 /** The line from one stop to the next one on the path. */
@@ -208,7 +243,7 @@ function buildCycle(root: HTMLElement, order: StopId[]): gsap.core.Timeline | nu
     tl.to(q(".tp__cap"), { opacity: 0, duration: 0.12 });
     tl.to(q(`[data-cap="${key}"]`), { opacity: 1, duration: 0.2 });
   };
-  const state = (id: StopId, name: "idle" | "run" | "fail" | "done") => {
+  const state = (id: StopId, name: "run" | "fail" | "done") => {
     tl.to(q(`[data-stop="${id}"] .tp__st`), { opacity: 0, duration: 0.12 });
     tl.to(q(`[data-stop="${id}"] [data-st="${name}"]`), { opacity: 1, duration: 0.2 });
   };
@@ -240,7 +275,6 @@ function buildCycle(root: HTMLElement, order: StopId[]): gsap.core.Timeline | nu
 
   // Back to the start of the story: nothing done, the token on the task.
   tl.set(q(".tp__st"), { opacity: 0 });
-  tl.set(q('[data-st="idle"]'), { opacity: 1 });
   tl.set(q(".tp__ring"), { opacity: 0 });
   tl.set(q(".tp__lit"), { opacity: 0 });
   tl.set(q(".tp__cap"), { opacity: 0 });
@@ -353,6 +387,43 @@ export function TeamPicture({ id }: { id?: string }) {
         builds it, Tests pass fails once and sends the work back, then passes, the Reviewer
         approves, the checks pass, and Ship opens a pull request.
       </p>
+      <figcaption className="tp__bar">
+        <span className="tp__caps" aria-hidden="true">
+          {(Object.keys(CAPTIONS) as CaptionKey[]).map((key) => (
+            <span
+              key={key}
+              data-cap={key}
+              className={`tp__cap${key === FINISHED ? " tp__cap--end" : ""}`}
+            >
+              {CAPTIONS[key]}
+            </span>
+          ))}
+        </span>
+        <span className="tp__try">
+          <span>The team is yours:</span>
+          {(
+            [
+              ["tests", "Tests pass"],
+              ["rev", "Reviewer"],
+            ] as [Optional, string][]
+          ).map(([stop, label]) => {
+            const on = !removed.includes(stop);
+            const Icon = on ? Check : Plus;
+            return (
+              <button
+                key={stop}
+                type="button"
+                className="tp__toggle"
+                aria-pressed={on}
+                onClick={() => toggle(stop)}
+              >
+                <Icon size={15} strokeWidth={2} aria-hidden />
+                {label}
+              </button>
+            );
+          })}
+        </span>
+      </figcaption>
       <div ref={stage} className="tp__stage" style={{ height: place.height }} aria-hidden="true">
         <svg className="tp__lines" width="100%" height={place.height}>
           <defs>
@@ -391,28 +462,36 @@ export function TeamPicture({ id }: { id?: string }) {
             >
               <span className="tp__ring" />
               {stop.kind === "pr" && <span className="tp__lit" />}
-              <span className="tp__t">{stop.title}</span>
-              {stop.idle && (
-                <span className="tp__states">
-                  <span className="tp__st" data-st="idle">
-                    {stop.idle}
+              <span className="tp__head">
+                {stop.Icon && (
+                  <span className="tp__ico">
+                    <stop.Icon size={13} strokeWidth={1.7} />
                   </span>
-                  {stop.run && (
-                    <span className="tp__st tp__st--hot" data-st="run">
-                      {stop.run}
+                )}
+                <span className="tp__t">{stop.title}</span>
+              </span>
+              {stop.does && <span className="tp__does">{stop.does}</span>}
+              {stop.done && (
+                <span className="tp__chips">
+                  {stop.edits && <span className="tp__edits">{stop.edits}</span>}
+                  <span className="tp__states">
+                    {stop.run && (
+                      <span className="tp__st tp__st--hot" data-st="run">
+                        {stop.run}
+                      </span>
+                    )}
+                    {stop.fail && (
+                      <span className="tp__st tp__st--hot" data-st="fail">
+                        {stop.fail}
+                      </span>
+                    )}
+                    <span className="tp__st tp__st--end" data-st="done">
+                      {stop.done}
                     </span>
-                  )}
-                  {stop.fail && (
-                    <span className="tp__st tp__st--hot" data-st="fail">
-                      {stop.fail}
-                    </span>
-                  )}
-                  <span className="tp__st tp__st--end" data-st="done">
-                    {stop.done}
                   </span>
                 </span>
               )}
-              {stop.model && place.wide && <span className="tp__m">{stop.model}</span>}
+              {stop.model && <span className="tp__m">{stop.model}</span>}
             </div>
           );
         })}
@@ -422,49 +501,18 @@ export function TeamPicture({ id }: { id?: string }) {
           </span>
         )}
         {rev && (
-          <span className="tp__label" style={{ left: rev.label.x, top: rev.label.y }}>
+          <span
+            className="tp__label"
+            style={{
+              left: place.wide ? rev.label.x : Math.min(rev.label.x, width - 66),
+              top: rev.label.y,
+            }}
+          >
             changes requested
           </span>
         )}
         <span className="tp__dot" />
       </div>
-      <figcaption className="tp__foot">
-        <span className="tp__caps" aria-hidden="true">
-          {(Object.keys(CAPTIONS) as CaptionKey[]).map((key) => (
-            <span
-              key={key}
-              data-cap={key}
-              className={`tp__cap${key === FINISHED ? " tp__cap--end" : ""}`}
-            >
-              {CAPTIONS[key]}
-            </span>
-          ))}
-        </span>
-        <span className="tp__try">
-          <span>The team is yours:</span>
-          {(
-            [
-              ["tests", "Tests pass"],
-              ["rev", "Reviewer"],
-            ] as [Optional, string][]
-          ).map(([stop, label]) => {
-            const on = !removed.includes(stop);
-            const Icon = on ? Check : Plus;
-            return (
-              <button
-                key={stop}
-                type="button"
-                className="tp__toggle"
-                aria-pressed={on}
-                onClick={() => toggle(stop)}
-              >
-                <Icon size={15} strokeWidth={2} aria-hidden />
-                {label}
-              </button>
-            );
-          })}
-        </span>
-      </figcaption>
     </figure>
   );
 }

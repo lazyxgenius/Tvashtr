@@ -186,30 +186,32 @@ export function LandingPage({
 
   return (
     <>
-      <section className="web-lead">
-        <p className="web-lead__name">Tvashtr</p>
-        <h1 className="web-lead__title">Compose your own team of AI agents</h1>
-        <p className="web-lead__lede">
-          Draw the team on a canvas: who plans, who builds, who reviews, and where you step in. It
-          works on your real GitHub repo and hands back a reviewed pull request.
-        </p>
-        <div className="web-ctas">
-          <Ctas start={start} />
-          <button type="button" className="web-watch" onClick={() => watch(reel.current)}>
-            <Play size={16} strokeWidth={1.6} aria-hidden />
-            Watch the demo · 1 min
-          </button>
-        </div>
-        <div className="web-lead__meta">
-          <span>{COPY.heroMeta}</span>
-          <span>No card needed</span>
-          <span>Desktop: Mac only for now</span>
-        </div>
-      </section>
+      <div className="web-hero">
+        <section className="web-lead">
+          <p className="web-lead__name">Tvashtr</p>
+          <h1 className="web-lead__title">Compose your own team of AI agents</h1>
+          <p className="web-lead__lede">
+            Draw the team on a canvas: who plans, who builds, who reviews, and where you step in. It
+            works on your real GitHub repo and hands back a reviewed pull request.
+          </p>
+          <div className="web-ctas">
+            <Ctas start={start} />
+            <button type="button" className="web-watch" onClick={() => watch(reel.current)}>
+              <Play size={16} strokeWidth={1.6} aria-hidden />
+              Watch the demo · 1 min
+            </button>
+          </div>
+          <div className="web-lead__meta">
+            <span>{COPY.heroMeta}</span>
+            <span>No card needed</span>
+            <span>Desktop: Mac only for now</span>
+          </div>
+        </section>
 
-      <section className="web-counter">
-        <TeamPicture />
-      </section>
+        <section className="web-counter">
+          <TeamPicture />
+        </section>
+      </div>
 
       <section className="web-demo">
         <h2 className="web-demo__title">See it in a minute</h2>
