@@ -1,0 +1,27 @@
+<!doctype html>
+<!-- Demo D1: the YouTube thumbnail (1280×720). One real frame (a real run's Shipped band and the team's graph, from take
+     3.6) and five words in the brand type: Newsreader for the wordmark and headline, as the cards do. assets.py fills in
+     the crop's path (?img=file:///…). -->
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500&display=block">
+<style>
+  :root { --bg: #F7F4EE; --ink: #2B2622; --accent: #d97757; }
+  html, body { margin: 0; width: 1280px; height: 720px; background: var(--bg); overflow: hidden; }
+  .word { position: absolute; left: 64px; top: 40px; font: 400 46px "Newsreader", Georgia, serif; letter-spacing: -0.02em; color: var(--ink); }
+  .head { position: absolute; left: 60px; top: 126px; font: 400 128px/0.98 "Newsreader", Georgia, serif; letter-spacing: -0.025em;
+    color: var(--ink); font-optical-sizing: auto; }
+  .head em { font-style: normal; color: var(--accent); }
+  .shot { position: absolute; left: 64px; top: 384px; width: 1152px; height: 292px; border-radius: 16px; background: #fff;
+    box-shadow: 0 0 0 3px var(--accent), 0 18px 36px rgba(61, 52, 39, .22); overflow: hidden; }
+  .shot img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: left top; }
+</style>
+</head>
+<body>
+  <div class="word">Tvashtr</div>
+  <div class="head">Design an<br><em>AI team.</em></div>
+  <div class="shot"><img id="img"></div>
+  <script>document.getElementById("img").src = new URLSearchParams(location.search).get("img") || "crop.png";</script>
+</body>
+</html>

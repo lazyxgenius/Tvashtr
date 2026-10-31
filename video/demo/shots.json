@@ -1,0 +1,20 @@
+{
+  "about": "Demo D1 shot list (brief film-demo §3). One shot per line, in film order. A shot lasts lead + the line + tail; a take shot is its segments end to end: [take, in, out] at 1x, [take, in, out, speed] sped up, or fit=true (one segment sped up to exactly the shot). The last segment's out is moved to fill the shot (the take holds its last frame if it runs out). {x} in a label is the shot's speed-up. Takes are video/takes/<take>/take.mp4 (the film's current takes: V3 over V2b over V1).",
+  "lead": 0.35,
+  "tail": 0.6,
+  "shots": [
+    {"n": 1, "line": "0.1", "label": "Real pull request", "segs": [["v2b/0.1", 0.0, 11.3]]},
+    {"n": 2, "line": "0.2", "card": "video/out/v3/0.2.mp4", "length": 4.0},
+    {"n": 3, "line": "2.1", "segs": [["v1/2.1", 2.3, 5.87]]},
+    {"n": 4, "line": "2.2", "segs": [["v1/2.2", 1.9, 8.4]]},
+    {"n": 5, "line": "2.4", "label": "Sped up {x}×", "fit": true, "segs": [["v2b/2.4", 0.0, 3.2], ["v2b/2.4", 25.4, 61.6]]},
+    {"n": 6, "line": "d.task", "segs": [["v2b/3.1", 5.4, 6.9], ["v2b/3.1", 7.4, 9.0], ["v2b/3.1", 11.2, 12.6], ["v2b/3.1", 14.2, 15.6], ["v2b/3.1", 16.6, 18.4]]},
+    {"n": 7, "line": "3.3", "label": "Real run", "segs": [["v3/3.3", 1.4, 6.2], ["v3/3.3", 6.6, 8.9], ["v3/3.3", 12.6, 14.6], ["v3/3.3", 16.5, 18.2], ["v3/3.3", 19.4, 21.6]]},
+    {"n": 8, "line": "3.4", "label": "Real run · sped up {x}×", "fit": true, "segs": [["v3/3.4", 0.0, 22.1]]},
+    {"n": 9, "line": "3.4-verdict", "label": "Real run · sped up {x}×", "fit": true, "segs": [["v3/3.4-verdict", 10.5, 29.9]]},
+    {"n": 10, "line": "3.6", "label": "Real run", "segs": [["v3/3.6", 1.0, 4.9], ["v3/3.6", 16.2, 18.4], ["v3/3.6", 18.4, 23.5]]},
+    {"n": 11, "line": "d.compare", "label": "Real run · waits cut", "segs": [["v2b/6.3", 2.4, 5.8], ["v2b/6.3", 6.8, 9.0], ["v2b/6.3", 17.0, 19.4], ["v2b/6.3", 26.2, 31.5]]},
+    {"n": 12, "line": "8.1-web", "label": "Sample data", "segs": [["v1/8.1-web", 0.2, 3.5]]},
+    {"n": 13, "line": "8.2", "card": "video/out/v3/8.2.mp4", "lead": 0.2, "hold_after_line": 2.0, "fade_from": 3.4}
+  ]
+}

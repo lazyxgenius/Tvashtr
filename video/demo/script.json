@@ -1,0 +1,8 @@
+{
+  "source": "prompts/film-demo.md §3: the two lines the demo adds to V3's passed lines (architect-written, final words)",
+  "rules": ["speak the narration exactly, punctuation included", "neither line says \"Tvashtr\", so no name check", "rendered with video/v3/voice.py --script video/demo/script.json (V3's settings, seeds 42/43/44) into video/out/demo/lines/"],
+  "lines": [
+    {"chapter": 3, "scene": "d.task", "narration": "Now give the team a task. Pick the repo, the branch, and the one folder it may touch. Launch."},
+    {"chapter": 6, "scene": "d.compare", "narration": "Change an agent, and the team keeps both versions. Then compare them on a real task, taking turns on your subscription. Version two did better: its reviewer passed one more test."}
+  ]
+}

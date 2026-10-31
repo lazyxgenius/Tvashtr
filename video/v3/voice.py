@@ -17,6 +17,10 @@ V3b (brief video-v3b D1–D3): a line in video/v3/say.json is read in its spoken
 words, respelled where declared); each spoken form gets its own three seeds, at most 12 renders a
 line. Its gate is the transcript (against the script's words, the checked word left to the sound
 check) plus phonemes.py's sound check.
+
+Demo D1 (brief film-demo): `--script FILE [--lines-dir DIR] [--manifest FILE]` renders another script
+file's lines (same format) into DIR with their own manifest; a say.json beside FILE (if any) gives
+their spoken forms. Without these options every call behaves exactly as before.
 """
 
 import argparse
@@ -383,9 +387,13 @@ def cmd_all(args):
     me = [sys.executable, __file__]
     extra = ["--resume-minutes", args.resume_minutes] if args.resume_minutes else []
     only = ["--only", *args.only] if args.only else []
+    paths = []  # D1: the script/lines/manifest options go to every step
+    for flag in ("script", "lines_dir", "manifest"):
+        if getattr(args, flag):
+            paths += [f"--{flag.replace('_', '-')}", getattr(args, flag)]
     for _ in range(MAX_RENDERS):
-        subprocess.run([*me, "render", *extra, *only], check=True)
-        subprocess.run([*me, "gate"], check=True)
+        subprocess.run([*me, "render", *extra, *only, *paths], check=True)
+        subprocess.run([*me, "gate", *paths], check=True)
     manifest = load_manifest()
     summary(manifest, script_lines(args.resume_minutes))
 
@@ -457,6 +465,19 @@ def cmd_timing(args):
           + (f" (pending: {[r['scene'] for r in rows if not r['file']]})" if done < len(rows) else ""))
 
 
+def use_paths(args):
+    """D1: point the module at another script, lines directory and manifest (nothing changes without them)."""
+    global SCRIPT, SAY, LINES, RENDERS, MANIFEST
+    if args.script:
+        SCRIPT = Path(args.script).resolve()
+        SAY = SCRIPT.with_name("say.json")
+    if args.lines_dir:
+        LINES = Path(args.lines_dir).resolve()
+        RENDERS = LINES / "renders"
+    if args.manifest:
+        MANIFEST = Path(args.manifest).resolve()
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("cmd", choices=["render", "gate", "all", "choose", "sample", "timing"])
@@ -465,7 +486,11 @@ def main():
     parser.add_argument("--note", default="")
     parser.add_argument("--resume-minutes")
     parser.add_argument("--only", nargs="*")
+    parser.add_argument("--script", help="D1: another script file whose lines are rendered")
+    parser.add_argument("--lines-dir", help="D1: where its passed lines and renders/ go")
+    parser.add_argument("--manifest", help="D1: its own manifest")
     args = parser.parse_args()
+    use_paths(args)
     {"render": cmd_render, "gate": cmd_gate, "all": cmd_all, "choose": cmd_choose, "sample": cmd_sample,
      "timing": cmd_timing}[args.cmd](args)
 

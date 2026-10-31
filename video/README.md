@@ -10,6 +10,45 @@ Media, model weights and run data never enter git: `video/out/`, `video/takes/`,
 name; V2 (below) filmed the run scenes on real runs; `video/SCENES.md` has each scene's status, the
 V2 numbers and bends, and the operator's MAC scripts.
 
+## Demo D1 — "Tvashtr in 2 minutes" and the landing page's video files (2026-10-31)
+
+Brief `prompts/film-demo.md`, branch `video/demo-2min` (from `main` `54d4d322`). A ~2-minute narrated demo, a silent
+hero loop and posters, cut **only** from the film's existing takes and passed voice lines (V3 over V2b over V1) —
+nothing recorded. Everything lands in `video/out/demo/` (ignored); the shot list, scripts and the two new lines'
+manifest are in `video/demo/` (committed).
+
+```bash
+. video/env.sh && PY=video/voice-venv/bin/python; export HF_HUB_OFFLINE=1 PLAYWRIGHT_MODULE=$PWD/video/node_modules/playwright/index.mjs
+# 1. the two new lines (d.task, d.compare) — the voice model alone, no ffmpeg or Chrome running beside it
+$PY video/v3/voice.py all --script video/demo/script.json --lines-dir video/out/demo/lines --manifest video/demo/voice-manifest.json
+$PY video/demo/lines.py          # their endings and loudness against the 11 old lines (a plain gain if > 1 LU off)
+# 2. the cut and everything around it
+$PY video/demo/build.py          # demo-2min.mp4, captions, cuts.json, contact sheet (cached pieces: only changed shots re-encode)
+$PY video/demo/assets.py         # thumbnail, both posters, the hero loop, hero-loop.json, the YouTube description
+# 3. the brief's §6 checks
+$PY video/demo/qa.py cuts && $PY video/demo/qa.py film && $PY video/demo/qa.py files
+```
+
+| `video/demo/` | What |
+|---|---|
+| `shots.json` | the shot list: one shot per line — take, in, out, speed (`fit` = one speed so the shot is exactly its line), label |
+| `script.json` | the two new lines' words (brief §3), read by `voice.py --script` |
+| `voice-manifest.json` | their renders (seed, transcript, words, verdict) |
+| `lines.py` · `build.py` · `assets.py` · `qa.py` | line gates · the cut · the side files · the checks |
+| `thumb.html` · `shot.mjs` | the thumbnail page (the brand type) and the Chromium screenshot that renders it |
+
+| `video/out/demo/` | What |
+|---|---|
+| `demo-2min.mp4` | 1920×1080, 30 fps, H.264 + AAC 48 kHz, −14 LUFS; each take in the film's frame (cream ground, rounded window, shadow, coral ring), labels in the film's badge below it, the 0.2 / 8.2 cards as built; no burned-in captions |
+| `demo-2min.en.vtt` / `.en.srt` | the script's own words, ≤ 2 lines of ≤ 42 characters, each cue snapped to the voice's first and last sound |
+| `demo-2min.cuts.json` · `demo-2min-sheet.png` | every shot's take, in, out, speed, label · one frame a second |
+| `youtube-thumbnail.jpg` · `youtube-description.txt` | 1280×720 · the description with chapters and links |
+| `hero-loop.webm` / `.mp4` · `hero-poster.webp` · `hero-loop.json` | the landing page's silent ~9 s loop (the last 0.6 s cross-fades into the first), its first frame, and what it shows and where it came from |
+| `demo-poster.webp` | the frame shown before play (the film's framing of a real Shipped run, no words) |
+| `lines/` | the two new lines (`d.task.wav` has a +1.6 dB gain to match the old lines; the raw render is in `lines/renders/`) |
+
+`video/v3/voice.py` gained `--script`, `--lines-dir` and `--manifest` (additive: without them every call is as before).
+
 ## V3b — two spoken words, MAC-3 (2026-10-17)
 
 Brief `prompts/video-v3b.md`, branch `video/v3b`. Results (every render, the kept files, MAC-3):
