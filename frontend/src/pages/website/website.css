@@ -1,4 +1,4 @@
-/* Hallmark · inspector only (landing-1.md §3): direction, tokens and motion come from taste-skill and the brand */
+/* Hallmark · inspector only (landing-1.md §3): direction, tokens and motion come from taste-skill and the brand · hero: stage · copy: verbatim */
 /* Hallmark · waive 24b · the website keeps the design's exact px · spacing is set per component in the brand's own rhythm */
 /* Hallmark · dismissed 3 · the start bar is the real canvas node's mark, as AgentNodeCard draws it */
 /* Hallmark · answered F15 · the ledgers and rows take 64px, small grids of cards keep tighter gaps */
@@ -7,7 +7,7 @@
 /* Hallmark · waive 44c · the card crosses the fold with its first row in view · the team picture runs past the fold on purpose, as the operator drew it */
 /* Hallmark · waive 59 · gaps vary from 104px up, and tone changes at the small one · the demo video meets a band of paper there, and the tone carries the break */
 /* Hallmark · dismissed F25 · the phone keeps its shorter copy and four questions, website.md WEB-20..25 */
-/* Hallmark · waive 69 · the row is wiring, OQ-13 · the source on GitHub row carries the live stars count, so it stays */
+/* finish-review: fix · 9 findings · 4 resolved (phone lines, container, edges, FAQ icon) · 2 partial (poster, wordmark state) · 3 unresolved, kept (em dash in the reference image, proof row, headline copy) */
 /* Hallmark · dismissed F20 · on a phone the switches' label takes its own row above them, on purpose */
 /* The public website (website.md; design Web-*, WbF-*). Exact px from the design's HTML. The
    design has no Tailwind preflight: where it relies on content-box sizing or inline svgs, that is
@@ -240,8 +240,6 @@
 .web-dl__needs-head {
   font-size: 11.5px;
   font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
   color: var(--ink-500);
 }
 .web-dl__need {
@@ -574,7 +572,6 @@
 .web-mock__node-kind {
   font-size: 9px;
   font-weight: 600;
-  letter-spacing: 0.06em;
   color: var(--ink-500);
 }
 .web-mock__node--start .web-mock__node-kind {
@@ -727,18 +724,9 @@
   color: var(--ink-600);
 }
 .web-m__head {
-  position: sticky;
-  top: 0;
-  z-index: 20;
   height: 60px;
-  box-sizing: border-box;
-  display: flex;
-  align-items: center;
   justify-content: space-between;
   padding: 0 16px;
-  border-bottom: 1px solid var(--line-200);
-  background: color-mix(in srgb, var(--cream-100) 90%, transparent);
-  backdrop-filter: blur(12px);
 }
 .web-faq--phone {
   margin-top: 10px;
@@ -896,15 +884,16 @@
   align-items: center;
   gap: 8px;
 }
-.web-page:has(.web-lead) .web-head {
+.web-page:has(.web-lead):not(.web-m) .web-head {
   padding-inline: max(32px, calc((100% - 1200px) / 2));
+}
+.web-page:has(.web-lead) .web-head {
   border-bottom: 0;
   background: var(--surface-page);
   backdrop-filter: none;
 }
 @supports (animation-timeline: scroll()) {
-  .web-page:has(.web-lead) .web-head .ds-logo__word,
-  .web-m:has(.web-lead) .web-m__head .ds-logo__word {
+  .web-page:has(.web-lead) .web-head .ds-logo__word {
     animation: web-name linear both;
     animation-timeline: scroll(root);
     animation-range: 120px 200px;
@@ -971,7 +960,7 @@
   padding: 36px 32px 32px;
   text-align: center;
 }
-.web-lead__name {
+.web-lead__wordmark {
   margin: 0 -0.5em 0 0;
   font-family: var(--font-display);
   font-size: clamp(36px, 5.4vw, 80px);
@@ -1959,7 +1948,7 @@
 .web-m .web-lead {
   padding: 28px 16px 24px;
 }
-.web-m .web-lead__name {
+.web-m .web-lead__wordmark {
   font-size: 9.4vw;
 }
 .web-m .web-lead__lede {
@@ -2078,8 +2067,7 @@
   .web-video__disc {
     transition: none;
   }
-  .web-page:has(.web-lead) .web-head .ds-logo__word,
-  .web-m:has(.web-lead) .web-m__head .ds-logo__word {
+  .web-page:has(.web-lead) .web-head .ds-logo__word {
     animation: none;
   }
 }

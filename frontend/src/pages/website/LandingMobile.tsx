@@ -41,7 +41,7 @@ export function LandingMobile({
 
   return (
     <div className="web-page web-m">
-      <header className="web-m__head">
+      <header className="web-head web-m__head">
         <a className="web-head__logo" href="#/welcome" aria-label="Tvashtr">
           <Logo size={22} />
         </a>
@@ -52,7 +52,7 @@ export function LandingMobile({
       <main id="main" tabIndex={-1}>
         <section className="web-hero web-warm">
           <div className="web-lead">
-            <p className="web-lead__name">Tvashtr</p>
+            <p className="web-lead__wordmark">Tvashtr</p>
             <h1 className="web-lead__title">Compose your own team of AI agents</h1>
             <p className="web-lead__lede">
               Draw the team on a canvas. It works on your GitHub repo and hands back a reviewed pull
@@ -194,7 +194,7 @@ function MobileMenu({
   );
   return (
     <div ref={ref} className="web-m__menu" role="dialog" aria-modal="true" aria-label="Menu">
-      <div className="web-m__head">
+      <div className="web-head web-m__head">
         <Logo size={22} />
         <IconButton size="md" aria-label="Close menu" onClick={onClose}>
           <X size={16} strokeWidth={1.6} aria-hidden />

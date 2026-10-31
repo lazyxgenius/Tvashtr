@@ -505,7 +505,7 @@ export function TeamPicture({ id }: { id?: string }) {
                   </span>
                 </span>
               )}
-              {stop.model && <span className="tp__m">{stop.model}</span>}
+              {stop.model && <code className="tp__m">{stop.model}</code>}
             </div>
           );
         })}

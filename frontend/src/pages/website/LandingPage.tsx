@@ -71,7 +71,7 @@ export function LandingPage({
     <>
       <section className="web-hero web-warm">
         <div className="web-lead">
-          <p className="web-lead__name">Tvashtr</p>
+          <p className="web-lead__wordmark">Tvashtr</p>
           <h1 className="web-lead__title">Compose your own team of AI agents</h1>
           <p className="web-lead__lede">
             Draw the team on a canvas: who plans, who builds, who reviews, and where you step in. It

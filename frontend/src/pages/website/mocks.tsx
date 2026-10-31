@@ -190,7 +190,7 @@ export function TeamFragment() {
             <span className="tp__t">{title}</span>
           </span>
           <span className="tp__does">{does}</span>
-          <span className="tp__m">{model}</span>
+          <code className="tp__m">{model}</code>
         </div>
       ))}
       <span className="web-crew__back" />
@@ -239,7 +239,7 @@ export function DomainMock() {
         <Cite n={1} />.
       </div>
       <div className="web-mock-card__quote">
-        <span className="web-mock-card__file">billing-faq.pdf</span>
+        <code className="web-mock-card__file">billing-faq.pdf</code>
         <br />…<mark>we refund the unused whole months on a prorated basis</mark>…
       </div>
     </div>
