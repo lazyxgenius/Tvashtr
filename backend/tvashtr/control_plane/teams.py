@@ -327,23 +327,23 @@ PROVIDER_CATALOGUE: dict[str, dict] = {
     # PROBED 2026-11-01 (``scripts/seat_probe.py``), six models, one Google Cloud API key, each
     # model through both seats:
     #
-    #   gemini-3-flash-preview   W1-W4 PASS (14s)  T1 PASS  T2 FAIL 45 chars, completion_tokens=396
-    #   gemini-3.5-flash         W1-W4 PASS (14s)  T1 PASS  T2 FAIL 69 chars, completion_tokens=396
+    #   gemini-3-flash-preview   W1-W4 PASS (14s)  T1 PASS  T2 PASS 1945 chars, 4/4 headings
+    #   gemini-3.5-flash         W1-W4 PASS (14s)  T1 PASS  T2 PASS 3159 chars, 4/4 headings
+    #                            (T1 failed 2 of 4 thinker runs: IndexError under its 64-token cap)
     #   gemini-3.1-pro-preview   W1 FAIL IndexError  T1 FAIL IndexError (reaches Vertex; direct
     #                            call under W1's 64-token ceiling ends MAX_TOKENS, 59 thought)
     #   gemini-2.5-flash         W1 FAIL  T1 FAIL  404 "not found or your project does not have
     #   gemini-2.5-pro           W1 FAIL  T1 FAIL  access to it" (all three, on this key's project)
     #   gemini-2.5-flash-lite    W1 FAIL  T1 FAIL
     #
-    # Default = the cheapest passing model (input $0.50 against $1.50 per million tokens). ``None``
-    # for the thinker seat is evidence, as in the ``gemini`` entry above: under the product's own
-    # output ceiling both flash models spend the budget reasoning and return a fragment, so the
-    # seat yields to the next held provider. Slugs reach LiteLLM through ``tvashtr.google_cloud``
-    # only.
+    # Both seats default to the cheapest passing model (input $0.50 against $1.50 per million
+    # tokens). T2 ran at ``default_max_tokens_per_call``, the cap a one-shot call really has; at the
+    # gate's old 400 both flash models spent the budget reasoning and returned a fragment. Slugs
+    # reach LiteLLM through ``tvashtr.google_cloud`` only.
     "vertex_ai": {
-        "thinker_default": None,
+        "thinker_default": "vertex_ai/gemini-3-flash-preview",
         "worker_default": "vertex_ai/gemini-3-flash-preview",
-        "thinker_presets": [],
+        "thinker_presets": ["vertex_ai/gemini-3-flash-preview", "vertex_ai/gemini-3.5-flash"],
         "worker_presets": ["vertex_ai/gemini-3-flash-preview", "vertex_ai/gemini-3.5-flash"],
         "label": "Google Cloud",
         "model_labels": {

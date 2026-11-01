@@ -357,11 +357,15 @@ def test_the_catalogue_entry_is_the_probes_evidence():
     entry = PROVIDER_CATALOGUE["vertex_ai"]
     assert entry["label"] == "Google Cloud"
     assert entry["worker_default"] == "vertex_ai/gemini-3-flash-preview"
-    assert entry["worker_presets"] == [
-        "vertex_ai/gemini-3-flash-preview",
-        "vertex_ai/gemini-3.5-flash",
-    ]
-    assert entry["thinker_default"] is None and entry["thinker_presets"] == []
+    assert entry["thinker_default"] == "vertex_ai/gemini-3-flash-preview"
+    assert (
+        entry["worker_presets"]
+        == entry["thinker_presets"]
+        == [
+            "vertex_ai/gemini-3-flash-preview",
+            "vertex_ai/gemini-3.5-flash",
+        ]
+    )
     assert entry["model_labels"] == {
         "vertex_ai/gemini-3-flash-preview": "Gemini 3 Flash",
         "vertex_ai/gemini-3.5-flash": "Gemini 3.5 Flash",
@@ -385,8 +389,9 @@ def test_google_cloud_leads_the_order_only_for_accounts_holding_it():
     held = {"vertex_ai", "openai"}
     assert account_default_model(held, "worker") == "vertex_ai/gemini-3-flash-preview"
     assert account_fallback_model(held, "worker") == "openai/gpt-4.1-mini"
-    # No model passed the thinker gates, so that seat yields to the next held provider.
-    assert account_default_model(held, "thinker") == "openai/gpt-4.1-mini"
+    assert account_default_model(held, "thinker") == "vertex_ai/gemini-3-flash-preview"
+    # A Google-Cloud-only account can fill both seats.
+    assert account_default_model({"vertex_ai"}, "thinker") == "vertex_ai/gemini-3-flash-preview"
     assert account_default_model({"openai"}, "worker") == "openai/gpt-4.1-mini"
 
 

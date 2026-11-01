@@ -326,7 +326,12 @@ def gate_thinker_deliverable(model: str, api_key: str) -> GateResult:
     The failure this exists for is a REASONING model whose budget is eaten by chain-of-thought: the
     call succeeds, tokens are burned, and ``content`` comes back empty, a bare title, or the
     reasoning itself. So the bar is substance (>=200 chars), structure (it used the headings it was
-    given), and content that is not merely a restatement of the prompt."""
+    given), and content that is not merely a restatement of the prompt.
+
+    The ceiling is read from ``settings.default_max_tokens_per_call``, the cap a one-shot gateway
+    call really runs under, so this gate can't drift from the product again as a hard-coded 400 did.
+    """
+    from tvashtr.config import get_settings
     from tvashtr.gateway.gateway import complete
     from tvashtr.gateway.types import CompletionRequest
 
@@ -335,7 +340,7 @@ def gate_thinker_deliverable(model: str, api_key: str) -> GateResult:
             CompletionRequest(
                 model=model,
                 messages=[{"role": "user", "content": _PRD_PROMPT}],
-                max_tokens=400,
+                max_tokens=get_settings().default_max_tokens_per_call,
                 api_key=api_key,
             )
         )
