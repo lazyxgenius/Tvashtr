@@ -17,6 +17,7 @@ metering idempotent under DBOS's at-least-once step retries.
 """
 
 import contextvars
+import math
 import threading
 import time
 from datetime import UTC, datetime, timedelta
@@ -348,6 +349,34 @@ def complete(request: CompletionRequest) -> CompletionResult:
         f"all models failed for request (tried {[m for m, _ in candidates]}{skipped_note}): "
         f"{last_error}"
     ) from last_error
+
+
+def _priced_as(model: str) -> str:
+    """The name LiteLLM knows ``model`` by: a ``vertex_ai/<id>`` is called, so priced, as
+    ``gemini/<id>``. No key is involved; the placeholder only satisfies the translation."""
+    return (google_cloud_settings(model, "unused") or {}).get("model", model)
+
+
+def count_tokens(model: str, messages: list[dict[str, str]]) -> int:
+    """How many tokens ``messages`` are for ``model``. Never raises: on any error, characters / 4
+    rounded up."""
+    try:
+        return int(litellm.token_counter(model=_priced_as(model), messages=messages))
+    except Exception:  # noqa: BLE001 — an estimate must never break on a tokenizer
+        return math.ceil(sum(len(str(m.get("content") or "")) for m in messages) / 4)
+
+
+def price_per_token(model: str) -> tuple[float, float] | None:
+    """``(input, output)`` USD per token from LiteLLM's own price data, or ``None`` when ``model``
+    isn't listed. Never raises."""
+    try:
+        info = litellm.get_model_info(_priced_as(model))
+    except Exception:  # noqa: BLE001 — unlisted, however LiteLLM says so
+        return None
+    input_cost, output_cost = info.get("input_cost_per_token"), info.get("output_cost_per_token")
+    if input_cost is None or output_cost is None:
+        return None
+    return float(input_cost), float(output_cost)
 
 
 # Gemini AI Studio Matryoshka embeds: catalogue pins dim; LiteLLM ``dimensions`` maps to
