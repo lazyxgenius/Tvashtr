@@ -85,6 +85,7 @@ _SECRET_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("slack-token", re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b")),
     # Google API keys.
     ("google-api-key", re.compile(r"\bAIza[0-9A-Za-z_-]{35}\b")),
+    ("google-cloud-api-key", re.compile(r"\bAQ\.[0-9A-Za-z_.-]{30,}")),
     # HTTP Bearer tokens (≥20 chars of token material after the scheme).
     ("bearer-token", re.compile(r"\bBearer\s+[A-Za-z0-9._~+/-]{20,}={0,2}")),
     # A labelled long secret assignment: ``api_key = "…"`` / ``AUTH_TOKEN: …`` etc. Placeholder-

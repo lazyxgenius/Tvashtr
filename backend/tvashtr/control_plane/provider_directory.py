@@ -31,6 +31,7 @@ _DIRECTORY_ORDER: tuple[str, ...] = (
     "xai",
     "openai",
     "gemini",
+    "vertex_ai",
     "groq",
     "deepseek",
     "huggingface",
@@ -44,7 +45,19 @@ _DISPLAY: dict[str, dict] = {
     "anthropic": {"monogram": "A", "label": "Claude models"},
     "xai": {"monogram": "X", "label": "Grok models"},
     "openai": {"monogram": "O", "label": "GPT models"},
-    "gemini": {"monogram": "G", "label": "Gemini models and Domains embeddings"},
+    "gemini": {
+        "monogram": "G",
+        "label": "Gemini models with a Google AI Studio key, and Domains embeddings",
+    },
+    # "C": Gemini already has the "G" tile, and the two Google rows must not be confused.
+    "vertex_ai": {
+        "monogram": "C",
+        "label": "Gemini on your Google Cloud account (Vertex AI)",
+        "hint": (
+            "Paste a Google Cloud API key. Calls are billed to that Google Cloud account, so its "
+            "credits pay."
+        ),
+    },
     "groq": {"monogram": "Q", "label": "Fast open models"},
     "deepseek": {"monogram": "D", "label": "DeepSeek models"},
     "huggingface": {

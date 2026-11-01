@@ -73,7 +73,7 @@ def test_subscription_flag_agrees_with_the_launch_gate(provider):
 
 def test_byok_probed_matches_the_catalogue_evidence():
     probed = {p for p, e in PROVIDER_CATALOGUE.items() if e["byok_probed"]}
-    assert probed == {"nvidia_nim", "openai", "gemini", "groq", "deepseek"}
+    assert probed == {"nvidia_nim", "openai", "gemini", "vertex_ai", "groq", "deepseek"}
 
 
 # ------------------------------------------- adding entries changes no default selection ----
@@ -134,7 +134,9 @@ def test_directory_order_and_design_copy():
     assert by["xai"]["monogram"] == "X" and by["xai"]["subscription"] == "grok"
     assert by["groq"]["monogram"] == "Q" and by["openrouter"]["monogram"] == "R"
     assert by["openrouter"]["label"] == "many models through one key"
-    assert by["gemini"]["label"] == "Gemini models and Domains embeddings"
+    assert by["gemini"]["label"] == (
+        "Gemini models with a Google AI Studio key, and Domains embeddings"
+    )
     hf = by["huggingface"]
     assert hf["embeddings"] is True and hf["subscription"] is None
     assert hf["example_model"] == "huggingface/BAAI/bge-small-en-v1.5"
@@ -182,7 +184,12 @@ def test_directory_entries_are_consistent_with_the_catalogues():
             assert e["name"] == source["label"]
             assert e["subscription"] == source["subscription"]
             if e["serves_models"]:
-                assert e["hint"] is None  # model providers use the generic "Covers models …" hint
+                # Model providers use the generic "Covers models …" hint; Google Cloud says what
+                # kind of key it takes and who pays, beside Gemini's AI Studio key.
+                if e["provider"] == "vertex_ai":
+                    assert "Google Cloud API key" in e["hint"]
+                else:
+                    assert e["hint"] is None
             else:  # Desktop app (DT-26): a provider serving no seat says so instead
                 assert e["hint"] == f"{e['name']} serves no model Tvashtr can run right now."
     no_example = {d["provider"] for d in public_provider_directory() if not d["example_model"]}

@@ -4,6 +4,7 @@ import { expect, type Page } from "@playwright/test";
 const ENV_OF: Record<string, string> = {
   deepseek: "DEEPSEEK_API_KEY",
   openai: "OPENAI_API_KEY",
+  vertex_ai: "GOOGLE_CLOUD_API_KEY",
 };
 
 /**

@@ -44,6 +44,7 @@ ENV_PROVIDER_MAP: tuple[tuple[tuple[str, ...], str], ...] = (
     (("OPENROUTER_API_KEY",), "openrouter"),
     (("OPENAI_API_KEY",), "openai"),
     (("GEMINI_API_KEY",), "gemini"),
+    (("GOOGLE_CLOUD_API_KEY",), "vertex_ai"),
     (("GROQ_CLOUD_API_KEY", "GROQ_API_KEY"), "groq"),
     (("NVIDIA_BUILD_API_KEY", "NVIDIA_NIM_API_KEY"), "nvidia_nim"),
     (("DEEPSEEK_API_KEY",), "deepseek"),

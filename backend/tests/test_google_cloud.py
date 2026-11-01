@@ -1,7 +1,7 @@
 """Google Cloud 1: ``vertex_ai/<id>`` slugs reach Gemini on Vertex AI with a Google Cloud API key.
 
-LiteLLM's own ``vertex_ai/`` route only logs in with a service account, so a ``vertex_ai/`` slug must
-never reach it. The one translation (``tvashtr.google_cloud``) turns the slug into LiteLLM's
+LiteLLM's own ``vertex_ai/`` route only logs in with a service account, so a ``vertex_ai/`` slug
+must never reach it. The one translation (``tvashtr.google_cloud``) turns the slug into LiteLLM's
 ``gemini/`` route plus an ``api_base`` on the Vertex address; these tests pin it at the gateway, at
 ``agent_llm_routing`` and at the SDK ``LLM`` every adapter builds. No network.
 """
@@ -12,14 +12,24 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from litellm import ModelResponse
+from litellm import ModelResponse, model_cost
 from openhands.sdk.llm import LLM, Message, TextContent
 
 import tvashtr
 import tvashtr.gateway.gateway as gw
 from tvashtr import google_cloud
 from tvashtr.config import Settings, agent_llm_routing
+from tvashtr.control_plane.guardrails import _SECRET_PATTERNS
+from tvashtr.control_plane.provider_directory import public_provider_directory
+from tvashtr.control_plane.provider_models import is_definitely_unservable
+from tvashtr.control_plane.teams import (
+    _PROVIDER_DEFAULT_ORDER,
+    PROVIDER_CATALOGUE,
+    account_default_model,
+    account_fallback_model,
+)
 from tvashtr.gateway.types import CompletionRequest, GatewayError
+from tvashtr.seed import ENV_PROVIDER_MAP
 
 BASE = "https://aiplatform.googleapis.com/v1/publishers/google"
 KEY = "test-google-cloud-key"
@@ -322,3 +332,90 @@ def test_every_adapter_builds_its_llm_from_agent_llm_routing():
             ]
             assert routed, f"{name}: LLM(...) not built from agent_llm_routing"
             assert routed[0].args[2].value == mode, name
+
+
+# ---- the key ----
+
+
+def test_the_env_key_imports_as_the_vertex_provider():
+    assert (("GOOGLE_CLOUD_API_KEY",), "vertex_ai") in ENV_PROVIDER_MAP
+
+
+def test_the_leak_scan_knows_the_key_shape():
+    # A made-up value of the shape the operator's key has, split so this file never trips a scanner.
+    fake = "AQ." + "Ab8RN6" * 8
+    assert any(pattern.search(f"key = {fake}") for _name, pattern in _SECRET_PATTERNS)
+    # Prose and ordinary identifiers stay clean.
+    assert not any(
+        pattern.search("FAQ.section and AQ.short") for _name, pattern in _SECRET_PATTERNS
+    )
+
+
+# ---- the catalogue, the order, the directory ----
+
+
+def test_the_catalogue_entry_is_the_probes_evidence():
+    entry = PROVIDER_CATALOGUE["vertex_ai"]
+    assert entry["label"] == "Google Cloud"
+    assert entry["worker_default"] == "vertex_ai/gemini-3-flash-preview"
+    assert entry["worker_presets"] == [
+        "vertex_ai/gemini-3-flash-preview",
+        "vertex_ai/gemini-3.5-flash",
+    ]
+    assert entry["thinker_default"] is None and entry["thinker_presets"] == []
+    assert entry["model_labels"] == {
+        "vertex_ai/gemini-3-flash-preview": "Gemini 3 Flash",
+        "vertex_ai/gemini-3.5-flash": "Gemini 3.5 Flash",
+    }
+    assert entry["subscription"] is None and entry["byok_probed"] is True
+
+
+def test_every_offered_model_has_a_listed_price_and_the_default_is_the_cheapest():
+    # An unpriced model can't be held to a run's budget.
+    presets = PROVIDER_CATALOGUE["vertex_ai"]["worker_presets"]
+    prices = {
+        m: model_cost[m.replace("vertex_ai/", "gemini/", 1)]["input_cost_per_token"]
+        for m in presets
+    }
+    assert all(prices.values())
+    assert prices[PROVIDER_CATALOGUE["vertex_ai"]["worker_default"]] == min(prices.values())
+
+
+def test_google_cloud_leads_the_order_only_for_accounts_holding_it():
+    assert _PROVIDER_DEFAULT_ORDER[0] == "vertex_ai"
+    held = {"vertex_ai", "openai"}
+    assert account_default_model(held, "worker") == "vertex_ai/gemini-3-flash-preview"
+    assert account_fallback_model(held, "worker") == "openai/gpt-4.1-mini"
+    # No model passed the thinker gates, so that seat yields to the next held provider.
+    assert account_default_model(held, "thinker") == "openai/gpt-4.1-mini"
+    assert account_default_model({"openai"}, "worker") == "openai/gpt-4.1-mini"
+
+
+def test_the_directory_row_sits_after_gemini_and_the_two_google_rows_read_apart():
+    entries = public_provider_directory()
+    order = [e["provider"] for e in entries]
+    assert order[order.index("gemini") + 1] == "vertex_ai"
+    by = {e["provider"]: e for e in entries}
+    row = by["vertex_ai"]
+    assert row["name"] == "Google Cloud"
+    assert row["label"] == "Gemini on your Google Cloud account (Vertex AI)"
+    assert row["hint"] == (
+        "Paste a Google Cloud API key. Calls are billed to that Google Cloud account, so its "
+        "credits pay."
+    )
+    assert row["example_model"] == "vertex_ai/gemini-3-flash-preview"
+    assert row["serves_models"] is True and row["embeddings"] is False
+    assert row["monogram"] != by["gemini"]["monogram"]
+    assert by["gemini"]["label"] == (
+        "Gemini models with a Google AI Studio key, and Domains embeddings"
+    )
+
+
+def test_the_launch_preflight_allows_a_vertex_slug():
+    # Google's model list refuses API keys (401, probed 2026-11-01), so there is no adapter.
+    def must_not_call(url, headers, timeout):
+        raise AssertionError("no model-list call for vertex_ai")
+
+    assert not is_definitely_unservable(
+        "vertex_ai/gemini-3-flash-preview", KEY, http_get=must_not_call
+    )

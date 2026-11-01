@@ -46,6 +46,7 @@ export DEFAULT_MODEL="${TVASHTR_E2E_MODEL:-openai/gpt-4.1-mini}"
 
 case "$TVASHTR_E2E_PROVIDER" in
   openai) KEY_VAR=OPENAI_API_KEY ;; deepseek) KEY_VAR=DEEPSEEK_API_KEY ;; nvidia_nim) KEY_VAR=NVIDIA_BUILD_API_KEY ;;
+  vertex_ai) KEY_VAR=GOOGLE_CLOUD_API_KEY ;;
   *) KEY_VAR=UNKNOWN ;;
 esac
 if [[ -z "${!KEY_VAR:-}" ]]; then

@@ -324,6 +324,34 @@ PROVIDER_CATALOGUE: dict[str, dict] = {
         "subscription": None,
         "byok_probed": True,
     },
+    # PROBED 2026-11-01 (``scripts/seat_probe.py``), six models, one Google Cloud API key, each model
+    # through both seats:
+    #
+    #   gemini-3-flash-preview   W1-W4 PASS (14s)  T1 PASS  T2 FAIL 45 chars, completion_tokens=396
+    #   gemini-3.5-flash         W1-W4 PASS (14s)  T1 PASS  T2 FAIL 69 chars, completion_tokens=396
+    #   gemini-3.1-pro-preview   W1 FAIL IndexError  T1 FAIL IndexError (reaches Vertex; a direct
+    #                            call under W1's 64-token ceiling ends MAX_TOKENS, 59 of them thought)
+    #   gemini-2.5-flash         W1 FAIL  T1 FAIL  404 "not found or your project does not have
+    #   gemini-2.5-pro           W1 FAIL  T1 FAIL  access to it" (all three, on this key's project)
+    #   gemini-2.5-flash-lite    W1 FAIL  T1 FAIL
+    #
+    # Default = the cheapest passing model (input $0.50 against $1.50 per million tokens). ``None``
+    # for the thinker seat is evidence, as in the ``gemini`` entry above: under the product's own
+    # output ceiling both flash models spend the budget reasoning and return a fragment, so the seat
+    # yields to the next held provider. Slugs reach LiteLLM through ``tvashtr.google_cloud`` only.
+    "vertex_ai": {
+        "thinker_default": None,
+        "worker_default": "vertex_ai/gemini-3-flash-preview",
+        "thinker_presets": [],
+        "worker_presets": ["vertex_ai/gemini-3-flash-preview", "vertex_ai/gemini-3.5-flash"],
+        "label": "Google Cloud",
+        "model_labels": {
+            "vertex_ai/gemini-3-flash-preview": "Gemini 3 Flash",
+            "vertex_ai/gemini-3.5-flash": "Gemini 3.5 Flash",
+        },
+        "subscription": None,
+        "byok_probed": True,
+    },
     # PROBED 2026-09-08. One model, both seats. The worker gates took 232s because Groq's free tier
     # 429s on tokens (``rate_limit_exceeded``) and the BYOK retry envelope rode it out rather than
     # failing — which is the envelope doing its job, and the reason a slow gate is not a failed one.
@@ -393,7 +421,11 @@ PROVIDER_CATALOGUE: dict[str, dict] = {
 # This changes ONLY the defaults stamped on NEWLY created teams for accounts holding 2+ providers.
 # Persisted node models are never rewritten, and a single-provider account is unaffected: the walk
 # has exactly one candidate whatever the order.
+#
+# ``vertex_ai`` goes first: only accounts holding a Google Cloud key are affected, and for them its
+# credits are the cheapest money.
 _PROVIDER_DEFAULT_ORDER: tuple[str, ...] = (
+    "vertex_ai",
     "nvidia_nim",
     "openai",
     "gemini",

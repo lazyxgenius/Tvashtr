@@ -44,6 +44,7 @@ const VENDORS: Record<string, string> = {
   openrouter: "OpenRouter",
   groq: "Groq",
   gemini: "Gemini",
+  vertex_ai: "Google Cloud",
   huggingface: "Hugging Face",
 };
 

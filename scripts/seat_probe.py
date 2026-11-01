@@ -76,6 +76,14 @@ WORKER_CANDIDATES: dict[str, list[str]] = {
         "deepseek/deepseek-v4-flash",
     ],
     "openrouter": ["openrouter/openai/gpt-4o-mini"],
+    "vertex_ai": [
+        "vertex_ai/gemini-3-flash-preview",
+        "vertex_ai/gemini-3.5-flash",
+        "vertex_ai/gemini-3.1-pro-preview",
+        "vertex_ai/gemini-2.5-flash",
+        "vertex_ai/gemini-2.5-pro",
+        "vertex_ai/gemini-2.5-flash-lite",
+    ],
 }
 THINKER_CANDIDATES: dict[str, list[str]] = {
     "nvidia_nim": [
@@ -92,6 +100,14 @@ THINKER_CANDIDATES: dict[str, list[str]] = {
         "deepseek/deepseek-v4-flash",
     ],
     "openrouter": ["openrouter/openai/gpt-4o-mini"],
+    "vertex_ai": [
+        "vertex_ai/gemini-3-flash-preview",
+        "vertex_ai/gemini-3.5-flash",
+        "vertex_ai/gemini-3.1-pro-preview",
+        "vertex_ai/gemini-2.5-flash",
+        "vertex_ai/gemini-2.5-pro",
+        "vertex_ai/gemini-2.5-flash-lite",
+    ],
 }
 
 TARGET_FILE = "hello.txt"
