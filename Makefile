@@ -260,6 +260,10 @@ my-agents-e2e: ## M6 My agents E2E: save an agent from its panel, use it in anot
 agent-tests-e2e: ## M7 Agent tests E2E: a REAL local run (forced reviewer-approve), a test made from the Reviewer's round (Runs › round ⋯ › Make this a test) and one through the API; Run all 2 → one Passed, one Failed with why. Provider via TVASHTR_E2E_PROVIDER/TVASHTR_E2E_MODEL (default openai/gpt-4.1-mini).
 	./scripts/agent_tests_e2e.sh
 
+.PHONY: model-tests-e2e
+model-tests-e2e: ## Models 1 E2E: a fresh account writes versioned tests (by hand and CSV), runs them on two real models with the cost first, compares them, edits a test, runs an AI-judge test, renames and deletes. Models via TVASHTR_E2E_MODEL_A/_B; skips without GOOGLE_CLOUD_API_KEY or DEEPSEEK_API_KEY. Its own database, ports 8024/5197.
+	./scripts/model_tests_e2e.sh
+
 resume-run-e2e: ## M3 Resume E2E: a REAL local run whose Engineer round 1 is forced to fail is resumed from the run view (the Failed callout's Resume → confirm → Resume run); the resumed run carries the PM's spec + approval, runs the Engineer for real and reaches Done. Provider via TVASHTR_E2E_PROVIDER/TVASHTR_E2E_MODEL (default openai/gpt-4.1-mini).
 	./scripts/resume_run_e2e.sh
 
