@@ -52,8 +52,17 @@ const DEFAULT_IDEA =
   "delete any existing file, and keep every existing test passing.";
 const IDEA = process.env.TVASHTR_PROOF_IDEA ?? DEFAULT_IDEA;
 
-/** M-thrift's `_PROVIDER_DEFAULT_ORDER` (backend/tvashtr/control_plane/teams.py). */
-const PROVIDER_ORDER = ["nvidia_nim", "openai", "gemini", "groq", "deepseek", "openrouter"];
+/** M-thrift's `_PROVIDER_DEFAULT_ORDER` (backend/tvashtr/control_plane/teams.py), Google Cloud first
+ * since Google Cloud 1. */
+const PROVIDER_ORDER = [
+  "vertex_ai",
+  "nvidia_nim",
+  "openai",
+  "gemini",
+  "groq",
+  "deepseek",
+  "openrouter",
+];
 /** M-live: this used to be a hardcoded copy of the backend's `PROVIDER_CATALOGUE`, and it went
  * stale the moment NVIDIA retired `meta/llama-3.3-70b-instruct` and the catalogue moved on — C5
  * then failed comparing a CORRECT chip against a dead expectation. A harness that duplicates a

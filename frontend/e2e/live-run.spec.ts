@@ -18,6 +18,7 @@ const KEY_ENV: Record<string, string> = {
   openai: "OPENAI_API_KEY",
   deepseek: "DEEPSEEK_API_KEY",
   nvidia_nim: "NVIDIA_BUILD_API_KEY",
+  vertex_ai: "GOOGLE_CLOUD_API_KEY",
 };
 
 async function runStatus(api: APIRequestContext, runId: string): Promise<string> {
