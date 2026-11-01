@@ -17,6 +17,7 @@ export type PaletteIcon =
   | "team"
   | "history"
   | "domain"
+  | "model"
   | "engines";
 
 export type PaletteTarget =
@@ -27,7 +28,8 @@ export type PaletteTarget =
   | { kind: "api-keys" }
   | { kind: "toolkit" }
   | { kind: "engines" }
-  | { kind: "domains"; domainId?: string };
+  | { kind: "domains"; domainId?: string }
+  | { kind: "models" };
 
 interface PaletteOption {
   id: string;
@@ -92,6 +94,13 @@ const STATIC_ACTIONS: StaticAction[] = [
     icon: "domain",
     label: "Open Domains",
     target: { kind: "domains" },
+    always: false,
+  },
+  {
+    id: "act-models",
+    icon: "model",
+    label: "Open Models",
+    target: { kind: "models" },
     always: false,
   },
 ];

@@ -19,6 +19,8 @@ import { ConnectorsPage } from "./connectors/ConnectorsPage";
 import { SetupPage } from "./desktop/setup/SetupPage";
 import { DomainDetailPage } from "./domains/DomainDetailPage";
 import { DomainsListPage } from "./domains/DomainsListPage";
+import { ModelDetailPage } from "./models/ModelDetailPage";
+import { ModelsListPage } from "./models/ModelsListPage";
 import { EnginesPage } from "./engines/EnginesPage";
 import { ComparePage } from "./compare/ComparePage";
 import { CommandPalette } from "./home/CommandPalette";
@@ -212,6 +214,12 @@ function WorkspacePage({ route, user }: { route: Route; user: AuthUser }) {
         />
       ) : (
         <DomainsListPage />
+      );
+    case "models":
+      return route.modelId ? (
+        <ModelDetailPage key={route.modelId} modelId={route.modelId} tab={route.tab} />
+      ) : (
+        <ModelsListPage />
       );
     case "engines":
       return (

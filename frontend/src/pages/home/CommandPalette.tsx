@@ -10,6 +10,7 @@ import {
 import { createPortal } from "react-dom";
 import {
   BookOpen,
+  Box,
   History,
   KeyRound,
   Layers,
@@ -46,6 +47,7 @@ const ICONS: Record<PaletteIcon, (p: { size: number; strokeWidth: number }) => R
   team: (p) => <Layers {...p} aria-hidden />,
   history: (p) => <History {...p} aria-hidden />,
   domain: (p) => <BookOpen {...p} aria-hidden />,
+  model: (p) => <Box {...p} aria-hidden />,
 };
 
 function go(target: PaletteTarget): void {
@@ -75,6 +77,9 @@ function go(target: PaletteTarget): void {
       navigate(
         target.domainId ? { page: "domains", domainId: target.domainId } : { page: "domains" },
       );
+      return;
+    case "models":
+      navigate({ page: "models" });
       return;
   }
 }

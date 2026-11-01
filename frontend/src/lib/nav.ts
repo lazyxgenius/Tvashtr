@@ -7,6 +7,7 @@
  *
  *   #/home
  *   #/domains · #/domains/<id> · #/domains/<id>/ask|quality|teams|settings (?file=<doc>&piece=<n>)
+ *   #/models · #/models/<id> · #/models/<id>/results|settings
  *   #/engines · #/engines/subscriptions · #/engines/keys
  *   #/engines?fix=1 (Overview with the rows that need a fix highlighted — the canvas's Open Engines)
  *   #/engines/subscriptions?connect=claude|grok (that card highlighted — a `tvashtr://` deep link)
@@ -38,6 +39,8 @@ export type MemoryTab = "inbox" | "active" | "archive";
 export type NodeTab = "setup" | "skills" | "memory" | "runs" | "tests" | "docs";
 /** A domain's tabs; `sources` is the bare `#/domains/<id>`. */
 export type DomainTab = "sources" | "ask" | "quality" | "teams" | "settings";
+/** A model's tabs; `tests` is the bare `#/models/<id>`. */
+export type ModelTab = "tests" | "results" | "settings";
 /** The dashboard section the canvas's "Open Engines" control returns to (back, with none: Home). */
 export type DashView = "engines";
 /** Tvashtr Desktop's first-run setup steps (desktop-app.md DT-17). */
@@ -59,6 +62,8 @@ export type Route =
       file?: string;
       piece?: number;
     }
+  // A model's page; absent = the Models list.
+  | { page: "models"; modelId?: string; tab?: ModelTab }
   // `fix`: arrived from a blocked run ("Open Engines") — Overview highlights the rows to fix.
   // `connect`: Subscriptions only — highlight that card (the website's "Open in Desktop").
   // `embeddings`: API keys only — arrived from Domains, show the Domains embeddings section.
@@ -176,6 +181,12 @@ export function parseRoute(hash: string): Route {
       if (file && piece !== undefined) route.piece = piece;
       return route;
     }
+    case "models": {
+      if (!b) return { page: "models" };
+      return c === "results" || c === "settings"
+        ? { page: "models", modelId: b, tab: c }
+        : { page: "models", modelId: b };
+    }
     case "engines": {
       const tab = ENGINES_TABS.includes(b as EnginesTab) ? (b as EnginesTab) : "overview";
       const connect = q.get("connect");
@@ -288,6 +299,11 @@ export function routeToHash(route: Route): string {
       const qs = q.toString();
       return qs ? `${path}?${qs}` : path;
     }
+    case "models": {
+      if (!route.modelId) return "#/models";
+      const path = `#/models/${enc(route.modelId)}`;
+      return route.tab && route.tab !== "tests" ? `${path}/${route.tab}` : path;
+    }
     case "engines":
       if (route.tab === "subscriptions" && route.connect) {
         return `#/engines/subscriptions?connect=${route.connect}`;
@@ -350,10 +366,13 @@ export function routeToHash(route: Route): string {
 }
 
 /** Which top-level nav section a Route belongs to (for the left nav's active state). */
-export function sectionOf(route: Route): "home" | "domains" | "engines" | "toolkit" | "team" {
+export function sectionOf(
+  route: Route,
+): "home" | "domains" | "models" | "engines" | "toolkit" | "team" {
   switch (route.page) {
     case "home":
     case "domains":
+    case "models":
     case "engines":
     case "team":
       return route.page;

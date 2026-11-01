@@ -10,6 +10,7 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import {
   BookOpen,
+  Box,
   ChevronDown,
   Download,
   Home as HomeIcon,
@@ -278,6 +279,15 @@ function Nav({
             </li>
           ))}
         {top(
+          "models",
+          "Models",
+          <Box {...iconProps} />,
+          { page: "models" },
+          {
+            active: section === "models",
+          },
+        )}
+        {top(
           "engines",
           "Engines",
           <KeyRound {...iconProps} />,
@@ -324,6 +334,16 @@ function NavFoot({ section }: { section: ReturnType<typeof sectionOf> }) {
         <span>
           <b>Domains</b> are libraries of your own files. You and your agents ask them questions and
           get answers with sources.
+        </span>
+      </div>
+    );
+  }
+  if (section === "models") {
+    return (
+      <div className="sh-nav__foot">
+        <span>
+          <b>Models</b> start with tests: real cases with the right answers, so you can see how well
+          any model does your job.
         </span>
       </div>
     );
@@ -560,6 +580,7 @@ export function Shell({
             "sh-main",
             route.page === "home" && "sh-main--home",
             route.page === "domains" && "sh-main--domains",
+            route.page === "models" && "sh-main--models",
           )}
         >
           <div className="sh-main__inner">
