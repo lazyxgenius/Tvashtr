@@ -407,6 +407,82 @@ ROUTES: dict[str, tuple[str, object]] = {
         "own",
         "writes only the caller's users.memory_review_mode and takes no id",
     ),
+    "GET /api/models": (
+        "list",
+        ["test_owner_scope_models::test_list_shows_b_none_of_as_models"],
+    ),
+    "POST /api/models": (
+        "own",
+        "Creates a model in the caller's account; the body is only a name, the job, the kind of answer and its choices, with no account-row ids",
+    ),
+    "GET /api/models/{model_id}": (
+        "id",
+        ["test_owner_scope_models::test_b_gets_404_on_every_route_of_as_model"],
+    ),
+    "PATCH /api/models/{model_id}": (
+        "id",
+        ["test_owner_scope_models::test_b_gets_404_on_every_route_of_as_model"],
+    ),
+    "DELETE /api/models/{model_id}": (
+        "id",
+        ["test_owner_scope_models::test_b_gets_404_on_every_route_of_as_model"],
+    ),
+    "GET /api/models/{model_id}/tests": (
+        "id",
+        ["test_owner_scope_models::test_b_gets_404_on_every_route_of_as_model"],
+    ),
+    "POST /api/models/{model_id}/tests": (
+        "id",
+        ["test_owner_scope_models::test_b_gets_404_on_every_route_of_as_model"],
+    ),
+    "POST /api/models/{model_id}/tests/import": (
+        "id",
+        ["test_owner_scope_models::test_b_gets_404_on_every_route_of_as_model"],
+    ),
+    "PUT /api/models/{model_id}/tests/{case_key}": (
+        "id",
+        ["test_owner_scope_models::test_b_gets_404_on_every_route_of_as_model"],
+    ),
+    "DELETE /api/models/{model_id}/tests/{case_key}": (
+        "id",
+        ["test_owner_scope_models::test_b_gets_404_on_every_route_of_as_model"],
+    ),
+    "GET /api/models/{model_id}/tests/{case_key}/results": (
+        "id",
+        ["test_owner_scope_models::test_b_gets_404_on_every_route_of_as_model"],
+    ),
+    "GET /api/models/{model_id}/versions": (
+        "id",
+        ["test_owner_scope_models::test_b_gets_404_on_every_route_of_as_model"],
+    ),
+    "POST /api/models/{model_id}/versions/{version}/restore": (
+        "id",
+        ["test_owner_scope_models::test_b_gets_404_on_every_route_of_as_model"],
+    ),
+    "POST /api/models/{model_id}/estimate": (
+        "id",
+        ["test_owner_scope_models::test_b_gets_404_on_every_route_of_as_model"],
+    ),
+    "POST /api/models/{model_id}/runs": (
+        "id",
+        ["test_owner_scope_models::test_b_gets_404_on_every_route_of_as_model"],
+    ),
+    "GET /api/models/{model_id}/runs": (
+        "id",
+        ["test_owner_scope_models::test_b_gets_404_on_every_route_of_as_model"],
+    ),
+    "GET /api/models/{model_id}/runs/{run_id}": (
+        "id",
+        ["test_owner_scope_models::test_b_gets_404_on_every_route_of_as_model"],
+    ),
+    "POST /api/models/{model_id}/runs/{run_id}/stop": (
+        "id",
+        ["test_owner_scope_models::test_b_gets_404_on_every_route_of_as_model"],
+    ),
+    "GET /api/models/{model_id}/compare": (
+        "id",
+        ["test_owner_scope_models::test_b_gets_404_on_every_route_of_as_model"],
+    ),
     "GET /api/node-templates": (
         "own",
         "Returns the fixed, code-resident agent template list. The router is mounted behind get_current_user. It takes no id and reads no account rows.",
