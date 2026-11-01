@@ -324,8 +324,8 @@ PROVIDER_CATALOGUE: dict[str, dict] = {
         "subscription": None,
         "byok_probed": True,
     },
-    # PROBED 2026-11-01 (``scripts/seat_probe.py``), six models, one Google Cloud API key, each model
-    # through both seats:
+    # PROBED 2026-11-01 (``scripts/seat_probe.py``), six models, one Google Cloud API key, each
+    # model through both seats:
     #
     #   gemini-3-flash-preview   W1-W4 PASS (14s)  T1 PASS  T2 FAIL 45 chars, completion_tokens=396
     #   gemini-3.5-flash         W1-W4 PASS (14s)  T1 PASS  T2 FAIL 69 chars, completion_tokens=396
