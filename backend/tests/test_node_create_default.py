@@ -93,8 +93,10 @@ def test_account_default_model_preference_order_is_deterministic():
         assert account_default_model({"openai", "openrouter"}, capability) == (
             catalogue_default("openai", capability)
         ), capability
-    # The relative order of everything between the two moved entries is UNCHANGED.
+    # The relative order of everything between the two moved entries is UNCHANGED. Google Cloud 1
+    # put vertex_ai first (it only affects accounts holding that key).
     assert _PROVIDER_DEFAULT_ORDER == (
+        "vertex_ai",
         "nvidia_nim",
         "openai",
         "gemini",

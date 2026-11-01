@@ -254,8 +254,6 @@ def _agent_llm(mode: str, usage_id: str = "tvashtr-agent") -> LLM:
 
 def _sdk_call(llm: LLM, monkeypatch) -> dict:
     """One real ``LLM.completion`` with litellm's call replaced: what the SDK would send it."""
-    import openhands.sdk.llm.llm as sdk_llm
-
     seen: list[dict] = []
 
     def fake(**kwargs):
@@ -265,7 +263,8 @@ def _sdk_call(llm: LLM, monkeypatch) -> dict:
             usage={"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
         )
 
-    monkeypatch.setattr(sdk_llm, "litellm_completion", fake)
+    # The globals the running method reads: another test may have reloaded the SDK's module.
+    monkeypatch.setitem(type(llm)._transport_call.__globals__, "litellm_completion", fake)
     llm.completion(messages=[Message(role="user", content=[TextContent(text="hi")])])
     assert len(seen) == 1
     return seen[0]
