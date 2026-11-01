@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Results: compare two models</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/designsystem_dbaa69/components/bundle.css">
+<script src="ds/designsystem_dbaa69/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&amp;family=Inter:wght@400;450;500;600;700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+:root{--cream-50:#fdfcfa;--cream-100:#faf9f5;--cream-200:#f4f2ea;--panel-300:#e8e6dc;--panel-400:#dedbce;--line-200:#ece9df;--line-300:#e0ddd0;--line-400:#d2cebe;--ink-900:#141413;--ink-800:#232220;--ink-700:#3a3833;--ink-600:#57544c;--ink-500:#6e6b61;--stone-400:#b0aea5;--stone-300:#c7c4ba;--coral-100:#f7e7df;--coral-200:#efcdbe;--coral-500:#d97757;--coral-600:#c8623f;--coral-700:#b0512f;--blue-500:#6a9bcc;--blue-100:#e2ecf5;--sage-500:#788c5d;--sage-100:#e7ecdd;--amber-500:#c98a3e;--amber-100:#f4e7d2;--red-500:#c25a4b;--red-100:#f2ddd8;--surface-page:#faf9f5;--surface-raised:#fdfcfa;--surface-card:#fdfcfa;--surface-panel:#e8e6dc;--surface-inset:#e8e6dc;--surface-pressed:#dedbce;--surface-inverse:#141413;--text-primary:#141413;--text-secondary:#6e6b61;--text-tertiary:#b0aea5;--text-placeholder:#b0aea5;--text-disabled:#c7c4ba;--text-inverse:#faf9f5;--text-link:#c8623f;--text-on-accent:#faf9f5;--border-faint:#ece9df;--border-hairline:#e0ddd0;--border-strong:#d2cebe;--border-input:#d2cebe;--accent:#d97757;--accent-hover:#c8623f;--accent-active:#b0512f;--accent-tint:#f7e7df;--accent-tint-border:#efcdbe;--accent-contrast:#faf9f5;--focus-ring:rgba(217,119,87,.45);--info:#6a9bcc;--success:#788c5d;--warning:#c98a3e;--danger:#c25a4b;--font-serif:"Newsreader",Georgia,serif;--font-sans:"Inter",system-ui,sans-serif;--font-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;--font-display:var(--font-serif);--font-body:var(--font-sans);--font-ui:var(--font-sans);--font-code:var(--font-mono);--radius-xs:4px;--radius-sm:6px;--radius-md:8px;--radius-lg:12px;--radius-xl:16px;--radius-pill:999px;--shadow-xs:0 1px 2px rgba(20,20,19,.04);--shadow-sm:0 1px 2px rgba(20,20,19,.05),0 1px 1px rgba(20,20,19,.03);--shadow-md:0 4px 14px rgba(20,20,19,.07),0 1px 3px rgba(20,20,19,.04);--shadow-focus:0 0 0 3px rgba(217,119,87,.45);--shadow-pop:0 14px 40px -12px rgba(20,20,19,.22),0 2px 6px rgba(20,20,19,.06);--shadow-drawer:-20px 0 60px -32px rgba(20,20,19,.26),-1px 0 0 #e0ddd0}
+.sh{min-height:1080px;display:flex;flex-direction:column;background:var(--surface-page);font-family:var(--font-ui);color:var(--ink-900)}
+.sh-head{height:60px;flex:none;box-sizing:border-box;display:flex;align-items:center;gap:20px;padding:0 20px;background:rgba(253,252,250,.86);border-bottom:1px solid var(--border-hairline)}
+.brand{display:flex;align-items:center;gap:10px;min-width:180px;font-family:var(--font-serif);font-size:21px;color:var(--ink-900);text-decoration:none}
+.brand img{width:26px;height:26px}
+.search{flex:1;display:flex;justify-content:center;min-width:0}
+.search button{width:420px;max-width:100%;height:36px;display:flex;align-items:center;gap:8px;padding:0 10px;box-sizing:border-box;border:1px solid var(--border-hairline);border-radius:9px;background:var(--surface-page);font:inherit;font-size:13px;color:var(--ink-500);cursor:pointer}
+.search kbd{margin-left:auto;font-family:var(--font-mono);font-size:11px;padding:2px 6px;border:1px solid var(--line-300);border-radius:5px;background:var(--cream-50);color:var(--ink-600)}
+.acct{width:32px;height:32px;border-radius:50%;background:var(--panel-300);border:1px solid var(--line-400);font:inherit;font-size:12px;font-weight:600;color:var(--ink-700);cursor:pointer}
+.sh-body{flex:1;display:flex;flex-wrap:wrap}
+.nav{flex:1 1 224px;box-sizing:border-box;display:flex;flex-direction:column;gap:12px;padding:18px 12px 20px;border-right:1px solid var(--border-hairline);background:var(--surface-card)}
+.nav ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:3px}
+.ni{width:100%;display:flex;align-items:center;gap:10px;padding:10px 12px;box-sizing:border-box;border:1px solid transparent;border-radius:8px;background:transparent;font:inherit;font-size:13.5px;font-weight:500;color:var(--ink-700);text-align:left;cursor:pointer}
+.ni svg{width:16px;height:16px;flex:none}
+.ni.open{color:var(--ink-900)}
+.ni.child{padding:7px 12px 7px 38px;font-size:13px}
+.ni.cur{border-color:var(--coral-200);background:var(--coral-100);color:var(--coral-700)}
+.dot{margin-left:auto;width:7px;height:7px;border-radius:50%;background:var(--sage-500);flex:none}
+.dot.idle{background:var(--stone-400)}
+.foot{margin-top:auto;padding:12px;border-radius:10px;background:var(--cream-200);font-size:12px;line-height:1.5;color:var(--ink-600)}
+.foot b{color:var(--ink-900);font-weight:600}
+.main{flex:999 1 560px;min-width:0;box-sizing:border-box;padding:24px 40px 48px}
+svg.i{fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.crumb{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink-500)}
+.crumb a{color:var(--ink-600);text-decoration:none}
+.h1{margin:0;font-family:var(--font-serif);font-weight:400;font-size:30px;line-height:1.2;color:var(--ink-900)}
+.lede{margin:6px 0 0;font-size:14px;line-height:1.5;color:var(--ink-500);max-width:660px}
+.mono{font-family:var(--font-mono);font-size:12.5px;color:var(--ink-700)}
+.hint{font-size:12.5px;line-height:1.45;color:var(--ink-500)}
+.card{background:var(--surface-card);border:1px solid var(--border-hairline);border-radius:12px}
+.chip{display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:999px;background:var(--panel-300);border:1px solid var(--line-400);font-size:12.5px;font-weight:500;color:var(--ink-700);white-space:nowrap}
+.tbl{overflow-x:auto;border:1px solid var(--border-hairline);border-radius:12px;background:var(--surface-card)}
+.tbl table{width:100%;min-width:900px;border-collapse:collapse;font-size:13.5px}
+.tbl th{text-align:left;font-size:12px;font-weight:500;color:var(--ink-500);padding:10px 14px;border-bottom:1px solid var(--border-hairline);background:var(--cream-200);white-space:nowrap}
+.tbl td{padding:12px 14px;border-bottom:1px solid var(--line-200);vertical-align:top;line-height:1.45}
+.tbl tr:last-child td{border-bottom:0}
+.num{font-family:var(--font-mono);font-size:12px;color:var(--ink-500)}
+.ans{display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:6px;background:var(--surface-page);border:1px solid var(--line-300);font-size:13px;font-weight:500;white-space:nowrap}
+.mk{display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 9px;border-radius:999px;font-size:13px;font-weight:500;white-space:nowrap}
+.mk svg{width:12px;height:12px}
+.mk.ok{background:var(--sage-100);color:#4f6139}
+.mk.no{background:var(--red-100);color:#9a3f33}
+</style>
+</helmet>
+<div class="sh">
+  <header class="sh-head">
+    <a class="brand" href="#"><img src="/_blob/31936c080281eb191c41028901b94ce4" alt="">Tvashtr</a>
+    <div class="search"><button type="button" aria-label="Search teams, runs and actions"><svg class="i" width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>Search teams, runs and actions<kbd>⌘K</kbd></button></div>
+    <button type="button" class="acct" aria-label="Account">AS</button>
+  </header>
+  <div class="sh-body">
+    <nav class="nav" aria-label="Dashboard">
+      <ul>
+        <li><button type="button" class="ni"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"></path></svg>Home</button></li>
+        <li><button type="button" class="ni"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2z"></path><path d="M22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z"></path></svg>Domains</button></li>
+        <li><button type="button" class="ni cur" aria-current="page"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8 12 3 3 8v8l9 5 9-5z"></path><path d="m3 8 9 5 9-5"></path><path d="M12 13v8"></path></svg>Models</button></li>
+        <li><button type="button" class="ni"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="15.5" cy="8.5" r="4.5"></circle><path d="M12.3 11.7 3 21"></path><path d="m6 18 2 2"></path><path d="m9 15 2 2"></path></svg>Engines</button></li>
+        <li><button type="button" class="ni"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z"></path></svg>Toolkit</button></li>
+      </ul>
+      <div class="foot"><span><b>Models</b> start with tests: real cases with the right answers, so you can see how well any model does your job.</span></div>
+    </nav>
+
+    <main class="main">
+      <nav class="crumb" aria-label="Breadcrumb"><a href="#">Models</a><span aria-hidden="true">/</span><span>Claims triage</span></nav>
+      <div style="margin-top:10px;display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap">
+        <div>
+          <h1 class="h1">Claims triage</h1>
+          <p class="lede">Reads a new insurance claim and picks the team that should handle it.</p>
+        </div>
+        <x-import component-from-global-scope="DesignSystem_dbaa69.Button" variant="primary">Run tests</x-import>
+      </div>
+      <div style="margin-top:20px">
+        <x-import component-from-global-scope="DesignSystem_dbaa69.Tabs" variant="line" items="{{ tabs }}" default-value="results"></x-import>
+      </div>
+
+      <div style="margin-top:18px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span class="chip">Test set v4</span>
+        <span style="font-size:13px;color:var(--ink-500)">3 runs on this version</span>
+        <span style="flex:1"></span>
+        <a href="#" style="font-size:13px;font-weight:500;color:var(--coral-700);text-decoration:none">Runs on earlier versions (2)</a>
+      </div>
+
+      <div style="margin-top:12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px">
+        <sc-for list="{{ runs }}" as="r" hint-placeholder-count="3">
+          <article class="card" style="padding:16px 18px;display:flex;flex-direction:column;gap:10px">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">
+              <div style="display:flex;flex-direction:column;gap:2px;min-width:0"><span style="font-size:13px;color:var(--ink-500)">{{ r.provider }}</span><span class="mono" style="font-size:13px">{{ r.slug }}</span></div>
+              <sc-if value="{{ r.best }}" hint-placeholder-val="{{ false }}"><x-import component-from-global-scope="DesignSystem_dbaa69.Badge" variant="success">Best score</x-import></sc-if>
+              <sc-if value="{{ r.cheap }}" hint-placeholder-val="{{ false }}"><x-import component-from-global-scope="DesignSystem_dbaa69.Badge" variant="info">Lowest cost</x-import></sc-if>
+            </div>
+            <div style="display:flex;align-items:baseline;gap:8px"><span style="font-family:var(--font-serif);font-size:32px;line-height:1">{{ r.score }}</span><span style="font-size:13px;color:var(--ink-500)">{{ r.pct }} passed</span></div>
+            <div style="height:6px;border-radius:999px;background:var(--panel-300);overflow:hidden"><div style="{{ r.bar }}"></div></div>
+            <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--ink-600)"><span>{{ r.cost }} for all 50</span><span>{{ r.speed }} per answer</span><span>{{ r.when }}</span></div>
+          </article>
+        </sc-for>
+      </div>
+
+      <section style="margin-top:28px" aria-labelledby="cmp-title">
+        <h2 id="cmp-title" style="margin:0;font-family:var(--font-serif);font-weight:400;font-size:21px">Compare two models</h2>
+        <div style="margin-top:12px;display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap">
+          <div style="width:260px;max-width:100%"><x-import component-from-global-scope="DesignSystem_dbaa69.Select" label="First" options="{{ pickA }}" default-value="sonnet"></x-import></div>
+          <div style="width:260px;max-width:100%"><x-import component-from-global-scope="DesignSystem_dbaa69.Select" label="Second" options="{{ pickB }}" default-value="gptoss"></x-import></div>
+          <div class="tv-seg" role="group" aria-label="Which tests to show">
+            <button type="button" class="tv-seg__btn tv-seg__btn--active" aria-pressed="true">Only where they differ (7)</button>
+            <button type="button" class="tv-seg__btn" aria-pressed="false">All 50</button>
+          </div>
+        </div>
+        <p style="margin:12px 0 0;font-size:13.5px;line-height:1.5;color:var(--ink-700)">They agree on 43 of 50 tests (40 both right, 3 both wrong). <span class="mono">claude-sonnet-5-5</span> is right on 6 where <span class="mono">gpt-oss-120b</span> is wrong; <span class="mono">gpt-oss-120b</span> is right on 1 where <span class="mono">claude-sonnet-5-5</span> is wrong.</p>
+
+        <div class="tbl" style="margin-top:12px">
+          <table>
+            <thead>
+              <tr><th scope="col" style="width:40px">#</th><th scope="col">Input</th><th scope="col" style="width:130px">Expected</th><th scope="col" style="width:170px"><span class="mono" style="font-size:12px">claude-sonnet-5-5</span></th><th scope="col" style="width:170px"><span class="mono" style="font-size:12px">gpt-oss-120b</span></th></tr>
+            </thead>
+            <tbody>
+              <sc-for list="{{ diffs }}" as="d" hint-placeholder-count="7">
+                <tr>
+                  <td class="num">{{ d.n }}</td>
+                  <td>{{ d.input }}</td>
+                  <td><span class="ans">{{ d.expected }}</span></td>
+                  <td>
+                    <sc-if value="{{ d.aOk }}" hint-placeholder-val="{{ true }}"><span class="mk ok"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5 10 17l9-10"></path></svg>{{ d.a }}</span></sc-if>
+                    <sc-if value="{{ d.aNo }}" hint-placeholder-val="{{ false }}"><span class="mk no"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg>{{ d.a }}</span></sc-if>
+                  </td>
+                  <td>
+                    <sc-if value="{{ d.bOk }}" hint-placeholder-val="{{ false }}"><span class="mk ok"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5 10 17l9-10"></path></svg>{{ d.b }}</span></sc-if>
+                    <sc-if value="{{ d.bNo }}" hint-placeholder-val="{{ true }}"><span class="mk no"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg>{{ d.b }}</span></sc-if>
+                  </td>
+                </tr>
+              </sc-for>
+            </tbody>
+          </table>
+        </div>
+        <p class="hint" style="margin:12px 0 0">Only runs on the same test set version are compared. Each answer is shown exactly as the model gave it.</p>
+      </section>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1080}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const bar = (p, tone) => 'height:100%;width:' + p + '%;border-radius:999px;background:' + tone;
+    const runs = [
+      { provider: 'Anthropic', slug: 'claude-sonnet-5-5', score: '46 / 50', pct: '92%', cost: '$0.21', speed: '1.4 s', when: '2 h ago', best: true, cheap: false, bar: bar(92, '#788c5d') },
+      { provider: 'DeepSeek', slug: 'deepseek-chat', score: '43 / 50', pct: '86%', cost: '$0.04', speed: '2.1 s', when: '2 h ago', best: false, cheap: false, bar: bar(86, '#b0aea5') },
+      { provider: 'Groq', slug: 'gpt-oss-120b', score: '41 / 50', pct: '82%', cost: '$0.02', speed: '0.6 s', when: '2 h ago', best: false, cheap: true, bar: bar(82, '#b0aea5') }
+    ];
+    const diffs = [
+      { n: 5, input: 'Third claim this month for a phone "stolen" from the same car. The invoices look edited.', expected: 'Fraud review', a: 'Fraud review', b: 'Motor' },
+      { n: 7, input: 'Scooter skidded on gravel. Rider broke an arm; the front fork is bent.', expected: 'Motor', a: 'Motor', b: 'Health' },
+      { n: 8, input: 'Trip cut short because a parent was admitted to hospital back home. Return flight rebooked.', expected: 'Travel', a: 'Health', b: 'Travel' },
+      { n: 12, input: 'Pipe burst in the office pantry over the weekend. Flooring and a fridge damaged.', expected: 'Property', a: 'Property', b: 'Other' },
+      { n: 19, input: 'Car hit while parked. CCTV shows the van’s number plate.', expected: 'Motor', a: 'Motor', b: 'Fraud review' },
+      { n: 27, input: 'Bag lost on a domestic flight. The airline paid part of the value.', expected: 'Travel', a: 'Travel', b: 'Other' },
+      { n: 33, input: 'The same accident filed under two policies, with different dates.', expected: 'Fraud review', a: 'Fraud review', b: 'Motor' }
+    ].map((d) => ({ ...d, aOk: d.a === d.expected, aNo: d.a !== d.expected, bOk: d.b === d.expected, bNo: d.b !== d.expected }));
+    return {
+      runs, diffs,
+      tabs: [
+        { value: 'tests', label: 'Tests', count: 50 },
+        { value: 'results', label: 'Results', count: 3 },
+        { value: 'settings', label: 'Settings' }
+      ],
+      pickA: [{ value: 'sonnet', label: 'claude-sonnet-5-5 · 46 / 50' }, { value: 'deepseek', label: 'deepseek-chat · 43 / 50' }],
+      pickB: [{ value: 'gptoss', label: 'gpt-oss-120b · 41 / 50' }, { value: 'deepseek', label: 'deepseek-chat · 43 / 50' }]
+    };
+  }
+}
+</script>
+</body>
+</html>

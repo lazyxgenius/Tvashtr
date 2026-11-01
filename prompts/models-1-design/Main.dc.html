@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Models: the list</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/designsystem_dbaa69/components/bundle.css">
+<script src="ds/designsystem_dbaa69/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&amp;family=Inter:wght@400;450;500;600;700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+:root{--cream-50:#fdfcfa;--cream-100:#faf9f5;--cream-200:#f4f2ea;--panel-300:#e8e6dc;--panel-400:#dedbce;--line-200:#ece9df;--line-300:#e0ddd0;--line-400:#d2cebe;--ink-900:#141413;--ink-800:#232220;--ink-700:#3a3833;--ink-600:#57544c;--ink-500:#6e6b61;--stone-400:#b0aea5;--stone-300:#c7c4ba;--coral-100:#f7e7df;--coral-200:#efcdbe;--coral-500:#d97757;--coral-600:#c8623f;--coral-700:#b0512f;--blue-500:#6a9bcc;--blue-100:#e2ecf5;--sage-500:#788c5d;--sage-100:#e7ecdd;--amber-500:#c98a3e;--amber-100:#f4e7d2;--red-500:#c25a4b;--red-100:#f2ddd8;--surface-page:#faf9f5;--surface-raised:#fdfcfa;--surface-card:#fdfcfa;--surface-panel:#e8e6dc;--surface-inset:#e8e6dc;--surface-pressed:#dedbce;--surface-inverse:#141413;--text-primary:#141413;--text-secondary:#6e6b61;--text-tertiary:#b0aea5;--text-placeholder:#b0aea5;--text-disabled:#c7c4ba;--text-inverse:#faf9f5;--text-link:#c8623f;--text-on-accent:#faf9f5;--border-faint:#ece9df;--border-hairline:#e0ddd0;--border-strong:#d2cebe;--border-input:#d2cebe;--accent:#d97757;--accent-hover:#c8623f;--accent-active:#b0512f;--accent-tint:#f7e7df;--accent-tint-border:#efcdbe;--accent-contrast:#faf9f5;--focus-ring:rgba(217,119,87,.45);--info:#6a9bcc;--success:#788c5d;--warning:#c98a3e;--danger:#c25a4b;--font-serif:"Newsreader",Georgia,serif;--font-sans:"Inter",system-ui,sans-serif;--font-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;--font-display:var(--font-serif);--font-body:var(--font-sans);--font-ui:var(--font-sans);--font-code:var(--font-mono);--radius-xs:4px;--radius-sm:6px;--radius-md:8px;--radius-lg:12px;--radius-xl:16px;--radius-pill:999px;--shadow-xs:0 1px 2px rgba(20,20,19,.04);--shadow-sm:0 1px 2px rgba(20,20,19,.05),0 1px 1px rgba(20,20,19,.03);--shadow-md:0 4px 14px rgba(20,20,19,.07),0 1px 3px rgba(20,20,19,.04);--shadow-focus:0 0 0 3px rgba(217,119,87,.45);--shadow-pop:0 14px 40px -12px rgba(20,20,19,.22),0 2px 6px rgba(20,20,19,.06);--shadow-drawer:-20px 0 60px -32px rgba(20,20,19,.26),-1px 0 0 #e0ddd0}
+.sh{min-height:960px;display:flex;flex-direction:column;background:var(--surface-page);font-family:var(--font-ui);color:var(--ink-900)}
+.sh-head{height:60px;flex:none;box-sizing:border-box;display:flex;align-items:center;gap:20px;padding:0 20px;background:rgba(253,252,250,.86);border-bottom:1px solid var(--border-hairline)}
+.brand{display:flex;align-items:center;gap:10px;min-width:180px;font-family:var(--font-serif);font-size:21px;color:var(--ink-900);text-decoration:none}
+.brand img{width:26px;height:26px}
+.search{flex:1;display:flex;justify-content:center;min-width:0}
+.search button{width:420px;max-width:100%;height:36px;display:flex;align-items:center;gap:8px;padding:0 10px;box-sizing:border-box;border:1px solid var(--border-hairline);border-radius:9px;background:var(--surface-page);font:inherit;font-size:13px;color:var(--ink-500);cursor:pointer}
+.search kbd{margin-left:auto;font-family:var(--font-mono);font-size:11px;padding:2px 6px;border:1px solid var(--line-300);border-radius:5px;background:var(--cream-50);color:var(--ink-600)}
+.acct{width:32px;height:32px;border-radius:50%;background:var(--panel-300);border:1px solid var(--line-400);font:inherit;font-size:12px;font-weight:600;color:var(--ink-700);cursor:pointer}
+.sh-body{flex:1;display:flex;flex-wrap:wrap}
+.nav{flex:1 1 224px;box-sizing:border-box;display:flex;flex-direction:column;gap:12px;padding:18px 12px 20px;border-right:1px solid var(--border-hairline);background:var(--surface-card)}
+.nav ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:3px}
+.ni{width:100%;display:flex;align-items:center;gap:10px;padding:10px 12px;box-sizing:border-box;border:1px solid transparent;border-radius:8px;background:transparent;font:inherit;font-size:13.5px;font-weight:500;color:var(--ink-700);text-align:left;cursor:pointer}
+.ni svg{width:16px;height:16px;flex:none}
+.ni.open{color:var(--ink-900)}
+.ni.child{padding:7px 12px 7px 38px;font-size:13px}
+.ni.cur{border-color:var(--coral-200);background:var(--coral-100);color:var(--coral-700)}
+.dot{margin-left:auto;width:7px;height:7px;border-radius:50%;background:var(--sage-500);flex:none}
+.dot.idle{background:var(--stone-400)}
+.foot{margin-top:auto;padding:12px;border-radius:10px;background:var(--cream-200);font-size:12px;line-height:1.5;color:var(--ink-600)}
+.foot b{color:var(--ink-900);font-weight:600}
+.main{flex:999 1 560px;min-width:0;box-sizing:border-box;padding:30px 40px 48px}
+svg.i{fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.h1{margin:0;font-family:var(--font-serif);font-weight:400;font-size:30px;line-height:1.2;color:var(--ink-900)}
+.lede{margin:6px 0 0;font-size:14px;line-height:1.5;color:var(--ink-500);max-width:660px}
+.eyebrow{font-size:12px;font-weight:500;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-500)}
+.card{background:var(--surface-card);border:1px solid var(--border-hairline);border-radius:12px}
+.mono{font-family:var(--font-mono);font-size:12.5px;color:var(--ink-700)}
+.chip{display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:999px;background:var(--panel-300);border:1px solid var(--line-400);font-size:12.5px;font-weight:500;color:var(--ink-700);white-space:nowrap}
+</style>
+</helmet>
+<div class="sh">
+  <header class="sh-head">
+    <a class="brand" href="#"><img src="/_blob/31936c080281eb191c41028901b94ce4" alt="">Tvashtr</a>
+    <div class="search"><button type="button" aria-label="Search teams, runs and actions"><svg class="i" width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>Search teams, runs and actions<kbd>⌘K</kbd></button></div>
+    <button type="button" class="acct" aria-label="Account">AS</button>
+  </header>
+  <div class="sh-body">
+    <nav class="nav" aria-label="Dashboard">
+      <ul>
+        <li><button type="button" class="ni"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"></path></svg>Home</button></li>
+        <li><button type="button" class="ni"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2z"></path><path d="M22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z"></path></svg>Domains</button></li>
+        <li><button type="button" class="ni open cur" aria-current="page"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8 12 3 3 8v8l9 5 9-5z"></path><path d="m3 8 9 5 9-5"></path><path d="M12 13v8"></path></svg>Models</button></li>
+        <li><button type="button" class="ni"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="15.5" cy="8.5" r="4.5"></circle><path d="M12.3 11.7 3 21"></path><path d="m6 18 2 2"></path><path d="m9 15 2 2"></path></svg>Engines</button></li>
+        <li><button type="button" class="ni"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z"></path></svg>Toolkit</button></li>
+      </ul>
+      <div class="foot"><span><b>Models</b> start with tests: real cases with the right answers, so you can see how well any model does your job.</span></div>
+    </nav>
+
+    <main class="main">
+      <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap">
+        <div>
+          <h1 class="h1">Models</h1>
+          <p class="lede">Each model is one job you want done well. Write its tests, run them on the models you have keys for, and see which one does the job best, and for how much.</p>
+        </div>
+        <sc-if value="{{ withModels }}" hint-placeholder-val="{{ true }}">
+          <x-import component-from-global-scope="DesignSystem_dbaa69.Button" variant="primary">New model</x-import>
+        </sc-if>
+      </div>
+
+      <sc-if value="{{ withModels }}" hint-placeholder-val="{{ true }}">
+        <div style="margin-top:24px;display:grid;grid-template-columns:repeat(auto-fill,minmax(400px,1fr));gap:16px">
+          <article class="card" style="padding:20px;display:flex;flex-direction:column;gap:14px">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+              <div>
+                <h2 style="margin:0;font-family:var(--font-serif);font-weight:400;font-size:21px;line-height:1.25">Claims triage</h2>
+                <p style="margin:4px 0 0;font-size:13.5px;line-height:1.45;color:var(--ink-500)">Reads a new insurance claim and picks the team that should handle it.</p>
+              </div>
+              <x-import component-from-global-scope="DesignSystem_dbaa69.Badge" variant="success" dot="{{ yes }}">Tested 2 h ago</x-import>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap"><span class="chip">50 tests</span><span class="chip">Pick from a list · 6 choices</span><span class="chip">Test set v4</span></div>
+            <div style="border-top:1px solid var(--line-200);padding-top:14px;display:flex;flex-direction:column;gap:10px">
+              <div class="eyebrow">Best on your tests</div>
+              <div style="display:grid;grid-template-columns:1fr auto 110px;gap:12px;align-items:center;font-size:13.5px">
+                <span>Anthropic <span class="mono">claude-sonnet-5-5</span></span><span style="font-weight:600">46 / 50</span><span style="color:var(--ink-500);text-align:right">$0.21 for all 50</span>
+                <span>DeepSeek <span class="mono">deepseek-chat</span></span><span style="font-weight:600">43 / 50</span><span style="color:var(--ink-500);text-align:right">$0.04 for all 50</span>
+                <span>Groq <span class="mono">gpt-oss-120b</span></span><span style="font-weight:600">41 / 50</span><span style="color:var(--ink-500);text-align:right">$0.02 for all 50</span>
+              </div>
+            </div>
+          </article>
+
+          <article class="card" style="padding:20px;display:flex;flex-direction:column;gap:14px">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+              <div>
+                <h2 style="margin:0;font-family:var(--font-serif);font-weight:400;font-size:21px;line-height:1.25">Support email router</h2>
+                <p style="margin:4px 0 0;font-size:13.5px;line-height:1.45;color:var(--ink-500)">Reads a support email and says which product it is about and how urgent it is.</p>
+              </div>
+              <x-import component-from-global-scope="DesignSystem_dbaa69.Badge" variant="neutral">Not run yet</x-import>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap"><span class="chip">18 tests</span><span class="chip">Write text</span><span class="chip">Test set v2</span></div>
+            <div style="border-top:1px solid var(--line-200);padding-top:14px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+              <span style="font-size:13.5px;color:var(--ink-500)">No results yet. Run its tests to see how models do.</span>
+              <x-import component-from-global-scope="DesignSystem_dbaa69.Button" variant="secondary" size="sm">Run tests</x-import>
+            </div>
+          </article>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ firstTime }}" hint-placeholder-val="{{ false }}">
+        <section class="card" style="max-width:780px;margin:28px auto 0;padding:40px 40px 36px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px">
+          <span style="width:44px;height:44px;border-radius:12px;background:var(--panel-300);display:flex;align-items:center;justify-content:center;color:var(--ink-700)"><svg class="i" width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="2" width="8" height="4" rx="1"></rect><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><path d="m9 14 2 2 4-4"></path></svg></span>
+          <h2 style="margin:6px 0 0;font-family:var(--font-serif);font-weight:400;font-size:26px">Every model starts with its tests</h2>
+          <p class="lede" style="margin:0;text-align:center">Pick one job you want done well, like sorting claims into teams. Write down real cases with the right answers. Tvashtr runs them on the models you have keys for and shows which does best, and what it costs.</p>
+          <ol style="list-style:none;margin:18px 0 6px;padding:0;width:100%;display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;text-align:left">
+            <li style="padding:14px 16px;border:1px solid var(--line-300);border-radius:10px;background:var(--surface-page)"><div class="eyebrow">Step 1</div><div style="margin-top:6px;font-size:14px;font-weight:600">Describe the job</div><div style="margin-top:4px;font-size:13px;line-height:1.45;color:var(--ink-500)">One sentence, and the kind of answer you expect.</div></li>
+            <li style="padding:14px 16px;border:1px solid var(--line-300);border-radius:10px;background:var(--surface-page)"><div class="eyebrow">Step 2</div><div style="margin-top:6px;font-size:14px;font-weight:600">Add tests</div><div style="margin-top:4px;font-size:13px;line-height:1.45;color:var(--ink-500)">Type them in or import a CSV. Keep adding as you learn.</div></li>
+            <li style="padding:14px 16px;border:1px solid var(--line-300);border-radius:10px;background:var(--surface-page)"><div class="eyebrow">Step 3</div><div style="margin-top:6px;font-size:14px;font-weight:600">Run them</div><div style="margin-top:4px;font-size:13px;line-height:1.45;color:var(--ink-500)">On the models you hold keys for. Compare any two side by side.</div></li>
+          </ol>
+          <x-import component-from-global-scope="DesignSystem_dbaa69.Button" variant="primary">New model</x-import>
+        </section>
+      </sc-if>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"view":{"editor":"enum","options":["With models","First time"],"default":"With models"},"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const view = this.props.view ?? 'With models';
+    return { yes: true, withModels: view === 'With models', firstTime: view === 'First time' };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>New model</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/designsystem_dbaa69/components/bundle.css">
+<script src="ds/designsystem_dbaa69/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&amp;family=Inter:wght@400;450;500;600;700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+:root{--cream-50:#fdfcfa;--cream-100:#faf9f5;--cream-200:#f4f2ea;--panel-300:#e8e6dc;--panel-400:#dedbce;--line-200:#ece9df;--line-300:#e0ddd0;--line-400:#d2cebe;--ink-900:#141413;--ink-800:#232220;--ink-700:#3a3833;--ink-600:#57544c;--ink-500:#6e6b61;--stone-400:#b0aea5;--stone-300:#c7c4ba;--coral-100:#f7e7df;--coral-200:#efcdbe;--coral-500:#d97757;--coral-600:#c8623f;--coral-700:#b0512f;--blue-500:#6a9bcc;--blue-100:#e2ecf5;--sage-500:#788c5d;--sage-100:#e7ecdd;--amber-500:#c98a3e;--amber-100:#f4e7d2;--red-500:#c25a4b;--red-100:#f2ddd8;--surface-page:#faf9f5;--surface-raised:#fdfcfa;--surface-card:#fdfcfa;--surface-panel:#e8e6dc;--surface-inset:#e8e6dc;--surface-pressed:#dedbce;--surface-inverse:#141413;--text-primary:#141413;--text-secondary:#6e6b61;--text-tertiary:#b0aea5;--text-placeholder:#b0aea5;--text-disabled:#c7c4ba;--text-inverse:#faf9f5;--text-link:#c8623f;--text-on-accent:#faf9f5;--border-faint:#ece9df;--border-hairline:#e0ddd0;--border-strong:#d2cebe;--border-input:#d2cebe;--accent:#d97757;--accent-hover:#c8623f;--accent-active:#b0512f;--accent-tint:#f7e7df;--accent-tint-border:#efcdbe;--accent-contrast:#faf9f5;--focus-ring:rgba(217,119,87,.45);--info:#6a9bcc;--success:#788c5d;--warning:#c98a3e;--danger:#c25a4b;--font-serif:"Newsreader",Georgia,serif;--font-sans:"Inter",system-ui,sans-serif;--font-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;--font-display:var(--font-serif);--font-body:var(--font-sans);--font-ui:var(--font-sans);--font-code:var(--font-mono);--radius-xs:4px;--radius-sm:6px;--radius-md:8px;--radius-lg:12px;--radius-xl:16px;--radius-pill:999px;--shadow-xs:0 1px 2px rgba(20,20,19,.04);--shadow-sm:0 1px 2px rgba(20,20,19,.05),0 1px 1px rgba(20,20,19,.03);--shadow-md:0 4px 14px rgba(20,20,19,.07),0 1px 3px rgba(20,20,19,.04);--shadow-focus:0 0 0 3px rgba(217,119,87,.45);--shadow-pop:0 14px 40px -12px rgba(20,20,19,.22),0 2px 6px rgba(20,20,19,.06);--shadow-drawer:-20px 0 60px -32px rgba(20,20,19,.26),-1px 0 0 #e0ddd0}
+.sh{position:relative;min-height:960px;display:flex;flex-direction:column;background:var(--surface-page);font-family:var(--font-ui);color:var(--ink-900)}
+.sh-head{height:60px;flex:none;box-sizing:border-box;display:flex;align-items:center;gap:20px;padding:0 20px;background:rgba(253,252,250,.86);border-bottom:1px solid var(--border-hairline)}
+.brand{display:flex;align-items:center;gap:10px;min-width:180px;font-family:var(--font-serif);font-size:21px;color:var(--ink-900);text-decoration:none}
+.brand img{width:26px;height:26px}
+.search{flex:1;display:flex;justify-content:center;min-width:0}
+.search button{width:420px;max-width:100%;height:36px;display:flex;align-items:center;gap:8px;padding:0 10px;box-sizing:border-box;border:1px solid var(--border-hairline);border-radius:9px;background:var(--surface-page);font:inherit;font-size:13px;color:var(--ink-500);cursor:pointer}
+.search kbd{margin-left:auto;font-family:var(--font-mono);font-size:11px;padding:2px 6px;border:1px solid var(--line-300);border-radius:5px;background:var(--cream-50);color:var(--ink-600)}
+.acct{width:32px;height:32px;border-radius:50%;background:var(--panel-300);border:1px solid var(--line-400);font:inherit;font-size:12px;font-weight:600;color:var(--ink-700);cursor:pointer}
+.sh-body{flex:1;display:flex;flex-wrap:wrap}
+.nav{flex:1 1 224px;box-sizing:border-box;display:flex;flex-direction:column;gap:12px;padding:18px 12px 20px;border-right:1px solid var(--border-hairline);background:var(--surface-card)}
+.nav ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:3px}
+.ni{width:100%;display:flex;align-items:center;gap:10px;padding:10px 12px;box-sizing:border-box;border:1px solid transparent;border-radius:8px;background:transparent;font:inherit;font-size:13.5px;font-weight:500;color:var(--ink-700);text-align:left;cursor:pointer}
+.ni svg{width:16px;height:16px;flex:none}
+.ni.open{color:var(--ink-900)}
+.ni.child{padding:7px 12px 7px 38px;font-size:13px}
+.ni.cur{border-color:var(--coral-200);background:var(--coral-100);color:var(--coral-700)}
+.dot{margin-left:auto;width:7px;height:7px;border-radius:50%;background:var(--sage-500);flex:none}
+.dot.idle{background:var(--stone-400)}
+.foot{margin-top:auto;padding:12px;border-radius:10px;background:var(--cream-200);font-size:12px;line-height:1.5;color:var(--ink-600)}
+.foot b{color:var(--ink-900);font-weight:600}
+.main{flex:999 1 560px;min-width:0;box-sizing:border-box;padding:30px 40px 48px}
+svg.i{fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.h1{margin:0;font-family:var(--font-serif);font-weight:400;font-size:30px;line-height:1.2;color:var(--ink-900)}
+.lede{margin:6px 0 0;font-size:14px;line-height:1.5;color:var(--ink-500);max-width:660px}
+.card{background:var(--surface-card);border:1px solid var(--border-hairline);border-radius:12px}
+.lbl{font-size:13px;font-weight:500;color:var(--ink-900)}
+.hint{font-size:12.5px;line-height:1.45;color:var(--ink-500)}
+.choice{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 6px 0 11px;border-radius:999px;background:var(--panel-300);border:1px solid var(--line-400);font-size:13px;font-weight:500;color:var(--ink-700)}
+.choice button{width:20px;height:20px;border:0;border-radius:50%;background:transparent;color:var(--ink-500);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+</style>
+</helmet>
+<div class="sh">
+  <header class="sh-head">
+    <a class="brand" href="#"><img src="/_blob/31936c080281eb191c41028901b94ce4" alt="">Tvashtr</a>
+    <div class="search"><button type="button" aria-label="Search teams, runs and actions"><svg class="i" width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>Search teams, runs and actions<kbd>⌘K</kbd></button></div>
+    <button type="button" class="acct" aria-label="Account">AS</button>
+  </header>
+  <div class="sh-body">
+    <nav class="nav" aria-label="Dashboard">
+      <ul>
+        <li><button type="button" class="ni"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"></path></svg>Home</button></li>
+        <li><button type="button" class="ni"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2z"></path><path d="M22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z"></path></svg>Domains</button></li>
+        <li><button type="button" class="ni open cur" aria-current="page"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8 12 3 3 8v8l9 5 9-5z"></path><path d="m3 8 9 5 9-5"></path><path d="M12 13v8"></path></svg>Models</button></li>
+        <li><button type="button" class="ni"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="15.5" cy="8.5" r="4.5"></circle><path d="M12.3 11.7 3 21"></path><path d="m6 18 2 2"></path><path d="m9 15 2 2"></path></svg>Engines</button></li>
+        <li><button type="button" class="ni"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z"></path></svg>Toolkit</button></li>
+      </ul>
+      <div class="foot"><span><b>Models</b> start with tests: real cases with the right answers, so you can see how well any model does your job.</span></div>
+    </nav>
+    <main class="main">
+      <h1 class="h1">Models</h1>
+      <p class="lede">Each model is one job you want done well. Write its tests, run them on the models you have keys for, and see which one does the job best, and for how much.</p>
+      <div style="margin-top:24px;display:grid;grid-template-columns:repeat(auto-fill,minmax(400px,1fr));gap:16px">
+        <div class="card" style="height:150px"></div>
+      </div>
+    </main>
+  </div>
+
+  <div style="position:absolute;top:0;right:0;bottom:0;left:0;background:rgba(20,20,19,.3)"></div>
+
+  <section role="dialog" aria-modal="true" aria-labelledby="nm-title" style="position:absolute;top:84px;left:50%;transform:translateX(-50%);width:560px;max-width:92%;box-sizing:border-box;background:var(--surface-card);border-radius:16px;box-shadow:var(--shadow-pop);display:flex;flex-direction:column">
+    <div style="display:flex;align-items:flex-start;gap:12px;padding:20px 20px 14px;border-bottom:1px solid var(--line-200)">
+      <div style="flex:1">
+        <h2 id="nm-title" style="margin:0;font-family:var(--font-serif);font-weight:400;font-size:22px">New model</h2>
+        <p style="margin:4px 0 0;font-size:13px;color:var(--ink-500)">One job, described plainly. You can change any of this later.</p>
+      </div>
+      <button type="button" aria-label="Close" style="width:30px;height:30px;border:1px solid var(--line-300);border-radius:8px;background:var(--surface-page);color:var(--ink-600);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0"><svg class="i" width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button>
+    </div>
+
+    <div style="padding:20px;display:flex;flex-direction:column;gap:20px">
+      <x-import component-from-global-scope="DesignSystem_dbaa69.Input" label="Name" default-value="Claims triage"></x-import>
+      <x-import component-from-global-scope="DesignSystem_dbaa69.Input" label="The job, in one sentence" multiline="{{ yes }}" rows="{{ two }}" default-value="Read a new insurance claim and pick the team that should handle it." helper="Write it the way you would brief a new colleague."></x-import>
+
+      <fieldset style="margin:0;padding:0;border:0;display:flex;flex-direction:column;gap:8px">
+        <legend class="lbl" style="padding:0;margin-bottom:8px">What kind of answer?</legend>
+        <div style="padding:12px 14px;border:1px solid var(--coral-200);border-radius:10px;background:var(--coral-100)">
+          <x-import component-from-global-scope="DesignSystem_dbaa69.Checkbox" type="radio" name="kind" default-checked="{{ yes }}" label="Pick from a list" description="One of a few fixed choices, like a team or a label. Tests are scored by exact match."></x-import>
+        </div>
+        <div style="padding:12px 14px;border:1px solid var(--line-300);border-radius:10px;background:var(--surface-page)">
+          <x-import component-from-global-scope="DesignSystem_dbaa69.Checkbox" type="radio" name="kind" label="Write text" description="A sentence or more, like a summary or a reply. Tests are scored by key words or an AI judge."></x-import>
+        </div>
+      </fieldset>
+
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <span class="lbl">The choices</span>
+        <div style="display:flex;flex-wrap:wrap;gap:8px">
+          <span class="choice">Motor<button type="button" aria-label="Remove Motor"><svg class="i" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button></span>
+          <span class="choice">Property<button type="button" aria-label="Remove Property"><svg class="i" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button></span>
+          <span class="choice">Health<button type="button" aria-label="Remove Health"><svg class="i" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button></span>
+          <span class="choice">Travel<button type="button" aria-label="Remove Travel"><svg class="i" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button></span>
+          <span class="choice">Fraud review<button type="button" aria-label="Remove Fraud review"><svg class="i" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button></span>
+          <span class="choice">Other<button type="button" aria-label="Remove Other"><svg class="i" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button></span>
+        </div>
+        <x-import component-from-global-scope="DesignSystem_dbaa69.Input" size="sm" placeholder="Add a choice and press Enter" aria-label="Add a choice"></x-import>
+        <span class="hint">Every test's expected answer must be one of these.</span>
+      </div>
+    </div>
+
+    <div style="display:flex;justify-content:flex-end;gap:10px;padding:14px 20px 20px;border-top:1px solid var(--line-200)">
+      <x-import component-from-global-scope="DesignSystem_dbaa69.Button" variant="ghost">Cancel</x-import>
+      <x-import component-from-global-scope="DesignSystem_dbaa69.Button" variant="primary">Create model</x-import>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { yes: true, two: 2 };
+  }
+}
+</script>
+</body>
+</html>
