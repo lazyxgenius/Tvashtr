@@ -194,9 +194,7 @@ def _refuse_foreign_databases() -> None:
         "127.0.0.1",
         "::1",
     ):
-        sys.exit(
-            f"Refusing to seed {url.hostname}{url.path}: local scratch databases only."
-        )
+        sys.exit(f"Refusing to seed {url.hostname}{url.path}: local scratch databases only.")
 
 
 def _account(session, email: str) -> uuid.UUID:
@@ -207,9 +205,7 @@ def _account(session, email: str) -> uuid.UUID:
         session.flush()
     held = set(
         session.execute(
-            select(ProviderCredential.provider).where(
-                ProviderCredential.owner_id == user.id
-            )
+            select(ProviderCredential.provider).where(ProviderCredential.owner_id == user.id)
         ).scalars()
     )
     for provider in {"anthropic", "groq", "deepseek"} - held:
@@ -224,9 +220,7 @@ def _account(session, email: str) -> uuid.UUID:
     return user.id
 
 
-def _version(
-    session, model, number, case_ids, note, owner, when
-) -> ModelTestSetVersion:
+def _version(session, model, number, case_ids, note, owner, when) -> ModelTestSetVersion:
     row = ModelTestSetVersion(
         model_id=model.id,
         version=number,
@@ -294,9 +288,7 @@ def _run(
                 completion_tokens=4,
                 cost_usd=per_case,
                 judge_model=judge if case.scoring == "judge" else None,
-                judge_cost_usd=Decimal(str(judge_cost))
-                if case.scoring == "judge"
-                else Decimal(0),
+                judge_cost_usd=Decimal(str(judge_cost)) if case.scoring == "judge" else Decimal(0),
                 created_at=when,
             )
         )
@@ -495,9 +487,7 @@ def seed_verdicts(session, owner: uuid.UUID) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--email", required=True)
-    parser.add_argument(
-        "--verdicts", action="store_true", help="add test 7's verdict runs"
-    )
+    parser.add_argument("--verdicts", action="store_true", help="add test 7's verdict runs")
     args = parser.parse_args()
     _refuse_foreign_databases()
     with session_scope() as session:
