@@ -31,6 +31,7 @@ from tvashtr.gateway.types import (
     EmbeddingResult,
     GatewayError,
 )
+from tvashtr.google_cloud import call_settings as google_cloud_settings
 
 # Keep the gateway quiet and side-effect free: no debug spam, no phone-home.
 litellm.suppress_debug_info = True
@@ -259,6 +260,7 @@ def complete(request: CompletionRequest) -> CompletionResult:
         while True:
             started = time.perf_counter()
             try:
+                kwargs.update(google_cloud_settings(model, api_key) or {})  # vertex_ai/ -> gemini/
                 response = _call_with_limit(dict(kwargs), limit)
             except Exception as exc:  # noqa: BLE001 — any provider error: retry or try the next
                 last_error = exc

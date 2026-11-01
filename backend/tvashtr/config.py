@@ -8,6 +8,8 @@ from typing import Literal
 from pydantic import AliasChoices, Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from tvashtr.google_cloud import call_settings as google_cloud_settings
+
 # P1.5c capstone idea (env-overridable via ``TVASHTR_TASK_IDEA``). The real, non-trivial
 # multi-file feature the M1 capstone proves: a stdlib-only Python task-list CLI. Seeded into
 # ``Run.idea`` (the canonical-idea seat — no migration) for ``make loop-feature-docker``,
@@ -844,8 +846,16 @@ def agent_llm_routing(
     #
     # R17: ``num_retries`` is the task's own envelope when the host set one (a node with a usable
     # backup); ``None`` ⇒ the configured envelope, byte-identical to before.
+    #
+    # Google Cloud: a ``vertex_ai/<id>`` slug becomes ``gemini/<id>`` on the Vertex address.
+    google_cloud = google_cloud_settings(model, api_key_override)
     return {
         "model": model,
+        **(
+            {"model": google_cloud["model"], "base_url": google_cloud["api_base"]}
+            if google_cloud
+            else {}
+        ),
         "api_key": api_key_override,
         "num_retries": settings.agent_num_retries if num_retries is None else num_retries,
         "retry_max_wait": settings.agent_retry_max_wait_s,
