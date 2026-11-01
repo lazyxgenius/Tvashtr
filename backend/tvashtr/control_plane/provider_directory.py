@@ -49,9 +49,9 @@ _DISPLAY: dict[str, dict] = {
         "monogram": "G",
         "label": "Gemini models with a Google AI Studio key, and Domains embeddings",
     },
-    # "C": Gemini already has the "G" tile, and the two Google rows must not be confused.
+    # "V": Gemini already has the "G" tile, and the two Google rows must not be confused.
     "vertex_ai": {
-        "monogram": "C",
+        "monogram": "V",
         "label": "Gemini on your Google Cloud account (Vertex AI)",
         "hint": (
             "Paste a Google Cloud API key. Calls are billed to that Google Cloud account, so its "
