@@ -272,7 +272,9 @@ function Compare({
                       <span className="md-clamp">{r.input}</span>
                     </td>
                     <td>
-                      <span className="md-ans md-ans--wrap">{r.expected}</span>
+                      <span className={r.expected.length > 24 ? "md-ans md-ans--wrap" : "md-ans"}>
+                        {r.expected}
+                      </span>
                     </td>
                     <td>
                       <AnswerChip side={r.a} />

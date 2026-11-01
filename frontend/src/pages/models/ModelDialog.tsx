@@ -31,7 +31,7 @@ export function ModelDialog({
         aria-modal="true"
         aria-label={title}
         className="md-dialog"
-        style={{ top, maxHeight: `calc(100vh - ${top + 16}px)` }}
+        style={{ top, maxHeight: `calc(100vh - ${top}px)` }}
         tabIndex={-1}
       >
         <div className="md-dialog__head">

@@ -28,8 +28,8 @@ export type PaletteTarget =
   | { kind: "api-keys" }
   | { kind: "toolkit" }
   | { kind: "engines" }
-  | { kind: "domains"; domainId?: string }
-  | { kind: "models" };
+  | { kind: "models" }
+  | { kind: "domains"; domainId?: string };
 
 interface PaletteOption {
   id: string;

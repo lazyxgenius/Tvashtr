@@ -113,7 +113,7 @@ export function ModelDetailPage({ modelId, tab = "tests" }: { modelId: string; t
         </div>
         {!docked && (
           <div className="md-head__actions">
-            {tab === "tests" && (
+            {tab === "tests" && viewing === null && (
               <>
                 <Button variant="secondary" onClick={() => setImporting(true)}>
                   Import CSV

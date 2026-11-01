@@ -138,46 +138,52 @@ export function RunTestsDialog({
     >
       <fieldset className="md-runmodels">
         <legend className="md-lbl">Which models?</legend>
-        {rows.map((row) => {
-          const on = ticked.includes(row.slug);
-          const label = `${row.providerLabel} ${row.name}`;
-          if (!row.held) {
+        <div className="md-runmodels__rows">
+          {rows.map((row) => {
+            const on = ticked.includes(row.slug);
+            const label = `${row.providerLabel} ${row.name}`;
+            if (!row.held) {
+              return (
+                <div key={row.slug} className="md-mrow md-mrow--off">
+                  <Checkbox
+                    disabled
+                    label={label}
+                    description={`No ${row.providerLabel} key yet`}
+                  />
+                  <a
+                    href="#"
+                    role="button"
+                    className="md-mrow__add"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      requestModelKey(row.provider, row.slug, reloadKeys);
+                    }}
+                  >
+                    Add a key
+                  </a>
+                </div>
+              );
+            }
+            const price = priceOf(row.slug);
             return (
-              <div key={row.slug} className="md-mrow md-mrow--off">
-                <Checkbox disabled label={label} description={`No ${row.providerLabel} key yet`} />
-                <a
-                  href="#"
-                  role="button"
-                  className="md-mrow__add"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    requestModelKey(row.provider, row.slug, reloadKeys);
-                  }}
-                >
-                  Add a key
-                </a>
+              <div key={row.slug} className={on ? "md-mrow md-mrow--on" : "md-mrow"}>
+                <Checkbox
+                  checked={on}
+                  onChange={() => toggle(row.slug)}
+                  label={label}
+                  description={`Your ${row.providerLabel} key`}
+                />
+                <span className="md-mrow__cost">
+                  {price
+                    ? price.estimate_usd === null
+                      ? "price not listed"
+                      : aboutMoney(price.estimate_usd)
+                    : ""}
+                </span>
               </div>
             );
-          }
-          const price = priceOf(row.slug);
-          return (
-            <div key={row.slug} className={on ? "md-mrow md-mrow--on" : "md-mrow"}>
-              <Checkbox
-                checked={on}
-                onChange={() => toggle(row.slug)}
-                label={label}
-                description={`Your ${row.providerLabel} key`}
-              />
-              <span className="md-mrow__cost">
-                {price
-                  ? price.estimate_usd === null
-                    ? "price not listed"
-                    : aboutMoney(price.estimate_usd)
-                  : ""}
-              </span>
-            </div>
-          );
-        })}
+          })}
+        </div>
         {custom === null ? (
           <div>
             <Button variant="ghost" size="sm" onClick={() => setCustom("")}>

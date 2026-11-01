@@ -1,7 +1,7 @@
 /** The Tests tab: the version line, the choices, the table with its Last run chips, the first 25
  *  tests, and the banner over an older version, which is read-only. */
 import { useEffect, useState } from "react";
-import { Check, Clock, X } from "lucide-react";
+import { Check, Clock, MoreHorizontal, X } from "lucide-react";
 
 import { Button, ConfirmDialog, Menu, useToast } from "../../design-system/components";
 import { ApiError } from "../../lib/api";
@@ -258,6 +258,16 @@ export function TestsTab({
                     <div className="md-row__menu">
                       <Menu
                         label={`More actions for test ${t.position}`}
+                        trigger={(props) => (
+                          <button
+                            type="button"
+                            className="md-more-btn"
+                            aria-label={`More actions for test ${t.position}`}
+                            {...props}
+                          >
+                            <MoreHorizontal size={16} strokeWidth={1.7} aria-hidden />
+                          </button>
+                        )}
                         items={[
                           { key: "edit", label: "Edit", onSelect: () => onOpen(t) },
                           {

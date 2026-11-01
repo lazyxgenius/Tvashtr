@@ -237,7 +237,7 @@ export function TestDrawer({
           <span className="md-lbl" id="md-score-lbl">
             How to score
           </span>
-          <div className="tv-seg md-seg" role="group" aria-labelledby="md-score-lbl">
+          <div className="tv-seg" role="group" aria-labelledby="md-score-lbl">
             {ways.map((way) => (
               <button
                 key={way}

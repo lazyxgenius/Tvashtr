@@ -249,16 +249,14 @@
   gap: 10px;
 }
 .md-mcard__rows {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  font-size: 13.5px;
-}
-.md-mcard__row {
   display: grid;
   grid-template-columns: 1fr auto 110px;
   gap: 12px;
   align-items: center;
+  font-size: 13.5px;
+}
+.md-mcard__row {
+  display: contents;
 }
 .md-mcard__score {
   font-weight: 600;
@@ -453,7 +451,16 @@
   justify-content: center;
   cursor: pointer;
 }
+/* Every catalogued model can be a long list: it scrolls, so the estimate stays in sight. */
+.md-runmodels__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: max(220px, calc(100vh - 560px));
+  overflow-y: auto;
+}
 .md-mrow {
+  flex: none;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -569,6 +576,8 @@
 .md-ans--wrap {
   height: auto;
   min-height: 24px;
+  padding-top: 2px;
+  padding-bottom: 2px;
   white-space: normal;
 }
 .md-tbl {
@@ -584,8 +593,14 @@
   border-collapse: collapse;
   font-size: 13.5px;
 }
+.md-tbl--narrow {
+  margin-top: 18px;
+}
 .md-tbl--narrow table {
   min-width: 620px;
+}
+.md-tbl--narrow .md-tests__by {
+  width: 110px;
 }
 .md-tbl th {
   text-align: left;
@@ -660,6 +675,27 @@
 .md-row__menu {
   display: flex;
   justify-content: flex-end;
+}
+.md-more-btn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-500);
+  cursor: pointer;
+}
+.md-more-btn:hover {
+  background: var(--panel-300);
+  color: var(--ink-900);
+}
+.md-more-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
 }
 .md-none {
   color: var(--ink-500);
@@ -835,12 +871,6 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-}
-.md-seg {
-  display: flex;
-}
-.md-seg .tv-seg__btn {
-  flex: 1;
 }
 .md-lastrun {
   padding: 14px;
