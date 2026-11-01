@@ -329,16 +329,17 @@ PROVIDER_CATALOGUE: dict[str, dict] = {
     #
     #   gemini-3-flash-preview   W1-W4 PASS (14s)  T1 PASS  T2 FAIL 45 chars, completion_tokens=396
     #   gemini-3.5-flash         W1-W4 PASS (14s)  T1 PASS  T2 FAIL 69 chars, completion_tokens=396
-    #   gemini-3.1-pro-preview   W1 FAIL IndexError  T1 FAIL IndexError (reaches Vertex; a direct
-    #                            call under W1's 64-token ceiling ends MAX_TOKENS, 59 of them thought)
+    #   gemini-3.1-pro-preview   W1 FAIL IndexError  T1 FAIL IndexError (reaches Vertex; direct
+    #                            call under W1's 64-token ceiling ends MAX_TOKENS, 59 thought)
     #   gemini-2.5-flash         W1 FAIL  T1 FAIL  404 "not found or your project does not have
     #   gemini-2.5-pro           W1 FAIL  T1 FAIL  access to it" (all three, on this key's project)
     #   gemini-2.5-flash-lite    W1 FAIL  T1 FAIL
     #
     # Default = the cheapest passing model (input $0.50 against $1.50 per million tokens). ``None``
     # for the thinker seat is evidence, as in the ``gemini`` entry above: under the product's own
-    # output ceiling both flash models spend the budget reasoning and return a fragment, so the seat
-    # yields to the next held provider. Slugs reach LiteLLM through ``tvashtr.google_cloud`` only.
+    # output ceiling both flash models spend the budget reasoning and return a fragment, so the
+    # seat yields to the next held provider. Slugs reach LiteLLM through ``tvashtr.google_cloud``
+    # only.
     "vertex_ai": {
         "thinker_default": None,
         "worker_default": "vertex_ai/gemini-3-flash-preview",
