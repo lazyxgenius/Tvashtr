@@ -1638,3 +1638,180 @@ class RepoSnapshot(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class UserModel(Base):
+    """One job a customer wants done well (Models 1, migration ``0054``). Tests hang off it in
+    versioned sets; ``current_version`` 0 means no test set yet. Named ``user_models`` so the class
+    can't be confused with the module ``tvashtr.models``."""
+
+    __tablename__ = "user_models"
+    __table_args__ = (
+        CheckConstraint("answer_kind IN ('choice', 'text')", name="ck_user_models_answer_kind"),
+        Index("uq_user_models_owner_lower_name", "owner_id", text("lower(name)"), unique=True),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    job: Mapped[str] = mapped_column(Text, nullable=False)
+    # choice | text — set at creation, never changed.
+    answer_kind: Mapped[str] = mapped_column(Text, nullable=False)
+    choices: Mapped[list] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb"), default=list
+    )
+    current_version: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0", default=0
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class ModelTestCase(Base):
+    """One revision of one test: immutable. ``case_key`` is the test's identity across revisions,
+    so an unchanged test is the same row in every version."""
+
+    __tablename__ = "model_test_cases"
+    __table_args__ = (
+        CheckConstraint(
+            "scoring IN ('exact', 'contains', 'judge')", name="ck_model_test_cases_scoring"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    model_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("user_models.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    case_key: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    input: Mapped[str] = mapped_column(Text, nullable=False)
+    expected: Mapped[str] = mapped_column(Text, nullable=False)
+    scoring: Mapped[str] = mapped_column(Text, nullable=False)
+    must_contain: Mapped[list] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb"), default=list
+    )
+    rubric: Mapped[str | None] = mapped_column(Text, nullable=True)
+    judge_model: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class ModelTestSetVersion(Base):
+    """One test set version: immutable. Snapshots what the model sees (job, kind, choices) and the
+    ordered ``model_test_cases.id``s; saving one test swaps one id, nothing is copied."""
+
+    __tablename__ = "model_test_set_versions"
+    __table_args__ = (
+        UniqueConstraint("model_id", "version", name="uq_model_test_set_versions_model_version"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    model_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("user_models.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    job: Mapped[str] = mapped_column(Text, nullable=False)
+    answer_kind: Mapped[str] = mapped_column(Text, nullable=False)
+    choices: Mapped[list] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb"), default=list
+    )
+    case_ids: Mapped[list] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb"), default=list
+    )
+    change_note: Mapped[str] = mapped_column(Text, nullable=False)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class ModelTestRun(Base):
+    """One tested model on one test set version, all its tests. The totals are filled when it ends;
+    while it runs they are added up from its results."""
+
+    __tablename__ = "model_test_runs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('running', 'completed', 'failed', 'stopped')",
+            name="ck_model_test_runs_status",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    model_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("user_models.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    version_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("model_test_set_versions.id", ondelete="CASCADE"), nullable=False
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    model_slug: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="running", default="running"
+    )
+    stop_requested: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=false(), default=False
+    )
+    cases_total: Mapped[int] = mapped_column(Integer, nullable=False)
+    price_known: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    estimate_usd: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
+    passed: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    failed: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    errors: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cost_usd: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
+    judge_cost_usd: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
+    avg_latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ModelTestResult(Base):
+    """One test's result in one run. Unique on ``(run_id, case_id)``: a retried DBOS step replaces
+    its own row."""
+
+    __tablename__ = "model_test_results"
+    __table_args__ = (
+        UniqueConstraint("run_id", "case_id", name="uq_model_test_results_run_case"),
+        CheckConstraint(
+            "verdict IN ('pass', 'fail', 'error')", name="ck_model_test_results_verdict"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    run_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("model_test_runs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    case_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("model_test_cases.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    case_key: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    answer: Mapped[str | None] = mapped_column(Text, nullable=True)
+    verdict: Mapped[str] = mapped_column(Text, nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    model_used: Mapped[str | None] = mapped_column(Text, nullable=True)
+    latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    prompt_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    completion_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cost_usd: Mapped[Decimal] = mapped_column(
+        Numeric(12, 6), nullable=False, server_default="0", default=Decimal(0)
+    )
+    judge_model: Mapped[str | None] = mapped_column(Text, nullable=True)
+    judge_cost_usd: Mapped[Decimal] = mapped_column(
+        Numeric(12, 6), nullable=False, server_default="0", default=Decimal(0)
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
