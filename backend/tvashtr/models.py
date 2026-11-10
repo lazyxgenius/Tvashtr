@@ -1663,6 +1663,10 @@ class UserModel(Base):
     current_version: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default="0", default=0
     )
+    # M2 (0055): the current training set version; 0 = none yet.
+    training_version: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0", default=0
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -1695,6 +1699,12 @@ class ModelTestCase(Base):
     )
     rubric: Mapped[str | None] = mapped_column(Text, nullable=True)
     judge_model: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # M2 (0055): where it came from. ``source`` = {file, quote, domain_id, document_id, locator?}
+    # for a test from a draft; ``origin`` hand | csv | draft (None = made before M2, by hand or CSV);
+    # ``origin_note`` = the CSV's filename or the drafting team's name.
+    source: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    origin: Mapped[str | None] = mapped_column(Text, nullable=True)
+    origin_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -1814,4 +1824,152 @@ class ModelTestResult(Base):
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class ModelTrainingExample(Base):
+    """One revision of one training example (M2, ``0055``): immutable, like a test revision.
+    ``example_key`` is its identity across revisions. Never read as a test, never a test read as
+    one: the two sets are kept apart for good."""
+
+    __tablename__ = "model_training_examples"
+    __table_args__ = (
+        CheckConstraint(
+            "origin IN ('hand', 'csv', 'draft')", name="ck_model_training_examples_origin"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    model_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("user_models.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    example_key: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    input: Mapped[str] = mapped_column(Text, nullable=False)
+    answer: Mapped[str] = mapped_column(Text, nullable=False)
+    source: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    origin: Mapped[str] = mapped_column(Text, nullable=False)
+    origin_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    edited: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false", default=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class ModelTrainingSetVersion(Base):
+    """One training set version: immutable, the ordered ``model_training_examples.id``s."""
+
+    __tablename__ = "model_training_set_versions"
+    __table_args__ = (
+        UniqueConstraint(
+            "model_id", "version", name="uq_model_training_set_versions_model_version"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    model_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("user_models.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    example_ids: Mapped[list] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb"), default=list
+    )
+    change_note: Mapped[str] = mapped_column(Text, nullable=False)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class ModelExampleBatch(Base):
+    """One drafting run for one model (M2): a team reads a Domain and hands in drafts. ``status``
+    is ``drafting`` until the walk reaches Hand in (``ready``); a run that ended any other way reads
+    as stopped from the run's own status."""
+
+    __tablename__ = "model_example_batches"
+    __table_args__ = (
+        CheckConstraint("status IN ('drafting', 'ready')", name="ck_model_example_batches_status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    model_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("user_models.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("runs.id", ondelete="SET NULL"), nullable=True, unique=True
+    )
+    domain_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("domains.id", ondelete="SET NULL"), nullable=True
+    )
+    domain_name: Mapped[str] = mapped_column(Text, nullable=False)
+    team_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("team_graphs.id", ondelete="SET NULL"), nullable=True
+    )
+    team_name: Mapped[str] = mapped_column(Text, nullable=False)
+    tests_wanted: Mapped[int] = mapped_column(Integer, nullable=False)
+    training_wanted: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="drafting", default="drafting"
+    )
+    review_rounds: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0", default=0
+    )
+    sent_back: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0", default=0)
+    estimate_usd: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
+    cost_usd: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ModelExampleDraft(Base):
+    """One draft a team handed in (M2): it passed the source check when it was written, and stays
+    until the customer accepts or rejects it. ``position`` is its number in the batch."""
+
+    __tablename__ = "model_example_drafts"
+    __table_args__ = (
+        CheckConstraint("kind IN ('test', 'training')", name="ck_model_example_drafts_kind"),
+        CheckConstraint(
+            "review IN ('none', 'ok', 'flagged')", name="ck_model_example_drafts_review"
+        ),
+        CheckConstraint(
+            "state IN ('open', 'accepted', 'rejected')", name="ck_model_example_drafts_state"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    batch_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("model_example_batches.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    model_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("user_models.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    kind: Mapped[str] = mapped_column(Text, nullable=False)
+    input: Mapped[str] = mapped_column(Text, nullable=False)
+    answer: Mapped[str] = mapped_column(Text, nullable=False)
+    must_contain: Mapped[list] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb"), default=list
+    )
+    source: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    review: Mapped[str] = mapped_column(Text, nullable=False, server_default="none", default="none")
+    review_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reviewed_by: Mapped[str | None] = mapped_column(Text, nullable=True)
+    was_flagged: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false", default=False
+    )
+    edited: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false", default=False
+    )
+    state: Mapped[str] = mapped_column(Text, nullable=False, server_default="open", default="open")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )

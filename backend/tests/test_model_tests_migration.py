@@ -18,9 +18,9 @@ TABLES = (
 )
 
 
-def _migration():
-    path = pathlib.Path(__file__).resolve().parents[1] / "alembic/versions/0054_model_tests.py"
-    spec = importlib.util.spec_from_file_location("m0054", path)
+def _migration(name: str = "0054_model_tests"):
+    path = pathlib.Path(__file__).resolve().parents[1] / f"alembic/versions/{name}.py"
+    spec = importlib.util.spec_from_file_location(f"m{name[:4]}", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -41,9 +41,13 @@ def test_migration_0054_is_additive_and_round_trips():
         try:
             assert _present(conn) == 5
             with Operations.context(MigrationContext.configure(conn)):
+                # M2: 0055's tables hang off 0054's, so it comes down first and goes back last.
+                later = _migration("0055_model_examples")
+                later.downgrade()
                 m.downgrade()
                 assert _present(conn) == 0
                 m.upgrade()
+                later.upgrade()
             assert _present(conn) == 5
             # The unique name index ignores case, and a result is unique per run + case.
             indexes = conn.execute(
