@@ -1024,8 +1024,10 @@
   gap: 12px;
   flex-wrap: wrap;
 }
+/* M2 Part D: as wide as the whole "model-name · 2 / 2" label, never cut. */
 .md-compare__pick {
-  width: 260px;
+  min-width: 260px;
+  width: max-content;
   max-width: 100%;
 }
 .md-compare__sentence {

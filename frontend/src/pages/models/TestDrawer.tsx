@@ -43,7 +43,10 @@ function LastRunBox({ results }: { results: TestResult[] }) {
         <div key={r.run_id} className="md-lastrun__row">
           <div className="md-lastrun__top">
             <span className="md-mono">{r.model_name}</span>
-            <VerdictChip verdict={r.verdict} />
+            <VerdictChip
+              verdict={r.verdict}
+              title={r.verdict === "error" ? (r.reason ?? undefined) : undefined}
+            />
           </div>
           {r.reason && (
             <span className="md-hint">{r.judge_model ? `Judge: "${r.reason}"` : r.reason}</span>

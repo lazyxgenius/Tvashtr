@@ -360,6 +360,13 @@ def _last_runs(
     )
 
 
+def _last_run_cell(result: ModelTestResult) -> dict:
+    """One Last run chip. M2 Part D: an error carries its reason (the Error chip's title)."""
+    if result.verdict == "error":
+        return {"verdict": "error", "reason": result.reason}
+    return {"verdict": result.verdict}
+
+
 def _last_run_view(run: ModelTestRun) -> dict:
     return {
         "run_id": str(run.id),
@@ -515,11 +522,7 @@ def list_tests(owner_id: uuid.UUID, model_id: uuid.UUID, version: int | None = N
         for position, case in enumerate(cases, 1):
             view = _case_view(case, position)
             view["last_run"] = [
-                (
-                    {"verdict": verdicts[(r.id, case.id)].verdict}
-                    if (r.id, case.id) in verdicts
-                    else None
-                )
+                (_last_run_cell(verdicts[(r.id, case.id)]) if (r.id, case.id) in verdicts else None)
                 for r in runs
             ]
             tests.append(view)

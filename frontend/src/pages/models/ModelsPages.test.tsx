@@ -1,4 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ToastProvider } from "../../design-system/components";
@@ -901,6 +903,35 @@ describe("the model page", () => {
       expect(within(section).getByRole("combobox", { name: "First" })).toHaveDisplayValue(
         "claude-sonnet-5-5 · 46 / 50",
       );
+    });
+
+    it("Part D: with nothing different, Compare says so instead of an empty table", async () => {
+      const same = {
+        ...compare,
+        counts: { total: 2, agree: 2, both_right: 2, both_wrong: 0, only_a: 0, only_b: 0 },
+        rows: compare.rows.map((r) => ({ ...r, differ: false })),
+      };
+      mockApi(
+        routes({ "GET /api/models/m1/runs": finished(), "GET /api/models/m1/compare": same }),
+      );
+      renderIn(<ModelDetailPage modelId="m1" tab="results" />);
+      await screen.findByRole("button", { name: "Only where they differ (0)" });
+      const section = screen.getByRole("region", { name: "Compare two models" });
+      expect(
+        within(section).getByText(
+          "No differences. Both models gave the same result on every test.",
+        ),
+      ).toBeInTheDocument();
+      expect(within(section).queryByRole("columnheader", { name: "Input" })).toBeNull();
+      fireEvent.click(within(section).getByRole("button", { name: "All 2" }));
+      expect(within(section).getByRole("columnheader", { name: "Input" })).toBeInTheDocument();
+    });
+
+    it("Part D: the First / Second pickers are as wide as their whole label", () => {
+      const css = readFileSync(resolve(__dirname, "models.css"), "utf8");
+      const rule = /\.md-compare__pick\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
+      expect(rule).toMatch(/width:\s*max-content/);
+      expect(rule).toMatch(/min-width:\s*260px/);
     });
 
     it("a running card shows progress and Stop; a stopped one its words; a failed one Run again", async () => {

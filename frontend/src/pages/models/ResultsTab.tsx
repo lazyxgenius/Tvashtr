@@ -245,48 +245,54 @@ function Compare({
             <span className="md-mono">{nameB}</span> is right on {fresh.counts.only_b} where{" "}
             <span className="md-mono">{nameA}</span> is wrong.
           </p>
-          <div className="md-tbl md-cmptable">
-            <table>
-              <thead>
-                <tr>
-                  <th scope="col" className="md-tests__n">
-                    #
-                  </th>
-                  <th scope="col">Input</th>
-                  <th scope="col" className="md-cmptable__expected">
-                    Expected
-                  </th>
-                  <th scope="col" className="md-cmptable__side">
-                    <span className="md-mono md-mono--12">{nameA}</span>
-                  </th>
-                  <th scope="col" className="md-cmptable__side">
-                    <span className="md-mono md-mono--12">{nameB}</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => (
-                  <tr key={r.case_key}>
-                    <td className="md-num">{r.position}</td>
-                    <td>
-                      <span className="md-clamp">{r.input}</span>
-                    </td>
-                    <td>
-                      <span className={r.expected.length > 24 ? "md-ans md-ans--wrap" : "md-ans"}>
-                        {r.expected}
-                      </span>
-                    </td>
-                    <td>
-                      <AnswerChip side={r.a} />
-                    </td>
-                    <td>
-                      <AnswerChip side={r.b} />
-                    </td>
+          {onlyDiffer && rows.length === 0 ? (
+            <p className="md-compare__sentence">
+              No differences. Both models gave the same result on every test.
+            </p>
+          ) : (
+            <div className="md-tbl md-cmptable">
+              <table>
+                <thead>
+                  <tr>
+                    <th scope="col" className="md-tests__n">
+                      #
+                    </th>
+                    <th scope="col">Input</th>
+                    <th scope="col" className="md-cmptable__expected">
+                      Expected
+                    </th>
+                    <th scope="col" className="md-cmptable__side">
+                      <span className="md-mono md-mono--12">{nameA}</span>
+                    </th>
+                    <th scope="col" className="md-cmptable__side">
+                      <span className="md-mono md-mono--12">{nameB}</span>
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {rows.map((r) => (
+                    <tr key={r.case_key}>
+                      <td className="md-num">{r.position}</td>
+                      <td>
+                        <span className="md-clamp">{r.input}</span>
+                      </td>
+                      <td>
+                        <span className={r.expected.length > 24 ? "md-ans md-ans--wrap" : "md-ans"}>
+                          {r.expected}
+                        </span>
+                      </td>
+                      <td>
+                        <AnswerChip side={r.a} />
+                      </td>
+                      <td>
+                        <AnswerChip side={r.b} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
           <p className="md-hint md-compare__foot">
             Only runs on the same test set version are compared. Each answer is shown exactly as the
             model gave it.

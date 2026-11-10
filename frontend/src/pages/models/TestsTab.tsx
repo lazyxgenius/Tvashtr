@@ -2,7 +2,7 @@
  *  test's lock, its source and its Last run chips, the first 25 tests, and the banner over an older
  *  version, which is read-only. M2: every test is locked, however it was added. */
 import { useEffect, useState } from "react";
-import { Check, Clock, Lock, MoreHorizontal, X } from "lucide-react";
+import { Check, Clock, Lock, MoreHorizontal, TriangleAlert, X } from "lucide-react";
 
 import { Button, ConfirmDialog, Menu, useToast } from "../../design-system/components";
 import { ApiError } from "../../lib/api";
@@ -19,6 +19,15 @@ import { SCORING_LABEL, locatorShort, shortModel, versionLine } from "./modelsFo
 const FIRST_ROWS = 25;
 
 export function VerdictChip({ verdict, title }: { verdict: Verdict; title?: string }) {
+  // M2 Part D: an error isn't a fail — its own amber chip, the reason in its title.
+  if (verdict === "error") {
+    return (
+      <span className="md-mk md-mk--err" title={title}>
+        <TriangleAlert size={12} strokeWidth={1.7} aria-hidden />
+        Error
+      </span>
+    );
+  }
   const pass = verdict === "pass";
   return (
     <span className={pass ? "md-mk md-mk--ok" : "md-mk md-mk--no"} title={title}>
@@ -255,7 +264,11 @@ export function TestsTab({
                       {t.last_run.some(Boolean) ? (
                         t.last_run.map((v, i) =>
                           v ? (
-                            <VerdictChip key={i} verdict={v.verdict} />
+                            <VerdictChip
+                              key={i}
+                              verdict={v.verdict}
+                              title={v.reason ?? undefined}
+                            />
                           ) : (
                             <span key={i} className="md-none">
                               —

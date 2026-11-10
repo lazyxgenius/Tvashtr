@@ -672,3 +672,40 @@ describe("the Tests tab's lock and sources", () => {
     expect(headers.indexOf("Source")).toBe(headers.indexOf("Scored by") + 1);
   });
 });
+
+describe("Part D", () => {
+  it("an error verdict is its own amber Error chip with the reason as its title", async () => {
+    mockApi(
+      base({
+        "GET /api/models/m1/tests": someTests({
+          last_runs: [
+            {
+              run_id: "a",
+              model_slug: "deepseek/deepseek-chat",
+              model_name: "deepseek-chat",
+              completed_at: null,
+            },
+          ],
+          tests: [aTest({ last_run: [{ verdict: "error", reason: "The model gave no answer." }] })],
+        }),
+      }),
+    );
+    renderIn(<ModelDetailPage modelId="m1" />);
+    const table = await screen.findByRole("region", { name: "Tests" });
+    const chip = within(table).getByText("Error");
+    expect(chip).toHaveAttribute("title", "The model gave no answer.");
+    expect(chip).toHaveClass("md-mk--err");
+    expect(within(table).queryByText("Fail")).toBeNull();
+  });
+
+  it("New model's subtitle says what can change later", async () => {
+    const { NewModelDialog } = await import("./NewModelDialog");
+    mockApi(base());
+    renderIn(<NewModelDialog onClose={vi.fn()} onCreated={vi.fn()} />);
+    expect(
+      await screen.findByText(
+        "One job, described plainly. You can change the name and the job later.",
+      ),
+    ).toBeInTheDocument();
+  });
+});

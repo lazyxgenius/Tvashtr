@@ -121,7 +121,7 @@ export interface ModelTest {
   rubric: string | null;
   judge_model: string | null;
   /** This revision's verdict in each of `last_runs`; `null`: that run didn't run it. */
-  last_run: ({ verdict: Verdict } | null)[];
+  last_run: ({ verdict: Verdict; reason?: string | null } | null)[];
   /** M2: the quote it came from (a test from a draft), else `null`. */
   source?: Source | null;
   origin?: "hand" | "csv" | "draft" | null;

@@ -43,7 +43,7 @@ export function NewModelDialog({
   return (
     <ModelDialog
       title="New model"
-      subtitle="One job, described plainly. You can change any of this later."
+      subtitle="One job, described plainly. You can change the name and the job later."
       onClose={onClose}
       footer={
         <>
