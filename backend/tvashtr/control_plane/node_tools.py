@@ -111,6 +111,11 @@ def domains_mcp_url() -> str:
     return f"{_agent_base_url()}/mcp/domains"
 
 
+def examples_mcp_url() -> str:
+    """M2: the examples server's address for an agent (``/mcp/examples``, no trailing slash)."""
+    return f"{_agent_base_url()}/mcp/examples"
+
+
 def connectors_mcp_url() -> str:
     """The Connectors proxy's address for an agent. It ends at ``/mcp/connectors``, with no
     trailing slash: that exact path has its own route (``mount_connectors_mcp``)."""
@@ -168,6 +173,73 @@ def read_domains_token(value: object) -> tuple[uuid.UUID, set[str] | None] | Non
         if run.owner_id is None or run.status in TERMINAL_STATUSES:
             return None
         return run.owner_id, allowed
+
+
+# ---- M2: the examples run token — the only credential an agent gets for ``/mcp/examples`` ----
+
+# Its own salt: neither the Domains nor the Connectors token opens this endpoint, nor this theirs.
+_EXAMPLES_TOKEN_SALT = "tvashtr.examples-run"
+EXAMPLES_PERMISSIONS = ("read", "write", "review")
+
+
+def _examples_signer() -> URLSafeTimedSerializer:
+    return URLSafeTimedSerializer(
+        get_settings().session_secret.get_secret_value(), salt=_EXAMPLES_TOKEN_SALT
+    )
+
+
+def sign_examples_token(run_id: object, node_id: object | None, permission: str) -> str:
+    """The token for one run and one agent with its permission (``read`` / ``write`` /
+    ``review``). It names no key, no login and no batch: the batch is the run's own."""
+    return _examples_signer().dumps(
+        {"r": str(run_id), "n": str(node_id) if node_id is not None else None, "p": permission}
+    )
+
+
+def read_examples_token(value: object) -> dict | None:
+    """``{owner_id, run_id, node_id, permission, batch_id}``, or ``None`` when the token must not
+    be honoured: a bad signature, too old, an unknown permission, a run that is gone or ended, or a
+    run with no example batch."""
+    from tvashtr.models import ModelExampleBatch  # models imports nothing from here; kept local
+
+    if not isinstance(value, str):
+        return None
+    try:
+        data = _examples_signer().loads(value, max_age=connector_proxy.RUN_TOKEN_MAX_AGE_SECONDS)
+        run_id, permission = uuid.UUID(data["r"]), data["p"]
+        node_id = uuid.UUID(data["n"]) if data.get("n") else None
+    except (BadData, KeyError, TypeError, ValueError, AttributeError):
+        return None
+    if permission not in EXAMPLES_PERMISSIONS:
+        return None
+    with session_scope() as session:
+        run = session.get(Run, run_id)
+        if run is None or run.owner_id is None or run.status in TERMINAL_STATUSES:
+            return None
+        batch = session.query(ModelExampleBatch).filter(ModelExampleBatch.run_id == run_id).first()
+        if batch is None or batch.owner_id != run.owner_id:
+            return None
+        return {
+            "owner_id": run.owner_id,
+            "run_id": run_id,
+            "node_id": node_id,
+            "permission": permission,
+            "batch_id": batch.id,
+        }
+
+
+def _run_has_batch(run_id: str) -> bool:
+    from tvashtr.models import ModelExampleBatch
+
+    try:
+        rid = uuid.UUID(str(run_id))
+    except ValueError:
+        return False
+    with session_scope() as session:
+        return (
+            session.query(ModelExampleBatch.id).filter(ModelExampleBatch.run_id == rid).first()
+            is not None
+        )
 
 
 def _domains_opt_in(tvashtr_meta: dict) -> bool:
@@ -333,6 +405,20 @@ def build_mcp_config(tool_config: dict | None, run_id: str, *, node_id: str | No
                 "url": domains_mcp_url(),
                 "headers": {"Authorization": f"Bearer {token}"},
             }
+
+    # M2: ``tvashtr.examples`` ("read" / "write" / "review") adds ``tvashtr-examples`` with a run
+    # token naming the run, the agent and its permission — only on a run that drafts examples.
+    permission = meta.get("examples")
+    if (
+        permission in EXAMPLES_PERMISSIONS
+        and "tvashtr-examples" not in resolved
+        and _run_has_batch(run_id)
+    ):
+        token = sign_examples_token(run_id, node_id, permission)
+        resolved["tvashtr-examples"] = {
+            "url": examples_mcp_url(),
+            "headers": {"Authorization": f"Bearer {token}"},
+        }
 
     # Return ONLY ``{"mcpServers": {…}}`` — the ``tvashtr`` block (incl. ``library``) is stripped.
     return {"mcpServers": resolved}
