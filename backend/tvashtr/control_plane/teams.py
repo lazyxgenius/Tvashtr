@@ -1561,6 +1561,217 @@ def build_spec_only_team(
         return str(graph.id)
 
 
+# ---- M2: the Example builder (Reader -> Writer <-> Reviewer -> Hand in) ----------------------
+
+EXAMPLE_BUILDER_TEMPLATE_KEY = "example_builder"
+EXAMPLE_BUILDER_NAME = "Example builder"
+EXAMPLE_READER_PROMPT = (
+    "You are the Reader on a team that drafts examples for a model the customer is building. "
+    "The task below names the model, its job, its kind of answer, how many tests and training "
+    "examples to draft, and the Domain (a library of the customer's own files) to draft them "
+    "from.\n\n"
+    "Do these steps in order:\n"
+    "1. Call examples_brief to see the job, the choices, the numbers asked for and the Domain's "
+    "file names.\n"
+    "2. Search the Domain with its tools (domain_retrieve, domain_ask) to learn what each file "
+    "covers. Look at every file.\n"
+    "3. Write REPORT.md: a short coverage plan, and no examples yet. List 5 to 12 topics. For each "
+    "topic give the file (or files) it comes from, and how many tests and how many training "
+    "examples to write for it. Spread the topics across the files. The tests across all topics "
+    "must add up to exactly the number of tests asked for, and the training examples to exactly "
+    "the number of training examples asked for. Plan tests and training examples as different "
+    "cases."
+)
+EXAMPLE_WRITER_PROMPT = (
+    "You are the Writer on a team that drafts examples for a model the customer is building. The "
+    "Reader's coverage plan is below.\n\n"
+    "Do these steps in order:\n"
+    "1. Call examples_brief first: the job, the kind of answer, the choices, the numbers asked "
+    "for and handed in so far, and the Domain's file names.\n"
+    "2. Follow the plan, topic by topic. For each example, find the passage that settles it with "
+    "the Domain tools (domain_retrieve), then hand it in with examples_add:\n"
+    '   - kind: "test" or "training", as the plan says;\n'
+    "   - input: a realistic message a real user of this model would send — in their own words, "
+    "never a quote from the file;\n"
+    "   - answer: the right answer according to the passage (for a model that picks from a list, "
+    "exactly one of the choices);\n"
+    "   - source_file: the file's name, and quote: the file's own words copied exactly (20 to 600 "
+    "characters) that support the answer;\n"
+    "   - must_contain: only for a model that writes text — 1 to 5 key phrases the answer "
+    "contains.\n"
+    "   Tests and training examples must be different cases; never hand in the same case twice.\n"
+    "3. When a hand-in is refused, read the reason and fix exactly that, then hand it in again.\n"
+    "4. If the Reviewer sent the drafts back (its notes are below), call examples_list with "
+    'review "flagged" and, for each flagged draft, either correct it with examples_update or '
+    "remove it with examples_remove and write a better one.\n"
+    "5. Stop when the numbers asked for are handed in. Then write REPORT.md with one line: how "
+    "many tests and training examples you handed in."
+)
+EXAMPLE_REVIEWER_PROMPT = (
+    "You are the Reviewer on a team that drafts examples for a model the customer is building. "
+    "Check the Writer's drafts — do NOT write or change any.\n\n"
+    "Do these steps in order:\n"
+    "1. Call examples_list to see every draft.\n"
+    "2. Pick a sample of a third of the drafts (at least 5, or all of them when there are fewer). "
+    "Prefer drafts not yet reviewed, and always include every draft that was flagged before "
+    "(flagged_before is true).\n"
+    "3. For each draft in the sample, read the quoted passage in the Domain (domain_retrieve with "
+    "the quote) and judge two things: does the quote really support the answer, and is the input "
+    'a realistic case for the model\'s job? Record it with examples_review: verdict "ok", or '
+    '"flagged" when either answer is no, and a note of one sentence saying why.\n'
+    '4. Decide the verdict: "changes_requested" if more than 1 in 5 of your sample is '
+    'flagged, else "approved".\n'
+    "5. Write a file named EXACTLY REVIEW_VERDICT.json in your current working directory (the "
+    "bare filename), containing EXACTLY this JSON and nothing else:\n"
+    '       {"verdict": "approved" | "changes_requested", "reasons": "<what to fix, in 1-3 short '
+    'sentences>"}\n\n'
+    "STRICT RULES:\n"
+    "- You are REVIEWING. Do NOT modify, create, or delete ANY file except REVIEW_VERDICT.json."
+)
+
+
+def build_example_builder_team(
+    name: str = EXAMPLE_BUILDER_NAME, held_providers: set[str] | None = None
+) -> str:
+    """Insert the EXAMPLE BUILDER team (M2) and return its id.
+
+    Topology: Reader (entry thinker, edits off; its REPORT.md is the coverage plan) -> Writer
+    (worker, edits off; hands in drafts through the examples server) -> Reviewer (worker, edits
+    off, verdict-emitting) -> Hand in on ``approved``. Anything else loops back to the Writer
+    (``loop_limit`` 3 = the first pass + two send-backs); the Writer's escalation edge goes to Hand
+    in, so after two send-backs the team hands in what it has. The examples grants are on the
+    nodes; the Domain grant is stamped on a run's own copy at launch."""
+    settings = get_settings()
+    with session_scope() as session:
+        graph = TeamGraph(name=name)
+        session.add(graph)
+        session.flush()
+        reader = AgentNode(
+            team_graph_id=graph.id,
+            role_name="reader",
+            kind="completion",
+            model=_node_default_model(held_providers, settings.default_model, "thinker"),
+            engine=None,
+            prompt=EXAMPLE_READER_PROMPT,
+            position={"x": 20, "y": 90},
+            config={
+                "title": "Reader",
+                "description": "Searches your Domain and writes a short coverage plan.",
+            },
+            tool_config={"tvashtr": {"examples": "read"}},
+        )
+        writer = AgentNode(
+            team_graph_id=graph.id,
+            role_name="writer",
+            kind="agent",
+            engine="openhands",
+            model=_node_default_model(held_providers, engineer_model(), "worker"),
+            prompt=EXAMPLE_WRITER_PROMPT,
+            position={"x": 300, "y": 80},
+            config={
+                "title": "Writer",
+                "description": "Drafts each test and training example, quoting its source.",
+            },
+            tool_config={"tvashtr": {"examples": "write"}},
+            edits_allowed=False,
+        )
+        reviewer = AgentNode(
+            team_graph_id=graph.id,
+            role_name="reviewer",
+            kind="agent",
+            engine="openhands",
+            model=_node_default_model(held_providers, reviewer_model(), "worker"),
+            prompt=EXAMPLE_REVIEWER_PROMPT,
+            position={"x": 580, "y": 80},
+            config={
+                "agent_kind": "reviewer",
+                "title": "Reviewer",
+                "description": "Checks a third of the drafts against their sources.",
+            },
+            tool_config={"tvashtr": {"examples": "review"}},
+            edits_allowed=False,
+        )
+        hand_in = AgentNode(
+            team_graph_id=graph.id,
+            role_name="hand_in",
+            kind="terminal",
+            model=None,
+            engine=None,
+            position={"x": 580, "y": 380},
+            config={"terminal_kind": "hand_in"},
+        )
+        session.add_all(
+            _stamp_account_defaults([reader, writer, reviewer, hand_in], held_providers)
+        )
+        session.flush()
+        session.add_all(
+            [
+                Edge(
+                    team_graph_id=graph.id,
+                    source_node_id=reader.id,
+                    target_node_id=writer.id,
+                    edge_type="work",
+                    conditions=None,
+                ),
+                Edge(
+                    team_graph_id=graph.id,
+                    source_node_id=writer.id,
+                    target_node_id=reviewer.id,
+                    edge_type="review",
+                    conditions=None,
+                ),
+                Edge(
+                    team_graph_id=graph.id,
+                    source_node_id=reviewer.id,
+                    target_node_id=hand_in.id,
+                    edge_type="review",
+                    conditions={"when": "approved"},
+                ),
+                # The catch-all back to the Writer: the first pass + two send-backs.
+                Edge(
+                    team_graph_id=graph.id,
+                    source_node_id=reviewer.id,
+                    target_node_id=writer.id,
+                    edge_type="review",
+                    conditions={"loop_limit": 3},
+                ),
+                Edge(
+                    team_graph_id=graph.id,
+                    source_node_id=writer.id,
+                    target_node_id=hand_in.id,
+                    edge_type="escalation",
+                    conditions=None,
+                ),
+            ]
+        )
+        return str(graph.id)
+
+
+def ensure_example_builder(owner_id: uuid.UUID) -> str:
+    """The account's Example builder, made the first time it is needed (M2): an ordinary library
+    team the customer can open, change and duplicate. Not one of Home's New-team templates."""
+    with session_scope() as session:
+        found = session.execute(
+            select(TeamGraph.id)
+            .where(
+                TeamGraph.owner_id == owner_id,
+                TeamGraph.is_library.is_(True),
+                TeamGraph.template_key == EXAMPLE_BUILDER_TEMPLATE_KEY,
+            )
+            .order_by(TeamGraph.created_at, TeamGraph.id)
+            .limit(1)
+        ).scalar_one_or_none()
+        if found is not None:
+            return str(found)
+    team_id = build_example_builder_team(held_providers=held_provider_slugs(owner_id))
+    with session_scope() as session:
+        graph = session.get(TeamGraph, uuid.UUID(team_id))
+        graph.is_library = True
+        graph.owner_id = owner_id
+        graph.template_key = EXAMPLE_BUILDER_TEMPLATE_KEY
+    return team_id
+
+
 def clone_team_graph(source_team_graph_id: str) -> str:
     """Deep-clone a team graph into a NEW run-scoped ``TeamGraph`` and return its id — the
     clone-on-launch snapshot (P1.8b): fresh node ids, every edge remapped onto the cloned node
@@ -1753,6 +1964,7 @@ SEED_TEMPLATE_KEY = "seed"
 # ("Created yesterday from PM → Engineer").
 _TEMPLATE_NAMES: dict[str, str] = {
     BLANK_TEMPLATE_KEY: _BLANK_NAME,
+    "example_builder": "Example builder",  # M2: made on first use, never a New-team card
     **{t.key: t.name for t in (*_TEMPLATE_CATALOG, *_DESKTOP_TEMPLATES)},
 }
 

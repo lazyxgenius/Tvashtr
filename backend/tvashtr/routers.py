@@ -166,6 +166,11 @@ class StartResponse(BaseModel):
     workflow_id: str
 
 
+HAND_IN_TEAM = (
+    "This team hands in examples. Start it from a model: Models, your model, Draft with a team."
+)
+
+
 class CreateRunRequest(BaseModel):
     idea: str | None = None
     # Per-run dollar cap (P1.2). When omitted, falls back to
@@ -429,7 +434,8 @@ class CreateNodeRequest(BaseModel):
     position: dict | None = None
     title: str | None = None
     description: str | None = None
-    terminal_kind: Literal["ship", "stop"] | None = None
+    # M2: ``hand_in`` — the canvas's add menu offers Hand in beside Ship and Stop.
+    terminal_kind: Literal["ship", "stop", "hand_in"] | None = None
     domain_id: str | None = None  # domain_query only
 
 
@@ -1341,6 +1347,12 @@ def launch_run(body: CreateRunRequest, owner_id: uuid.UUID, **run_fields) -> dic
             library_team_id = gid if source.is_library else None
             nodes, edges = graph_dicts(session, gid)
             domain_ids = owner_domain_ids(session, source.owner_id)
+        # M2: a team that hands in examples is started from a model (its drafts need one).
+        if any(
+            n["kind"] == "terminal" and (n["config"] or {}).get("terminal_kind") == "hand_in"
+            for n in nodes
+        ):
+            raise HTTPException(status_code=422, detail=HAND_IN_TEAM)
         verdict = validate_graph(nodes, edges, domain_ids)
         if not verdict["runnable"]:
             raise HTTPException(

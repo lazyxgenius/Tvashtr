@@ -51,6 +51,13 @@ def _routing_edges(edges: list[dict]) -> list[dict]:
 AGENT_KINDS = ("completion", "agent")
 
 
+def _examples_grant(node: dict) -> str | None:
+    """M2: a node's examples permission (``tool_config.tvashtr.examples``), if any."""
+    tool_config = node.get("tool_config")
+    meta = tool_config.get("tvashtr") if isinstance(tool_config, dict) else None
+    return meta.get("examples") if isinstance(meta, dict) else None
+
+
 def _is_loop_back(edge: dict) -> bool:
     """A bounded rework edge — it carries ``conditions.loop_limit`` (no ``when``)."""
     return bool(edge["conditions"]) and "loop_limit" in edge["conditions"]
@@ -338,6 +345,24 @@ def validate_graph(
                 node_id=nid,
             )
 
+    # --- M2: a team that ends in Hand in needs an agent that can hand in examples (its examples
+    # grant is "write"). Judged only when the node dicts carry ``tool_config`` (graph_dicts does).
+    hand_ins = [
+        nid
+        for nid, n in nodes_by_id.items()
+        if n.get("kind") == "terminal"
+        and isinstance(n.get("config"), dict)
+        and n["config"].get("terminal_kind") == "hand_in"
+    ]
+    if hand_ins and any("tool_config" in n for n in nodes):
+        writers = [n for n in nodes if _examples_grant(n) == "write"]
+        if not writers:
+            err(
+                "hand_in_no_writer",
+                "No agent in this team can hand in examples.",
+                node_id=sorted(hand_ins)[0],
+            )
+
     # --- WARN: orphan (unreachable) nodes. Only when a single entry exists — otherwise the
     # root errors above already explain why nothing is reachable. ---
     if len(root_ids) == 1:
@@ -387,6 +412,9 @@ def _shape_label(node: dict, role: str) -> str:
     """A thinker/worker/domain node's own display name (``config.title``) when it has one; a gate's
     ``config.title`` is its approval prompt, not a name, so gates always read "Approval"."""
     cfg = node.get("config") or {}
+    if node.get("kind") == "terminal" and isinstance(cfg, dict):
+        if cfg.get("terminal_kind") == "hand_in":
+            return "Hand in"  # M2: drawn like Ship in the strip, named for what it does
     title = cfg.get("title") if isinstance(cfg, dict) else None
     if node.get("kind") in ("completion", "agent", "domain_query") and isinstance(title, str):
         if title.strip():
@@ -530,7 +558,14 @@ def graph_dicts(session, graph_id) -> tuple[list[dict], list[dict]]:
     )
     edges = session.execute(select(Edge).where(Edge.team_graph_id == graph_id)).scalars().all()
     node_dicts = [
-        {"id": str(n.id), "kind": n.kind, "config": n.config, "model": n.model, "prompt": n.prompt}
+        {
+            "id": str(n.id),
+            "kind": n.kind,
+            "config": n.config,
+            "model": n.model,
+            "prompt": n.prompt,
+            "tool_config": n.tool_config,
+        }
         for n in nodes
     ]
     edge_dicts = [

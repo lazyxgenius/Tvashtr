@@ -84,6 +84,7 @@ _AGENT_KEYS = (
     "tools_off",
     "connectors",
     "domains",
+    "examples",
     "reads",
     "reads_spec",
     "writes",
@@ -97,6 +98,8 @@ _AGENT_KEYS = (
     "on_no_answer",
     "instructions",
 )
+# M2: an agent's examples permission on the examples server (``tool_config.tvashtr.examples``).
+_EXAMPLES_GRANTS = ("read", "write", "review")
 _GATE_KEYS = (
     "id",
     "after",
@@ -313,6 +316,8 @@ def export_team(session, team: TeamGraph) -> dict:
                 needs_connectors.add(key)
         if grants:
             agent["connectors"] = grants
+        if tv.get("examples") in _EXAMPLES_GRANTS:
+            agent["examples"] = tv["examples"]  # M2: read / write / review
         doms = tv.get("domains")
         if doms is True:
             agent["domains"] = "all"
@@ -814,6 +819,8 @@ def parse(content: str) -> tuple[dict, list[str]]:
                     at(*where, "connectors", j),
                     "a connector is {connector: <name>, access?: write}.",
                 )
+        if agent.get("examples") is not None and agent["examples"] not in _EXAMPLES_GRANTS:
+            raise FileError(at(*where, "examples"), "`examples` should be read, write or review.")
         domains = agent.get("domains")
         if domains is not None and domains != "all":
             words(
@@ -904,8 +911,8 @@ def parse(content: str) -> tuple[dict, list[str]]:
             raise FileError(at(*where), "each item of `ends` is a set of fields.")
         take(end.get("id"), where)
         unknown += [f"ends[{i}].{k}" for k in end if k not in _END_KEYS]
-        if end.get("kind") not in ("ship", "stop"):
-            raise FileError(at(*where, "kind"), "an end’s `kind` should be ship or stop.")
+        if end.get("kind") not in ("ship", "stop", "hand_in"):
+            raise FileError(at(*where, "kind"), "an end’s `kind` should be ship, stop or hand_in.")
     for i, route in enumerate(data.get("routes") or []):
         where = ("routes", i)
         if not isinstance(route, dict):
@@ -1407,6 +1414,9 @@ def _graph_dicts(data: dict, domains: dict | None = None) -> tuple[list[dict], l
                 "config": _agent_config(agent, domains or {}),
                 "model": agent.get("model"),
                 "prompt": agent.get("instructions"),
+                "tool_config": (
+                    {"tvashtr": {"examples": agent["examples"]}} if agent.get("examples") else None
+                ),
             }
         )
     for gate in data.get("gates") or []:
@@ -1662,6 +1672,8 @@ def _tool_config(agent: dict, have: dict) -> dict | None:
         tv["servers"] = {t: {"enabled": False} for t in off}
     if connectors:
         tv["connectors"] = connectors
+    if agent.get("examples") in _EXAMPLES_GRANTS:
+        tv["examples"] = agent["examples"]
     domains = agent.get("domains")
     if domains == "all":
         tv["domains"] = True

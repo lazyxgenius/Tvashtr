@@ -3270,6 +3270,31 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
             # ``rejected``. Either way the run is finalized here and the walk ends.
             open_invocation_step(run_id, current, 1)
             cfg = node["config"] or {}
+            if cfg.get("terminal_kind") == "hand_in":
+                # M2: Hand in — the drafts go to the model the run was started from. No commit, no
+                # ship, no pull request, no memory distilling (like a compare run's ending).
+                from tvashtr.control_plane.model_examples import NO_EXAMPLES, hand_in_step
+
+                handed = hand_in_step(run_id)
+                if not handed["ok"]:
+                    mark_run_failed_step(run_id, code="no_examples", message=NO_EXAMPLES)
+                    close_invocation_step(run_id, current, 1, "failed", NO_EXAMPLES)
+                    return {
+                        "run_id": run_id,
+                        "status": "failed",
+                        "document_id": pm_document_id,
+                        "error": NO_EXAMPLES,
+                    }
+                final = finalize_run_step(run_id, status="completed")
+                close_invocation_step(run_id, current, 1, "done", "handed_in")
+                DBOS.logger.info(f"run_team handed in {handed['drafts']} drafts run_id={run_id}")
+                return {
+                    "run_id": run_id,
+                    "status": "completed",
+                    "document_id": pm_document_id,
+                    "pr_url": None,
+                    "cost_total": final["cost_total_usd"],
+                }
             if cfg.get("terminal_kind") == "ship" and graph.get("compare"):
                 # M8 (R5): a compare run never ships — no commit, no push, no pull request, no
                 # bundle — and teaches no memory (it is a trial of a version, not the team's
