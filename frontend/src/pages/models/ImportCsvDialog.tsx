@@ -1,9 +1,15 @@
-/** Import tests from a CSV: a dry run on choosing the file, then all or nothing. */
+/** Import tests (or, M2, training examples) from a CSV: a dry run on choosing the file, then all or
+ *  nothing. With no `kind` it is Models 1's test importer, unchanged. */
 import { useRef, useState } from "react";
 
 import { Button } from "../../design-system/components";
 import { ApiError } from "../../lib/api";
-import { type ImportResult, type ModelDetail, importTests } from "../../lib/api/models";
+import {
+  type ImportResult,
+  type ModelDetail,
+  importTests,
+  importTraining,
+} from "../../lib/api/models";
 import { ModelDialog } from "./ModelDialog";
 import { plural } from "./modelsFormat";
 
@@ -11,11 +17,17 @@ export function ImportCsvDialog({
   model,
   onClose,
   onImported,
+  kind = "tests",
 }: {
   model: ModelDetail;
   onClose: () => void;
   onImported: () => void;
+  /** M2: `training` imports training examples (columns input and answer). */
+  kind?: "tests" | "training";
 }) {
+  const training = kind === "training";
+  const importer = training ? importTraining : importTests;
+  const unit = training ? "training example" : "test";
   const fileRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<{ name: string; text: string } | null>(null);
   const [preview, setPreview] = useState<ImportResult | null>(null);
@@ -34,7 +46,7 @@ export function ImportCsvDialog({
     try {
       const text = await chosen.text();
       setFile({ name: chosen.name, text });
-      setPreview(await importTests(id, { filename: chosen.name, csv: text, dry_run: true }));
+      setPreview(await importer(id, { filename: chosen.name, csv: text, dry_run: true }));
     } catch (err) {
       setError(words(err));
     } finally {
@@ -47,7 +59,7 @@ export function ImportCsvDialog({
     setBusy(true);
     setError(null);
     try {
-      const out = await importTests(id, { filename: file.name, csv: file.text, dry_run: false });
+      const out = await importer(id, { filename: file.name, csv: file.text, dry_run: false });
       if (out.imported) {
         onImported();
         return;
@@ -63,7 +75,7 @@ export function ImportCsvDialog({
 
   return (
     <ModelDialog
-      title="Import tests from a CSV"
+      title={training ? "Import training examples from a CSV" : "Import tests from a CSV"}
       onClose={onClose}
       footer={
         <>
@@ -72,17 +84,24 @@ export function ImportCsvDialog({
           </Button>
           {ready && (
             <Button variant="primary" loading={busy} onClick={() => void run()}>
-              Import {plural(preview.ready, "test")}
+              Import {plural(preview.ready, unit)}
             </Button>
           )}
         </>
       }
     >
-      <p className="md-body">
-        The first row names the columns. You need input and expected. For Write text models you can
-        add scoring (exact, contains or judge), must_contain (phrases split by ;), rubric and
-        judge_model.
-      </p>
+      {training ? (
+        <p className="md-body">
+          The first row names the columns. You need input and answer. An input that is one of your
+          tests can't be a training example.
+        </p>
+      ) : (
+        <p className="md-body">
+          The first row names the columns. You need input and expected. For Write text models you
+          can add scoring (exact, contains or judge), must_contain (phrases split by ;), rubric and
+          judge_model.
+        </p>
+      )}
       <div>
         <Button
           variant="secondary"
@@ -106,8 +125,8 @@ export function ImportCsvDialog({
       </div>
       {ready && (
         <p className="md-body" role="status">
-          {plural(preview.ready, "test")} ready to import. They become test set v
-          {preview.next_version}.
+          {plural(preview.ready, unit)} ready to import. They become{" "}
+          {training ? "training set" : "test set"} v{preview.next_version}.
         </p>
       )}
       {preview && preview.errors.length > 0 && (

@@ -13,6 +13,7 @@ export function ModelDialog({
   children,
   footer,
   top = 84,
+  wide = false,
 }: {
   title: string;
   subtitle?: ReactNode;
@@ -20,6 +21,8 @@ export function ModelDialog({
   children: ReactNode;
   footer?: ReactNode;
   top?: number;
+  /** M2: the 660-wide frame (Draft with a team). */
+  wide?: boolean;
 }) {
   const ref = useModalDialog<HTMLDivElement>(true, onClose);
   return createPortal(
@@ -30,7 +33,7 @@ export function ModelDialog({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="md-dialog"
+        className={wide ? "md-dialog md-dialog--wide" : "md-dialog"}
         style={{ top, maxHeight: `calc(100vh - ${top}px)` }}
         tabIndex={-1}
       >

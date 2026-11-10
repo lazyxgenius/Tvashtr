@@ -1,11 +1,13 @@
 /** Pure helpers for the Models pages: money, times, labels, the Run dialog's rows and lines. */
 import type { ProviderCatalogueEntry } from "../../lib/api";
 import type {
+  Drafts,
   ModelCard,
   ModelEstimate,
   ModelRun,
   Scoring,
   ScoringSummary,
+  Source,
 } from "../../lib/api/models";
 
 /** Two decimals; below a cent, `<$0.01`. */
@@ -192,4 +194,44 @@ export function defaultPair(
 /** A run's option in Compare: `model-name · 46 / 50`. */
 export function compareOption(run: ModelRun): string {
   return `${run.model_name} · ${run.passed} / ${run.cases_total}`;
+}
+
+// ---- M2 ----
+
+/** The version line's words: "9 added from Example builder, 12 min ago" for a set that grew from a
+ *  team's drafts, else "Edited 2 h ago by you". */
+export function versionLine(
+  note: string | null,
+  createdAt: string,
+  now: Date = new Date(),
+): string {
+  const m = /^Added (\d+) (?:tests?|examples?) from (.+)$/.exec(note ?? "");
+  if (m) return `${m[1]} added from ${m[2]}, ${ago(createdAt, now)}`;
+  return `Edited ${ago(createdAt, now)} by you`;
+}
+
+/** "page 4" reads "p. 4" in a table's Source cell. */
+export function locatorShort(locator: string): string {
+  return locator.replace(/^page\s+/i, "p. ");
+}
+
+/** Money with two decimals, never "<$0.01": the pause amount ("$0.50"). */
+export function dollars(usd: number): string {
+  return `$${usd.toFixed(2)}`;
+}
+
+/** "motor-claims-guide.pdf · page 4" — the page only when the stored passage carries one. */
+export function sourceFileLine(source: Source): string {
+  return source.locator ? `${source.file} · ${source.locator}` : (source.file ?? "");
+}
+
+/** What accepting the selection will do, in one sentence. */
+export function acceptLine(tests: number, training: number, d: Drafts): string {
+  const parts = [];
+  if (tests) parts.push(`${plural(tests, "test")} (test set v${d.test_version + 1})`);
+  if (training) {
+    parts.push(`${plural(training, "training example")} (training set v${d.training_version + 1})`);
+  }
+  if (!parts.length) return "Select the drafts to accept.";
+  return `Accepting adds ${parts.join(" and ")} in one step. Each keeps its source.`;
 }

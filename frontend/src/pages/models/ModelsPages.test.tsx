@@ -663,7 +663,9 @@ describe("the model page", () => {
     expect(screen.getByRole("tab", { name: /Tests/ })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByText("Test set v4")).toBeInTheDocument();
     expect(screen.getByText("Edited 2 h ago by you")).toBeInTheDocument();
-    expect(screen.getByText("Answers are one of:")).toBeInTheDocument();
+    // M2 (TestsLocked.dc.html): the lock badge stands where the choices line was.
+    expect(screen.getByText("Never used for training")).toBeInTheDocument();
+    expect(screen.queryByText("Answers are one of:")).not.toBeInTheDocument();
     const header = within(table).getByRole("columnheader", { name: /Last run/ });
     expect(header).toHaveTextContent("Last run · sonnet-5-5 / gpt-oss-120b");
     const rows = within(table).getAllByRole("row");
@@ -681,7 +683,11 @@ describe("the model page", () => {
     renderIn(<ModelDetailPage modelId="m1" />);
     const table = await screen.findByRole("region", { name: "Tests" });
     expect(within(table).getAllByRole("row")).toHaveLength(26);
-    expect(screen.getByText("Showing 25 of 30 tests")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Showing 25 of 30 tests. Every test is locked: training only ever reads the Training examples tab.",
+      ),
+    ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Show all 30" }));
     expect(within(table).getAllByRole("row")).toHaveLength(31);
   });

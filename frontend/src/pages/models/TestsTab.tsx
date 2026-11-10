@@ -1,7 +1,8 @@
-/** The Tests tab: the version line, the choices, the table with its Last run chips, the first 25
- *  tests, and the banner over an older version, which is read-only. */
+/** The Tests tab: the version line with the lock ("Never used for training"), the table with each
+ *  test's lock, its source and its Last run chips, the first 25 tests, and the banner over an older
+ *  version, which is read-only. M2: every test is locked, however it was added. */
 import { useEffect, useState } from "react";
-import { Check, Clock, MoreHorizontal, X } from "lucide-react";
+import { Check, Clock, Lock, MoreHorizontal, X } from "lucide-react";
 
 import { Button, ConfirmDialog, Menu, useToast } from "../../design-system/components";
 import { ApiError } from "../../lib/api";
@@ -13,7 +14,7 @@ import {
   deleteTest,
   listTests,
 } from "../../lib/api/models";
-import { SCORING_LABEL, ago, shortModel } from "./modelsFormat";
+import { SCORING_LABEL, locatorShort, shortModel, versionLine } from "./modelsFormat";
 
 const FIRST_ROWS = 25;
 
@@ -157,16 +158,6 @@ export function TestsTab({
       {!docked && (
         <div className="md-line">
           <VersionBits data={data} onHistory={onHistory} />
-          {isChoice && (
-            <div className="md-line__choices">
-              <span>Answers are one of:</span>
-              {model.choices.map((c) => (
-                <span key={c} className="md-ans">
-                  {c}
-                </span>
-              ))}
-            </div>
-          )}
         </div>
       )}
       <section
@@ -183,9 +174,16 @@ export function TestsTab({
               <th scope="col" className={docked ? "md-tests__expected-wide" : "md-tests__expected"}>
                 Expected answer
               </th>
-              <th scope="col" className="md-tests__by">
-                Scored by
-              </th>
+              {!isChoice && (
+                <th scope="col" className="md-tests__by">
+                  Scored by
+                </th>
+              )}
+              {!docked && (
+                <th scope="col" className="md-tests__src">
+                  Source
+                </th>
+              )}
               {!docked && (
                 <th scope="col" className="md-tests__last">
                   Last run
@@ -222,7 +220,19 @@ export function TestsTab({
                       }
                 }
               >
-                <td className="md-num">{t.position}</td>
+                <td>
+                  <span className="md-numlock">
+                    <span
+                      role="img"
+                      aria-label="Locked: never used for training"
+                      title="Locked: never used for training"
+                      style={{ display: "inline-flex" }}
+                    >
+                      <Lock size={12} strokeWidth={1.7} aria-hidden />
+                    </span>
+                    {t.position}
+                  </span>
+                </td>
                 <td>
                   <span className="md-clamp">{t.input}</span>
                 </td>
@@ -233,7 +243,12 @@ export function TestsTab({
                     <span className="md-clamp md-tests__text">{t.expected}</span>
                   )}
                 </td>
-                <td className="md-tests__by-cell">{SCORING_LABEL[t.scoring]}</td>
+                {!isChoice && <td className="md-tests__by-cell">{SCORING_LABEL[t.scoring]}</td>}
+                {!docked && (
+                  <td>
+                    <SourceCell source={t.source ?? null} fallback={t.added_by ?? "Added by you"} />
+                  </td>
+                )}
                 {!docked && (
                   <td>
                     <div className="md-tests__chips">
@@ -286,16 +301,19 @@ export function TestsTab({
           </tbody>
         </table>
       </section>
-      {!all && tests.length > FIRST_ROWS && (
-        <div className="md-more">
-          <span>
-            Showing {FIRST_ROWS} of {tests.length} tests
-          </span>
+      <div className="md-more">
+        <span>
+          {!all && tests.length > FIRST_ROWS
+            ? `Showing ${FIRST_ROWS} of ${tests.length} tests. `
+            : ""}
+          Every test is locked: training only ever reads the Training examples tab.
+        </span>
+        {!all && tests.length > FIRST_ROWS && (
           <Button variant="ghost" size="sm" onClick={() => setAll(true)}>
             Show all {tests.length}
           </Button>
-        </div>
-      )}
+        )}
+      </div>
       <ConfirmDialog
         open={deleting !== null}
         title={`Delete test ${deleting?.position}?`}
@@ -311,12 +329,37 @@ export function TestsTab({
   );
 }
 
+/** A test's or training example's Source cell: the file in mono (with a page when the passage
+ *  carries one) and the quote, else who added it ("Added by you", "Imported from x.csv"). */
+export function SourceCell({
+  source,
+  fallback,
+}: {
+  source: { file: string | null; quote: string | null; locator?: string | null } | null;
+  fallback: string;
+}) {
+  if (!source?.file) return <span className="md-byhand">{fallback}</span>;
+  return (
+    <>
+      <span className="md-srcfile">
+        {source.file}
+        {source.locator ? ` · ${locatorShort(source.locator)}` : ""}
+      </span>
+      {source.quote && <span className="md-srcq">“{source.quote}”</span>}
+    </>
+  );
+}
+
 function VersionBits({ data, onHistory }: { data: ModelTests; onHistory: () => void }) {
   return (
     <div className="md-line__version">
       <span className="md-chip">Test set v{data.version}</span>
+      <span className="md-lock" title="Tests are kept apart from training examples">
+        <Lock size={13} strokeWidth={1.7} aria-hidden />
+        Never used for training
+      </span>
       {data.created_at && (
-        <span className="md-line__edited">Edited {ago(data.created_at)} by you</span>
+        <span className="md-line__edited">{versionLine(data.change_note, data.created_at)}</span>
       )}
       <button type="button" className="md-link md-link--icon" onClick={onHistory}>
         <Clock size={14} strokeWidth={1.7} aria-hidden />

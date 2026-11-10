@@ -20,7 +20,7 @@ import { useModalDialog } from "../../lib/useModalDialog";
 import { ChipsField } from "./ChipsField";
 import { useModelChoices } from "./modelChoices";
 import { SCORING_LABEL, ago, modelRows, scoringHint } from "./modelsFormat";
-import { VerdictChip } from "./TestsTab";
+import { SourceCell, VerdictChip } from "./TestsTab";
 
 const BACKEND_DOWN = "Couldn’t reach Tvashtr — is the backend running?";
 const CUSTOM = "__custom__";
@@ -300,6 +300,12 @@ export function TestDrawer({
               />
             )}
           </>
+        )}
+        {test?.source?.file && (
+          <div className="md-src" aria-label="Source">
+            <span className="md-eyebrow">Source</span>
+            <SourceCell source={test.source} fallback="" />
+          </div>
         )}
         <LastRunBox results={results} />
       </div>
