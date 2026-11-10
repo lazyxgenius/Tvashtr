@@ -483,6 +483,105 @@ ROUTES: dict[str, tuple[str, object]] = {
         "id",
         ["test_owner_scope_models::test_b_gets_404_on_every_route_of_as_model"],
     ),
+    "GET /api/models/{model_id}/training": (
+        "id",
+        [
+            "test_owner_scope_model_examples::test_b_gets_404_on_every_route_of_as_drafts_and_training"
+        ],
+    ),
+    "POST /api/models/{model_id}/training": (
+        "id",
+        [
+            "test_owner_scope_model_examples::test_b_gets_404_on_every_route_of_as_drafts_and_training"
+        ],
+    ),
+    "POST /api/models/{model_id}/training/import": (
+        "id",
+        [
+            "test_owner_scope_model_examples::test_b_gets_404_on_every_route_of_as_drafts_and_training"
+        ],
+    ),
+    "GET /api/models/{model_id}/training/versions": (
+        "id",
+        [
+            "test_owner_scope_model_examples::test_b_gets_404_on_every_route_of_as_drafts_and_training"
+        ],
+    ),
+    "POST /api/models/{model_id}/training/versions/{version}/restore": (
+        "id",
+        [
+            "test_owner_scope_model_examples::test_b_gets_404_on_every_route_of_as_drafts_and_training"
+        ],
+    ),
+    "GET /api/models/{model_id}/training/download": (
+        "id",
+        [
+            "test_owner_scope_model_examples::test_b_gets_404_on_every_route_of_as_drafts_and_training"
+        ],
+    ),
+    "PUT /api/models/{model_id}/training/{example_key}": (
+        "id",
+        [
+            "test_owner_scope_model_examples::test_b_gets_404_on_every_route_of_as_drafts_and_training"
+        ],
+    ),
+    "DELETE /api/models/{model_id}/training/{example_key}": (
+        "id",
+        [
+            "test_owner_scope_model_examples::test_b_gets_404_on_every_route_of_as_drafts_and_training"
+        ],
+    ),
+    "GET /api/models/{model_id}/drafts": (
+        "id",
+        [
+            "test_owner_scope_model_examples::test_b_gets_404_on_every_route_of_as_drafts_and_training"
+        ],
+    ),
+    "POST /api/models/{model_id}/drafts/accept": (
+        "id",
+        [
+            "test_owner_scope_model_examples::test_b_gets_404_on_every_route_of_as_drafts_and_training"
+        ],
+    ),
+    "POST /api/models/{model_id}/drafts/reject": (
+        "id",
+        [
+            "test_owner_scope_model_examples::test_b_gets_404_on_every_route_of_as_drafts_and_training"
+        ],
+    ),
+    "PUT /api/models/{model_id}/drafts/{draft_id}": (
+        "id",
+        [
+            "test_owner_scope_model_examples::test_b_gets_404_on_every_route_of_as_drafts_and_training"
+        ],
+    ),
+    "POST /api/models/{model_id}/drafts/{draft_id}/kind": (
+        "id",
+        [
+            "test_owner_scope_model_examples::test_b_gets_404_on_every_route_of_as_drafts_and_training"
+        ],
+    ),
+    "GET /api/models/{model_id}/drafting": (
+        "id",
+        [
+            "test_owner_scope_model_examples::test_b_gets_404_on_every_route_of_as_drafts_and_training",
+            "test_owner_scope_model_examples::test_b_cannot_draft_with_as_domain_or_team",
+        ],
+    ),
+    "POST /api/models/{model_id}/drafting/estimate": (
+        "id",
+        [
+            "test_owner_scope_model_examples::test_b_gets_404_on_every_route_of_as_drafts_and_training",
+            "test_owner_scope_model_examples::test_b_cannot_draft_with_as_domain_or_team",
+        ],
+    ),
+    "POST /api/models/{model_id}/drafting": (
+        "id",
+        [
+            "test_owner_scope_model_examples::test_b_gets_404_on_every_route_of_as_drafts_and_training",
+            "test_owner_scope_model_examples::test_b_cannot_draft_with_as_domain_or_team",
+        ],
+    ),
     "GET /api/node-templates": (
         "own",
         "Returns the fixed, code-resident agent template list. The router is mounted behind get_current_user. It takes no id and reads no account rows.",
@@ -979,6 +1078,14 @@ ROUTES: dict[str, tuple[str, object]] = {
     "ROUTE /mcp/connectors": (
         "public",
         "run-token authenticated (Authorization: Bearer connector run token, owner-checked against the connection): tests/test_connector_proxy.py",
+    ),
+    "MOUNT /mcp/examples": (
+        "public",
+        "M2: the examples MCP server. Authenticated by its own examples run token (node_tools.read_examples_token), honoured only while that run is live and drafts for a model; proved by test_examples_token",
+    ),
+    "ROUTE /mcp/examples": (
+        "public",
+        "M2: the exact address agents are given (mount_streamable). Same run-token auth as MOUNT /mcp/examples; proved by test_examples_token",
     ),
     "MOUNT /mcp/domains": (
         "public",

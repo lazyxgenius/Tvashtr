@@ -275,3 +275,56 @@ def test_the_pause_amount_is_four_times_the_estimate_rounded_up_to_fifty_cents(e
 )
 def test_the_reviewers_line(checked, sent_back, flagged, line):
     assert ex.reviewer_line(checked, sent_back, flagged) == line
+
+
+# --------------------------------------------------------------- training examples by hand / CSV
+
+
+def test_the_quote_is_located_in_its_passage():
+    assert ex.locate_quote("Storm and flood damage to the insured", PASSAGES) == 1
+    assert ex.locate_quote("handled by the Motor team. Storm and flood", PASSAGES) == 0
+    assert ex.locate_quote("not in the file at all, really", PASSAGES) is None
+
+
+def test_a_training_example_is_cleaned():
+    assert ex.clean_example("choice", CHOICES, input=" a  claim ", answer="motor") == {
+        "input": "a  claim",
+        "answer": "Motor",
+    }
+    assert ex.clean_example("text", [], input="q", answer=" an answer ") == {
+        "input": "q",
+        "answer": "an answer",
+    }
+
+
+@pytest.mark.parametrize(
+    ("kind", "input_", "answer", "message"),
+    [
+        ("text", " ", "a", "Write the input first."),
+        ("text", "q", "", "Write the answer."),
+        ("choice", "q", "Car", "The answer must be one of the choices."),
+    ],
+)
+def test_a_bad_training_example_is_refused(kind, input_, answer, message):
+    with pytest.raises(ValueError) as caught:
+        ex.clean_example(kind, CHOICES, input=input_, answer=answer)
+    assert str(caught.value) == message
+
+
+def test_a_training_csv_is_all_or_nothing_with_line_numbers():
+    text = "input,answer\nfirst,Motor\n,Motor\nthird,Car\n"
+    rows, errors = ex.parse_training_csv(text, answer_kind="choice", choices=CHOICES)
+    assert rows == []
+    assert errors == ["Line 3: Write the input first.", "Line 4: “Car” isn't one of the choices."]
+
+
+def test_a_good_training_csv_reads_every_row():
+    text = "﻿Input,Answer\nfirst,motor\n\nsecond,Other\n"
+    rows, errors = ex.parse_training_csv(text, answer_kind="choice", choices=CHOICES)
+    assert errors == []
+    assert rows == [{"input": "first", "answer": "Motor"}, {"input": "second", "answer": "Other"}]
+
+
+def test_a_training_csv_needs_input_and_answer_columns():
+    rows, errors = ex.parse_training_csv("input,expected\na,b\n", answer_kind="text", choices=[])
+    assert (rows, errors) == ([], ["Line 1: The first row must name input and answer."])
