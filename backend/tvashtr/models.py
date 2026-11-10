@@ -1700,8 +1700,8 @@ class ModelTestCase(Base):
     rubric: Mapped[str | None] = mapped_column(Text, nullable=True)
     judge_model: Mapped[str | None] = mapped_column(Text, nullable=True)
     # M2 (0055): where it came from. ``source`` = {file, quote, domain_id, document_id, locator?}
-    # for a test from a draft; ``origin`` hand | csv | draft (None = made before M2, by hand or CSV);
-    # ``origin_note`` = the CSV's filename or the drafting team's name.
+    # for a test from a draft; ``origin`` hand | csv | draft (None = made before M2, by hand or
+    # CSV); ``origin_note`` = the CSV's filename or the drafting team's name.
     source: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     origin: Mapped[str | None] = mapped_column(Text, nullable=True)
     origin_note: Mapped[str | None] = mapped_column(Text, nullable=True)

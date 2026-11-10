@@ -74,9 +74,7 @@ def upgrade() -> None:
             "origin IN ('hand', 'csv', 'draft')", name="ck_model_training_examples_origin"
         ),
     )
-    op.create_index(
-        "ix_model_training_examples_model_id", "model_training_examples", ["model_id"]
-    )
+    op.create_index("ix_model_training_examples_model_id", "model_training_examples", ["model_id"])
 
     op.create_table(
         "model_training_set_versions",
