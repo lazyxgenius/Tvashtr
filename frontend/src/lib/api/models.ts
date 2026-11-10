@@ -165,6 +165,10 @@ export interface ModelEstimate {
   model_usd: number | null;
   judge_usd: number | null;
   unpriced_judges: string[];
+  /** M2 Part B: the answer size was learned from this account's past tests. */
+  learned?: boolean;
+  /** M2 Part B: LiteLLM marks it as a model that thinks before it answers. */
+  thinks?: boolean;
 }
 
 export interface ScoringSummary {

@@ -502,3 +502,12 @@ def embed(request: EmbeddingRequest) -> EmbeddingResult:
         raw_provider=_provider_of(request.model),
         latency_ms=latency_ms,
     )
+
+
+def thinks_before_answering(model: str) -> bool:
+    """Whether LiteLLM marks ``model`` as a reasoning model (it thinks before it answers, so its
+    answers cost more than their text). ``False`` when it isn't listed; never raises."""
+    try:
+        return bool(litellm.supports_reasoning(model=_priced_as(model)))
+    except Exception:  # noqa: BLE001 — an estimate's hint must never fail the estimate
+        return False

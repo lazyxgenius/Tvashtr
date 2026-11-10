@@ -149,6 +149,7 @@ def estimate_model(
     cases: list[dict],
     count: CountTokens,
     price: PriceOf,
+    learned_out: float | None = None,
 ) -> dict:
     """What running ``cases`` on one model should cost. Prompt tokens = the exact messages; answer
     tokens = choice: the longest choice + 2, text: 1.5 x the expected answer's tokens + 20. A judge
@@ -163,6 +164,7 @@ def estimate_model(
             "model_usd": None,
             "judge_usd": None,
             "unpriced_judges": [],
+            "learned": learned_out is not None,
         }
     longest = max((_tokens(count, slug, c) for c in choices), default=0)
     model_usd = 0.0
@@ -175,6 +177,8 @@ def estimate_model(
             if answer_kind == "choice"
             else 1.5 * _tokens(count, slug, case["expected"]) + 20
         )
+        if learned_out is not None:
+            out_tokens = max(out_tokens, learned_out)  # M2 Part B: what it really used before
         model_usd += count(slug, messages) * listed[0] + out_tokens * listed[1]
         if case["scoring"] != "judge":
             continue
@@ -196,7 +200,19 @@ def estimate_model(
         "model_usd": model_usd,
         "judge_usd": judge_usd,
         "unpriced_judges": unpriced,
+        "learned": learned_out is not None,
     }
+
+
+LEARN_FROM = 200  # the newest past answers the estimate learns from
+LEARN_AT_LEAST = 5
+
+
+def learned_answer_tokens(past: list[int]) -> float | None:
+    """The mean real answer size of a model's past answers, or ``None`` with fewer than five."""
+    if len(past) < LEARN_AT_LEAST:
+        return None
+    return sum(past) / len(past)
 
 
 def scoring_summary(cases: list[dict]) -> dict:

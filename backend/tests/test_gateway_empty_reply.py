@@ -1,6 +1,6 @@
-"""M2 Part A — a reply with no answer in it (``choices == []`` or ``choices[0].message is None``) is a
-provider error: the primary is retried, then the backup is tried, and with nothing left the caller
-gets a ``GatewayError`` saying the model returned no answer — never a bare ``IndexError``.
+"""M2 Part A — a reply with no answer in it (``choices == []`` or ``choices[0].message is None``)
+is a provider error: the primary is retried, then the backup is tried, and with nothing left the
+caller gets a ``GatewayError`` saying the model returned no answer — never a bare ``IndexError``.
 
 A reply that HAS a choice whose text is empty still returns normally with ``text=""``.
 Offline: ``litellm.completion`` is monkeypatched; waits are recorded, never slept."""

@@ -462,6 +462,47 @@ describe("Run tests", () => {
     expect(screen.getByText("about $0.06")).toBeInTheDocument();
   });
 
+  it("says when the estimate learned from past tests", async () => {
+    const base = estimate();
+    mockApi(
+      routes({
+        "POST /api/models/m1/estimate": {
+          ...base,
+          models: [{ ...base.models[0], learned: true, thinks: true }, base.models[1]],
+        },
+      }),
+    );
+    open();
+    expect(
+      await screen.findByText("Based on what these models really used on your past tests."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/listed price and the length of your tests/)).toBeNull();
+    expect(screen.queryByText(/thinks before it answers/)).toBeNull();
+  });
+
+  it("warns that a thinking model with no history can cost several times more", async () => {
+    const base = estimate();
+    mockApi(
+      routes({
+        "POST /api/models/m1/estimate": {
+          ...base,
+          models: [{ ...base.models[0], learned: false, thinks: true }, base.models[1]],
+        },
+      }),
+    );
+    open();
+    expect(
+      await screen.findByText(
+        "Groq gpt-oss-120b thinks before it answers. Its first estimate can be several times too low.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "The estimate uses each model's listed price and the length of your tests. The real cost shows when the run ends.",
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("a provider with no key is disabled with Add a key", async () => {
     mockApi(routes());
     open();

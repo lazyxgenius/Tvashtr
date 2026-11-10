@@ -59,8 +59,33 @@ def _case_fields(case: ModelTestCase) -> dict:
     }
 
 
-def _estimate(version, cases: list[dict], slug: str) -> dict:
-    return pure.estimate_model(
+def learned_answer_tokens(
+    session, owner_id: uuid.UUID, slug: str, answer_kind: str
+) -> float | None:
+    """M2 Part B: the mean real answer size of ``slug`` in this account's past test results — pass
+    or fail verdicts only, the newest 200, any of the account's models with this kind of answer;
+    ``None`` with fewer than five. ``completion_tokens`` includes a thinking model's thinking
+    (checked live on Gemini 3 Flash: 128 = 127 reasoning + 1 text, and the cost matches).
+    A result whose provider reported no tokens (0) is left out."""
+    rows = session.scalars(
+        select(ModelTestResult.completion_tokens)
+        .join(ModelTestRun, ModelTestRun.id == ModelTestResult.run_id)
+        .join(UserModel, UserModel.id == ModelTestRun.model_id)
+        .where(
+            UserModel.owner_id == owner_id,
+            UserModel.answer_kind == answer_kind,
+            ModelTestRun.model_slug == slug,
+            ModelTestResult.verdict.in_(("pass", "fail")),
+            ModelTestResult.completion_tokens > 0,
+        )
+        .order_by(ModelTestResult.created_at.desc())
+        .limit(pure.LEARN_FROM)
+    ).all()
+    return pure.learned_answer_tokens([int(t) for t in rows])
+
+
+def _estimate(version, cases: list[dict], slug: str, learned: float | None = None) -> dict:
+    row = pure.estimate_model(
         slug,
         version.answer_kind,
         version.job,
@@ -68,7 +93,10 @@ def _estimate(version, cases: list[dict], slug: str) -> dict:
         cases,
         gateway_core.count_tokens,
         gateway_core.price_per_token,
+        learned_out=learned,
     )
+    row["thinks"] = gateway_core.thinks_before_answering(slug)
+    return row
 
 
 def estimate(owner_id: uuid.UUID, model_id: uuid.UUID, models: list[str] | None) -> dict:
@@ -86,7 +114,15 @@ def estimate(owner_id: uuid.UUID, model_id: uuid.UUID, models: list[str] | None)
         return {
             "tests": len(cases),
             "version": version.version,
-            "models": [_estimate(version, cases, s) for s in slugs],
+            "models": [
+                _estimate(
+                    version,
+                    cases,
+                    s,
+                    learned_answer_tokens(session, owner_id, s, version.answer_kind),
+                )
+                for s in slugs
+            ],
             "summary": pure.scoring_summary(cases),
         }
 
@@ -114,7 +150,12 @@ def start_runs(owner_id: uuid.UUID, model_id: uuid.UUID, models: list[str] | Non
         case_ids = [str(c.id) for c in rows]
         runs = []
         for slug in slugs:
-            guess = _estimate(version, cases, slug)
+            guess = _estimate(
+                version,
+                cases,
+                slug,
+                learned_answer_tokens(session, owner_id, slug, version.answer_kind),
+            )
             runs.append(
                 ModelTestRun(
                     model_id=model.id,

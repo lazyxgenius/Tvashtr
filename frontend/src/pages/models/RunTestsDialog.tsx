@@ -115,6 +115,12 @@ export function RunTestsDialog({
     ...new Set(estimates.filter((e) => ticked.includes(e.model)).flatMap((e) => e.unpriced_judges)),
   ];
 
+  const tickedEstimates = estimates.filter((e) => ticked.includes(e.model));
+  const learned = tickedEstimates.some((e) => e.learned);
+  const thinkers = rows.filter((r) =>
+    tickedEstimates.some((e) => e.model === r.slug && e.thinks && !e.learned),
+  );
+
   return (
     <ModelDialog
       title="Run tests"
@@ -232,9 +238,15 @@ export function RunTestsDialog({
             {unlistedLine(slug)}
           </span>
         ))}
+        {thinkers.map((r) => (
+          <span key={r.slug} className="md-hint">
+            {`${r.providerLabel} ${r.name} thinks before it answers. Its first estimate can be several times too low.`}
+          </span>
+        ))}
         <span className="md-hint">
-          The estimate uses each model's listed price and the length of your tests. The real cost
-          shows when the run ends.
+          {learned
+            ? "Based on what these models really used on your past tests."
+            : "The estimate uses each model's listed price and the length of your tests. The real cost shows when the run ends."}
         </span>
       </div>
       <span className="md-hint">
