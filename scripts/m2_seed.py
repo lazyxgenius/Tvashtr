@@ -4,10 +4,10 @@
         backend/.venv/bin/python scripts/m2_seed.py --email you@tvashtr.local --state drafts
 
 ``--state drafts`` (Draft dialog, Drafts tab, a drafting and a stopped batch, Needs you): "Claims
-triage" on test set v4 (50 tests) and training set v2 (120 examples), a finished batch of 30 drafts
-from the Example builder (the canvas's four cards first; the Reviewer checked 10 and sent back once),
-six earlier drafting runs at $0.003 a draft (so the dialog's estimate reads "about $0.09 … your last 6
-runs"), the Domains "Claims handbook" (14 files) and "Policy wordings" (6), and the teams "Example
+triage" on test set v4 (50 tests) and training set v2 (120 examples), a finished batch of 30
+drafts from the Example builder (the canvas's four cards first; the Reviewer checked 10 and sent
+back once), five earlier drafting runs at $0.003 a draft (so the dialog's estimate reads "about
+$0.09 … your last 6 runs"), the Domains "Claims handbook" (14 files) and "Policy wordings" (6), and the teams "Example
 builder" and "Example builder, two reviewers". Two more models carry a drafting and a stopped batch.
 
 ``--state accepted`` (the locked Tests tab, the Training tab, the canvas, empty states): "Claims
@@ -94,7 +94,8 @@ FROM_DRAFTS = [  # TestsLocked.dc.html tests 51–54
         "Damage caused by another vehicle, moving or parked, is handled by Motor.",
     ),
     (
-        "Missed a connecting flight in Doha because the first leg was late. Paid for a hotel night.",
+        "Missed a connecting flight in Doha because the first leg was late. Paid for a hotel "
+        "night.",
         "Travel",
         "travel-policy-wording.pdf",
         "page 9",
