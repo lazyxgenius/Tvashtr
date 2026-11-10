@@ -50,6 +50,15 @@ interface Batch {
   drafts: Draft[];
 }
 
+// A missing element fails in a minute, never hangs the gate (an e2e trap here: no actionTimeout).
+test.use({ actionTimeout: 60_000 });
+
+/** Show every draft card, when the Drafts tab is showing only its first ones. */
+async function showAll(page: Page) {
+  const button = page.getByRole("button", { name: /^Show all \d+$/ });
+  if ((await button.count()) > 0) await button.click();
+}
+
 let step = 0;
 async function shot(page: Page, name: string) {
   step += 1;
@@ -222,10 +231,7 @@ test("example builder: Domain → Draft with a team → review → accept → lo
     [copy, HAND[0][0]],
   ] as const) {
     const card = page.locator("article.md-dcard").filter({ hasText: target.input.slice(0, 40) });
-    await page
-      .getByRole("button", { name: "Show all" })
-      .click()
-      .catch(() => undefined);
+    await showAll(page);
     await card.getByRole("button", { name: "Edit" }).click();
     await page.getByLabel("Input").fill(input);
     await page.getByRole("button", { name: "Save draft" }).click();
@@ -233,10 +239,7 @@ test("example builder: Domain → Draft with a team → review → accept → lo
       timeout: 30_000,
     });
   }
-  await page
-    .getByRole("button", { name: "Show all" })
-    .click()
-    .catch(() => undefined);
+  await showAll(page);
   await expect(
     page.getByText(
       "This matches test 1, so it can't be trained on. Edit it into a different case, or reject it.",
