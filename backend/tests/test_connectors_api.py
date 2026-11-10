@@ -208,6 +208,8 @@ def test_the_lifespan_starts_the_proxys_session_manager():
         patch.object(main, "sweep_orphaned_fly_apps"),
         patch.object(main._domains_mcp_http.router, "lifespan_context", recording),
         patch.object(main._connectors_mcp_http.router, "lifespan_context", recording),
+        # M2: the examples server's session manager is started by the lifespan too.
+        patch.object(main._examples_mcp_http.router, "lifespan_context", recording),
     ):
 
         async def drive() -> list[object]:
@@ -217,6 +219,7 @@ def test_the_lifespan_starts_the_proxys_session_manager():
         at_yield = asyncio.run(drive())
 
     assert main._connectors_mcp_http in at_yield
+    assert main._examples_mcp_http in at_yield
 
 
 # ---- B1.3: the catalog ----

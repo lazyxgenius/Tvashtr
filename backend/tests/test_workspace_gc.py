@@ -691,6 +691,7 @@ def test_the_boot_sweep_actually_runs_during_lifespan_startup():
         patch.object(main, "sweep_orphaned_fly_apps", side_effect=lambda: None),
         patch.object(main._domains_mcp_http.router, "lifespan_context", _no_mcp_lifespan),
         patch.object(main._connectors_mcp_http.router, "lifespan_context", _no_mcp_lifespan),
+        patch.object(main._examples_mcp_http.router, "lifespan_context", _no_mcp_lifespan),
     ):
 
         async def drive() -> list[str]:
