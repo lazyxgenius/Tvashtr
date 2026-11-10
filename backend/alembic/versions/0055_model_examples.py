@@ -1,7 +1,7 @@
 """model training examples, training set versions, example batches and drafts; test sources
 
-M2 (brief ``prompts/m2-examples.md``): a model gains a training set kept apart from its tests, and an
-agent team can draft both from a Domain, each draft quoting its source.
+M2 (brief ``prompts/m2-examples.md``): a model gains a training set kept apart from its tests, and
+an agent team can draft both from a Domain, each draft quoting its source.
 
 * ``model_test_cases`` + ``source`` (jsonb, null), ``origin`` (``hand|csv|draft``, null = before M2)
   and ``origin_note`` (the CSV's filename or the drafting team's name).
