@@ -18,6 +18,8 @@ from tvashtr.control_plane import model_examples_pure as pure
 from tvashtr.control_plane.node_tools import read_examples_token
 
 NO_TOKEN = "authentication required — no valid run token"
+# A tool parameter can't be named ``kind``: an agent's SDK builds a pydantic Action from each tool's
+# schema and its base already has a ``kind`` field. So a draft's kind is ``example_type`` here.
 CANT_WRITE = "This agent can't hand in examples. Only the team's writer can."
 CANT_REVIEW = "This agent can't review examples. Only the team's reviewer can."
 
@@ -67,17 +69,19 @@ def create_examples_fastmcp() -> FastMCP:
         return _run(lambda: model_examples.agent_brief(grant["batch_id"]))
 
     @mcp.tool(name="examples_list")
-    def examples_list(ctx: Context, kind: str = "", review: str = "") -> str:
-        """The drafts handed in so far, with their ids. ``kind`` "test" or "training" and
+    def examples_list(ctx: Context, example_type: str = "", review: str = "") -> str:
+        """The drafts handed in so far, with their ids. ``example_type`` "test" or "training" and
         ``review`` "none", "ok" or "flagged" narrow the list."""
         grant = grant_from_ctx(ctx)
         return _run(
-            lambda: model_examples.agent_list(grant["batch_id"], kind or None, review or None)
+            lambda: model_examples.agent_list(
+                grant["batch_id"], example_type or None, review or None
+            )
         )
 
     @mcp.tool(name="examples_add")
     def examples_add(
-        kind: str,
+        example_type: str,
         input: str,  # noqa: A002 — the product's word for it
         answer: str,
         source_file: str,
@@ -85,15 +89,16 @@ def create_examples_fastmcp() -> FastMCP:
         ctx: Context,
         must_contain: list[str] | None = None,
     ) -> str:
-        """Hand in one draft. ``kind`` "test" or "training". ``input``: a realistic case a real
-        user would send (not a quote from the file). ``answer``: the right answer according to the
-        file. ``source_file``: the Domain file's name. ``quote``: the file's own words, copied
-        exactly (20 to 600 characters), that support the answer. ``must_contain``: for a model that
-        writes text, 1 to 5 key phrases the answer contains. A refusal says what to fix."""
+        """Hand in one draft. ``example_type`` "test" or "training". ``input``: a realistic case
+        a real user would send (not a quote from the file). ``answer``: the right answer according
+        to the file. ``source_file``: the Domain file's name. ``quote``: the file's own words,
+        copied exactly (20 to 600 characters), that support the answer. ``must_contain``: for a
+        model that writes text, 1 to 5 key phrases the answer contains. A refusal says what to
+        fix."""
         grant = grant_from_ctx(ctx)
         _need(grant, "write")
         fields: dict[str, Any] = {
-            "kind": kind,
+            "kind": example_type,
             "input": input,
             "answer": answer,
             "source_file": source_file,
@@ -106,7 +111,7 @@ def create_examples_fastmcp() -> FastMCP:
     def examples_update(
         id: int,  # noqa: A002 — the draft's number, as examples_list shows it
         ctx: Context,
-        kind: str = "",
+        example_type: str = "",
         input: str = "",  # noqa: A002
         answer: str = "",
         source_file: str = "",
@@ -120,7 +125,7 @@ def create_examples_fastmcp() -> FastMCP:
         fields: dict[str, Any] = {
             k: v
             for k, v in {
-                "kind": kind,
+                "kind": example_type,
                 "input": input,
                 "answer": answer,
                 "source_file": source_file,

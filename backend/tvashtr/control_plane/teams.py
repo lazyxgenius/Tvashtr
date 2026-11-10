@@ -1590,7 +1590,7 @@ EXAMPLE_WRITER_PROMPT = (
     "for and handed in so far, and the Domain's file names.\n"
     "2. Follow the plan, topic by topic. For each example, find the passage that settles it with "
     "the Domain tools (domain_retrieve), then hand it in with examples_add:\n"
-    '   - kind: "test" or "training", as the plan says;\n'
+    '   - example_type: "test" or "training", as the plan says;\n'
     "   - input: a realistic message a real user of this model would send — in their own words, "
     "never a quote from the file;\n"
     "   - answer: the right answer according to the passage (for a model that picks from a list, "

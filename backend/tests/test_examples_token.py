@@ -57,6 +57,13 @@ class _Ctx:
         self.request_context = type("R", (), {"request": _Req(token)})()
 
 
+def _tool_fields(fields: dict) -> dict:
+    """The tool's own parameter names: a draft's kind is ``example_type`` there."""
+    out = dict(fields)
+    out["example_type"] = out.pop("kind")
+    return out
+
+
 def _tools():
     mcp = examples_mcp.create_examples_fastmcp()
     return {t.name: t.fn for t in mcp._tool_manager.list_tools()}
@@ -120,7 +127,7 @@ def test_each_permission_opens_only_its_tools(client):
     did = domain(owner)
     run_id, batch_id = _live_batch(c, owner, mid, did)
     tools = _tools()
-    fields = draft("test", "Truck hit my parked car.", "Motor", "motor-rules.md")
+    fields = _tool_fields(draft("test", "Truck hit my parked car.", "Motor", "motor-rules.md"))
     read, write, review = (
         _Ctx(node_tools.sign_examples_token(run_id, None, p)) for p in ("read", "write", "review")
     )
@@ -160,7 +167,7 @@ def test_a_token_reaches_only_its_own_runs_batch(client):
     run_a, batch_a = _live_batch(c, owner, mid, did)
     run_b, batch_b = _live_batch(c, owner, mid, did)
     tools = _tools()
-    fields = draft("test", "Truck hit my parked car.", "Motor", "motor-rules.md")
+    fields = _tool_fields(draft("test", "Truck hit my parked car.", "Motor", "motor-rules.md"))
     tools["examples_add"](ctx=_Ctx(node_tools.sign_examples_token(run_a, None, "write")), **fields)
     assert len(model_examples.agent_list(batch_a)["drafts"]) == 1
     assert model_examples.agent_list(batch_b)["drafts"] == []
@@ -198,3 +205,25 @@ def test_the_http_endpoint_refuses_without_a_token(client):
     )
     assert resp.status_code < 500
     assert SECRET not in resp.text
+
+
+def test_every_examples_tool_builds_as_an_agent_action():
+    """An agent's SDK turns each MCP tool's input schema into a pydantic Action model; a parameter
+    named like a field the Action base already has (``kind``) breaks every call. Live, attempt 1:
+    "Field 'kind' of class 'MCPTvashtrExamplesExamplesListAction' overrides symbol of same name"."""
+    import asyncio
+
+    from openhands.sdk.tool.schema import Action
+
+    mcp = examples_mcp.create_examples_fastmcp()
+    tools = asyncio.run(mcp.list_tools())
+    assert {t.name for t in tools} == {
+        "examples_brief",
+        "examples_list",
+        "examples_add",
+        "examples_update",
+        "examples_remove",
+        "examples_review",
+    }
+    for tool in tools:
+        Action.from_mcp_schema(f"MCPTvashtrExamples{tool.name}Action", tool.inputSchema)

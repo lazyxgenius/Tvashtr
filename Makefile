@@ -260,6 +260,10 @@ my-agents-e2e: ## M6 My agents E2E: save an agent from its panel, use it in anot
 agent-tests-e2e: ## M7 Agent tests E2E: a REAL local run (forced reviewer-approve), a test made from the Reviewer's round (Runs › round ⋯ › Make this a test) and one through the API; Run all 2 → one Passed, one Failed with why. Provider via TVASHTR_E2E_PROVIDER/TVASHTR_E2E_MODEL (default openai/gpt-4.1-mini).
 	./scripts/agent_tests_e2e.sh
 
+.PHONY: example-builder-e2e
+example-builder-e2e: ## M2 E2E: a fresh account's Domain (three claims files) → a model with two tests → Draft with a team (4 tests + 6 training, every seat on TVASHTR_E2E_MODEL, the docker sandbox) → drafts with real quotes → accept → the lock, sources, training JSONL → Run tests. Skips without GOOGLE_CLOUD_API_KEY. Its own database, ports 8026/5199.
+	./scripts/example_builder_e2e.sh
+
 .PHONY: model-tests-e2e
 model-tests-e2e: ## Models 1 E2E: a fresh account writes versioned tests (by hand and CSV), runs them on two real models with the cost first, compares them, edits a test, runs an AI-judge test, renames and deletes. Models via TVASHTR_E2E_MODEL_A/_B; skips without GOOGLE_CLOUD_API_KEY or DEEPSEEK_API_KEY. Its own database, ports 8024/5197.
 	./scripts/model_tests_e2e.sh

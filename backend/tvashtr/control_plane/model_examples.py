@@ -842,7 +842,7 @@ def _agent_draft(draft: ModelExampleDraft) -> dict:
     source = draft.source or {}
     return {
         "id": draft.position,
-        "kind": draft.kind,
+        "example_type": draft.kind,
         "input": draft.input,
         "answer": draft.answer,
         "must_contain": list(draft.must_contain),
