@@ -21,7 +21,8 @@ import {
 import { acceptLine, ago, money, plural, sourceFileLine } from "./modelsFormat";
 
 const POLL_MS = 3_000;
-const FIRST_CARDS = 25;
+// The design shows the first four cards, then "Show all {n}" (Drafts.dc.html).
+const FIRST_CARDS = 4;
 const NOT_SAMPLED = "Passed the source check. The Reviewer checks a sample, not every draft.";
 const STOPPED =
   "The run stopped before the Reviewer finished. These drafts passed the source check but weren't reviewed.";

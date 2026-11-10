@@ -67,6 +67,13 @@ export function ModelDetailPage({ modelId, tab = "tests" }: { modelId: string; t
   const [trainingHistory, setTrainingHistory] = useState(false);
   const [viewingTraining, setViewingTraining] = useState<number | null>(null);
 
+  // A tab reached by its address (a link, Back) closes what the last tab had open, as a click does.
+  useEffect(() => {
+    setDrawer(null);
+    setExampleDrawer(null);
+    setDraftDrawer(null);
+  }, [tab]);
+
   const load = useCallback(() => {
     getModel(modelId)
       .then((m) => {
@@ -217,7 +224,8 @@ export function ModelDetailPage({ modelId, tab = "tests" }: { modelId: string; t
               label: "Training examples",
               count: model.training || undefined,
             },
-            { value: "drafts" as const, label: "Drafts", count: model.drafts || undefined },
+            // The design shows "Drafts 0" too (TestsLocked.dc.html).
+            { value: "drafts" as const, label: "Drafts", count: model.drafts ?? undefined },
             {
               value: "results" as const,
               label: "Results",

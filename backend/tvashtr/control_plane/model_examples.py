@@ -478,10 +478,27 @@ def _batch_view(
         "estimate_usd": float(batch.estimate_usd) if batch.estimate_usd is not None else None,
         "review_rounds": batch.review_rounds,
         "sent_back": batch.sent_back,
-        "reviewer_line": pure.reviewer_line(checked, batch.sent_back, flagged)
+        "reviewer_line": pure.reviewer_line(
+            checked, batch.sent_back, flagged, _last_verdict(session, batch) == "approved"
+        )
         if state != "drafting"
         else None,
     }
+
+
+def _last_verdict(session: Session, batch: ModelExampleBatch) -> str | None:
+    """The Reviewer's last verdict in the batch's run (``approved`` / ``changes_requested``)."""
+    if batch.run_id is None:
+        return None
+    return session.execute(
+        select(AgentInvocation.outcome)
+        .where(
+            AgentInvocation.run_id == str(batch.run_id),
+            AgentInvocation.outcome.in_(("approved", "changes_requested")),
+        )
+        .order_by(AgentInvocation.id.desc())
+        .limit(1)
+    ).scalar_one_or_none()
 
 
 def list_drafts(owner_id: uuid.UUID, model_id: uuid.UUID) -> dict:

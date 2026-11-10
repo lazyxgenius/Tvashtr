@@ -1506,3 +1506,6 @@
   color: var(--ink-700);
   font-weight: 600;
 }
+.md-dialog--wide .md-dialog__sub {
+  line-height: 1.45;
+}

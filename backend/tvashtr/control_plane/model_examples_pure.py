@@ -365,13 +365,14 @@ def _times(n: int) -> str:
     return {1: "once", 2: "twice"}.get(n, f"{n} times")
 
 
-def reviewer_line(checked: int, sent_back: int, still_flagged: int) -> str:
-    """ "Reviewer checked 10, sent back once, then approved" (or "…; 3 still flagged")."""
+def reviewer_line(checked: int, sent_back: int, still_flagged: int, approved: bool) -> str:
+    """ "Reviewer checked 10, sent back once, then approved" — or, when the team handed in after its
+    last send-back without an approval, "…, sent back twice; 3 still flagged"."""
     if checked == 0:
         return "The Reviewer checked none"
     line = f"Reviewer checked {checked}"
     if sent_back:
         line += f", sent back {_times(sent_back)}"
-    if still_flagged:
-        return f"{line}; {still_flagged} still flagged"
-    return f"{line}, then approved" if sent_back else f"{line} and approved"
+    if approved:
+        return f"{line}, then approved" if sent_back else f"{line} and approved"
+    return f"{line}; {still_flagged or 'none'} still flagged"

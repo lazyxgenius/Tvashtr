@@ -263,18 +263,19 @@ def test_the_pause_amount_is_four_times_the_estimate_rounded_up_to_fifty_cents(e
 
 
 @pytest.mark.parametrize(
-    ("checked", "sent_back", "flagged", "line"),
+    ("checked", "sent_back", "flagged", "approved", "line"),
     [
-        (10, 0, 0, "Reviewer checked 10 and approved"),
-        (10, 1, 0, "Reviewer checked 10, sent back once, then approved"),
-        (10, 2, 3, "Reviewer checked 10, sent back twice; 3 still flagged"),
-        (10, 2, 0, "Reviewer checked 10, sent back twice, then approved"),
-        (8, 0, 1, "Reviewer checked 8; 1 still flagged"),
-        (0, 0, 0, "The Reviewer checked none"),
+        (10, 0, 0, True, "Reviewer checked 10 and approved"),
+        (10, 1, 1, True, "Reviewer checked 10, sent back once, then approved"),
+        (10, 2, 3, False, "Reviewer checked 10, sent back twice; 3 still flagged"),
+        (10, 2, 0, True, "Reviewer checked 10, sent back twice, then approved"),
+        (8, 0, 1, False, "Reviewer checked 8; 1 still flagged"),
+        (6, 2, 0, False, "Reviewer checked 6, sent back twice; none still flagged"),
+        (0, 0, 0, False, "The Reviewer checked none"),
     ],
 )
-def test_the_reviewers_line(checked, sent_back, flagged, line):
-    assert ex.reviewer_line(checked, sent_back, flagged) == line
+def test_the_reviewers_line(checked, sent_back, flagged, approved, line):
+    assert ex.reviewer_line(checked, sent_back, flagged, approved) == line
 
 
 # --------------------------------------------------------------- training examples by hand / CSV
