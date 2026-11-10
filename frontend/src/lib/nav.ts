@@ -40,7 +40,7 @@ export type NodeTab = "setup" | "skills" | "memory" | "runs" | "tests" | "docs";
 /** A domain's tabs; `sources` is the bare `#/domains/<id>`. */
 export type DomainTab = "sources" | "ask" | "quality" | "teams" | "settings";
 /** A model's tabs; `tests` is the bare `#/models/<id>`. */
-export type ModelTab = "tests" | "results" | "settings";
+export type ModelTab = "tests" | "training" | "drafts" | "results" | "settings";
 /** The dashboard section the canvas's "Open Engines" control returns to (back, with none: Home). */
 export type DashView = "engines";
 /** Tvashtr Desktop's first-run setup steps (desktop-app.md DT-17). */
@@ -183,7 +183,7 @@ export function parseRoute(hash: string): Route {
     }
     case "models": {
       if (!b) return { page: "models" };
-      return c === "results" || c === "settings"
+      return c === "results" || c === "settings" || c === "training" || c === "drafts"
         ? { page: "models", modelId: b, tab: c }
         : { page: "models", modelId: b };
     }
