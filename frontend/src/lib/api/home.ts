@@ -125,7 +125,18 @@ interface InboxMemories {
   repos: string[];
 }
 
+/** M2: a model with drafts to review from a finished batch. */
+interface InboxModelDrafts {
+  key: string;
+  kind: "model_drafts";
+  since: string;
+  count: number;
+  model_id: string;
+  model_name: string;
+}
+
 export type InboxItem =
+  | InboxModelDrafts
   | InboxApproval
   | InboxNudge
   | InboxRunFailed
@@ -147,6 +158,7 @@ const KNOWN_KINDS = new Set([
   "setup_gap",
   "setup_gaps_folded",
   "memories",
+  "model_drafts",
 ]);
 
 let inboxInFlight: { surface: InboxSurface; promise: Promise<Inbox> } | null = null;

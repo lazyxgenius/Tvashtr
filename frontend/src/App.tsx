@@ -20,7 +20,7 @@ import {
 } from "./lib/teamImport";
 import { rememberReturnTo } from "./pages/tools/githubReturn";
 import { InstallGithubAppDialog } from "./pages/tools/InstallGithubAppDialog";
-import { credentialBlock, validityBlock } from "./canvas/runBlocked";
+import { HAND_IN_HINT, credentialBlock, validityBlock } from "./canvas/runBlocked";
 import { TeamCanvas } from "./canvas/TeamCanvas";
 import "./canvas/chrome.css";
 import { useToast } from "./design-system/components";
@@ -1057,6 +1057,13 @@ export default function App({
   const providersReady = missingProviders.length === 0;
   // Providers unknown (still loading / fetch failed) → don't block; only block once we know gaps.
   const canLaunch = teamRunnable && (credentialGate === null || providersReady);
+  // M2: a team that ends in Hand in is started from a model, never from its canvas.
+  const handsIn =
+    teamGraph?.nodes.some(
+      (n) =>
+        n.kind === "terminal" &&
+        (n.config as { terminal_kind?: string } | null)?.terminal_kind === "hand_in",
+    ) ?? false;
 
   // F-canvas-fidelity-1 Part C: the toolbar spend chip — the run's total cost (prefer the run's
   // authoritative total; else sum the polled cost rows), "$0.00" while nothing is running.
@@ -1226,8 +1233,8 @@ export default function App({
         run={
           authoring
             ? {
-                disabled: currentTeamId === null || !canLaunch,
-                title: runBlock?.title,
+                disabled: currentTeamId === null || !canLaunch || handsIn,
+                title: handsIn ? HAND_IN_HINT : runBlock?.title,
                 onRun: () =>
                   currentTeamId &&
                   guardLeave(() => requestHomeAction({ kind: "new-run", teamId: currentTeamId })),
@@ -1235,6 +1242,7 @@ export default function App({
             : undefined
         }
         teamName={teamGraph?.name ?? ""}
+        handsIn={authoring && handsIn}
         spend={spendLabel}
         version={
           authoring && currentTeamId && shownVersions ? (

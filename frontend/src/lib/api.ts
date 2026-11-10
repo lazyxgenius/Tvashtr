@@ -44,7 +44,8 @@ export interface GateConfig {
   command?: string;
 }
 export interface TerminalConfig {
-  terminal_kind: "ship" | "stop";
+  // M2: `hand_in` hands the drafts to the model the run was started from.
+  terminal_kind: "ship" | "stop" | "hand_in";
 }
 interface DomainQueryConfig {
   domain_id: string | null;
@@ -1001,7 +1002,7 @@ export interface CreateNodeBody {
   position?: NodePosition;
   title?: string; // gate
   description?: string; // gate
-  terminal_kind?: "ship" | "stop"; // terminal (required)
+  terminal_kind?: "ship" | "stop" | "hand_in"; // terminal (required)
   domain_id?: string | null; // domain_query
 }
 

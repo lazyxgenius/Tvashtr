@@ -6,6 +6,11 @@
 import type { ValidityIssue } from "../lib/api";
 import { RUNNER_SUBSCRIPTIONS, subscriptionProviderForModel } from "../lib/engines";
 
+/** M2: why a team that ends in Hand in can't be run from its canvas (the server's 422, word for
+ *  word). */
+export const HAND_IN_HINT =
+  "This team hands in examples. Start it from a model: Models, your model, Draft with a team.";
+
 export interface RunBlock {
   title: string;
   detail: string;

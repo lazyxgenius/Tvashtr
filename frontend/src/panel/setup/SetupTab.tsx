@@ -1,3 +1,4 @@
+import { ExamplesGrantLine } from "../legacy/HandInBody";
 import { type ReactNode, useState } from "react";
 import { Layers } from "lucide-react";
 
@@ -239,6 +240,7 @@ export function SetupTab({
   return (
     <div className="nd-stack">
       {checklist}
+      <ExamplesGrantLine toolConfig={node.tool_config} />
       <InstructionsCard
         prompt={draft.prompt}
         saved={marking ? api.baseline.prompt : undefined}

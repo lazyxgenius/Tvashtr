@@ -49,6 +49,7 @@ import { ReviewChanges } from "./focus/ReviewChanges";
 import { reviewSections } from "./focus/reviewSections";
 import { TemplatesDialog } from "./focus/TemplatesDialog";
 import { GateBody } from "./legacy/GateBody";
+import { HandInBody } from "./legacy/HandInBody";
 import { legacySubtitle } from "./legacy/legacyCopy";
 import { TerminalBody } from "./legacy/TerminalBody";
 import { skillsAndToolsCount, skillsAndToolsSplit } from "./nodeCounts";
@@ -220,7 +221,11 @@ function LegacyNodeDrawer({ teamId, node, onClose, onSaved }: NodeEditorProps) {
         <NodeHeader
           glyph={glyphForNode(node.kind, node.role_name, terminalKind)}
           name={name}
-          description={legacySubtitle(node.kind, (node.config as GateConfig | null)?.gate_kind)}
+          description={
+            terminalKind === "hand_in"
+              ? "Ends the run with drafts for a model"
+              : legacySubtitle(node.kind, (node.config as GateConfig | null)?.gate_kind)
+          }
           onClose={onClose}
         />
       }
@@ -228,7 +233,8 @@ function LegacyNodeDrawer({ teamId, node, onClose, onSaved }: NodeEditorProps) {
       {node.kind === "gate" && (
         <GateBody key={node.id} teamId={teamId} node={node} onSaved={onSaved} />
       )}
-      {node.kind === "terminal" && (
+      {node.kind === "terminal" && terminalKind === "hand_in" && <HandInBody />}
+      {node.kind === "terminal" && terminalKind !== "hand_in" && (
         <TerminalBody key={node.id} teamId={teamId} node={node} onSaved={onSaved} />
       )}
     </NodeDrawer>

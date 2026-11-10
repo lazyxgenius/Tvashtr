@@ -1,4 +1,5 @@
 import {
+  Box,
   Brain,
   CircleCheck,
   History,
@@ -503,6 +504,42 @@ export function NeedsYou() {
                   Open Engines
                 </Button>
                 {more(title, [
+                  {
+                    key: "dismiss",
+                    label: "Dismiss",
+                    icon: <X size={15} strokeWidth={1.6} />,
+                    onSelect: () => dismiss(item),
+                  },
+                ])}
+              </>
+            }
+          />
+        );
+      }
+      case "model_drafts": {
+        // M2: "{n} drafts to review · {model}" → that model's Drafts tab.
+        const title = `${item.count === 1 ? "1 draft" : `${item.count} drafts`} to review · ${item.model_name}`;
+        const review = () => navigate({ page: "models", modelId: item.model_id, tab: "drafts" });
+        return (
+          <Row
+            key={item.key}
+            tone="plain"
+            icon={<Box {...ICON} />}
+            title={title}
+            meta="A team handed them in. Nothing is added until you accept it."
+            actions={
+              <>
+                <Button variant="ghost" size="sm" onClick={review}>
+                  Review
+                </Button>
+                {more(title, [
+                  {
+                    key: "later",
+                    label: "Remind me tomorrow",
+                    icon: <History size={15} strokeWidth={1.6} />,
+                    onSelect: () => remindTomorrow(item),
+                  },
+                  "separator",
                   {
                     key: "dismiss",
                     label: "Dismiss",

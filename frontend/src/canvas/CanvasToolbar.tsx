@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { ArrowLeft, FileCode, FileText, GitCompare, Play } from "lucide-react";
+import { ArrowLeft, Box, FileCode, FileText, GitCompare, Play } from "lucide-react";
 
 import { Button, IconButton } from "../design-system/components";
 import { useBackendStatus } from "../lib/backendStatus";
@@ -32,6 +32,7 @@ export function CanvasToolbar({
   file,
   compare,
   version,
+  handsIn = false,
   children,
 }: {
   onBack?: () => void;
@@ -47,6 +48,8 @@ export function CanvasToolbar({
   compare?: { onOpen: () => void };
   /** M5: the version chip (and Save as vN), right after the team's name (authoring). */
   version?: ReactNode;
+  /** M2: the team ends in Hand in — the pill "Ends in Hand in · start it from a model". */
+  handsIn?: boolean;
   children?: ReactNode;
 }) {
   return (
@@ -83,6 +86,15 @@ export function CanvasToolbar({
           </span>
         )}
         {version}
+        {handsIn && (
+          <span
+            className="cv-pill"
+            title="Start it from a model: Models, your model, Draft with a team"
+          >
+            <Box size={13} strokeWidth={1.7} aria-hidden />
+            Ends in Hand in · start it from a model
+          </span>
+        )}
         {docs && (
           <button
             type="button"

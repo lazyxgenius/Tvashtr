@@ -275,6 +275,31 @@ describe("Needs you", () => {
     ).toBeInTheDocument();
   });
 
+  it("M2: a model with drafts to review links to its Drafts tab", async () => {
+    mockApi(
+      homeRoutes({
+        "GET /api/inbox": {
+          count: 1,
+          items: [
+            {
+              key: "model-drafts:m1",
+              kind: "model_drafts",
+              since: new Date().toISOString(),
+              count: 27,
+              model_id: "m1",
+              model_name: "Claims triage",
+            },
+          ],
+        },
+      }),
+    );
+    renderHome();
+    const section = await screen.findByRole("region", { name: "Needs you" });
+    expect(await within(section).findByText("27 drafts to review · Claims triage")).toBeTruthy();
+    await userEvent.click(within(section).getByRole("button", { name: "Review" }));
+    expect(window.location.hash).toBe("#/models/m1/drafts");
+  });
+
   it("dismisses an item with Undo", async () => {
     const calls = mockApi(
       homeRoutes({

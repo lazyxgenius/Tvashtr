@@ -78,7 +78,8 @@ export function nodeTitle(node: NamedNode): string {
   const title = configText(node.config, "title");
   if (title) return title;
   if (node.kind === "terminal") {
-    return (node.config as TerminalConfig | null)?.terminal_kind === "ship" ? "Ship" : "Stop";
+    const kind = (node.config as TerminalConfig | null)?.terminal_kind;
+    return kind === "ship" ? "Ship" : kind === "hand_in" ? "Hand in" : "Stop";
   }
   if (node.kind === "domain_query") return "Domain ask";
   if (BLANK_ROLES.has(node.role_name)) return NEW_AGENT_TITLE;

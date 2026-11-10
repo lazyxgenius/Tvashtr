@@ -189,6 +189,7 @@ export function DraftDialog({
             type="number"
             min={0}
             max={25}
+            aria-label="Tests"
             value={tests}
             onChange={(e) => setTests(clampCount(e.target.value, 25))}
           />
@@ -200,6 +201,7 @@ export function DraftDialog({
             type="number"
             min={0}
             max={75}
+            aria-label="Training examples"
             value={training}
             onChange={(e) => setTraining(clampCount(e.target.value, 75))}
           />

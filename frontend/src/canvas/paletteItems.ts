@@ -1,4 +1,4 @@
-import { BookOpen, PackageCheck, ShieldCheck, X, Zap } from "lucide-react";
+import { BookOpen, Inbox, PackageCheck, ShieldCheck, X, Zap } from "lucide-react";
 
 import type { CreateNodeBody } from "../lib/api";
 
@@ -40,6 +40,12 @@ export const PALETTE_PRIMITIVES: PaletteChip[] = [
     title: "An ending that stops without shipping",
     body: { node_kind: "terminal", terminal_kind: "stop" },
     Icon: X,
+  },
+  {
+    label: "Hand in",
+    title: "An ending that hands drafts to the model you start the team from",
+    body: { node_kind: "terminal", terminal_kind: "hand_in" },
+    Icon: Inbox,
   },
   {
     label: "Query domain",

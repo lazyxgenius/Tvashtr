@@ -6,6 +6,8 @@ import {
   ClipboardCheck,
   DraftingCompass,
   FileText,
+  Inbox,
+  Lock,
   type LucideIcon,
   OctagonX,
   Package,
@@ -325,6 +327,12 @@ function AgentCard({ nodeId, data: d }: { nodeId: string; data: AgentNodeData })
         {d.iteration >= 2 && <span className="rf-node__round">round {d.iteration}</span>}
       </div>
       <AgentDomainsLine toolConfig={d.toolConfig} />
+      {examplesGrant(d.toolConfig) === "write" && (
+        <span className="rf-node__check">
+          <Lock size={11} strokeWidth={1.7} aria-hidden />
+          Source check built in
+        </span>
+      )}
       <div className="rf-node__meta">
         {basedOn && (
           <span className="rf-node__based">
@@ -414,6 +422,7 @@ function GateCard({ nodeId, data: d }: { nodeId: string; data: AgentNodeData }) 
  *  walk reaches it, then sage "Shipped" (ship) / muted "Stopped" (stop). */
 function TerminalCard({ nodeId, data: d }: { nodeId: string; data: AgentNodeData }) {
   const cfg = (d.config ?? {}) as TerminalConfig;
+  if (cfg.terminal_kind === "hand_in") return <HandInCard nodeId={nodeId} data={d} />;
   const kind = cfg.terminal_kind === "ship" ? "ship" : "stop";
   const state = d.terminalState ?? "idle";
   const reached = state !== "idle";
@@ -430,6 +439,33 @@ function TerminalCard({ nodeId, data: d }: { nodeId: string; data: AgentNodeData
         <Icon size={14} strokeWidth={1.7} />
       </span>
       <div className="rf-terminal__label">{label}</div>
+    </div>
+  );
+}
+
+/** M2: an agent's examples permission (`tool_config.tvashtr.examples`): read, write or review. */
+function examplesGrant(toolConfig: Record<string, unknown> | null | undefined): string | null {
+  const meta = (toolConfig?.tvashtr ?? null) as Record<string, unknown> | null;
+  const grant = meta?.examples;
+  return typeof grant === "string" ? grant : null;
+}
+
+/** M2: the Hand in ending, drawn like an agent card (prompts/m2-design/ExampleBuilder.dc.html):
+ *  its glyph, "Hand in" and its one line. */
+function HandInCard({ nodeId, data: d }: { nodeId: string; data: AgentNodeData }) {
+  return (
+    <div className={`rf-node rf-node--hand-in${flagClasses(d)}`} title={d.errorMessage}>
+      <NodeHandles />
+      <NodeAffordances nodeId={nodeId} hovered={d.hovered} />
+      <div className="rf-node__head">
+        <span className="rf-node__glyph rf-node__glyph--end">
+          <Inbox size={13} strokeWidth={1.7} />
+        </span>
+        <div className="rf-node__titles">
+          <div className="rf-node__role">Hand in</div>
+          <div className="rf-node__caption">Hands the drafts to the model you started from.</div>
+        </div>
+      </div>
     </div>
   );
 }

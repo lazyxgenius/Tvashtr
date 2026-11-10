@@ -2,6 +2,7 @@ import {
   BookOpen,
   ClipboardCheck,
   DraftingCompass,
+  Inbox,
   type LucideIcon,
   OctagonX,
   Package,
@@ -27,7 +28,10 @@ const ROLE_ICON: Record<string, LucideIcon> = {
 
 export function glyphForNode(kind: string, roleName: string, terminalKind?: string): LucideIcon {
   if (kind === "gate") return ShieldCheck;
-  if (kind === "terminal") return terminalKind === "ship" ? Package : OctagonX;
+  if (kind === "terminal") {
+    if (terminalKind === "hand_in") return Inbox; // M2
+    return terminalKind === "ship" ? Package : OctagonX;
+  }
   if (kind === "domain_query") return BookOpen;
   return ROLE_ICON[roleName] ?? Terminal;
 }
