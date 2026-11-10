@@ -131,6 +131,8 @@ _TRANSIENT_TYPES = {
     "apiconnectionerror": "unavailable",
     "internalservererror": "unavailable",
     "serviceunavailableerror": "unavailable",
+    # M2 Part A: a reply with no choice in it (a thinking model that spent its budget thinking).
+    "emptyreply": "no_answer",
 }
 
 # Indirection so tests record the backoff instead of waiting it out.
@@ -139,6 +141,10 @@ _sleep = time.sleep
 
 class ModelTimeout(Exception):
     """The model didn't answer within the per-call limit (R1)."""
+
+
+class EmptyReply(Exception):
+    """The provider answered with no choice (or a choice with no message): no answer at all."""
 
 
 def _transient_reason(exc: Exception) -> str | None:
@@ -263,6 +269,9 @@ def complete(request: CompletionRequest) -> CompletionResult:
             try:
                 kwargs.update(google_cloud_settings(model, api_key) or {})  # vertex_ai/ -> gemini/
                 response = _call_with_limit(dict(kwargs), limit)
+                choices = getattr(response, "choices", None)
+                if not choices or getattr(choices[0], "message", None) is None:
+                    raise EmptyReply("the model returned no answer")
             except Exception as exc:  # noqa: BLE001 — any provider error: retry or try the next
                 last_error = exc
                 reason = _transient_reason(exc)
