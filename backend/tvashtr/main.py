@@ -44,6 +44,7 @@ from tvashtr.control_plane.workspace_reaper import sweep_orphaned_workspaces
 from tvashtr.engines.docker_runtime import sweep_orphaned_agent_containers
 from tvashtr.mcp.connectors import get_connectors_mcp, mount_connectors_mcp
 from tvashtr.mcp.domains import get_domains_mcp, mount_domains_mcp
+from tvashtr.mcp.examples import get_examples_mcp, mount_examples_mcp
 from tvashtr.models import SpikeHelloEvent
 from tvashtr.routers import owns_workflow, spike_workflow_id
 from tvashtr.routers import router as api_router
@@ -58,6 +59,7 @@ from tvashtr.routes import engines as revamp_engines
 from tvashtr.routes import home as revamp_home
 from tvashtr.routes import local_repo as revamp_local_repo
 from tvashtr.routes import memory_extra as revamp_memory
+from tvashtr.routes import model_examples as revamp_model_examples
 from tvashtr.routes import models as revamp_models
 from tvashtr.routes import my_agents as revamp_my_agents
 from tvashtr.routes import nodes as revamp_nodes
@@ -73,6 +75,8 @@ settings = get_settings()
 _domains_mcp_http = get_domains_mcp().streamable_http_app()
 # Connectors: the run-time proxy agents talk to (stateless streamable HTTP), built the same way.
 _connectors_mcp_http = get_connectors_mcp().streamable_http_app()
+# M2: the examples server an Example builder's agents hand in drafts through, built the same way.
+_examples_mcp_http = get_examples_mcp().streamable_http_app()
 
 
 @asynccontextmanager
@@ -96,6 +100,7 @@ async def _lifespan(app: FastAPI):
     async with (
         _domains_mcp_http.router.lifespan_context(_domains_mcp_http),
         _connectors_mcp_http.router.lifespan_context(_connectors_mcp_http),
+        _examples_mcp_http.router.lifespan_context(_examples_mcp_http),
     ):
         if settings.agent_sandbox_mode == "docker":
             sweep_orphaned_agent_containers()
@@ -191,6 +196,7 @@ for _revamp_router in (
     revamp_local_repo.router,
     revamp_domains.router,
     revamp_models.router,
+    revamp_model_examples.router,
     revamp_desktop_app.router,
     revamp_connectors.router,
     revamp_connectors_oauth.router,
@@ -441,6 +447,7 @@ def mount_frontend(app: FastAPI, dist_dir: str) -> bool:
 # the mount: behind the catch-all a mount alone answers 405 to ``POST /mcp/domains``.
 mount_domains_mcp(app, _domains_mcp_http)
 mount_connectors_mcp(app, _connectors_mcp_http)
+mount_examples_mcp(app, _examples_mcp_http)
 
 # LAST, deliberately (see mount_frontend): every API router above is already registered, so the
 # catch-all can only ever see paths nothing else claimed.

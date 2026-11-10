@@ -429,8 +429,19 @@ def _raw_items(owner_id: uuid.UUID, surface: str, now: datetime) -> list[dict]:
             + _failed_run_items(session, owner_id, now)
             + _setup_gap_items(session, owner_id, surface, now)
             + _memories_item(session, owner_id)
+            + _model_drafts_items(session, owner_id, surface)
         )
     return items
+
+
+def _model_drafts_items(session, owner_id: uuid.UUID, surface: str) -> list[dict]:
+    """M2: one line per model with drafts to review from a finished batch (the website only: the
+    example builder is web-only for now)."""
+    if surface != "website":
+        return []
+    from tvashtr.control_plane.model_examples import inbox_items  # Models imports late
+
+    return inbox_items(session, owner_id)
 
 
 def _hidden(item: dict, dismissal: InboxDismissal | None, now: datetime) -> bool:

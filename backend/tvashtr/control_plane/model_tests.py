@@ -282,11 +282,44 @@ def model_detail(session: Session, model: UserModel) -> dict:
         "current_version": model.current_version,
         "tests": len(version.case_ids) if version else 0,
         "runs_on_current": int(runs),
+        **_examples_counts(session, model),
         "edited_at": _iso(version.created_at) if version else None,
         "judge_default": _judge_default(session, model),
         "pre_checked": _pre_checked(session, model),
         "created_at": _iso(model.created_at),
     }
+
+
+def _examples_counts(session: Session, model: UserModel) -> dict:
+    """M2: the Training examples and Drafts tabs' counts, and whether a team is drafting."""
+    from tvashtr.control_plane import model_examples  # it imports this module
+
+    return {
+        "training_version": model.training_version,
+        "training": len(model_examples.current_training(session, model)),
+        "drafts": model_examples.open_drafts_count(session, model.id),
+        "drafting": model_examples.drafting_batch(session, model.id) is not None,
+    }
+
+
+def _lock_test(session: Session, model: UserModel, input_: str) -> None:
+    """M2: a test can't be a current training example (inputs compared normalised)."""
+    from tvashtr.control_plane import model_examples
+    from tvashtr.control_plane import model_examples_pure as examples_pure
+
+    training = [e.input for e in model_examples.current_training(session, model)]
+    reason = examples_pure.test_lock(input_, training)
+    if reason:
+        raise ValueError(reason)
+
+
+def _source_of(case: ModelTestCase) -> str | None:
+    """M2: the Tests tab's Source line for a test with no quote."""
+    if case.source:
+        return None
+    if case.origin == "csv":
+        return f"Imported from {case.origin_note}" if case.origin_note else "Imported from a CSV"
+    return "Added by you"
 
 
 def _case_view(case: ModelTestCase, position: int) -> dict:
@@ -300,6 +333,9 @@ def _case_view(case: ModelTestCase, position: int) -> dict:
         "must_contain": list(case.must_contain),
         "rubric": case.rubric,
         "judge_model": case.judge_model,
+        "source": case.source,
+        "origin": case.origin,
+        "added_by": _source_of(case),
     }
 
 
@@ -520,11 +556,12 @@ def add_test(owner_id: uuid.UUID, model_id: uuid.UUID, fields: dict) -> dict:
     with session_scope() as session:
         model = owned_model(session, owner_id, model_id, lock=True)
         clean = pure.clean_case(model.answer_kind, list(model.choices), **fields)
+        _lock_test(session, model, clean["input"])
         current = version_row(session, model.id, model.current_version)
         ids = list(current.case_ids) if current else []
         if len(ids) >= pure.MAX_TESTS:
             raise ValueError(pure.TOO_MANY_TESTS)
-        case = ModelTestCase(model_id=model.id, case_key=uuid.uuid4(), **clean)
+        case = ModelTestCase(model_id=model.id, case_key=uuid.uuid4(), origin="hand", **clean)
         session.add(case)
         session.flush()
         _new_version(session, model, [*ids, case.id], f"Added test {len(ids) + 1}", owner_id)
@@ -537,7 +574,16 @@ def edit_test(owner_id: uuid.UUID, model_id: uuid.UUID, case_key: uuid.UUID, fie
         model = owned_model(session, owner_id, model_id, lock=True)
         cases, index = _current_case(session, model, case_key)
         clean = pure.clean_case(model.answer_kind, list(model.choices), **fields)
-        case = ModelTestCase(model_id=model.id, case_key=case_key, **clean)
+        _lock_test(session, model, clean["input"])
+        old = cases[index]
+        case = ModelTestCase(
+            model_id=model.id,
+            case_key=case_key,
+            source=old.source,
+            origin=old.origin,
+            origin_note=old.origin_note,
+            **clean,
+        )
         session.add(case)
         session.flush()
         ids = [c.id for c in cases]
@@ -598,6 +644,17 @@ def import_tests(
             default_judge=_judge_default(session, model),
             existing=len(ids),
         )
+        if not errors:
+            from tvashtr.control_plane import model_examples, model_examples_pure
+
+            training = [e.input for e in model_examples.current_training(session, model)]
+            lines = model_examples._data_lines(text)
+            for row, line in zip(rows, lines, strict=False):
+                reason = model_examples_pure.test_lock(row["input"], training)
+                if reason:
+                    errors.append(f"Line {line}: {reason}")
+            if errors:
+                rows = []
         out = {
             "ready": len(rows),
             "next_version": model.current_version + 1,
@@ -606,7 +663,12 @@ def import_tests(
         }
         if dry_run or errors:
             return out
-        cases = [ModelTestCase(model_id=model.id, case_key=uuid.uuid4(), **r) for r in rows]
+        cases = [
+            ModelTestCase(
+                model_id=model.id, case_key=uuid.uuid4(), origin="csv", origin_note=name, **r
+            )
+            for r in rows
+        ]
         session.add_all(cases)
         session.flush()
         note = f"Imported {len(cases)} test{'' if len(cases) == 1 else 's'} from {name}"
@@ -658,6 +720,8 @@ def restore_version(owner_id: uuid.UUID, model_id: uuid.UUID, version: int) -> d
         old = version_row(session, model.id, version)
         if old is None:
             raise LookupError(VERSION_NOT_FOUND)
+        for case in cases_of(session, old):
+            _lock_test(session, model, case.input)
         model.job = old.job
         model.choices = list(old.choices)
         _new_version(session, model, list(old.case_ids), f"Restored v{version}", owner_id)

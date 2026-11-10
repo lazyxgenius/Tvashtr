@@ -7,6 +7,8 @@ plain sentence an agent (or a person) can act on: :class:`Refused` carries it.""
 
 from __future__ import annotations
 
+import csv
+import io
 import json
 import math
 from collections.abc import Callable, Iterable
@@ -104,12 +106,22 @@ def check_quote(quote: str, passages: list[str], file: str) -> str:
     quote = (quote or "").strip()
     if not QUOTE_MIN <= len(quote) <= QUOTE_MAX:
         raise Refused(QUOTE_LENGTH)
-    want = quote_key(quote)
-    keys = [quote_key(p) for p in passages]
-    joined = [f"{a} {b}" for a, b in zip(keys, keys[1:], strict=False)]
-    if any(want in hay for hay in [*keys, *joined]):
+    if locate_quote(quote, passages) is not None:
         return quote
     raise Refused(f"That quote isn't in {file}. Quote the file's own words exactly.")
+
+
+def locate_quote(quote: str, passages: list[str]) -> int | None:
+    """The index of the passage the quote is in (or starts in, when it runs into the next one)."""
+    want = quote_key(quote)
+    keys = [quote_key(p) for p in passages]
+    for i, key in enumerate(keys):
+        if want in key:
+            return i
+    for i, (a, b) in enumerate(zip(keys, keys[1:], strict=False)):
+        if want in f"{a} {b}":
+            return i
+    return None
 
 
 def clean_phrases(phrases: Iterable[str] | None) -> list[str]:
@@ -181,6 +193,80 @@ def check_room(kind: str, wanted: int, handed_in: int) -> None:
             f"The plan asked for {asked} and you have handed in {handed_in}. "
             "Remove one to replace it."
         )
+
+
+# ---- A training example by hand or from a CSV ----
+
+NEED_INPUT_FIRST = "Write the input first."
+NOT_A_CHOICE = "The answer must be one of the choices."
+CSV_NEEDS_COLUMNS = "Line 1: The first row must name input and answer."
+CSV_NO_ROWS = "The file has no training examples in it."
+
+
+def clean_example(answer_kind: str, choices: list[str], *, input: str | None, answer: str | None):  # noqa: A002
+    """One training example as stored, or ``ValueError`` with the product's words. A choice model's
+    answer is stored as the choice itself."""
+    input_text = (input or "").strip()
+    answer_text = (answer or "").strip()
+    if not input_text:
+        raise ValueError(NEED_INPUT_FIRST)
+    if len(input_text) > MAX_INPUT:
+        raise ValueError(INPUT_TOO_LONG)
+    if not answer_text:
+        raise ValueError(NEED_ANSWER)
+    if len(answer_text) > MAX_ANSWER:
+        raise ValueError(ANSWER_TOO_LONG)
+    if answer_kind == "choice":
+        want = tests_pure.normalise(answer_text)
+        match = next((c for c in choices if tests_pure.normalise(c) == want), None)
+        if match is None:
+            raise ValueError(NOT_A_CHOICE)
+        answer_text = match
+    return {"input": input_text, "answer": answer_text}
+
+
+def parse_training_csv(
+    text: str, *, answer_kind: str, choices: list[str]
+) -> tuple[list[dict], list[str]]:
+    """``(examples, errors)``: all or nothing, as Models 1's test import. An error names the line
+    its row starts on (the header is line 1)."""
+    reader = csv.reader(io.StringIO(text.removeprefix("\ufeff"), newline=""))
+    try:
+        header = [h.strip().lower() for h in next(reader, [])]
+    except csv.Error:
+        return [], [CSV_NEEDS_COLUMNS]
+    if "input" not in header or "answer" not in header:
+        return [], [CSV_NEEDS_COLUMNS]
+    rows: list[dict] = []
+    errors: list[str] = []
+    line = reader.line_num + 1
+    while True:
+        try:
+            values = next(reader, None)
+        except csv.Error as exc:
+            errors.append(f"Line {line}: {exc}")
+            break
+        if values is None:
+            break
+        started = line
+        line = reader.line_num + 1
+        if not any(v.strip() for v in values):
+            continue
+        row = dict(zip(header, values, strict=False))
+        answer = row.get("answer", "")
+        try:
+            if answer_kind == "choice" and row.get("input", "").strip() and answer.strip():
+                want = tests_pure.normalise(answer)
+                if not any(tests_pure.normalise(c) == want for c in choices):
+                    raise ValueError(f"“{answer.strip()}” isn't one of the choices.")
+            rows.append(clean_example(answer_kind, choices, input=row.get("input"), answer=answer))
+        except ValueError as exc:
+            errors.append(f"Line {started}: {exc}")
+    if errors:
+        return [], errors
+    if not rows:
+        return [], [CSV_NO_ROWS]
+    return rows, []
 
 
 # ---- The lock rule: an input is a test or a training example, never both ----
