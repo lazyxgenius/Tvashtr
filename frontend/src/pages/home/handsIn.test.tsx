@@ -6,7 +6,7 @@ import { HAND_IN_HINT } from "../../canvas/runBlocked";
 import type { TeamSummary } from "../../lib/api";
 import { newestTeam } from "../desktop/readyCard";
 import { defaultTeamId } from "./composerModel";
-import { TEAMS, homeRoutes, mockApi, renderHome, resetHomeState } from "./homeTestUtils";
+import { TEAMS, homeRoutes, mockApi, renderHome, resetHomeState, runRow } from "./homeTestUtils";
 import { buildPaletteGroups } from "./paletteItems";
 import { RunHistorySheet } from "./RunHistorySheet";
 
@@ -78,5 +78,25 @@ describe("teams that hand in are not offered for an ordinary run", () => {
     rerender(<RunHistorySheet teamId="t-ex" teamName="Example builder" onClose={vi.fn()} />);
     expect(await screen.findByText(HAND_IN_HINT)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Start a run" })).toBeNull();
+  });
+});
+
+describe("a run that hands in", () => {
+  it("Recent runs reads a finished drafting run as Handed in, an ordinary one as Shipped", async () => {
+    const drafted = runRow({
+      run_id: "r-draft",
+      idea: "Draft 4 tests and 6 training examples",
+      status: "completed",
+      hands_in: true,
+      team: { id: "t-ex", name: "Example builder" },
+    });
+    const shipped = runRow({ run_id: "r-ship", idea: "Add CSV export", status: "completed" });
+    mockApi(homeRoutes({ "GET /api/runs": { runs: [drafted, shipped], next_cursor: null } }));
+    renderHome();
+    const recent = await screen.findByRole("region", { name: "Recent runs" });
+    const row = (idea: string) => within(recent).getByText(idea).closest("li") as HTMLElement;
+    expect(row("Draft 4 tests and 6 training examples")).toHaveTextContent("Handed in");
+    expect(row("Draft 4 tests and 6 training examples")).not.toHaveTextContent("Shipped");
+    expect(row("Add CSV export")).toHaveTextContent("Shipped");
   });
 });

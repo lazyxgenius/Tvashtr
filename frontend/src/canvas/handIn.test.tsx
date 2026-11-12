@@ -82,6 +82,18 @@ describe("M2 — Hand in on the canvas", () => {
     expect(reviewer.textContent).not.toContain("Source check built in");
   });
 
+  it("the Hand in node reads Handed in once the walk reached it", () => {
+    const reached: GraphData = {
+      ...graph,
+      nodes: graph.nodes.map((n) => (n.id === "h" ? { ...n, status: "done" } : n)),
+    };
+    const { container } = render(
+      <TeamCanvas graph={reached} run={null} workflowStatus={null} tasks={NO_TASKS} editable />,
+    );
+    const hand = container.querySelector('[data-id="h"]') as HTMLElement;
+    expect(hand.querySelector(".rf-node__role")?.textContent).toBe("Handed in");
+  });
+
   it("the toolbar shows the pill, and Run is disabled with the hint", () => {
     render(
       <CanvasToolbar

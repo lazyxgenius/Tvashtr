@@ -272,3 +272,18 @@ describe("NowBar — a Tests check (M-desk-6)", () => {
     );
   });
 });
+
+describe("NowBar — a Hand in ending", () => {
+  it("a Hand in ending reads Not yet, then Handed in, where Ship reads Shipped", () => {
+    const hand = (live_state: ActivityAgent["live_state"]) =>
+      agent({ node_id: "n-hand", label: "Hand in", kind: "hand_in", live_state });
+    const { rerender } = render(
+      <NowBar agents={[hand("waiting")]} graph={null} onSelect={vi.fn()} />,
+    );
+    const chip = screen.getByRole("button", { name: /Hand in/ });
+    expect(chip).toHaveTextContent("Not yet");
+    rerender(<NowBar agents={[hand("done")]} graph={null} onSelect={vi.fn()} />);
+    expect(screen.getByRole("button", { name: /Hand in/ })).toHaveTextContent("Handed in");
+    expect(screen.queryByText("Shipped")).toBeNull();
+  });
+});

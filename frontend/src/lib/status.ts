@@ -110,9 +110,10 @@ export function deriveGateState(
  * Terminal-node display state, from the node's own backend `status` (a terminal closes
  * `done` once reached — ship → shipped, stop → stopped).
  */
-export type TerminalState = "idle" | "shipped" | "stopped";
+export type TerminalState = "idle" | "shipped" | "stopped" | "handed_in";
 export function deriveTerminalState(terminalKind: string, backendStatus: string): TerminalState {
   if (backendStatus !== "done") return "idle"; // not reached
+  if (terminalKind === "hand_in") return "handed_in";
   return terminalKind === "ship" ? "shipped" : "stopped";
 }
 
@@ -130,10 +131,12 @@ export function deriveOverall(
   workflowStatus: string | null,
 ): { tone: OverallTone; label: string } {
   if (!run) return { tone: "idle", label: "Ready" };
+  // A drafting run ends at Hand in: it hands its drafts to a model, it ships nothing.
+  const done = run.hands_in ? "Handed in" : "Shipped";
 
   switch (run.status) {
     case "completed":
-      return { tone: "done", label: "Shipped" };
+      return { tone: "done", label: done };
     case "awaiting_human":
       return { tone: "paused", label: "Awaiting approval" };
     case "rejected":
@@ -146,7 +149,7 @@ export function deriveOverall(
       return { tone: "failed", label: "Failed" };
   }
 
-  if (workflowStatus === "SUCCESS") return { tone: "done", label: "Shipped" };
+  if (workflowStatus === "SUCCESS") return { tone: "done", label: done };
   if (WORKFLOW_FAILED.has(workflowStatus ?? "")) return { tone: "failed", label: "Failed" };
   return { tone: "running", label: "Running…" };
 }

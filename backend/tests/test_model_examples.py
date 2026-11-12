@@ -9,6 +9,7 @@ import math
 import uuid
 
 import pytest
+from home_fixtures import library_team, make_run
 from m2_fixtures import (
     CHOICES,
     QUOTES,
@@ -238,6 +239,21 @@ def test_the_walk_hands_in_with_no_ship_and_no_pull_request(client, monkeypatch,
         "locator": None,
     }
     assert view["open"] == 4
+
+
+def test_a_drafting_runs_rows_say_it_hands_in_and_an_ordinary_runs_do_not(
+    client, monkeypatch, tmp_path
+):
+    c, owner = account("deepseek")
+    mid = choice_model(c)
+    did = domain(owner)
+    _, started, run, _ = _ready_run(c, mid, did, monkeypatch, tmp_path)
+    ordinary, _ = make_run(owner, library_team(c), status="completed")
+    rows = {r["run_id"]: r for r in c.get("/api/runs").json()["runs"]}
+    assert rows[str(run.id)]["hands_in"] is True
+    assert rows[ordinary]["hands_in"] is False
+    assert c.get(f"/api/runs/{started['run_id']}").json()["run"]["hands_in"] is True
+    assert c.get(f"/api/runs/{ordinary}").json()["run"]["hands_in"] is False
 
 
 def test_after_two_send_backs_the_team_hands_in_what_it_has(client, monkeypatch, tmp_path):

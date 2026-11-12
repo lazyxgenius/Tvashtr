@@ -300,8 +300,9 @@ _STEP_FIELDS = ("live_state", "activity", "last_event_at", "activity_started_at"
 
 def run_extras(session, runs: list[Run], *, include_progress: bool = False) -> dict:
     """The computed fields for each run, keyed by ``run.id``: ``team``, ``spent_usd``,
-    ``awaiting``, ``failure``, ``live_state``, ``live`` (the worst running step, or ``None``) and
-    (when asked) ``progress``. A fixed number of queries per page."""
+    ``awaiting``, ``failure``, ``live_state``, ``live`` (the worst running step, or ``None``),
+    ``hands_in`` (the run's team ends in Hand in: a drafting run) and (when asked) ``progress``. A
+    fixed number of queries per page."""
     if not runs:
         return {}
     run_keys = [str(r.id) for r in runs]
@@ -414,6 +415,18 @@ def run_extras(session, runs: list[Run], *, include_progress: bool = False) -> d
         else set()
     )
 
+    # M2 polish: a run whose team ends in Hand in is a drafting run ("Handed in", not "Shipped").
+    handing = {
+        graph_id
+        for graph_id, cfg in session.execute(
+            select(AgentNode.team_graph_id, AgentNode.config).where(
+                AgentNode.team_graph_id.in_({r.team_graph_id for r in runs}),
+                AgentNode.kind == "terminal",
+            )
+        )
+        if (cfg or {}).get("terminal_kind") == "hand_in"
+    }
+
     out: dict = {}
     for run in runs:
         rid = str(run.id)
@@ -465,6 +478,7 @@ def run_extras(session, runs: list[Run], *, include_progress: bool = False) -> d
             "live_state": live_state.run_live_state(run.status, step_states.get(rid, [])),
             "live": worst_step.get(rid),
             "number": numbers.get(run.id),
+            "hands_in": run.team_graph_id in handing,
             "resumed_from": (seeds.get(run.id) or {}).get("from_run"),
             "compare": {
                 "id": str(run.pair_id),

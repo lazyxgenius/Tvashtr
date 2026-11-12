@@ -158,6 +158,8 @@ export interface RunListRow {
   budget_cap_usd: number | null;
   desktop_target: boolean;
   library_team_id: string | null;
+  /** M2: the run's team ends in Hand in — a drafting run reads "Handed in", not "Shipped". */
+  hands_in?: boolean;
   retry_of_run_id: string | null;
   team: { id: string; name: string } | null;
   spent_usd: number;

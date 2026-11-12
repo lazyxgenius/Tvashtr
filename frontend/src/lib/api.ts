@@ -198,6 +198,8 @@ export interface RunRow {
   repo_path?: string | null;
   base_ref?: string | null;
   ship_branch?: string | null;
+  /** M2: the run's team ends in Hand in — a drafting run reads "Handed in", not "Shipped". */
+  hands_in?: boolean;
   // M-h1b: the hosted run target + deliverable. `github_repo` (owner/name) is set when the run was
   // launched against a GitHub App repo (null for a local/greenfield run); `pr_url` is the opened
   // pull request — the hosted user's deliverable — set once the run pushes + opens it (null until

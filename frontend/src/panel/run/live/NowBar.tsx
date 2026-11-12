@@ -101,8 +101,8 @@ export function NowBar({
     <section className="lv-now" aria-label="Now">
       <span className="lv-now__label">Now</span>
       {shown.map((a) => {
-        // The server names an ending by its kind ("ship"); an older one says "terminal".
-        const ship = a.kind === "ship" || a.kind === "terminal";
+        // The server names an ending by its kind ("ship", "hand_in"); an older one says "terminal".
+        const ship = a.kind === "ship" || a.kind === "terminal" || a.kind === "hand_in";
         if (ship) {
           return (
             <button
@@ -115,7 +115,9 @@ export function NowBar({
               <span className="lv-chip__text">
                 <span className="lv-chip__name">{a.label}</span>
                 <span className="lv-chip__ship">
-                  {a.live_state === "done" ? (a.activity ?? "Shipped") : "Not yet"}
+                  {a.live_state === "done"
+                    ? (a.activity ?? (a.kind === "hand_in" ? "Handed in" : "Shipped"))
+                    : "Not yet"}
                 </span>
               </span>
             </button>

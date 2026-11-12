@@ -161,6 +161,22 @@ describe("deriveTerminalState", () => {
   it("done + stop -> stopped", () => {
     expect(deriveTerminalState("stop", "done")).toBe("stopped");
   });
+
+  it("done + hand_in -> handed_in; not done -> idle", () => {
+    expect(deriveTerminalState("hand_in", "done")).toBe("handed_in");
+    expect(deriveTerminalState("hand_in", "running")).toBe("idle");
+  });
+});
+
+describe("deriveOverall for a run that hands in", () => {
+  it("reads Handed in where an ordinary run reads Shipped", () => {
+    const done = { tone: "done", label: "Handed in" };
+    expect(deriveOverall(mkRun({ status: "completed", hands_in: true }), "SUCCESS")).toEqual(done);
+    expect(deriveOverall(mkRun({ status: "running", hands_in: true }), "SUCCESS")).toEqual(done);
+    expect(deriveOverall(mkRun({ status: "completed", hands_in: false }), "SUCCESS").label).toBe(
+      "Shipped",
+    );
+  });
 });
 
 describe("deriveOverall", () => {

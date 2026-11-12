@@ -462,7 +462,9 @@ function HandInCard({ nodeId, data: d }: { nodeId: string; data: AgentNodeData }
           <Inbox size={13} strokeWidth={1.7} />
         </span>
         <div className="rf-node__titles">
-          <div className="rf-node__role">Hand in</div>
+          <div className="rf-node__role">
+            {d.terminalState === "handed_in" ? "Handed in" : "Hand in"}
+          </div>
           <div className="rf-node__caption">Hands the drafts to the model you started from.</div>
         </div>
       </div>

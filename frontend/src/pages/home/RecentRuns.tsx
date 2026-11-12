@@ -31,6 +31,7 @@ function openRun(row: RunListRow) {
 
 function RunEnd({ row }: { row: RunListRow }) {
   if (row.status === "completed") {
+    if (row.hands_in) return <span className="hm-recent__status">Handed in</span>;
     if (row.pr_url) {
       return (
         <span className="hm-recent__pr-wrap">
