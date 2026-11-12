@@ -5,6 +5,7 @@ accept, the lock between tests and training examples on every door, the training
 import and downloads, Home's Needs you, team files and validity. DBOS is real; no model called."""
 
 import json
+import math
 import uuid
 
 import pytest
@@ -94,12 +95,15 @@ def test_the_estimate_uses_listed_prices_then_says_so(client, monkeypatch):
         f"/api/models/{mid}/drafting/estimate",
         json={"team_id": team, "tests": 4, "training": 6},
     ).json()
-    reader = 20_000 * 1e-6 + 2_000 * 2e-6
-    writer = 10 * (6_000 * 1e-6 + 400 * 2e-6)
-    reviewer = 5 * (5_000 * 1e-6 + 200 * 2e-6)
+    reader = pure.READER_ALLOWANCE[0] * 1e-6 + pure.READER_ALLOWANCE[1] * 2e-6
+    writer = 10 * (pure.WRITER_ALLOWANCE[0] * 1e-6 + pure.WRITER_ALLOWANCE[1] * 2e-6)
+    reviewer = 5 * (pure.REVIEWER_ALLOWANCE[0] * 1e-6 + pure.REVIEWER_ALLOWANCE[1] * 2e-6)
     assert out["estimate_usd"] == pytest.approx(reader + writer + reviewer)
     assert out["hint"] == model_examples_launch_first_hint()
-    assert out["pause_usd"] == 0.5
+    # The pause is 4 x the estimate up to the next $0.50 (the floor $0.50 no longer binds here).
+    assert out["pause_usd"] == pytest.approx(
+        math.ceil(4 * (reader + writer + reviewer) / 0.5) * 0.5
+    )
     assert out["agents"] == 3
 
 

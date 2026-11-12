@@ -26,10 +26,18 @@ QUOTE_MIN, QUOTE_MAX = 20, 600
 PHRASES_MIN, PHRASES_MAX = 1, 5
 PAUSE_FLOOR = 0.5
 
-# What one seat is allowed per call (the first estimate, before any history): tokens in, tokens out.
-READER_ALLOWANCE = (20_000, 2_000)  # once
-WRITER_ALLOWANCE = (6_000, 400)  # per example
-REVIEWER_ALLOWANCE = (5_000, 200)  # per sampled example
+# What one seat uses per unit (the first estimate, before any history): tokens in, tokens out.
+# Measured on the recorded M2 e2e run (Gemini 3 Flash on every seat, 10 drafts, 5 reviewed), per
+# unit, input rounded up to the next 500 and output to the next 50. Input is counted as billed (the
+# real cost less the output at its listed price, over the listed input price): a provider's cached
+# prompt tokens cost less than their count, so the Writer's raw 91,049 in per example is 21,007.
+#   seat      unit              raw in / out    as billed in / out    real $ per unit
+#   Reader    once              57,941 / 3,587  25,928 / 3,587        0.0237
+#   Writer    per example       91,049 / 728    21,007 / 728          0.0127
+#   Reviewer  per sampled one   44,568 / 573    44,568 / 573          0.0240
+READER_ALLOWANCE = (26_000, 3_600)  # once
+WRITER_ALLOWANCE = (21_500, 750)  # per example
+REVIEWER_ALLOWANCE = (45_000, 600)  # per sampled example
 
 NEED_INPUT = "Write the input."
 NEED_ANSWER = "Write the answer."

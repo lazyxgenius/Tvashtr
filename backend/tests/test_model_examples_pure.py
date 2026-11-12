@@ -221,27 +221,73 @@ def test_the_review_sample_is_a_third_at_least_five_or_all():
     assert [ex.review_sample(n) for n in (0, 3, 5, 10, 15, 30, 31)] == [0, 3, 5, 5, 5, 10, 11]
 
 
-def test_a_first_estimate_uses_the_listed_prices_and_fixed_allowances():
+def _seat_cost(allowance, listed, units, out=None):
+    tin, tout = allowance
+    return units * (tin * listed[0] + (tout if out is None else out) * listed[1])
+
+
+def test_a_first_estimate_uses_the_listed_prices_and_the_allowances():
     out = ex.first_estimate(SEATS, tests=4, training=6, price=_price, learned={})
-    reader = 20_000 * 1e-6 + 2_000 * 2e-6  # 0.024
-    writer = 10 * (6_000 * 2e-6 + 400 * 4e-6)  # 0.136
-    reviewer = 5 * (5_000 * 1e-6 + 200 * 1e-6)  # 0.026
-    assert out["estimate_usd"] == pytest.approx(reader + writer + reviewer)  # $0.186
+    reader = _seat_cost(ex.READER_ALLOWANCE, _price("r/m"), 1)
+    writer = _seat_cost(ex.WRITER_ALLOWANCE, _price("w/m"), 10)
+    reviewer = _seat_cost(ex.REVIEWER_ALLOWANCE, _price("v/m"), 5)
+    assert out["estimate_usd"] == pytest.approx(reader + writer + reviewer)
     assert out["unpriced"] == []
 
 
 def test_a_learned_answer_size_raises_a_seats_output():
-    out = ex.first_estimate(SEATS, tests=4, training=6, price=_price, learned={"w/m": 900.0})
-    reader = 20_000 * 1e-6 + 2_000 * 2e-6
-    writer = 10 * (6_000 * 2e-6 + 900 * 4e-6)
-    reviewer = 5 * (5_000 * 1e-6 + 200 * 1e-6)
+    learned = ex.WRITER_ALLOWANCE[1] * 2
+    out = ex.first_estimate(SEATS, tests=4, training=6, price=_price, learned={"w/m": learned})
+    reader = _seat_cost(ex.READER_ALLOWANCE, _price("r/m"), 1)
+    writer = _seat_cost(ex.WRITER_ALLOWANCE, _price("w/m"), 10, out=learned)
+    reviewer = _seat_cost(ex.REVIEWER_ALLOWANCE, _price("v/m"), 5)
     assert out["estimate_usd"] == pytest.approx(reader + writer + reviewer)
 
 
 def test_a_seat_with_no_listed_price_is_named_and_left_out():
     out = ex.first_estimate([("writer", "x/unlisted"), ("reader", "r/m")], 1, 0, _price, {})
     assert out["unpriced"] == ["x/unlisted"]
-    assert out["estimate_usd"] == pytest.approx(20_000 * 1e-6 + 2_000 * 2e-6)
+    assert out["estimate_usd"] == pytest.approx(_seat_cost(ex.READER_ALLOWANCE, _price("r/m"), 1))
+
+
+# The recorded M2 example-builder e2e run (2026-11-10, run f719e6d0): Gemini 3 Flash on every seat,
+# 4 tests + 6 training wanted, 10 drafts handed in, the Reviewer checked 5, one round. Per seat,
+# from the run's cost_records: prompt tokens, completion tokens, real dollars, and how many units
+# the seat worked (the Reader once, the Writer per example, the Reviewer per sampled example).
+GEMINI_3_FLASH = (5e-7, 3e-6)  # listed dollars per input / output token
+RECORDED = {
+    "reader": (57_941, 3_587, 0.023725, 1),
+    "writer": (910_486, 7_278, 0.126868, 10),
+    "reviewer": (222_839, 2_865, 0.120015, 5),
+}
+RECORDED_COST = 0.270608  # that batch's cost_usd
+PROOF_COST = 0.16844  # the production proof (3 tests + 3 training, the same seats)
+FLASH_SEATS = [(role, "vertex_ai/gemini-3-flash-preview") for role in RECORDED]
+
+
+def _flash(slug):
+    return GEMINI_3_FLASH
+
+
+def test_the_first_estimate_is_within_one_and_a_half_of_the_recorded_run():
+    out = ex.first_estimate(FLASH_SEATS, tests=4, training=6, price=_flash, learned={})
+    assert RECORDED_COST / 1.5 <= out["estimate_usd"] <= RECORDED_COST * 1.5, (out, RECORDED_COST)
+
+
+def test_the_first_estimate_is_within_one_and_a_half_of_the_production_proof():
+    out = ex.first_estimate(FLASH_SEATS, tests=3, training=3, price=_flash, learned={})
+    assert PROOF_COST / 1.5 <= out["estimate_usd"] <= PROOF_COST * 1.5, (out, PROOF_COST)
+
+
+@pytest.mark.parametrize("role", list(RECORDED))
+def test_each_allowance_is_the_measured_figure_rounded_up(role):
+    # Input is counted as billed: the real cost less the output at its listed price, over the
+    # listed input price, per unit (cached prompt tokens cost less than their count).
+    _, out_tokens, cost, units = RECORDED[role]
+    billed_in = (cost - out_tokens * GEMINI_3_FLASH[1]) / GEMINI_3_FLASH[0] / units
+    got_in, got_out = getattr(ex, f"{role.upper()}_ALLOWANCE")
+    assert billed_in <= got_in <= billed_in * 1.1
+    assert out_tokens / units <= got_out <= out_tokens / units * 1.1
 
 
 def test_an_estimate_from_history_is_the_mean_cost_per_draft():
