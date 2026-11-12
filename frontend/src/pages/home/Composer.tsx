@@ -611,7 +611,7 @@ export function Composer() {
         )}
         <div className="hm-composer__row">
           <TeamPicker
-            teams={teams}
+            teams={teams.filter((t) => !t.hands_in)}
             selected={selected}
             desktop={desktop}
             onPick={(id) => pickTeamForRun(id)}

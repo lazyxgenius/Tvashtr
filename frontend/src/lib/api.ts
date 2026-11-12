@@ -836,6 +836,8 @@ export interface TeamSummary {
   duplicated_from?: { team_graph_id: string; name: string | null } | null;
   shape?: TeamShape;
   readiness?: TeamReadiness;
+  /** M2: the team ends in Hand in — it is started from a model, so run pickers leave it out. */
+  hands_in?: boolean;
 }
 
 /** The pipeline strip: the main path start → Ship; `loops` are indices into `nodes` (draw ⇄). */

@@ -22,8 +22,10 @@ export function rememberLastTeam(teamId: string): void {
   }
 }
 
-/** Last team used from Home, else the team with the most recent run, else the first team. */
-export function defaultTeamId(teams: TeamSummary[]): string | null {
+/** Last team used from Home, else the team with the most recent run, else the first team — never
+ *  one that hands in (it is started from a model). */
+export function defaultTeamId(all: TeamSummary[]): string | null {
+  const teams = all.filter((t) => !t.hands_in);
   let last: string | null = null;
   try {
     last = localStorage.getItem(LAST_TEAM_KEY);

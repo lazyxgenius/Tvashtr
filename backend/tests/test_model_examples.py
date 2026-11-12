@@ -107,6 +107,16 @@ def test_the_estimate_uses_listed_prices_then_says_so(client, monkeypatch):
     assert out["agents"] == 3
 
 
+def test_a_team_summary_says_whether_it_hands_in(client):
+    c, _owner = account("deepseek")
+    builder = builder_id(c, choice_model(c))
+    ordinary = c.post("/api/teams", json={"template": "review_loop", "name": "Squad"}).json()
+    listed = {t["team_graph_id"]: t for t in c.get("/api/teams").json()["teams"]}
+    assert listed[builder]["hands_in"] is True
+    assert listed[ordinary["team_graph_id"]]["hands_in"] is False
+    assert ordinary["hands_in"] is False  # the create reply is the same summary
+
+
 def model_examples_launch_first_hint():
     from tvashtr.control_plane.model_examples_launch import FIRST_HINT
 

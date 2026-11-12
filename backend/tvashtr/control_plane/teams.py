@@ -2374,7 +2374,9 @@ def _team_summary(session, graph: TeamGraph, ctx: dict | None = None) -> dict:
       ``duplicated_from`` (``{team_graph_id, name}`` — ``name`` is ``None`` once the source is
       deleted — or ``None``);
     * ``shape`` (the pipeline strip, ``graph_validity.team_shape``) and ``readiness``
-      (:func:`_team_readiness`).
+      (:func:`_team_readiness`);
+    * ``hands_in`` — the team ends in Hand in, so it can only be started from a model (a picker
+      that starts an ordinary run leaves it out).
 
     ``ctx`` is the batched :func:`_summary_context`; single-team callers omit it. Read-only."""
     from tvashtr.control_plane.graph_validity import team_shape  # late: see _template_dict
@@ -2423,6 +2425,10 @@ def _team_summary(session, graph: TeamGraph, ctx: dict | None = None) -> dict:
         "duplicated_from": duplicated_from,
         "shape": shape,
         "readiness": _team_readiness(nodes, ctx["readiness"][graph.owner_id]),
+        "hands_in": any(
+            n.kind == "terminal" and (n.config or {}).get("terminal_kind") == "hand_in"
+            for n in nodes
+        ),
     }
 
 

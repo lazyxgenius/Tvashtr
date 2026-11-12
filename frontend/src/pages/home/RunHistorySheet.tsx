@@ -1,6 +1,7 @@
 import { History, TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
+import { HAND_IN_HINT } from "../../canvas/runBlocked";
 import { type TeamRunRow, getTeamRuns } from "../../lib/api";
 import { navigate } from "../../lib/nav";
 import { Badge, Button, Sheet } from "../../design-system/components";
@@ -33,7 +34,8 @@ export function RunHistorySheet({
   teamId: string | null;
   teamName: string;
   onClose: () => void;
-  onStartRun: (teamId: string) => void;
+  /** Absent for a team that hands in: it is started from a model, so nothing offers a run. */
+  onStartRun?: (teamId: string) => void;
 }) {
   const [rows, setRows] = useState<HistoryRow[] | null>(null);
   const [error, setError] = useState(false);
@@ -88,20 +90,22 @@ export function RunHistorySheet({
           </span>
           <div className="hm-history__empty-title">This team hasn’t run yet</div>
           <div className="hm-history__empty-text">
-            Start a run from Home, or open the team and press Run.
+            {onStartRun ? "Start a run from Home, or open the team and press Run." : HAND_IN_HINT}
           </div>
-          <div className="hm-history__empty-actions">
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => {
-                onClose();
-                onStartRun(teamId);
-              }}
-            >
-              Start a run
-            </Button>
-          </div>
+          {onStartRun && (
+            <div className="hm-history__empty-actions">
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => {
+                  onClose();
+                  onStartRun(teamId);
+                }}
+              >
+                Start a run
+              </Button>
+            </div>
+          )}
         </div>
       </section>
     );

@@ -36,10 +36,12 @@ export function targetChip(workspace: DesktopSetup["workspace"] | undefined): st
   return null;
 }
 
-/** The newest library team (the one setup just made). */
+/** The newest library team that can run (the one setup just made); not one that hands in. */
 export function newestTeam(teams: TeamSummary[]): TeamSummary | null {
   let newest: TeamSummary | null = null;
-  for (const t of teams) if (!newest || t.created_at > newest.created_at) newest = t;
+  for (const t of teams) {
+    if (!t.hands_in && (!newest || t.created_at > newest.created_at)) newest = t;
+  }
   return newest;
 }
 

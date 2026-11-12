@@ -40,12 +40,16 @@ function TeamMenu({ team, actions }: { team: TeamSummary; actions: TeamItemActio
           icon: <Maximize2 {...icon} />,
           onSelect: () => actions.open(team),
         },
-        {
-          key: "run",
-          label: "Start a run",
-          icon: <Play {...icon} />,
-          onSelect: () => actions.run(team),
-        },
+        ...(team.hands_in
+          ? []
+          : [
+              {
+                key: "run",
+                label: "Start a run",
+                icon: <Play {...icon} />,
+                onSelect: () => actions.run(team),
+              },
+            ]),
         {
           key: "history",
           label: "Run history",
@@ -192,10 +196,12 @@ export function TeamCard({
         <span>{cardCounts(team)}</span>
         <span className="hm-team__actions">
           {/* The icon sits inside the label (no gap), as the design draws "▷Run". */}
-          <Button variant="ghost" size="sm" onClick={() => actions.run(team)}>
-            <Play className="hm-inline-icon" size={12} strokeWidth={1.6} aria-hidden />
-            Run
-          </Button>
+          {!team.hands_in && (
+            <Button variant="ghost" size="sm" onClick={() => actions.run(team)}>
+              <Play className="hm-inline-icon" size={12} strokeWidth={1.6} aria-hidden />
+              Run
+            </Button>
+          )}
           <TeamMenu team={team} actions={actions} />
         </span>
       </div>

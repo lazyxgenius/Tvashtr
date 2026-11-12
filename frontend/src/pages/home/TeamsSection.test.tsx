@@ -126,6 +126,19 @@ describe("TeamsSection", () => {
     expect(document.querySelector('[data-team-id="t4"]')).toHaveTextContent("No runs yet");
   });
 
+  it("offers Run and Start a run on a team, but not on one that hands in", async () => {
+    renderSection({
+      teams: [TEAMS[0], team("t-ex", "Example builder", { hands_in: true })],
+    });
+    const ordinary = document.querySelector('[data-team-id="t1"]') as HTMLElement;
+    const builder = document.querySelector('[data-team-id="t-ex"]') as HTMLElement;
+    expect(within(ordinary).getByRole("button", { name: "Run" })).toBeInTheDocument();
+    expect(within(builder).queryByRole("button", { name: "Run" })).toBeNull();
+    await userEvent.click(within(builder).getByRole("button", { name: /More actions for/ }));
+    expect(screen.getByRole("menuitem", { name: "Run history" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Start a run" })).toBeNull();
+  });
+
   it("counts and filters by status tab", async () => {
     renderSection();
     expect(screen.getByRole("tab", { name: /^All\s*4$/ })).toBeInTheDocument();

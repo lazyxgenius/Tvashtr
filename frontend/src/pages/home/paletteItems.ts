@@ -202,14 +202,17 @@ export function buildPaletteGroups(input: {
   }
 
   const actions: PaletteOption[] = [
-    ...teams.slice(0, 2).map(
-      (t): PaletteOption => ({
-        id: `act-run-${t.team_graph_id}`,
-        icon: "run",
-        label: `Start a run on ${t.name}`,
-        target: { kind: "new-run", teamId: t.team_graph_id },
-      }),
-    ),
+    ...teams
+      .filter((t) => !t.hands_in)
+      .slice(0, 2)
+      .map(
+        (t): PaletteOption => ({
+          id: `act-run-${t.team_graph_id}`,
+          icon: "run",
+          label: `Start a run on ${t.name}`,
+          target: { kind: "new-run", teamId: t.team_graph_id },
+        }),
+      ),
     ...input.domains
       .filter((d) => d.name.toLowerCase().includes(q))
       .slice(0, 3)

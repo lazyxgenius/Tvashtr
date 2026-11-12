@@ -125,7 +125,7 @@ export function RecentRuns() {
       teamId={historyTeamId}
       teamName={historyTeam?.name ?? "This team"}
       onClose={() => setHistoryTeamId(null)}
-      onStartRun={(id) => pickTeamForRun(id)}
+      onStartRun={historyTeam?.hands_in ? undefined : (id) => pickTeamForRun(id)}
     />
   );
 
