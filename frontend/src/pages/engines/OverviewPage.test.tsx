@@ -95,7 +95,7 @@ describe("Overview on the website (Eng-OverviewWeb)", () => {
     await loaded();
     fireEvent.click(within(row("anthropic")).getByRole("button", { name: "Add key" }));
     const sheet = within(screen.getByRole("dialog", { name: "Add an API key" }));
-    expect(sheet.getByRole("button", { name: "Provider anthropic" })).toBeInTheDocument();
+    expect(sheet.getByRole("button", { name: "Provider Anthropic anthropic" })).toBeInTheDocument();
     fireEvent.click(sheet.getByRole("button", { name: "Cancel" }));
     expect(screen.queryByRole("dialog", { name: "Add an API key" })).toBeNull();
     fireEvent.click(within(row("xai")).getByRole("button", { name: "Open in Desktop" }));
@@ -260,7 +260,7 @@ describe("A row's Add key (EnF-OvAddKey-1..5)", () => {
     fireEvent.click(within(row("anthropic")).getByRole("button", { name: "Add key" }));
     expect(providerOrder()).toEqual(["anthropic", "xai", "deepseek"]);
     const sheet = within(screen.getByRole("dialog", { name: "Add an API key" }));
-    expect(sheet.getByRole("button", { name: "Provider anthropic" })).toBeInTheDocument();
+    expect(sheet.getByRole("button", { name: "Provider Anthropic anthropic" })).toBeInTheDocument();
     expect(sheet.getByText("Used by Engineer · Indicator sprint team")).toBeInTheDocument();
 
     // 3-4: saved — the row flashes, its Website cell shows the key, the team still needs xai.
@@ -284,7 +284,7 @@ describe("A row's Add key (EnF-OvAddKey-1..5)", () => {
     fireEvent.click(within(toast).getByRole("button", { name: "Add xai" }));
     expect(
       within(screen.getByRole("dialog", { name: "Add an API key" })).getByRole("button", {
-        name: "Provider xai",
+        name: "Provider xAI xai",
       }),
     ).toBeInTheDocument();
     await saveWith("xai-parity-9Kx2");
@@ -329,7 +329,7 @@ describe("A row's Add key (EnF-OvAddKey-1..5)", () => {
     fireEvent.click(sheet.getByRole("button", { name: /^Provider / }));
     fireEvent.click(
       within(sheet.getByRole("listbox", { name: "Providers" })).getByRole("option", {
-        name: /^anthropic/,
+        name: /\banthropic\b/,
       }),
     );
     await saveWith("sk-ant-parity-wQ3f");

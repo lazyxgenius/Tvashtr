@@ -29,7 +29,8 @@ test("Google Cloud: the Add key sheet, the saved row, the picker", async ({ page
   await sheet.getByRole("button", { name: /Choose a provider/ }).click();
   const providers = sheet.getByRole("listbox", { name: "Providers" });
   const cloud = providers.getByRole("option", { name: /vertex_ai/ });
-  const gemini = providers.getByRole("option", { name: /^G?\s*gemini/ });
+  const gemini = providers.getByRole("option", { name: /^G?\s*Gemini\s+gemini/ });
+  await expect(cloud).toContainText("Google Cloud");
   await expect(cloud).toContainText("Gemini on your Google Cloud account (Vertex AI)");
   await expect(gemini).toContainText(
     "Gemini models with a Google AI Studio key, and Domains embeddings",
@@ -43,11 +44,12 @@ test("Google Cloud: the Add key sheet, the saved row, the picker", async ({ page
   ).toBeVisible();
   await page.screenshot({ path: shot("g1-add-key-sheet") });
 
-  // G2: save through the sheet; the row shows the provider's slug, as every row does, and the last four.
+  // G2: save through the sheet; the row names the provider (slug beneath, as every row does) and shows the last four.
   await sheet.getByLabel("API key").fill(TEST_KEY);
   await sheet.getByRole("button", { name: "Save key" }).click();
   await expect(sheet).toBeHidden({ timeout: 30_000 });
   const row = page.getByRole("row").filter({ hasText: "W7xQ" });
+  await expect(row).toContainText("Google Cloud");
   await expect(row).toContainText("vertex_ai");
   await page.screenshot({ path: shot("g2-saved-row") });
 
@@ -61,7 +63,7 @@ test("Google Cloud: the Add key sheet, the saved row, the picker", async ({ page
     .locator('button[aria-haspopup="dialog"]')
     .click();
   const picker = panel.getByRole("dialog", { name: "Choose a model" });
-  const group = picker.getByRole("group", { name: /^vertex_ai\b/ });
+  const group = picker.getByRole("group", { name: /^Google Cloud\b/ });
   await expect(group.getByRole("option", { name: "gemini-3-flash-preview" })).toBeVisible();
   await expect(group.getByRole("option", { name: "gemini-3.5-flash" })).toBeVisible();
   await page.screenshot({ path: shot("g3-model-picker") });

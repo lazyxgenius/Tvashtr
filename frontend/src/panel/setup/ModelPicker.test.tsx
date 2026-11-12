@@ -77,7 +77,7 @@ const open = (name = "grok-4.7") => {
   return screen.getByRole("dialog", { name: /^Choose a/ });
 };
 const group = (list: HTMLElement, provider: string) =>
-  within(list).getByRole("group", { name: new RegExp(`^${provider}\\b`) });
+  within(list).getByRole("group", { name: new RegExp(`\\b${provider}\\b`, "i") });
 
 describe("ModelPicker (Desktop-ModelPicker / Flow-Model)", () => {
   it("opens a listbox of the seat's models, grouped by provider with how each one runs", () => {
@@ -319,5 +319,17 @@ describe("ModelPicker for the backup model", () => {
       "aria-selected",
       "true",
     );
+  });
+});
+
+describe("ModelPicker: providers by name (Sidechat-28 g)", () => {
+  it("heads each provider with its name and keeps the slug as secondary text", () => {
+    renderPicker();
+    const list = open();
+    const head = (name: RegExp) => within(list).getByRole("group", { name });
+    expect(head(/Anthropic/).querySelector(".nd-lb__name")).toHaveTextContent("Anthropic");
+    expect(head(/Anthropic/).querySelector(".nd-lb__slug")).toHaveTextContent(/^anthropic$/);
+    expect(head(/xAI/).querySelector(".nd-lb__name")).toHaveTextContent("xAI");
+    expect(head(/xAI/).querySelector(".nd-lb__slug")).toHaveTextContent(/^xai$/);
   });
 });

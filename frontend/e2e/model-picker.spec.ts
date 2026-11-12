@@ -62,7 +62,7 @@ test("model picker: seat-grouped picker + inline key add + the same-model adviso
   const picker = panel.getByRole("dialog", { name: "Choose a model" });
   await expect(picker).toBeVisible({ timeout: 30_000 });
   const group = (provider: string) =>
-    picker.getByRole("group", { name: new RegExp(`^${provider}\\b`) });
+    picker.getByRole("group", { name: new RegExp(`\\b${provider}\\b`, "i") });
   await expect(group("openai").getByText("API key")).toBeVisible();
   await expect(group("openrouter").getByText("API key")).toBeVisible();
   await expect(group("nvidia_nim")).toHaveCount(0);

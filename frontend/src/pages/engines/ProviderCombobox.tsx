@@ -21,6 +21,8 @@ interface ProviderComboboxProps {
   pick: ProviderPick;
   /** The picked provider's tile letter. */
   pickedMonogram: string;
+  /** The picked provider's display name (its slug shows beside it). */
+  pickedName: string;
   onPick: (pick: ProviderPick) => void;
   /** Saving with nothing picked marks the field (EnF-SaveErrors-1). */
   invalid?: boolean;
@@ -33,6 +35,7 @@ export function ProviderCombobox({
   filter,
   pick,
   pickedMonogram,
+  pickedName,
   onPick,
   invalid = false,
   children,
@@ -125,6 +128,7 @@ export function ProviderCombobox({
         {pick.kind === "provider" ? (
           <>
             <MonogramTile letter={pickedMonogram} />
+            <span className="eng-picker__name">{pickedName}</span>
             <span className="eng-picker__slug">{pick.provider}</span>
           </>
         ) : pick.kind === "other" ? (
@@ -189,7 +193,10 @@ export function ProviderCombobox({
                   onClick={() => chooseAt(idx)}
                 >
                   <MonogramTile letter={o.monogram} />
-                  <span className="eng-picker__opt-slug">{o.provider}</span>
+                  <span className="eng-picker__opt-id">
+                    <span className="eng-picker__opt-name">{o.name}</span>
+                    <span className="eng-picker__opt-slug">{o.provider}</span>
+                  </span>
                   <span className="eng-picker__opt-desc">{o.description}</span>
                 </button>
               ))}

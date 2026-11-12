@@ -312,7 +312,9 @@ describe("Subscriptions on Desktop (Eng-Subs)", () => {
     fireEvent.click(
       within(toast as HTMLElement).getByRole("button", { name: "Add anthropic key" }),
     );
-    expect(await screen.findByRole("button", { name: /^Provider anthropic/ })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: /^Provider Anthropic anthropic/ }),
+    ).toBeInTheDocument();
   });
 });
 

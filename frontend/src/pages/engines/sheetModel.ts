@@ -55,6 +55,8 @@ export const EMBEDDINGS_KEY_TITLES: SheetTitles = {
 
 export interface PickerOption {
   provider: string;
+  /** The provider's display name; the slug is shown beside it as secondary text. */
+  name: string;
   monogram: string;
   /** "Claude models · your teams use it", "Saved · many models through one key". */
   description: string;
@@ -82,6 +84,7 @@ export function pickerOptions(i: EngineInputs): PickerOption[] {
         : label;
     return {
       provider: d.provider,
+      name: providerName(i, d.provider),
       monogram: monogramOf(i.directory, d.provider),
       description,
       saved,

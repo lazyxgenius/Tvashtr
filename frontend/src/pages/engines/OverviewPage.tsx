@@ -205,7 +205,10 @@ function ProvidersTable({
             <td>
               <div className="eng-prov">
                 <MonogramTile letter={row.monogram} />
-                <span className="eng-prov__slug">{row.provider}</span>
+                <span className="eng-prov__text">
+                  <span className="eng-prov__name">{row.name}</span>
+                  <span className="eng-prov__slug">{row.provider}</span>
+                </span>
               </div>
             </td>
             <td>

@@ -96,7 +96,7 @@ function openList(sheet: Scope) {
 
 function pick(sheet: Scope, provider: string) {
   const list = openList(sheet);
-  fireEvent.click(list.getByRole("option", { name: new RegExp(`^${provider}`) }));
+  fireEvent.click(list.getByRole("option", { name: new RegExp(`\\b${provider}\\b`) }));
 }
 
 const optionNames = (list: Scope) =>
@@ -104,6 +104,25 @@ const optionNames = (list: Scope) =>
     .getAllByRole("option")
     .map((o) => o.querySelector(".eng-picker__opt-slug")?.textContent ?? o.textContent);
 const OTHER = "Other: type the model prefix";
+
+describe("Add key sheet: providers by name (Sidechat-28 g)", () => {
+  it("lists each provider by its name with the slug as secondary text, and keeps both once picked", async () => {
+    const { sheet } = await openSheet();
+    const list = openList(sheet);
+    const optionOf = (provider: string) =>
+      list
+        .getAllByRole("option")
+        .find((o) => o.querySelector(".eng-picker__opt-slug")?.textContent === provider)!;
+    const nameOf = (provider: string) =>
+      optionOf(provider).querySelector(".eng-picker__opt-name")?.textContent;
+    expect(nameOf("anthropic")).toBe("Anthropic");
+    expect(nameOf("huggingface")).toBe("Hugging Face");
+    expect(nameOf("nvidia_nim")).toBe("NVIDIA NIM");
+    fireEvent.click(optionOf("openrouter"));
+    expect(providerButton(sheet)).toHaveTextContent("OpenRouter");
+    expect(providerButton(sheet)).toHaveTextContent("openrouter");
+  });
+});
 
 describe("Add key sheet: the provider picker (EnF-PickProvider-1..4, Eng-AddKeyPick)", () => {
   it("opens empty with Save enabled (OQ-4) and only the encryption note", async () => {
@@ -136,16 +155,16 @@ describe("Add key sheet: the provider picker (EnF-PickProvider-1..4, Eng-AddKeyP
       "openrouter",
       OTHER,
     ]);
-    expect(list.getByRole("option", { name: /^anthropic/ })).toHaveTextContent(
+    expect(list.getByRole("option", { name: /\banthropic\b/ })).toHaveTextContent(
       "Anthropic models · your teams use it",
     );
-    expect(list.getByRole("option", { name: /^deepseek/ })).toHaveTextContent(
+    expect(list.getByRole("option", { name: /\bdeepseek\b/ })).toHaveTextContent(
       "Saved · DeepSeek models",
     );
-    expect(list.getByRole("option", { name: /^nvidia_nim/ })).toHaveTextContent(
+    expect(list.getByRole("option", { name: /\bnvidia_nim\b/ })).toHaveTextContent(
       "Saved · No agent uses NVIDIA NIM right now",
     );
-    expect(list.getByRole("option", { name: /^nvidia_nim/ })).not.toHaveTextContent("models");
+    expect(list.getByRole("option", { name: /\bnvidia_nim\b/ })).not.toHaveTextContent("models");
     expect(sheet.getByRole("option", { name: "Other: type the model prefix" })).toBeInTheDocument();
   });
 
@@ -158,7 +177,7 @@ describe("Add key sheet: the provider picker (EnF-PickProvider-1..4, Eng-AddKeyP
     expect(sheet.getByRole("option", { name: "Other: type the model prefix" })).toBeInTheDocument();
     fireEvent.keyDown(search, { key: "Enter" });
     expect(sheet.queryByRole("listbox")).toBeNull();
-    expect(providerButton(sheet)).toHaveAccessibleName("Provider huggingface");
+    expect(providerButton(sheet)).toHaveAccessibleName("Provider Hugging Face huggingface");
     expect(providerButton(sheet)).toHaveFocus();
     // EnF-PickProvider-4: its own hint, with Domains bolded, and the footer.
     expect(sheet.getByText("Domains", { selector: "b" })).toBeInTheDocument();
@@ -173,7 +192,7 @@ describe("Add key sheet: the provider picker (EnF-PickProvider-1..4, Eng-AddKeyP
     fireEvent.keyDown(search, { key: "ArrowDown" });
     fireEvent.keyDown(search, { key: "ArrowDown" });
     const active = search.getAttribute("aria-activedescendant");
-    expect(document.getElementById(active!)).toHaveTextContent(/^Xxai/);
+    expect(document.getElementById(active!)).toHaveTextContent(/^XxAIxai/);
     fireEvent.keyDown(search, { key: "ArrowUp" });
     fireEvent.keyDown(search, { key: "ArrowUp" });
     // Up from the first wraps to "Other" — an option of the listbox the search box controls.
@@ -195,7 +214,7 @@ describe("Add key sheet: the provider picker (EnF-PickProvider-1..4, Eng-AddKeyP
   it("anthropic picked: the covers hint, the Claude note (connected) and Used by (Eng-AddKey)", async () => {
     const { sheet } = await openSheet();
     pick(sheet, "anthropic");
-    expect(providerButton(sheet)).toHaveAccessibleName("Provider anthropic");
+    expect(providerButton(sheet)).toHaveAccessibleName("Provider Anthropic anthropic");
     const hint = sheet.getByText(/^Covers models that start with/);
     expect(hint).toHaveTextContent(
       "Covers models that start with anthropic/, like anthropic/claude-sonnet-5.",
@@ -209,7 +228,7 @@ describe("Add key sheet: the provider picker (EnF-PickProvider-1..4, Eng-AddKeyP
     expect(sheet.getByText("Used by Engineer · Indicator sprint team")).toBeInTheDocument();
     // Reopening marks the pick.
     const list = openList(sheet);
-    expect(list.getByRole("option", { name: /^anthropic/ })).toHaveAttribute(
+    expect(list.getByRole("option", { name: /\banthropic\b/ })).toHaveAttribute(
       "aria-selected",
       "true",
     );
@@ -332,7 +351,7 @@ describe("Add key sheet: saving (ENG-71..73)", () => {
     // Its one action opens the sheet again with xai picked.
     fireEvent.click(within(toast).getByRole("button", { name: "Add xai" }));
     const again = within(screen.getByRole("dialog", { name: "Add an API key" }));
-    expect(providerButton(again)).toHaveAccessibleName("Provider xai");
+    expect(providerButton(again)).toHaveAccessibleName("Provider xAI xai");
   });
 
   it("the toast's Add <q> still works after leaving Engines: it comes back with the sheet", async () => {
@@ -363,7 +382,7 @@ describe("Add key sheet: saving (ENG-71..73)", () => {
     // The router shows Engines again: the sheet opens there with xai picked.
     act(() => show(true));
     const again = within(await screen.findByRole("dialog", { name: "Add an API key" }));
-    expect(providerButton(again)).toHaveAccessibleName("Provider xai");
+    expect(providerButton(again)).toHaveAccessibleName("Provider xAI xai");
   });
 
   it("a network failure keeps the sheet open with the values and says the key wasn't saved", async () => {
@@ -377,7 +396,7 @@ describe("Add key sheet: saving (ENG-71..73)", () => {
       "Couldn’t save that key — is the backend running? Your key wasn’t saved. Try again.",
     );
     expect(sheet.getByLabelText("API key")).toHaveValue("sk-ant-wQ3f");
-    expect(providerButton(sheet)).toHaveAccessibleName("Provider anthropic");
+    expect(providerButton(sheet)).toHaveAccessibleName("Provider Anthropic anthropic");
   });
 
   it("a 422 shows the server's words", async () => {
@@ -411,7 +430,7 @@ describe("Add key sheet: opened with a provider (ENG-74, ENG-60)", () => {
     await screen.findByRole("table");
     fireEvent.click(within(screen.getByRole("note")).getByRole("button", { name: "xai" }));
     const sheet = within(screen.getByRole("dialog", { name: "Add an API key" }));
-    expect(providerButton(sheet)).toHaveAccessibleName("Provider xai");
+    expect(providerButton(sheet)).toHaveAccessibleName("Provider xAI xai");
     expect(
       sheet.getByText("Used by Product manager, Reviewer · Indicator sprint team"),
     ).toBeInTheDocument();
@@ -431,7 +450,9 @@ describe("Add key sheet: opened with a provider (ENG-74, ENG-60)", () => {
     expect(
       within(dialog).getByText("For Domains ingest and Ask, on the website and on Desktop."),
     ).toBeInTheDocument();
-    expect(providerButton(within(dialog))).toHaveAccessibleName("Provider huggingface");
+    expect(providerButton(within(dialog))).toHaveAccessibleName(
+      "Provider Hugging Face huggingface",
+    );
   });
 
   it("from the banner, the toast says Add anthropic too; its action finishes the team (EnF-Suggest-1/2)", async () => {
@@ -450,7 +471,7 @@ describe("Add key sheet: opened with a provider (ENG-74, ENG-60)", () => {
     );
     fireEvent.click(within(toast).getByRole("button", { name: "Add anthropic" }));
     expect(providerButton(within(screen.getByRole("dialog")))).toHaveAccessibleName(
-      "Provider anthropic",
+      "Provider Anthropic anthropic",
     );
     await saveWith("sk-ant-wQ3f");
     // Every provider the teams use has a key now: the banner is gone.
@@ -472,7 +493,7 @@ describe("Add key sheet: opened with a provider (ENG-74, ENG-60)", () => {
     const rows = within(screen.getByRole("table")).getAllByRole("row");
     expect(rows[1]).toHaveAttribute("data-provider", "huggingface");
     expect(within(rows[1]).getByText("Domains ingest")).toBeInTheDocument();
-    expect(within(embeddings).getByText("huggingface •••• f0Tk")).toBeInTheDocument();
+    expect(within(embeddings).getByText("Hugging Face •••• f0Tk")).toBeInTheDocument();
     expect(within(embeddings).queryByRole("button", { name: "Add key" })).toBeNull();
     // No domain exists, so nothing can ingest yet: only that Domains can use the key.
     const toast = await screen.findByRole("status");

@@ -259,8 +259,13 @@ function KeysTable({
                 <td>
                   <div className="eng-prov">
                     <MonogramTile letter={row.monogram} />
-                    <span className="eng-prov__slug" data-testid="engines-key-provider">
-                      {row.provider}
+                    <span className="eng-prov__text">
+                      <span className="eng-prov__name" data-testid="engines-key-name">
+                        {row.name}
+                      </span>
+                      <span className="eng-prov__slug" data-testid="engines-key-provider">
+                        {row.provider}
+                      </span>
                     </span>
                   </div>
                 </td>
@@ -340,11 +345,11 @@ function EmbeddingsCard({
           {section.items.map((it) =>
             it.last4 ? (
               <StatusLine key={it.provider} tone="ok">
-                {`${it.provider} •••• ${it.last4}`}
+                {`${it.name} •••• ${it.last4}`}
               </StatusLine>
             ) : (
               <div key={it.provider} className="eng-embed__item">
-                <StatusLine tone="warn">{`${it.provider} not added`}</StatusLine>
+                <StatusLine tone="warn">{`${it.name} not added`}</StatusLine>
                 <Button variant="secondary" size="sm" onClick={() => onAdd(it.provider)}>
                   Add key
                 </Button>

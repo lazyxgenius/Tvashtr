@@ -55,6 +55,20 @@ function openMenu(provider: string) {
   return within(screen.getByRole("menu", { name: `More actions for ${provider}` }));
 }
 
+describe("the provider's name (Sidechat-28 g)", () => {
+  it("shows each saved key's provider by name, with the slug as secondary text", async () => {
+    mockEnginesApi();
+    renderKeys();
+    await loaded();
+    const name = (p: string) => within(row(p)).getByTestId("engines-key-name");
+    const slug = (p: string) => within(row(p)).getByTestId("engines-key-provider");
+    expect(name("deepseek")).toHaveTextContent("DeepSeek");
+    expect(name("nvidia_nim")).toHaveTextContent("NVIDIA NIM");
+    expect(name("openrouter")).toHaveTextContent("OpenRouter");
+    expect(slug("nvidia_nim")).toHaveTextContent(/^nvidia_nim$/);
+  });
+});
+
 describe("arriving from Domains (ENG-6)", () => {
   // jsdom has no scrollIntoView: install a recorder for these tests only.
   let scrolled: Element[] = [];
@@ -133,7 +147,7 @@ describe("API keys page (Eng-Keys)", () => {
     expect(onAddKey).toHaveBeenLastCalledWith();
 
     const embeddings = screen.getByRole("region", { name: "Domains embeddings" });
-    expect(within(embeddings).getByText("huggingface not added")).toBeInTheDocument();
+    expect(within(embeddings).getByText("Hugging Face not added")).toBeInTheDocument();
     fireEvent.click(within(embeddings).getByRole("button", { name: "Add key" }));
     expect(onAddKey).toHaveBeenLastCalledWith("huggingface", { embeddings: true });
   });
@@ -168,7 +182,7 @@ describe("API keys page (Eng-Keys)", () => {
     renderKeys();
     await loaded();
     const embeddings = screen.getByRole("region", { name: "Domains embeddings" });
-    expect(within(embeddings).getByText("huggingface •••• f0Tk")).toBeInTheDocument();
+    expect(within(embeddings).getByText("Hugging Face •••• f0Tk")).toBeInTheDocument();
     expect(within(embeddings).queryByRole("button")).toBeNull();
   });
 

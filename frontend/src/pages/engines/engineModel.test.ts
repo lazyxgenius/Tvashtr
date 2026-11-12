@@ -309,3 +309,12 @@ describe("first time (ENG-75)", () => {
     expect(isFirstTime(sampleInputs({ keys: [] }))).toBe(false);
   });
 });
+
+describe("the provider's name on an Overview row", () => {
+  it("names each provider from the directory, not its slug", () => {
+    const rows = providerRows(sampleInputs());
+    expect(rows.find((r) => r.provider === "anthropic")?.name).toBe("Anthropic");
+    expect(rows.find((r) => r.provider === "xai")?.name).toBe("xAI");
+    expect(rows.find((r) => r.provider === "deepseek")?.name).toBe("DeepSeek");
+  });
+});

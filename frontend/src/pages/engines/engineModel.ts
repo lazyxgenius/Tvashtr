@@ -247,6 +247,8 @@ export function websiteCell(i: EngineInputs, provider: string, noSeat: Set<strin
 
 export interface ProviderRow {
   provider: string;
+  /** The provider's display name ("Google Cloud"); the slug stays as secondary text. */
+  name: string;
   monogram: string;
   /** The Used by cell ("+N more" past two teams). */
   usedBy: string;
@@ -274,6 +276,7 @@ export function providerRows(i: EngineInputs): ProviderRow[] {
     const website = websiteCell(i, provider, noSeat);
     return {
       provider,
+      name: providerName(i, provider),
       monogram: monogramOf(i.directory, provider),
       usedBy: usedByCell(segments),
       usedByFull: segments.join("; "),

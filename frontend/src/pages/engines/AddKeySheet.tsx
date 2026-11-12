@@ -24,7 +24,7 @@ import { Button, Input, Sheet, useToast } from "../../design-system/components";
 import { saveKey } from "../../lib/api/engines";
 import { ApiDetailError } from "../../lib/api/runs";
 import { navigate } from "../../lib/nav";
-import { monogramOf } from "./engineModel";
+import { monogramOf, providerName } from "./engineModel";
 import { useEngines } from "./enginesData";
 import { ProviderCombobox } from "./ProviderCombobox";
 import {
@@ -216,6 +216,7 @@ function AddKeyForm({
           pickedMonogram={
             pick.kind === "provider" ? monogramOf(inputs.directory, pick.provider) : ""
           }
+          pickedName={pick.kind === "provider" ? providerName(inputs, pick.provider) : ""}
           onPick={(next) => {
             setPick(next);
             clearFormError();

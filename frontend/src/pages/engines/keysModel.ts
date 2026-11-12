@@ -67,6 +67,8 @@ export function addedLabel(iso: string, now: Date = new Date()): string {
 
 export interface KeyRow {
   provider: string;
+  /** The provider's display name ("Google Cloud"); the slug stays as secondary text. */
+  name: string;
   monogram: string;
   last4: string;
   /** The Used by cell ("Writer · Docs team", "Domains ingest", "+N more"). */
@@ -120,6 +122,7 @@ export function keyRows(i: EngineInputs, now: Date = new Date()): KeyRow[] {
       const created = replaced ? addedLabel(k.created_at, now) : "";
       return {
         provider: k.provider,
+        name: providerName(i, k.provider),
         monogram: monogramOf(i.directory, k.provider),
         last4: k.key_last4,
         usedBy: noSeat.has(k.provider)
@@ -156,6 +159,8 @@ export function suggestedKeys(i: EngineInputs): string[] {
 
 interface EmbeddingItem {
   provider: string;
+  /** The provider's display name. */
+  name: string;
   /** The saved key's last 4, or null when no key is saved. */
   last4: string | null;
 }
@@ -189,10 +194,14 @@ export function embeddingsSection(i: EngineInputs): EmbeddingsSection {
     return {
       mode: "suggest",
       description: EMBEDDINGS_SUGGESTION,
-      items: [{ provider, last4: last4(provider) }],
+      items: [{ provider, name: providerName(i, provider), last4: last4(provider) }],
     };
   }
-  const items = used.map((provider) => ({ provider, last4: last4(provider) }));
+  const items = used.map((provider) => ({
+    provider,
+    name: providerName(i, provider),
+    last4: last4(provider),
+  }));
   const names = joinAnd(used.map((p) => providerName(i, p)));
   const missing = items.filter((it) => it.last4 === null).length;
   const description =

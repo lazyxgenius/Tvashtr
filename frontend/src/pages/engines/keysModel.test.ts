@@ -136,15 +136,26 @@ describe("suggestedKeys (ENG-52)", () => {
   });
 });
 
+describe("the provider's name on every row", () => {
+  it("a saved key's row names its provider, from the directory", () => {
+    const rows = keyRows(sampleInputs());
+    expect(rows.map((r) => [r.provider, r.name])).toEqual([
+      ["deepseek", "DeepSeek"],
+      ["nvidia_nim", "NVIDIA NIM"],
+      ["openrouter", "OpenRouter"],
+    ]);
+  });
+});
+
 describe("embeddingsSection (ENG-59, OQ-7)", () => {
   it("suggests Hugging Face while no domain exists", () => {
     expect(embeddingsSection(sampleInputs())).toEqual({
       mode: "suggest",
       description: EMBEDDINGS_SUGGESTION,
-      items: [{ provider: "huggingface", last4: null }],
+      items: [{ provider: "huggingface", name: "Hugging Face", last4: null }],
     });
     const withGemini = embeddingsSection(sampleInputs({ keys: [...KEYS, key("gemini", "g3m1")] }));
-    expect(withGemini.items).toEqual([{ provider: "gemini", last4: "g3m1" }]);
+    expect(withGemini.items).toEqual([{ provider: "gemini", name: "gemini", last4: "g3m1" }]);
   });
 
   it("follows the providers the user's domains embed with", () => {
@@ -159,8 +170,8 @@ describe("embeddingsSection (ENG-59, OQ-7)", () => {
     const missing = embeddingsSection(sampleInputs({ usage }));
     expect(missing.mode).toBe("domains");
     expect(missing.items).toEqual([
-      { provider: "openai", last4: null },
-      { provider: "huggingface", last4: null },
+      { provider: "openai", name: "OpenAI", last4: null },
+      { provider: "huggingface", name: "Hugging Face", last4: null },
     ]);
     expect(missing.description).toBe(
       "Your domains embed documents with OpenAI and Hugging Face. Add the missing keys to ingest documents.",

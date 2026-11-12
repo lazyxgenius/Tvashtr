@@ -359,7 +359,8 @@ export function ModelPicker({
                     <div key={g.provider} role="group" aria-labelledby={headId}>
                       <div className="nd-lb__head" id={headId}>
                         <LetterTile name={g.provider} tone="dark" />
-                        <span className="nd-lb__name">{g.provider}</span>
+                        <span className="nd-lb__name">{g.label}</span>
+                        <span className="nd-lb__slug">{g.provider}</span>
                         <StateLine group={g} />
                       </div>
                       {g.state === "none" ? (

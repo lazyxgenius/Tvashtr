@@ -693,6 +693,11 @@
   font-weight: 600;
   color: var(--ink-900);
 }
+.nd-lb__slug {
+  font-family: var(--font-code);
+  font-size: 11px;
+  color: var(--ink-500);
+}
 .nd-lb__state {
   margin-left: auto;
   display: inline-flex;
