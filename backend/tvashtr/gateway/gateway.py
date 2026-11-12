@@ -327,7 +327,13 @@ def complete(request: CompletionRequest) -> CompletionResult:
         # specific than a deployment-wide default.
         fallback = request.fallback_model
         switch_reason = (
-            "asked" if switched else "busy" if _transient_reason(last_error) else "error"
+            "asked"
+            if switched
+            else "no_answer"
+            if isinstance(last_error, EmptyReply)
+            else "busy"
+            if _transient_reason(last_error)
+            else "error"
         )
         if index == 0 and fallback and fallback not in [m for m, _ in candidates]:
             fallback_key = (

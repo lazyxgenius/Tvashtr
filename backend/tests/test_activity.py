@@ -327,6 +327,37 @@ def test_retry_backup_and_stalled_lines():
     assert reply["lines"][-1]["refs"] == {"after_s": 1200}
 
 
+def test_a_no_answer_retry_line_says_the_model_gave_no_answer():
+    pm, eng, invs = _engineer_world()
+    ev = _Events()
+    ev.add(2, 41, "retry", {"attempt": 1, "of": 3, "wait_s": 10.0, "reason": "no_answer"})
+    reply = _build(_run(), [pm, eng], invs, ev.rows)
+    assert reply["lines"][-1]["text"] == ("The model gave no answer. Trying again in 10 s · 1 of 3")
+
+
+def test_a_step_retried_for_no_answer_is_pinned_as_no_answer():
+    pm, eng, invs = _engineer_world()
+    ev = _Events()
+    ev.add(2, 41, "retry", {"attempt": 2, "of": 3, "wait_s": 20.0, "reason": "no_answer"})
+    ev.rows[-1].payload["backup_model"] = "openai/gpt-4.1-mini"
+    live = {
+        2: {
+            "live_state": "retrying",
+            "last_event_at": _at(41).isoformat(),
+            "activity": "The model gave no answer · trying again in 20 s (2 of 3)",
+            "activity_started_at": _at(41).isoformat(),
+            "retry": {"attempt": 2, "of": 3, "next_at": "n"},
+            "backup_model": None,
+        }
+    }
+    pinned = _build(_run(), [pm, eng], invs, ev.rows, live_by_inv=live)["pinned"]
+    assert pinned["title"] == "The Engineer’s model gave no answer"
+    assert pinned["body"] == (
+        "Tvashtr tries again in 20 seconds. If it still gives no answer, the Engineer switches "
+        "to its backup model, openai/gpt-4.1-mini, and carries on. You don’t need to do anything."
+    )
+
+
 def test_a_retrying_step_is_pinned_with_its_backup():
     pm, eng, invs = _engineer_world()
     ev = _Events()

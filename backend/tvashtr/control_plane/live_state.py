@@ -53,7 +53,12 @@ _SEQ_ATTEMPTS = 5
 _LOCK_NAMESPACE = 0x4C56  # advisory-lock namespace ("LV"), next to the proxy's "CN"
 
 _COMMAND = re.compile(r"command=(['\"])(.*?)\1", re.DOTALL)
-_RETRY_LEAD = {"busy": "Model busy", "timeout": "No answer", "unavailable": "Model unavailable"}
+_RETRY_LEAD = {
+    "busy": "Model busy",
+    "timeout": "No answer",
+    "unavailable": "Model unavailable",
+    "no_answer": "The model gave no answer",
+}
 
 
 def _command_of(payload: dict) -> str:

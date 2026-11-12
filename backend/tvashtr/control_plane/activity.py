@@ -66,6 +66,7 @@ _RETRY_LEAD = {
     "busy": "Model busy (too many requests)",
     "timeout": "No answer from the model",
     "unavailable": "Model unavailable",
+    "no_answer": "The model gave no answer",
 }
 # What a gate asks the person to approve, by its gate kind.
 _GATE_OBJECT = {
@@ -1074,7 +1075,8 @@ def build(
             "kind": "retrying",
             "node_id": retrying["node_id"],
             "label": retrying["label"],
-            "title": f"The {retrying['label']}’s model is busy",
+            "title": f"The {retrying['label']}’s model "
+            + ("gave no answer" if _gave_no_answer(retry) else "is busy"),
             "body": _retry_body(retrying["label"], retry),
             "task_id": None,
             "backup_model": retry["_backup"] if retry else None,
@@ -1231,6 +1233,11 @@ def _span(seconds: float) -> str:
     return f"{s}s" if s < 60 else f"{s // 60}m {s % 60:02d}s"
 
 
+def _gave_no_answer(retry: dict | None) -> bool:
+    """The newest retry was for an empty reply, not for a busy model."""
+    return retry is not None and retry.get("refs", {}).get("reason") == "no_answer"
+
+
 def _retry_body(label: str, retry: dict | None) -> str:
     """The Retrying callout (Live-Retrying): when the next try is, and the backup it switches to."""
     if retry is None:
@@ -1239,8 +1246,9 @@ def _retry_body(label: str, retry: dict | None) -> str:
     text = f"Tvashtr tries again in {wait} seconds."
     backup = retry.get("_backup")
     if backup:
+        still = "it still gives no answer" if _gave_no_answer(retry) else "it is still busy"
         text += (
-            f" If it is still busy, the {label} switches to its backup model, {backup}, and"
+            f" If {still}, the {label} switches to its backup model, {backup}, and"
             " carries on. You don’t need to do anything."
         )
     return text

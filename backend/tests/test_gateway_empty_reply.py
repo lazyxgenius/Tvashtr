@@ -93,7 +93,30 @@ def test_an_empty_reply_switches_to_the_backup_model(monkeypatch, waits, empty):
     assert result.model_used == "backup/m"
     assert calls == ["primary/m"] * 3 + ["backup/m"]
     backups = [p for k, p in events if k == "backup_model"]
-    assert backups == [{"from_model": "primary/m", "to_model": "backup/m", "reason": "busy"}]
+    assert backups == [{"from_model": "primary/m", "to_model": "backup/m", "reason": "no_answer"}]
+
+
+class _Busy(Exception):
+    status_code = 429
+
+
+def test_the_switch_reason_follows_the_primarys_last_error(monkeypatch, waits):
+    """Two empty replies, then a 429 as the last try: the switch is still `busy`, as before."""
+    calls: list[str] = []
+
+    def replies(*, model, **kwargs):
+        calls.append(model)
+        if model == "backup/m":
+            return _answer("Motor", model)
+        if len([c for c in calls if c == "primary/m"]) < 3:
+            return _no_choices(model)
+        raise _Busy("rate limit")
+
+    monkeypatch.setattr(gw.litellm, "completion", replies)
+    events: list = []
+    complete(_request(events, fallback_model="backup/m", api_key="k"))
+    backups = [p for k, p in events if k == "backup_model"]
+    assert [p["reason"] for p in backups] == ["busy"]
 
 
 @pytest.mark.parametrize("content", ["", None])

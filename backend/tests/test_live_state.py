@@ -7,6 +7,7 @@ from ``run_events`` for a batch of running invocations. Thresholds: Quiet after 
 
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from home_fixtures import clone_node, fresh_account, library_team, make_run
 from sqlalchemy import select
 
@@ -78,6 +79,23 @@ def test_a_retry_is_retrying_with_its_attempt():
     assert out["live_state"] == "retrying"
     assert out["retry"] == {"attempt": 2, "of": 3, "next_at": "2026-10-02T10:53:50+00:00"}
     assert out["activity"] == "Model busy · trying again in 20 s (2 of 3)"
+
+
+@pytest.mark.parametrize(
+    ("reason", "lead"),
+    [
+        ("no_answer", "The model gave no answer"),
+        ("busy", "Model busy"),
+        ("timeout", "No answer"),
+        ("unavailable", "Model unavailable"),
+        ("something_new", "Model busy"),
+    ],
+)
+def test_a_retry_names_why_the_model_is_being_retried(reason, lead):
+    retry = _ev(
+        "retry", {"attempt": 1, "of": 3, "wait_s": 10.0, "next_at": "x", "reason": reason}, T0
+    )
+    assert _derive(5, last=retry)["activity"] == f"{lead} · trying again in 10 s (1 of 3)"
 
 
 def test_a_long_silent_retry_is_quiet_not_retrying():
